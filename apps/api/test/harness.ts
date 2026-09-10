@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import multipart from '@fastify/multipart';
 import { API_BASE_PATH, type Role } from '@audit5s/contracts';
 import { Client } from 'pg';
 import { AppModule } from '../src/app.module';
@@ -46,6 +47,12 @@ export interface TestWorld {
     path: string,
     options?: { token?: string | null; body?: unknown; headers?: Record<string, string> },
   ) => Promise<{ status: number; body: unknown }>;
+  /** POSTs a file as `multipart/form-data`, the way the import upload receives it. */
+  upload: (
+    path: string,
+    file: { field?: string; filename: string; contentType: string; body: Buffer },
+    options?: { token?: string | null },
+  ) => Promise<{ status: number; body: unknown }>;
 }
 
 const PASSWORD = 'orchard-piston-58-VQ';
@@ -71,6 +78,9 @@ export async function startWorld(): Promise<TestWorld> {
     logger: process.env.TEST_LOG === '1' ? undefined : false,
   });
   app.setGlobalPrefix(API_BASE_PATH);
+  // Registered here as well as in main.ts, because the suites build the application
+  // themselves: without it the checklist upload route would 415 in tests only.
+  await app.register(multipart, { limits: { files: 1, fileSize: 10 * 1024 * 1024, fields: 8 } });
   // Nest's `configure()` middleware is registered by the platform on init; applying it
   // explicitly here keeps the request context available under `app.inject`.
   void RequestContextMiddleware;
@@ -102,7 +112,37 @@ export async function startWorld(): Promise<TestWorld> {
     return { status: response.statusCode, body };
   };
 
-  const world = { app, owner, request } as Partial<TestWorld> as TestWorld;
+  const upload: TestWorld['upload'] = async (path, file, options = {}) => {
+    const boundary = `----audit5s${Math.random().toString(16).slice(2)}`;
+    const head = Buffer.from(
+      `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="${file.field ?? 'file'}"; ` +
+        `filename="${file.filename}"\r\n` +
+        `Content-Type: ${file.contentType}\r\n\r\n`,
+      'utf8',
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: path,
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+        ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+      },
+      payload: Buffer.concat([head, file.body, tail]),
+    });
+
+    let body: unknown = null;
+    try {
+      body = response.body ? JSON.parse(response.body) : null;
+    } catch {
+      body = response.rawPayload;
+    }
+    return { status: response.statusCode, body };
+  };
+
+  const world = { app, owner, request, upload } as Partial<TestWorld> as TestWorld;
 
   const unitA = await insertUnit(owner, 'U-A', 'Unit A');
   const unitB = await insertUnit(owner, 'U-B', 'Unit B');

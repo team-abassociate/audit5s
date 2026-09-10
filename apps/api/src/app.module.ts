@@ -10,11 +10,14 @@ import { IdempotencyInterceptor } from './common/idempotency/idempotency.interce
 import { RequestContextMiddleware } from './common/observability/request-context.middleware';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { QueueModule } from './infrastructure/queue/queue.module';
+import { StorageModule } from './infrastructure/storage/storage.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ChecklistsModule } from './modules/checklists/checklists.module';
 import { HealthModule } from './modules/health/health.module';
 import { PermissionsModule } from './modules/roles-permissions/permissions.module';
 import { MembershipsModule } from './modules/unit-memberships/memberships.module';
+import { SyncModule } from './modules/sync/sync.module';
 import { UnitsModule } from './modules/units/units.module';
 import { UsersModule } from './modules/users/users.module';
 import { ZonesModule } from './modules/zones/zones.module';
@@ -33,12 +36,15 @@ import { ZonesModule } from './modules/zones/zones.module';
   imports: [
     DatabaseModule,
     QueueModule,
+    StorageModule,
     AuthorizationModule,
     AuditLogModule,
     AuthModule,
     UsersModule,
     UnitsModule,
     ZonesModule,
+    ChecklistsModule,
+    SyncModule,
     MembershipsModule,
     PermissionsModule,
     AuditLogsModule,

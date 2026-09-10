@@ -39,6 +39,30 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
   BOOTSTRAP_PASSWORD_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(72),
 
+  /**
+   * Object storage. The endpoint is a variable precisely so R2, MinIO or any other
+   * S3-compatible target needs no code change (STACK.md §2). Leaving it unset selects the
+   * filesystem driver, which is the development and CI path — see StorageModule.
+   */
+  R2_ENDPOINT: z.string().optional(),
+  R2_REGION: z.string().default('auto'),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_EVIDENCE: z.string().default('audit5s-evidence'),
+  R2_BUCKET_REPORTS: z.string().default('audit5s-reports'),
+  R2_BUCKET_IMPORTS: z.string().default('audit5s-imports'),
+  OBJECT_STORAGE_LOCAL_DIR: z.string().default('.data/object-storage'),
+
+  /** §12.8: a hard cap on the workbook an import will even attempt to read. */
+  CHECKLIST_IMPORT_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1024)
+    .max(50 * 1024 * 1024)
+    .default(10 * 1024 * 1024),
+  /** Stage 5 is a dry run that expires, so a stale preview cannot be committed later. */
+  CHECKLIST_IMPORT_PREVIEW_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+
   PGBOSS_SCHEMA: z.string().default('pgboss'),
   PGBOSS_ARCHIVE_COMPLETED_AFTER_SECONDS: z.coerce.number().int().default(43_200),
   PGBOSS_DELETE_ARCHIVED_AFTER_DAYS: z.coerce.number().int().default(7),

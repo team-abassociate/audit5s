@@ -147,6 +147,14 @@ describe('normalisation', () => {
       notes: [],
     });
   });
+
+  it('leaves en dashes alone — the workbook punctuates with them', () => {
+    // "Shop floor is clean – free of dust" and "within 2–3 minutes" are the business's
+    // own wording. Normalising a dash would rewrite the checklist and warn about a file
+    // that is entirely correct.
+    const raw = 'Shop floor is clean – free of dust; retrieval within 2–3 minutes.';
+    expect(normalizeQuestionText(raw)).toEqual({ text: raw, notes: [] });
+  });
 });
 
 describe('parsing the sheet-per-department profile', () => {
