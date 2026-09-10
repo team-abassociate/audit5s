@@ -69,7 +69,13 @@ export default tseslint.config(
   },
   {
     // Tests, the seed and the smoke script are console programs; their output is the point.
-    files: ['**/*.test.ts', '**/*.spec.ts', '**/test/**/*.ts', '**/seed.ts', '**/smoke.mjs'],
+    files: [
+      '**/*.test.ts',
+      '**/*.spec.ts',
+      '**/test/**/*.ts',
+      '**/seed.ts',
+      '**/smoke*.mjs',
+    ],
     rules: { 'no-restricted-syntax': 'off', 'no-console': 'off' },
   },
 );
