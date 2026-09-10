@@ -80,6 +80,7 @@ export class UsersController {
   @RequirePermission('user', 'reset_password')
   @Scope({ param: 'id', intent: 'write' })
   @Post(':id/reset-password')
+  @HttpCode(HttpStatus.OK)
   resetPassword(
     @CurrentScope() scope: ScopeContext,
     @Param('id', ParseUUIDPipe) id: string,

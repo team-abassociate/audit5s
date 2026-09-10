@@ -29,10 +29,10 @@ export class MembershipsController {
 
   @RequirePermission('unit_membership', 'create')
   @Scope({ intent: 'write' })
-  @Post('units/:unitId/memberships')
+  @Post('units/:id/memberships')
   assign(
     @CurrentScope() scope: ScopeContext,
-    @Param('unitId', ParseUUIDPipe) unitId: string,
+    @Param('id', ParseUUIDPipe) unitId: string,
     @Body(new ZodValidationPipe(createMembershipRequestSchema)) body: CreateMembershipRequest,
   ): Promise<MembershipDetail> {
     return this.memberships.assign(scope, unitId, body);
@@ -40,7 +40,7 @@ export class MembershipsController {
 
   @RequirePermission('unit_membership', 'revoke')
   @Scope({ param: 'membershipId', intent: 'write' })
-  @Delete('units/:unitId/memberships/:membershipId')
+  @Delete('units/:id/memberships/:membershipId')
   @HttpCode(HttpStatus.NO_CONTENT)
   revoke(
     @CurrentScope() scope: ScopeContext,
