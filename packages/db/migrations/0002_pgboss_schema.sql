@@ -24,4 +24,13 @@ GRANT USAGE ON SCHEMA pgboss TO audit5s_app;
 -- rests on the append-only triggers, the withheld UPDATE/DELETE grants on audit_log and
 -- login_attempt (AL-1), and RLS. None of those are affected by the ability to create a
 -- table in a schema of its own.
-GRANT CREATE ON DATABASE audit5s TO audit5s_app;
+--
+-- Granted against `current_database()` rather than a literal name: GRANT ... ON DATABASE
+-- resolves through a cluster-wide catalog, so a hardcoded name silently grants on the
+-- wrong database when this runs anywhere else — the test database, or a restore drill
+-- that lands under a different name.
+DO $$
+BEGIN
+  EXECUTE format('GRANT CREATE ON DATABASE %I TO audit5s_app', current_database());
+END
+$$;

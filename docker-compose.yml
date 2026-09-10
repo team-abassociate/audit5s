@@ -1,0 +1,141 @@
+# The six production services (STACK.md §4). One Oracle Ampere A1, 2 OCPU / 12 GB.
+#
+# Every service carries a mem_limit: steady state is ~4.0 GB and peak ~6.7 GB, and the
+# limits are what keep a runaway report render from taking Postgres down with it.
+#
+# No nginx and no Caddy — Cloudflare terminates TLS and cloudflared dials the api
+# container directly, so there is no public inbound port on the origin.
+
+name: audit5s
+
+x-api-image: &api-image ${API_IMAGE:-ghcr.io/team-abassociate/audit5s-api:latest}
+
+x-api-env: &api-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: ${DATABASE_URL}
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+  JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64}
+  JWT_PUBLIC_KEY_B64: ${JWT_PUBLIC_KEY_B64}
+  JWT_ISSUER: ${JWT_ISSUER}
+  JWT_AUDIENCE: ${JWT_AUDIENCE}
+  ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+  REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+  BOOTSTRAP_PASSWORD_TTL_HOURS: ${BOOTSTRAP_PASSWORD_TTL_HOURS:-72}
+  R2_ENDPOINT: ${R2_ENDPOINT}
+  R2_REGION: ${R2_REGION:-auto}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+  R2_BUCKET_EVIDENCE: ${R2_BUCKET_EVIDENCE}
+  R2_BUCKET_REPORTS: ${R2_BUCKET_REPORTS}
+  PGBOSS_SCHEMA: ${PGBOSS_SCHEMA:-pgboss}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    mem_limit: 4g
+    shm_size: 256m
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: audit5s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/sql:/docker-entrypoint-initdb.d:ro
+    # The kernel must never pick Postgres as the OOM victim (STACK.md §5).
+    oom_score_adj: -500
+    command:
+      - postgres
+      # 60s, not 5s: R2 Class A operations are billed per million and a WAL segment
+      # per 5 seconds is a needless bill (STACK.md §9).
+      - -c
+      - archive_timeout=60
+      - -c
+      - wal_level=replica
+      - -c
+      - max_connections=100
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_SUPERUSER:-postgres} -d audit5s']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: *api-image
+    restart: unless-stopped
+    mem_limit: 768m
+    command: ['node', 'dist/main.js']
+    environment:
+      <<: *api-env
+      API_PORT: 3000
+      API_HOST: 0.0.0.0
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "fetch(\"http://127.0.0.1:3000/api/v1/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker-general:
+    image: *api-image
+    restart: unless-stopped
+    mem_limit: 768m
+    command: ['node', 'dist/worker.general.js']
+    environment:
+      <<: *api-env
+      WORKER_QUEUES: checklist.import,notification.send,maintenance.sweep
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker-report:
+    image: *api-image
+    restart: unless-stopped
+    # Playwright with chrome-headless-shell. Concurrency 1 — this is the memory ceiling
+    # of the whole box, and two concurrent renders is how it gets breached.
+    mem_limit: 1536m
+    shm_size: 256m
+    command: ['node', 'dist/worker.report.js']
+    environment:
+      <<: *api-env
+      WORKER_QUEUES: report.render
+      REPORT_CONCURRENCY: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  pgbackrest:
+    image: ${PGBACKREST_IMAGE:-woblerr/pgbackrest:2.54.2}
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      PGBACKREST_REPO1_S3_KEY: ${R2_ACCESS_KEY_ID}
+      PGBACKREST_REPO1_S3_KEY_SECRET: ${R2_SECRET_ACCESS_KEY}
+      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_CIPHER_PASS}
+    volumes:
+      - ./infra/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+      - pgdata:/var/lib/postgresql/data
+      - pgbackrest-log:/var/log/pgbackrest
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    mem_limit: 128m
+    command: ['tunnel', '--no-autoupdate', 'run', '--token', '${CLOUDFLARE_TUNNEL_TOKEN}']
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+    # A separate block volume on the VM, so the database survives rebuilding the host.
+    external: false
+  pgbackrest-log:
