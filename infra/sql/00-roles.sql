@@ -23,3 +23,7 @@ $$;
 -- The app role must never acquire ownership implicitly, and must never bypass RLS.
 ALTER ROLE audit5s_app NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
 ALTER ROLE audit5s_owner NOBYPASSRLS NOSUPERUSER;
+
+-- The owner must be a member of the application role to create objects owned by it
+-- (migration 0002 hands pg-boss its own schema this way).
+GRANT audit5s_app TO audit5s_owner;

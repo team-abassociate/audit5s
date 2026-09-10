@@ -54,6 +54,15 @@ export default tseslint.config(
     rules: { 'no-restricted-syntax': 'off' },
   },
   {
+    // NestJS resolves constructor dependencies from `design:paramtypes`, which TypeScript
+    // only emits for imports that survive as *values*. `consistent-type-imports` would
+    // rewrite an injected class to `import type`, erasing it and leaving the container
+    // with `undefined` at runtime — a failure that typechecks cleanly and only shows up on
+    // boot. The rule stays on everywhere else.
+    files: ['apps/api/**/*.ts'],
+    rules: { '@typescript-eslint/consistent-type-imports': 'off' },
+  },
+  {
     // packages/db owns the schema and the migration runner.
     files: ['packages/db/**/*.ts'],
     rules: { 'no-restricted-syntax': 'off', 'no-console': 'off' },
