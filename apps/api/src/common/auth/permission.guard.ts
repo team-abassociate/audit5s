@@ -3,7 +3,13 @@ import { Reflector } from '@nestjs/core';
 import { grantFor, permissionKeyOf } from '@audit5s/domain';
 import { AppError } from '../errors';
 import { getRequestContext } from '../observability/request-context';
-import { PERMISSION_KEY, PUBLIC_KEY, type PermissionRequirement } from './decorators';
+import type { FastifyRequest } from 'fastify';
+import {
+  PERMISSION_KEY,
+  PUBLIC_KEY,
+  resolvePermission,
+  type PermissionMetadata,
+} from './decorators';
 
 /**
  * Check 2 of §6.1: does the role hold `(resource, action)` at all?
@@ -33,10 +39,14 @@ export class PermissionGuard implements CanActivate {
       return true;
     }
 
-    const requirement = this.reflector.getAllAndOverride<PermissionRequirement>(PERMISSION_KEY, [
+    const metadata = this.reflector.getAllAndOverride<PermissionMetadata>(PERMISSION_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
+    const requirement = resolvePermission(
+      metadata,
+      context.switchToHttp().getRequest<FastifyRequest>().body,
+    );
 
     if (!requirement) {
       throw AppError.forbidden(

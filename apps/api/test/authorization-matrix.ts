@@ -24,7 +24,7 @@ export interface RoleExpectation {
 }
 
 export interface EndpointExpectation {
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** The Nest route path, exactly as the router reports it. */
   path: string;
   /** Human note; shown in test names. */
@@ -466,6 +466,179 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description: 'checklist_import:commit — stage 6, the first write to checklist_version',
     expected: { SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND } },
     coveredBy: 'checklist-import.e2e.test.ts',
+  },
+
+  // ---------------------------------------------------------- audit assignments
+  {
+    method: 'POST',
+    path: '/api/v1/audit-assignments',
+    description: 'audit_assignment:create — SUPER_ADMIN only; AA-1 checks the membership',
+    expected: { SUPER_ADMIN: { inScope: CREATED } },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/audit-assignments',
+    description: 'audit_assignment:read — CONSULTANT sees their own, COO/ZL their Unit’s',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/audit-assignments/:assignmentId',
+    description: 'audit_assignment:read on one record; out of scope is 404 (AZ-3)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/audit-assignments/:assignmentId/cancel',
+    description: 'audit_assignment:cancel — SUPER_ADMIN only; cancels, never deletes',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND } },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+
+  // -------------------------------------------------------------------- audits
+  {
+    method: 'POST',
+    path: '/api/v1/audits',
+    description:
+      'audit:create_external / create_walk_by / create_cross — the cell is chosen by the ' +
+      'auditType in the body, because §8.6 gives creation one endpoint and PART 6 gives it three',
+    expected: {
+      CONSULTANT: { inScope: CREATED },
+      ZONE_LEADER: { inScope: CREATED },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/audits',
+    description: 'audit:read, scope-filtered; ?active=true is the live audit board',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/audits/:auditId',
+    description: 'audit:read — the audit with its Zones and responses',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/audits/:auditId/summary',
+    description: 'report:score_summary — the Consultant read model (N6), never a PDF (N5)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/audits/:auditId/start',
+    description: 'audit:update — claims the single-writer lock; a second device gets 409 (D7)',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/audits/:auditId/pause',
+    description: 'audit:pause — abort saves and never discards (N7)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/audits/:auditId/resume',
+    description: 'audit:resume — same auditor, from the persisted cursors',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/audits/:auditId/complete',
+    description: 'audit:complete — the server recomputes every score on this edge (D5)',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/audits/:auditId/cancel',
+    description: 'audit:cancel — SUPER_ADMIN only; every row is retained (A-1)',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/audits/:auditId/post-completion',
+    description: 'audit:edit_after_completion — A-2’s only door, always audit-logged',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/audits/:auditId/zones/:auditZoneId',
+    description: 'audit_zone:update — the upsert that takes the D6 snapshots on insert',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/audits/:auditId/zones/:auditZoneId/complete',
+    description: 'audit_zone:complete — guarded on every question of the pinned version (7.2)',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/audit-zones/:auditZoneId/responses/:responseId',
+    description: 'question_response:upsert — device owner, audit not COMPLETED; idempotent',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
   },
 
   // -------------------------------------------------------------------- sync

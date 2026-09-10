@@ -5,7 +5,14 @@ import { grantFor, permissionKeyOf } from '@audit5s/domain';
 import type { FastifyRequest } from 'fastify';
 import { AppError } from '../errors';
 import { getRequestContext } from '../observability/request-context';
-import { PERMISSION_KEY, PUBLIC_KEY, SCOPE_KEY, type PermissionRequirement, type ScopeRequirement } from './decorators';
+import {
+  PERMISSION_KEY,
+  PUBLIC_KEY,
+  SCOPE_KEY,
+  resolvePermission,
+  type PermissionMetadata,
+  type ScopeRequirement,
+} from './decorators';
 
 /** Where the resolved scope is parked for the handler and its repositories. */
 export const SCOPE_CONTEXT_PROPERTY = 'audit5sScope';
@@ -42,10 +49,12 @@ export class ScopeGuard implements CanActivate {
       return true;
     }
 
-    const requirement = this.reflector.getAllAndOverride<PermissionRequirement>(PERMISSION_KEY, [
+    const request = context.switchToHttp().getRequest<RequestWithScope>();
+    const metadata = this.reflector.getAllAndOverride<PermissionMetadata>(PERMISSION_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
+    const requirement = resolvePermission(metadata, request.body);
     if (!requirement) {
       // PermissionGuard already refused; this is belt and braces for a reordered chain.
       throw AppError.forbidden('FORBIDDEN', 'This route declares no permission');
@@ -84,7 +93,6 @@ export class ScopeGuard implements CanActivate {
       );
     }
 
-    const request = context.switchToHttp().getRequest<RequestWithScope>();
     request[SCOPE_CONTEXT_PROPERTY] = {
       actor,
       resolver: grant.resolver,
