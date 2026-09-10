@@ -4,3 +4,5 @@ export * from './access';
 export * from './checklists';
 export * from './zones';
 export * from './audits';
+export * from './evidence';
+export * from './sync';
