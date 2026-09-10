@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+/*
+ * Brand tokens mirror packages/domain/src/rating-scale.ts, which is the single definition
+ * (R-6c). They are surfaced as CSS variables here so Tailwind utilities can reach them;
+ * nothing in this app hard-codes a hex value of its own.
+ */
+@theme {
+  --color-brand: #5c1816;
+  --color-brand-accent: #f46a00;
+  --color-brand-border: #e8d7d1;
+  --color-band-outstanding: #1b7f4b;
+  --color-band-on-track: #2a7097;
+  --color-band-improving: #be7d0f;
+  --color-band-needs-support: #b3261e;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+}

@@ -15,6 +15,35 @@ export const phoneE164Schema = z
 
 export const emailSchema = z.email().trim().toLowerCase();
 
+/**
+ * Treats an empty string as absent.
+ *
+ * HTML forms submit `""` for every untouched optional field, so without this an optional
+ * email or address fails validation the moment a user leaves it blank — which is the
+ * normal case, not an edge case. Applied at the contract so both clients get it, rather
+ * than each stripping empties on the way out.
+ */
+export function optional<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    schema.optional(),
+  );
+}
+
+/**
+ * Treats an empty string as an explicit `null`.
+ *
+ * The counterpart to `optional`, for *edit* forms: there, clearing a field means "remove
+ * this value", not "leave it alone". Using `optional` on an update schema would silently
+ * discard the clear.
+ */
+export function clearable<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+    schema.nullable().optional(),
+  );
+}
+
 /** ISO-8601 UTC with `Z` (ARCHITECTURE.md §8.1). */
 export const isoDateTimeSchema = z.iso.datetime();
 
