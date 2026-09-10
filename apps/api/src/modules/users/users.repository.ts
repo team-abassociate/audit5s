@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { v7 as uuidv7 } from 'uuid';
 import { and, asc, eq, gt, ilike, isNull, sql, type SQL } from 'drizzle-orm';
 import { unitMemberships, users, type Database, type Transaction } from '@audit5s/db';
 import { LOGIN_ID_MAX_ATTEMPTS, loginIdCandidate, type ScopeContext } from '@audit5s/domain';
@@ -7,6 +8,7 @@ import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { AppError } from '../../common/errors';
+import { isUniqueViolation } from '../../common/pg-errors';
 
 export interface CreateUserInput {
   fullName: string;
@@ -21,8 +23,6 @@ export interface CreateUserInput {
   unitId: string | null;
   assignedByUserId: string;
 }
-
-const PG_UNIQUE_VIOLATION = '23505';
 
 @Injectable()
 export class UsersRepository extends BaseRepository {
@@ -53,38 +53,44 @@ export class UsersRepository extends BaseRepository {
       for (let attempt = 0; attempt < LOGIN_ID_MAX_ATTEMPTS; attempt += 1) {
         const candidate = loginIdCandidate(input.fullName, input.phoneE164, attempt);
 
+        // The id is minted here rather than read back with RETURNING. That is not a
+        // micro-optimisation: `INSERT ... RETURNING` additionally requires the SELECT
+        // policy to admit the new row, and a Coordinator creating a Zone Leader cannot yet
+        // see them — the membership that brings the user into their scope is inserted on
+        // the next statement. Generating the id keeps the read policy tight instead of
+        // widening it to make a write convenient. UUIDv7 is what §5 specifies for
+        // server-generated keys anyway: time-ordered, so index locality is preserved.
+        const userId = uuidv7();
+
         try {
-          const created = await tx.transaction(async (savepoint) => {
-            const [row] = await savepoint
-              .insert(users)
-              .values({
-                loginId: candidate,
-                fullName: input.fullName,
-                phoneE164: input.phoneE164,
-                email: input.email,
-                role: input.role,
-                passwordHash: input.passwordHash,
-                mustResetPassword: true,
-                bootstrapExpiresAt: input.bootstrapExpiresAt,
-                status: 'INVITED',
-                createdByUserId: input.createdByUserId,
-              })
-              .returning({ id: users.id, loginId: users.loginId });
-            return row!;
+          await tx.transaction(async (savepoint) => {
+            await savepoint.insert(users).values({
+              id: userId,
+              loginId: candidate,
+              fullName: input.fullName,
+              phoneE164: input.phoneE164,
+              email: input.email,
+              role: input.role,
+              passwordHash: input.passwordHash,
+              mustResetPassword: true,
+              bootstrapExpiresAt: input.bootstrapExpiresAt,
+              status: 'INVITED',
+              createdByUserId: input.createdByUserId,
+            });
           });
 
           if (input.unitId) {
             await tx.insert(unitMemberships).values({
-              userId: created.id,
+              userId,
               unitId: input.unitId,
               role: input.role,
               assignedByUserId: input.assignedByUserId,
             });
           }
 
-          return { userId: created.id, loginId: created.loginId };
+          return { userId, loginId: candidate };
         } catch (error) {
-          if (!isLoginIdCollision(error)) {
+          if (!isUniqueViolation(error, 'user_login_id_key')) {
             throw error;
           }
           // Someone else took this candidate. Try the next one.
@@ -232,12 +238,4 @@ export async function setActorContext(
   }
 }
 
-function isLoginIdCollision(error: unknown): boolean {
-  const candidate = error as { code?: string; constraint?: string; message?: string };
-  return (
-    candidate?.code === PG_UNIQUE_VIOLATION &&
-    (candidate.constraint === 'user_login_id_key' ||
-      (candidate.message?.includes('user_login_id_key') ?? false))
-  );
-}
 

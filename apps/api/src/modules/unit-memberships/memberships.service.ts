@@ -8,6 +8,7 @@ import type {
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
+import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { UsersRepository } from '../users/users.repository';
 import { AuthRepository } from '../auth/auth.repository';
@@ -71,7 +72,7 @@ export class MembershipsService {
       }
       return toDetail(detail);
     } catch (error) {
-      if (isUnique(error, 'unit_membership_one_active_admin')) {
+      if (isUniqueViolation(error, 'unit_membership_one_active_admin')) {
         // Invariant M-1. `own_unit`'s LIMIT 1 is only deterministic because of this, so
         // the index refusing here is the invariant working, not an inconvenience.
         throw AppError.conflict(
@@ -79,7 +80,7 @@ export class MembershipsService {
           `A ${user.role} may hold only one active Unit assignment. Revoke the existing one first.`,
         );
       }
-      if (isUnique(error, 'unit_membership_active_pair_key')) {
+      if (isUniqueViolation(error, 'unit_membership_active_pair_key')) {
         throw AppError.conflict('CONFLICT', 'This user is already assigned to this Unit');
       }
       throw error;
@@ -148,10 +149,3 @@ function toDetail(row: Row): MembershipDetail {
   };
 }
 
-function isUnique(error: unknown, constraint: string): boolean {
-  const candidate = error as { code?: string; constraint?: string; message?: string };
-  return (
-    candidate?.code === '23505' &&
-    (candidate.constraint === constraint || (candidate.message?.includes(constraint) ?? false))
-  );
-}

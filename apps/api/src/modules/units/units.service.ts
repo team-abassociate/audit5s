@@ -10,6 +10,7 @@ import {
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
+import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { UnitsRepository, type UnitPatch } from './units.repository';
 
@@ -178,10 +179,3 @@ export function toUnit(row: UnitRow): Unit {
   };
 }
 
-export function isUniqueViolation(error: unknown, constraint: string): boolean {
-  const candidate = error as { code?: string; constraint?: string; message?: string };
-  return (
-    candidate?.code === '23505' &&
-    (candidate.constraint === constraint || (candidate.message?.includes(constraint) ?? false))
-  );
-}
