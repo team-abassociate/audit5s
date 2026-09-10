@@ -24,6 +24,8 @@ export const AUDIT_LOG_ACTIONS = [
   'checklist.published',
   'checklist.deactivated',
   'checklist.template_updated',
+  'audit_assignment.created',
+  'audit_assignment.cancelled',
   'audit.changed_after_completion',
   'audit.cancelled',
   'report.generated',

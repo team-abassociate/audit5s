@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { auditAssignmentSchema } from './audit';
 import { checklistTemplateSchema, checklistVersionDetailSchema } from './checklist';
 import { isoDateTimeSchema } from './common';
 import { unitSchema } from './unit';
@@ -11,8 +12,8 @@ import { zoneSchema } from './zone';
  * published checklist versions with every question. The device replaces its cached copy
  * wholesale, so the payload is complete rather than a delta.
  *
- * Assignments and open corrective actions join this shape in Phases 3 and 6; the envelope
- * is defined once, here, so adding them is an added field rather than a new endpoint.
+ * Open assignments joined this shape in Phase 3; open corrective actions join it in Phase 6.
+ * The envelope is defined once, here, so each is an added field rather than a new endpoint.
  */
 export const syncCatalogueSchema = z.object({
   /** Authoritative clock, so a device with a skewed clock can normalise its timestamps. */
@@ -26,6 +27,12 @@ export const syncCatalogueSchema = z.object({
   zones: z.array(zoneSchema),
   checklistTemplates: z.array(checklistTemplateSchema),
   checklistVersions: z.array(checklistVersionDetailSchema),
+  /**
+   * The auditor's open assignments — ASSIGNED, ACCEPTED or IN_PROGRESS. A cancelled one is
+   * absent rather than marked, because the device replaces this wholesale: AA-1's
+   * `UNIT_ACCESS_REVOKED` case has to make the assignment *disappear* from the tab.
+   */
+  assignments: z.array(auditAssignmentSchema),
 });
 export type SyncCatalogue = z.infer<typeof syncCatalogueSchema>;
 
