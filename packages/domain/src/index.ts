@@ -6,3 +6,5 @@ export * from './zone-code';
 export * from './password-policy';
 export * from './permission-matrix';
 export * from './scope';
+export * from './scoring';
+export * from './state-machine';
