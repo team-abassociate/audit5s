@@ -6,6 +6,13 @@ import {
   S_SECTIONS,
   CHECKLIST_VERSION_STATUSES,
   IMPORT_JOB_STATUSES,
+  ASSIGNMENT_STATUSES,
+  AUDIT_STATUSES,
+  AUDIT_TYPES,
+  AUDIT_ZONE_STATUSES,
+  LOCATION_PROVIDERS,
+  RESPONSE_VALUES,
+  SYNC_STATES,
 } from '@audit5s/contracts';
 
 /**
@@ -26,3 +33,12 @@ export const checklistVersionStatusEnum = pgEnum(
   CHECKLIST_VERSION_STATUSES,
 );
 export const importJobStatusEnum = pgEnum('import_job_status', IMPORT_JOB_STATUSES);
+
+// Phase 3 (0006_audits_and_scoring).
+export const auditTypeEnum = pgEnum('audit_type', AUDIT_TYPES);
+export const auditStatusEnum = pgEnum('audit_status', AUDIT_STATUSES);
+export const auditZoneStatusEnum = pgEnum('audit_zone_status', AUDIT_ZONE_STATUSES);
+export const assignmentStatusEnum = pgEnum('assignment_status', ASSIGNMENT_STATUSES);
+export const responseValueEnum = pgEnum('response_value', RESPONSE_VALUES);
+export const syncStateEnum = pgEnum('sync_state', SYNC_STATES);
+export const locationProviderEnum = pgEnum('location_provider', LOCATION_PROVIDERS);

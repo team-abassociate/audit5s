@@ -3,3 +3,4 @@ export * from './identity';
 export * from './access';
 export * from './checklists';
 export * from './zones';
+export * from './audits';

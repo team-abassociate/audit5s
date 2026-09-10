@@ -288,36 +288,36 @@ describe('archiving', () => {
     });
     const busyId = (busy.body as Zone).id;
 
-    // `audit_zone` arrives in Phase 3, so the condition is created the same way Phase 3
-    // will create it: by making the database function say the Zone is busy. Testing the
-    // guard through its real seam keeps the 409 path exercised from the first day rather
-    // than waiting three phases for its first execution.
-    await world.owner.query(`
-      CREATE OR REPLACE FUNCTION zone_has_in_progress_audit(target_zone_id uuid) RETURNS boolean
-      LANGUAGE plpgsql STABLE AS $$
-      BEGIN
-        RETURN target_zone_id IS NOT NULL;
-      END;
-      $$;
-    `);
+    // Phase 3 gave `zone_has_in_progress_audit` a real body, so the condition is created
+    // the way the field creates it: an IN_PROGRESS audit holding an unfinished Zone.
+    const auditId = '01930000-0000-7000-8000-0000000000a1';
+    await world.owner.query(
+      `INSERT INTO audit (id, unit_id, audit_type, status, auditor_user_id)
+       VALUES ($1, $2, 'EXTERNAL_5S', 'IN_PROGRESS', $3)`,
+      [auditId, world.unitA, world.actors.CONSULTANT.userId],
+    );
+    await world.owner.query(
+      `INSERT INTO audit_zone (id, audit_id, zone_id, sequence_no, status,
+                               zone_code_snapshot, zone_name_snapshot)
+       VALUES (gen_random_uuid(), $1, $2, 1, 'IN_PROGRESS', 'Z-61', 'Mid-audit zone')`,
+      [auditId, busyId],
+    );
 
-    try {
-      const response = await world.request('POST', `${base}/zones/${busyId}/archive`, {
-        token: asCoordinator(),
-      });
-      expect(response.status).toBe(409);
-      expect((response.body as { code: string }).code).toBe('ZONE_HAS_IN_PROGRESS_AUDIT');
-    } finally {
-      await world.owner.query(`
-        CREATE OR REPLACE FUNCTION zone_has_in_progress_audit(target_zone_id uuid) RETURNS boolean
-        LANGUAGE plpgsql STABLE AS $$
-        BEGIN
-          PERFORM target_zone_id;
-          RETURN false;
-        END;
-        $$;
-      `);
-    }
+    const response = await world.request('POST', `${base}/zones/${busyId}/archive`, {
+      token: asCoordinator(),
+    });
+    expect(response.status).toBe(409);
+    expect((response.body as { code: string }).code).toBe('ZONE_HAS_IN_PROGRESS_AUDIT');
+
+    // Finishing the Zone frees it. Nothing is deleted to get there (A-1).
+    await world.owner.query(
+      `UPDATE audit_zone SET status = 'COMPLETED', completed_at = now() WHERE audit_id = $1`,
+      [auditId],
+    );
+    const afterwards = await world.request('POST', `${base}/zones/${busyId}/archive`, {
+      token: asCoordinator(),
+    });
+    expect(afterwards.status).toBe(204);
   });
 });
 

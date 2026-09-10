@@ -37,7 +37,9 @@ export function migrate(): void {
  */
 export async function resetFixtures(owner: Client): Promise<void> {
   await owner.query(`
-    TRUNCATE checklist_import_row, checklist_import_sheet, checklist_import_job,
+    TRUNCATE question_response, audit_zone_section_score, audit_zone, audit,
+             audit_assignment,
+             checklist_import_row, checklist_import_sheet, checklist_import_job,
              checklist_question, checklist_version, checklist_template, zone,
              audit_log, login_attempt, idempotency_key, revoked_access_token,
              refresh_token, otp_challenge, device, unit_membership, unit, "user"
@@ -53,6 +55,10 @@ export const IDS = {
   unitA: 'aaaaaaaa-0000-0000-0000-000000000001',
   unitB: 'aaaaaaaa-0000-0000-0000-000000000002',
   templateA: 'bbbbbbbb-0000-0000-0000-000000000001',
+  zoneA: 'cccccccc-0000-0000-0000-000000000001',
+  deviceA: 'dddddddd-0000-0000-0000-000000000001',
+  auditA: 'eeeeeeee-0000-0000-0000-000000000001',
+  auditZoneA: 'ffffffff-0000-0000-0000-000000000001',
 } as const;
 
 /** Two Units, one user per role, the Consultant assigned to both Units. */
@@ -141,4 +147,107 @@ export async function publish(owner: Client, versionId: string): Promise<void> {
     `UPDATE checklist_version SET status = 'PUBLISHED', published_at = now() WHERE id = $1`,
     [versionId],
   );
+}
+
+/**
+ * A Zone in Unit A, a registered device, and an IN_PROGRESS audit over that Zone with one
+ * answered question.
+ *
+ * Deliberately one question rather than fifty: these tests exercise the A-2 trigger, the
+ * QR-1 CHECK and the D6 snapshots, none of which care how many rows there are, and fifty
+ * would only slow every case down.
+ */
+export async function seedAuditFixture(
+  owner: Client,
+  options: { auditStatus?: string; zoneStatus?: string; questions?: number } = {},
+): Promise<{
+  zoneId: string;
+  auditId: string;
+  auditZoneId: string;
+  responseId: string;
+  questionId: string;
+  /** Every question of the pinned version, in `global_order`. */
+  questionIds: string[];
+  versionId: string;
+}> {
+  const { versionId, questionId } = await seedChecklistFixture(owner);
+
+  // Extra questions are added while the version is still a DRAFT: CV-1 refuses an INSERT
+  // into a published one, which is exactly the guarantee it exists to give.
+  const questionIds = [questionId];
+  for (let order = 2; order <= (options.questions ?? 1); order += 1) {
+    const { rows } = await owner.query(
+      `INSERT INTO checklist_question (version_id, section, order_in_section, global_order, text)
+       VALUES ($1, 'S1_SORT', $2, $2, $3) RETURNING id`,
+      [versionId, order, `Question ${order}`],
+    );
+    questionIds.push(rows[0].id as string);
+  }
+
+  await publish(owner, versionId);
+
+  await owner.query(
+    `INSERT INTO zone (id, unit_id, code, name, description, zone_leader_id)
+     VALUES ($1, $2, 'Z-01', 'Press', 'Press shop, bay 3', $3)`,
+    [IDS.zoneA, IDS.unitA, IDS.zoneLeaderA],
+  );
+
+  await owner.query(
+    `INSERT INTO device (id, user_id, platform, model, os_version, app_version)
+     VALUES ($1, $2, 'android', 'Pixel', '15', '1.0.0')`,
+    [IDS.deviceA, IDS.consultant],
+  );
+
+  await owner.query(
+    `INSERT INTO audit (id, unit_id, audit_type, status, auditor_user_id, owning_device_id,
+                        checklist_version_id, started_at)
+     VALUES ($1, $2, 'EXTERNAL_5S', $3, $4, $5, $6, now())`,
+    [
+      IDS.auditA,
+      IDS.unitA,
+      options.auditStatus ?? 'IN_PROGRESS',
+      IDS.consultant,
+      IDS.deviceA,
+      versionId,
+    ],
+  );
+
+  await owner.query(
+    `INSERT INTO audit_zone (id, audit_id, zone_id, sequence_no, status,
+                             zone_code_snapshot, zone_name_snapshot, zone_description_snapshot,
+                             zone_leader_user_id_snapshot, zone_leader_name_snapshot,
+                             checklist_version_id, checklist_template_name_snapshot)
+     VALUES ($1, $2, $3, 1, $4, 'Z-01', 'Press', 'Press shop, bay 3', $5, 'Leader One', $6,
+             'Premises')`,
+    [IDS.auditZoneA, IDS.auditA, IDS.zoneA, options.zoneStatus ?? 'IN_PROGRESS', IDS.zoneLeaderA, versionId],
+  );
+
+  const { rows } = await owner.query(
+    `INSERT INTO question_response (id, audit_zone_id, audit_id, checklist_question_id,
+                                    section, global_order, value, numeric_score, answered_at)
+     VALUES (gen_random_uuid(), $1, $2, $3, 'S1_SORT', 1, 'SCORE_2', 2, now())
+     RETURNING id`,
+    [IDS.auditZoneA, IDS.auditA, questionId],
+  );
+
+  return {
+    zoneId: IDS.zoneA,
+    auditId: IDS.auditA,
+    auditZoneId: IDS.auditZoneA,
+    responseId: rows[0].id as string,
+    questionId,
+    questionIds,
+    versionId,
+  };
+}
+
+/** Runs `work` with the post-completion override flag set, as the A-2 carve-out requires. */
+export async function asOverridingSuperAdmin<T>(
+  client: Client,
+  work: () => Promise<T>,
+): Promise<T> {
+  return asActor(client, IDS.superAdmin, 'SUPER_ADMIN', async () => {
+    await client.query(`SELECT set_config('app.post_completion_override', 'on', true)`);
+    return work();
+  });
 }
