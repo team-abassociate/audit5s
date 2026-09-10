@@ -62,6 +62,13 @@ next use. That is the intended emergency lever.
 | `R2_BUCKET_EVIDENCE` | Evidence photos and selfies. **Never public.** |
 | `R2_BUCKET_REPORTS` | Generated PDFs. **Never public.** |
 | `R2_BUCKET_BACKUP` | The pgBackRest repository. Separate credential if the provider allows. |
+| `R2_BUCKET_IMPORTS` | Uploaded checklist workbooks and the annotated error reports. **Never public.** |
+
+> **`R2_ENDPOINT` selects the storage driver.** Set, the API and workers talk to R2 (or any
+> S3-compatible endpoint, which is how the dev MinIO stands in). **Unset, they fall back to a
+> filesystem driver under `OBJECT_STORAGE_LOCAL_DIR`** — that is the CI and seed path, and it
+> is not a production configuration. Every boot logs which driver is live; a deployed API
+> logging `file:` at startup is a misconfiguration to fix before anything is uploaded.
 
 ### Backups
 

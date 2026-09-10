@@ -233,6 +233,45 @@ data and styling truth, never architecture.
 
 ---
 
+## R-7 — What building the importer against the real workbook settled
+
+`R-6` recorded the facts the workbook revealed. Implementing the import against it surfaced two
+consequences that the documents leave implicit; both are recorded here rather than decided
+again in a later phase.
+
+### R-7a — One import job, many sheets
+
+`ARCHITECTURE.md` §5.4 gives `checklist_import_job` a single `template_id` and a single
+`committed_version_id`, which reads as one job per checklist. The real file is **nine
+department sheets in one workbook** (R-6a), the seed imports all nine through the pipeline
+(`HANDOFF.md` §5.2), and §8.5's PARSE stage says "read sheets" in the plural. One job per
+sheet would mean uploading the same file nine times.
+
+So a job fans out to **`checklist_import_sheet`**, one row per detected sheet, carrying that
+sheet's content hash, its duplicate verdict and the version it committed.
+`checklist_version.source_import_job_id` — which §5.4 already defines as "provenance back to
+the Excel file" — remains the link in the other direction. `checklist_import_row` gains a
+`sheet_id`, so a row-level error names the sheet as well as the row.
+
+Nothing else about the pipeline changes: the six stages, the dry-run guarantee (nothing is
+written to `checklist_version` before COMMIT) and the per-sheet commit transaction are exactly
+as §8.5 describes them.
+
+### R-7b — VALIDATE normalizes whitespace and smart quotes, and nothing else
+
+§8.5 stage 3 auto-normalizes "trailing whitespace / smart quotes". Read more broadly — to
+include en and em dashes — it rewrites the business's own wording: the workbook punctuates with
+en dashes throughout ("Shop floor is clean – free of dust", "retrieval within 2–3 minutes"), so
+normalising them produced fifteen warnings on a file with nothing wrong with it, and would have
+stored questions the auditor never wrote.
+
+Normalisation is therefore exactly two rules: collapse whitespace, and straighten curly quotes.
+Dashes are content. The section labels keep their en dash for the same reason (R-6d), and the
+end-to-end suite asserts that the real workbook imports with **zero** errors and **zero**
+warnings — which is the assertion that would have caught this.
+
+---
+
 ## Related: migrations
 
 There is one environment. Migrations are files in git, applied by CI — never
