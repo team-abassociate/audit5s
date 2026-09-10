@@ -24,4 +24,3 @@ list of superseded technology choices is at the top of `ARCHITECTURE.md`.
 
 ## Status
 
-Architecture approved. Implementation begins at PART 14, Phase 1.
