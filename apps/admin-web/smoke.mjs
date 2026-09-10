@@ -74,11 +74,60 @@ if (html.includes('919812345678') && !html.includes('registered phone number')) 
   throw new Error('a credential appears to be displayed');
 }
 
-step(8, 'audit log shows the administrative actions');
+step(8, 'create a Zone from the Zone 1-100 helper');
+await page.getByRole('link', { name: 'Zones' }).click();
+await page.waitForLoadState('networkidle');
+await page.getByRole('button', { name: 'New Zone' }).click();
+// The Zone select offers Zone 1…100; the stored code is Z-01.
+await page.locator('form select').first().selectOption('Z-07');
+await page.getByPlaceholder('Press shop').fill('Press shop');
+await page.getByPlaceholder('Trimming section').fill('Trimming section');
+await page.getByRole('button', { name: 'Create Zone' }).click();
+await page.waitForSelector('text=Zone 7 — Press shop', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/07-zones.png` });
+
+step(9, 'import the real department workbook and review the diff');
+await page.getByRole('link', { name: 'Checklists' }).click();
+await page.waitForLoadState('networkidle');
+await page.getByRole('button', { name: 'Import workbook' }).click();
+await page
+  .locator('input[type=file]')
+  .setInputFiles('../../docs/requirements/5S_lean_audit_data_1.xlsx');
+
+// Validation runs on worker-general, so the wizard polls. Give it room.
+await page.waitForSelector('text=Review the diff', { timeout: 60000 });
+await page.waitForSelector('text=9 checklist sheets', { timeout: 60000 });
+await page.screenshot({ path: `${shots}/08-import-preview.png` });
+
+const errorBadge = await page.locator('text=/^0 errors$/').isVisible();
+if (!errorBadge) throw new Error('the real workbook reported errors');
+
+step(10, 'open the side-by-side diff for one department');
+await page.getByRole('button', { name: '50 new' }).first().click();
+await page.waitForSelector('text=No published version yet', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/09-import-diff.png` });
+
+step(11, 'commit and publish all nine');
+await page.getByRole('button', { name: /Commit and publish 9 checklists/ }).click();
+await page.waitForSelector('text=Imported and published', { timeout: 60000 });
+await page.getByRole('button', { name: 'Done' }).click();
+await page.waitForSelector('text=SHOP_FLOOR', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/10-checklists.png` });
+
+const published = await page.locator('tbody >> text=Published').count();
+console.log(`     ${published} departments published`);
+if (published !== 9) throw new Error(`expected 9 published departments, saw ${published}`);
+
+step(12, 'the published questions are visible and immutable');
+await page.getByRole('button', { name: 'Premises' }).click();
+await page.waitForSelector('text=1S – SEIRI (SORT)', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/11-checklist-questions.png` });
+
+step(13, 'audit log shows the administrative actions');
 await page.getByRole('link', { name: 'Audit log' }).click();
 await page.waitForLoadState('networkidle');
 await page.waitForSelector('tbody >> text=user.created', { timeout: 10000 });
-await page.screenshot({ path: `${shots}/06-audit-log.png` });
+await page.screenshot({ path: `${shots}/12-audit-log.png` });
 const rows = await page.locator('tbody tr').count();
 console.log(`     ${rows} audit entries visible`);
 

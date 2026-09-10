@@ -13,10 +13,12 @@ import './styles.css';
 import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
+import { ChecklistsPage } from '@/features/checklists/ChecklistsPage';
 import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { UnitsPage } from '@/features/units/UnitsPage';
 import { UsersPage } from '@/features/users/UsersPage';
+import { ZonesPage } from '@/features/zones/ZonesPage';
 import { SessionProvider, useSession } from '@/lib/session';
 
 const queryClient = new QueryClient({
@@ -70,6 +72,18 @@ const unitsRoute = createRoute({
   component: UnitsPage,
 });
 
+const zonesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/zones',
+  component: ZonesPage,
+});
+
+const checklistsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/checklists',
+  component: ChecklistsPage,
+});
+
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/users',
@@ -82,7 +96,14 @@ const auditLogRoute = createRoute({
   component: AuditLogPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, unitsRoute, usersRoute, auditLogRoute]);
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  unitsRoute,
+  zonesRoute,
+  checklistsRoute,
+  usersRoute,
+  auditLogRoute,
+]);
 
 const router = createRouter({ routeTree });
 
