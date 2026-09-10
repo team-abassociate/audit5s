@@ -8,10 +8,51 @@
 | **Scope** | Complete domain, data, authorization, sync, reporting and delivery design. No application code. |
 | **Repository** | `team-abassociate/audit5s` |
 
+> ### Superseded technology choices
+>
+> **Precedence rule (R-1): the engineering handoff wins on any technology name; this document
+> wins on any behaviour.** The table below is the complete list of names this document states
+> that are no longer current. Anything not listed here stands as written. Rules stated in terms
+> of a superseded technology keep their intent — only the name changes.
+>
+> Resolutions R-1 … R-5 live in [`DECISIONS.md`](./DECISIONS.md) and are binding.
+>
+> | This document says | Build instead | Affected sections |
+> | --- | --- | --- |
+> | Prisma | Drizzle ORM + drizzle-kit | header, §6.1 (AZ-1), §13 |
+> | Redis / BullMQ | pg-boss on the same PostgreSQL. **No Redis.** Idempotency keys are Postgres-only, 48 h, with no fast path. | §3.1, §5.9, §8.2 |
+> | `domain_event` transactional outbox | Removed — pg-boss is the only enqueue mechanism (R-2) | §5.9, §14 Phase 6 |
+> | Next.js `admin-web` | React 19 + Vite 7 SPA, no SSR | §3.1, §13 |
+> | Separate `corrective-action-web` client | A token-gated route inside `admin-web` | §3.1, §13 |
+> | PostgreSQL 16 + read replica | PostgreSQL 18, single instance, no replica | §3.1 |
+> | Five workers (notification · report · analytics · media · import) | Two: `worker-general` and `worker-report` | §3.1, §4 |
+> | Generic S3-compatible object storage | Cloudflare R2 via `@aws-sdk/client-s3` | §3.1, §5.6 |
+> | Managed backups + PITR | Self-hosted pgBackRest → R2 (RPO < 5 min unchanged) | §16 |
+> | WhatsApp BSP + SMS gateway wired at MVP | `NotificationChannel` interface defined; in-app + FCM only at MVP. No channel wired. | §2.8, §14 Phase 6 |
+> | SQLCipher on mobile | Not used (R-4) | §14 Phase 4 |
+> | Staging + production environments | One environment. Migrations are files in git applied by CI. | §13, §14, §16 |
+> | Chaos test "Redis down" | Removed | §15 |
+>
+> **Redis did five jobs in this document. Each has a new home**, since removing Redis is not a
+> pure name swap:
+>
+> | Job | Now |
+> | --- | --- |
+> | Queues (§3.1, §10, §11) | pg-boss on the same PostgreSQL |
+> | Idempotency fast path (§5.9, §8.2) | Postgres only — the `idempotency_key` table, 48 h |
+> | `jti` denylist / refresh revocation (§12.1) | A Postgres table, checked on the auth path |
+> | Rate limiting (§12.6) | Cloudflare edge rules. The API does not rate-limit itself. |
+> | Analytics cache (§11) | None at MVP — the `metric_daily_*` rollup tables are the cache |
+>
+> Two additions from `DECISIONS.md` that this document does not yet contain: the
+> `unit_membership` partial unique index for invariant M-1 ships in the first migration (R-3a),
+> and `evidence` gains `redacted_at` / `redacted_by_user_id` / `redaction_reason` with a
+> matching carve-out in its append-only trigger (R-5).
+
 **How to read this document.** PART 1 fixes the vocabulary and settles every contradiction in
 the source brainstorm — read it first, and treat its decisions as binding. PART 5 (database)
 and PART 8 (API) are the implementation contract: together they are sufficient to write the
-Prisma schema and the first controllers without asking a business question. PART 9 is the
+Drizzle schema and the first controllers without asking a business question. PART 9 is the
 mobile contract. PART 14 is the delivery plan. Anything not stated here is a genuine open
 question and must be escalated, not invented.
 
@@ -569,7 +610,7 @@ Twenty-three modules. Rules that hold for all of them:
 | 23 | **Analytics** | `MetricDailyUnit`, `MetricDailyZone`, `MetricSectionDaily` | Metric definitions, time-series queries, rollup jobs, dashboard read models | read-only over audit tables (replica) | — |
 | 24 | **AuditLogs** | `AuditLog` | Immutable administrative trail: actor, action, before/after, IP/device | all (consumes events) | — |
 | — | **Storage** *(infrastructure)* | — | S3 client, presigned URL minting, key conventions, checksum, lifecycle tags | — | — |
-| — | **Jobs** *(infrastructure)* | `domain_events` | BullMQ setup, transactional outbox dispatcher, retry/backoff policy, DLQ | — | — |
+| — | **Jobs** *(infrastructure)* | — | pg-boss setup, retry/backoff policy, DLQ | — | — |
 
 ## 4.1 Dependency rules
 
@@ -741,6 +782,11 @@ Indexes:
 > **Invariant M-1.** A `COORDINATOR` or `ZONE_LEADER` may have **at most one** `ACTIVE`
 > membership. Enforced by a partial unique index on `(user_id) WHERE status='ACTIVE' AND role IN ('COORDINATOR','ZONE_LEADER')`.
 > A `CONSULTANT` may have many. `SUPER_ADMIN` has none — organization scope is implicit.
+>
+> **R-3a.** This index ships in the **first** migration and is covered by a test that inserts
+> a second `ACTIVE` membership for a Coordinator and asserts a unique violation. Every
+> `own_unit` predicate in PART 6 depends on it — including its `LIMIT 1`, which is
+> deterministic only because of this invariant.
 
 ### `permission` / `role_permission`
 
@@ -1025,6 +1071,9 @@ retried sync can only ever update the same row** · `(audit_id)` ·
 | `is_live_capture` | `boolean` | False ⇒ gallery. Enforced true where the flow demands live capture |
 | `deleted_at` | `timestamptz` NULL | Pre-completion deletion only |
 | `deleted_by_user_id` | `uuid` NULL | |
+| `redacted_at` | `timestamptz` NULL | **R-5.** Set when the stored object has been overwritten with a placeholder |
+| `redacted_by_user_id` | `uuid` FK→`user.id` NULL | **R-5.** Super Admin only |
+| `redaction_reason` | `text` NULL | **R-5.** Recorded in `audit_log` as `evidence.redacted` |
 
 Indexes:
 - `UNIQUE(object_key)`
@@ -1221,11 +1270,17 @@ Indexes: `(resolved_at, created_at)` · `(entity_type, entity_id)` · `(user_id)
 
 Index: `(expires_at)`. Retained 48 h in Postgres, with a Redis fast path (PART 8.2).
 
-### `domain_event` — transactional outbox
+### `domain_event` — transactional outbox — **REMOVED (R-2)**
 
-`id bigserial PK` · `event_type text` · `payload jsonb` · `occurred_at timestamptz` ·
+> This table is **not built.** pg-boss stores its jobs in this same database, so a second
+> outbox and dispatcher would duplicate one mechanism. The guarantee it existed to provide —
+> a job enqueued in a domain transaction never runs if that transaction rolls back — is
+> instead asserted by a permanent test in the API suite. See `DECISIONS.md` R-2.
+> Retained here struck through for traceability only:
+
+~~`id bigserial PK` · `event_type text` · `payload jsonb` · `occurred_at timestamptz` ·
 `dispatched_at timestamptz NULL` · `attempt_count int` · `last_error text NULL`.
-Index: `(dispatched_at, id) WHERE dispatched_at IS NULL`.
+Index: `(dispatched_at, id) WHERE dispatched_at IS NULL`.~~
 
 ### `audit_log`
 
@@ -1582,7 +1637,7 @@ list endpoints and single-row endpoints share one definition and cannot diverge.
 
 | # | Rule |
 | --- | --- |
-| AZ-1 | **No repository method may execute without a scope predicate.** A base repository requires an explicit `ScopeContext` argument; a lint rule forbids raw `prisma.<model>.findMany` outside repositories. |
+| AZ-1 | **No repository method may execute without a scope predicate.** A base repository requires an explicit `ScopeContext` argument; a lint rule forbids constructing a Drizzle query outside a repository class. |
 | AZ-2 | **Scope is derived server-side.** A `unitId` in a request body or query string is a *filter*, never a grant. It is intersected with the actor's scope. |
 | AZ-3 | **Out-of-scope reads return `404`, not `403`** — so object IDs cannot be probed for existence (PART 12.4). Out-of-scope *writes* on a resource the actor can read return `403`. |
 | AZ-4 | **`SUPER_ADMIN` is not a bypass flag.** It resolves to the predicate `TRUE`, through the same code path, so every query is still built the same way. |
@@ -1599,6 +1654,11 @@ list endpoints and single-row endpoints share one definition and cannot diverge.
 | `own_record` | `user.id = :actor` | All |
 | `assigned_actions` | `corrective_action.assigned_zone_leader_user_id = :actor OR corrective_action.unit_id = :actorUnit` | Zone Leader |
 | `signed_token` | `corrective_action.id = :token.corrective_action_id AND token valid AND NOT revoked AND now() < expires_at` | Public corrective-action page |
+
+> **R-3b — the `assigned_actions` `OR` clause is intentional.** Any Zone Leader of a Unit may
+> act on any corrective action belonging to that Unit, not only those assigned to them.
+> Assigned leaders take leave and corrective actions must not stall. Do not narrow it without
+> a replacement for the stall case.
 
 ## 6.3 The matrix
 
@@ -2421,15 +2481,16 @@ User taps Logout
     → >0 ─▶ BLOCK with: "You have 14 unsynced items (3 photos) from 2 audits.
              Sync now, or keep them on this device and log out?"
                ├─ Sync now       → run a full sync, then log out on success
-               ├─ Keep & log out → tokens cleared; SQLite retained, encrypted, tagged to that
+               ├─ Keep & log out → tokens cleared; SQLite retained and tagged to that
                │                    user; on that user's next login the outbox resumes.
                │                    A DIFFERENT user logging in on the device does NOT get access
                │                    to it and does not wipe it.
                └─ Cancel
 ```
 
-Force-logout **never** wipes unsynced data. The retained database is encrypted (SQLCipher, key
-in the OS keystore); a session for a different user cannot read it. A Super Admin can see
+Force-logout **never** wipes unsynced data. The retained database is unencrypted (R-4) and
+sits in app-private storage; the app scopes every local read to the owning user, so a session
+for a different user neither reads nor wipes it. A Super Admin can see
 "device has unsynced data, last seen N days ago" and chase it — the operational half of the
 problem, which is usually the harder half.
 
@@ -2976,7 +3037,7 @@ business data.
 | In transit | TLS 1.2+ everywhere; HSTS on web; certificate pinning considered for mobile (rejected for v1 — it complicates incident recovery more than it helps here) |
 | At rest — database | Managed PostgreSQL encryption at rest (AES-256) |
 | At rest — object storage | SSE-S3 (or SSE-KMS where the provider supports it) |
-| At rest — device | SQLCipher for the local database; media files in app-private storage; tokens in Keychain/Keystore |
+| At rest — device | Local database unencrypted (R-4); media files in app-private storage; tokens in Keychain/Keystore |
 | Application-level | Password hashes (Argon2id), token hashes (SHA-256). No reversible encryption of business data — it would add key-management risk without a threat it addresses here |
 | Secrets | Managed secret store (never in the repository, never in the image); rotated on schedule; separate credentials per environment |
 
@@ -3137,7 +3198,7 @@ sequencing, not commitments.
 | --- | --- |
 | **Backend** | Sync module: `POST /sync/batch` with **per-item results**, topological validation, `RETRY_AFTER_PARENT`; `sync_conflict` quarantine; `device_sync_record` telemetry; `GET /sync/status`; evidence upload-intent/commit with checksum verification; presigned URL service; geofence distance + `location_suspicious` computation; `SYNC_FAILURE` event |
 | **Web** | Sync health dashboard: devices, unsynced counts, dead-letter items, conflict queue with apply/discard resolution; suspicious-location flags on the audit board |
-| **Mobile** | Outbox table + engine; coalescing upsert; exponential backoff with jitter; topological ordering; **separate media queue**; image downscale + EXIF strip; live-camera selfie gate before start; location capture at login and audit start; sync status UI (dot, counts, last sync, Sync Now); logout-with-pending gate; crash recovery sweep (stale `SYNCING` reset, `commit` replay); SQLCipher |
+| **Mobile** | Outbox table + engine; coalescing upsert; exponential backoff with jitter; topological ordering; **separate media queue**; image downscale + EXIF strip; live-camera selfie gate before start; location capture at login and audit start; sync status UI (dot, counts, last sync, Sync Now); logout-with-pending gate; crash recovery sweep (stale `SYNCING` reset, `commit` replay) |
 | **Migrations** | `evidence` (+ the two partial unique indexes for summary flags), `device_sync_record`, `sync_conflict` |
 | **Tests** | Airplane-mode full audit → sync on reconnect. Kill the app mid-question, mid-upload, between PUT and commit. Duplicate batch (same `batchId`) → no duplicates. 100-item batch with one invalid item → 99 accepted. Clock-skew normalization. Second device → `409` + quarantine. Logout blocked with pending items. |
 | **Acceptance** | A three-Zone audit captured with the radio off syncs completely and correctly on reconnect; a duplicated sync creates nothing extra; every rejected item is visible in the conflict queue with its full payload. |
@@ -3161,7 +3222,7 @@ sequencing, not commitments.
 
 | Track | Tasks |
 | --- | --- |
-| **Backend** | Materialize one `CorrectiveAction` per nonconformity on `AUDIT_COMPLETED`; **append-only submissions**; verify/reopen/reassign; audit rollup to `CORRECTIVE_ACTION_OPEN` / `PARTIALLY_CLOSED` / `CLOSED`; Notifications module (in-app + WhatsApp + SMS fallback, templates, preferences, delivery tracking, retries); transactional outbox dispatcher; all domain events wired |
+| **Backend** | Materialize one `CorrectiveAction` per nonconformity on `AUDIT_COMPLETED`; **append-only submissions**; verify/reopen/reassign; audit rollup to `CORRECTIVE_ACTION_OPEN` / `PARTIALLY_CLOSED` / `CLOSED`; Notifications module (in-app + WhatsApp + SMS fallback, templates, preferences, delivery tracking, retries); all domain events wired |
 | **Web** | Super Admin corrective-action queue with verify/reopen and submission history; Coordinator read view; notification centre + preferences |
 | **Mobile** | Zone Leader nonconformity list; Option A (name, **live** after-photo, description) and Option B (explanation); offline submission through the outbox; notification centre |
 | **Migrations** | `corrective_action`, `corrective_action_submission`, `notification`, `notification_delivery`, `notification_preference` |
@@ -3204,7 +3265,7 @@ sequencing, not commitments.
 | **Web** | Lighthouse/a11y pass; error boundaries; empty and error states; browser matrix; CSP tightening |
 | **Mobile** | Crash reporting; OTA update channel; battery and storage profiling; low-end Android testing; store submissions; offline soak test (7 days, 20 audits, 500 photos) |
 | **Migrations** | Migration rehearsal against a production-sized copy; rollback procedure documented and tested |
-| **Tests** | Full E2E suites on staging; **UAT with real auditors in a real facility**; security regression suite; chaos: Redis down, S3 down, WhatsApp down, database failover |
+| **Tests** | Full E2E suites on staging; **UAT with real auditors in a real facility**; security regression suite; chaos: object storage down, database restart under load |
 | **Acceptance** | PART 16 fully green; UAT sign-off from the business; production deployed with monitoring and alerting live; a restore rehearsal completed and documented. |
 
 ### Critical path
