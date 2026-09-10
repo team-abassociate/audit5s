@@ -117,9 +117,18 @@ function resolvePath(
   const inScopeUser = ownRecordRole && role ? world.actors[role].userId : world.inScopeUserId;
   const userId = scope === 'inScope' ? inScopeUser : world.outOfScopeUserId;
 
+  // `:id` means different things on different routes, which is exactly why it is
+  // resolved here from the fixture rather than guessed per test.
+  const zoneId = scope === 'inScope' ? world.zoneA : world.zoneB;
+  const idFor = entry.path.startsWith('/api/v1/zones/')
+    ? zoneId
+    : entry.path.includes('/units/')
+      ? unitId
+      : userId;
+
   return entry.path
     .replace(':membershipId', '00000000-0000-4000-8000-000000000000')
-    .replace(':id', entry.path.includes('/units/') ? unitId : userId);
+    .replace(':id', idFor);
 }
 
 const sweepable = ENDPOINT_MATRIX.filter((entry) => !entry.public && !entry.coveredBy);

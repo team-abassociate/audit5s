@@ -44,6 +44,23 @@ export function clearable<T extends z.ZodTypeAny>(schema: T) {
   );
 }
 
+/**
+ * A boolean that arrives as a query-string word.
+ *
+ * `z.coerce.boolean()` is `Boolean(value)`, so the string `"false"` is truthy and
+ * `?active=false` silently means the opposite of what it says. Query booleans are read
+ * through this instead, once, so no endpoint has to remember the trap.
+ */
+export function booleanQuery(defaultValue: boolean) {
+  return z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    const normalized = value.trim().toLowerCase();
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+    return value;
+  }, z.boolean().default(defaultValue));
+}
+
 /** ISO-8601 UTC with `Z` (ARCHITECTURE.md §8.1). */
 export const isoDateTimeSchema = z.iso.datetime();
 

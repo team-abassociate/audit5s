@@ -33,6 +33,9 @@ export interface TestWorld {
   unitA: string;
   /** Unit B — the other Unit, used for every out-of-scope case. */
   unitB: string;
+  /** One Zone per Unit, so the sweep has an in-scope and an out-of-scope `/zones/:id`. */
+  zoneA: string;
+  zoneB: string;
   actors: Record<Role, TestActor>;
   /** A user in Unit B, for out-of-scope reads. */
   outOfScopeUserId: string;
@@ -105,6 +108,8 @@ export async function startWorld(): Promise<TestWorld> {
   const unitB = await insertUnit(owner, 'U-B', 'Unit B');
   world.unitA = unitA;
   world.unitB = unitB;
+  world.zoneA = await insertZone(owner, unitA, 'Z-01', 'Press');
+  world.zoneB = await insertZone(owner, unitB, 'Z-01', 'Assembly');
 
   // Rate limits are per-process and would otherwise leak between test files.
   app.get(RateLimitService).reset();
@@ -131,10 +136,25 @@ export async function stopWorld(world: TestWorld | undefined): Promise<void> {
 
 export async function truncateAll(owner: Client): Promise<void> {
   await owner.query(`
-    TRUNCATE audit_log, login_attempt, idempotency_key, revoked_access_token,
+    TRUNCATE checklist_import_row, checklist_import_sheet, checklist_import_job,
+             checklist_question, checklist_version, checklist_template, zone,
+             audit_log, login_attempt, idempotency_key, revoked_access_token,
              refresh_token, otp_challenge, device, unit_membership, unit, "user"
     RESTART IDENTITY CASCADE;
   `);
+}
+
+async function insertZone(
+  owner: Client,
+  unitId: string,
+  code: string,
+  name: string,
+): Promise<string> {
+  const { rows } = await owner.query(
+    `INSERT INTO zone (unit_id, code, name) VALUES ($1, $2, $3) RETURNING id`,
+    [unitId, code, name],
+  );
+  return rows[0].id as string;
 }
 
 async function insertUnit(owner: Client, code: string, name: string): Promise<string> {

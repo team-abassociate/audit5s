@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  booleanQuery,
   clearable,
   isoDateTimeSchema,
   optional,
@@ -87,7 +88,7 @@ export type UpdateZoneRequest = z.infer<typeof updateZoneRequestSchema>;
 
 /** `?active=true` (the default) is the Zone dropdown source — archived Zones vanish. */
 export const listZonesQuerySchema = paginationQuerySchema.extend({
-  active: z.coerce.boolean().default(true),
+  active: booleanQuery(true),
   search: z.string().trim().min(1).max(120).optional(),
 });
 export type ListZonesQuery = z.infer<typeof listZonesQuerySchema>;

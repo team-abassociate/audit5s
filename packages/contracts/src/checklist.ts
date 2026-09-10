@@ -4,7 +4,13 @@ import {
   importJobStatusSchema,
   sSectionSchema,
 } from './enums';
-import { isoDateTimeSchema, optional, paginationQuerySchema, uuidSchema } from './common';
+import {
+  booleanQuery,
+  isoDateTimeSchema,
+  optional,
+  paginationQuerySchema,
+  uuidSchema,
+} from './common';
 
 /**
  * Checklist templates, versions and questions (ARCHITECTURE.md §5.4), and the six-stage
@@ -82,7 +88,7 @@ export const listChecklistVersionsQuerySchema = paginationQuerySchema.extend({
 export type ListChecklistVersionsQuery = z.infer<typeof listChecklistVersionsQuerySchema>;
 
 export const listChecklistTemplatesQuerySchema = paginationQuerySchema.extend({
-  includeArchived: z.coerce.boolean().default(false),
+  includeArchived: booleanQuery(false),
 });
 export type ListChecklistTemplatesQuery = z.infer<typeof listChecklistTemplatesQuerySchema>;
 

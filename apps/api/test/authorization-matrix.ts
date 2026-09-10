@@ -246,6 +246,81 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'units.e2e.test.ts',
   },
 
+  // ------------------------------------------------------------------- zones
+  {
+    method: 'POST',
+    path: '/api/v1/units/:id/zones',
+    description: 'zone:create — SUPER_ADMIN organization; COORDINATOR own_unit',
+    expected: {
+      SUPER_ADMIN: { inScope: CREATED },
+      COORDINATOR: { inScope: CREATED, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'zones.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/units/:id/zones',
+    description: 'zone:read — the Zone dropdown source, active Zones by default',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/zones',
+    description: 'zone:read, scope-filtered across every Unit the actor may touch',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/zones/:id',
+    description: 'zone:read on one Zone; §6.4 — another Unit’s Zone is 404, not 403',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/zones/:id',
+    description: 'zone:update — a description edit never touches history (D6)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'zones.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/zones/:id/leader',
+    description: 'zone:assign_leader — a responsibility pointer, not a grant (C2)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'zones.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/zones/:id/archive',
+    description: 'zone:archive — 409 ZONE_HAS_IN_PROGRESS_AUDIT while an audit is running',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
+      COORDINATOR: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'zones.e2e.test.ts',
+  },
+
   // ------------------------------------------------------------- memberships
   {
     method: 'POST',

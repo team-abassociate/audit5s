@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  booleanQuery,
   clearable,
   emailSchema,
   isoDateTimeSchema,
@@ -145,7 +146,7 @@ export const updateUnitRequestSchema = z
 export type UpdateUnitRequest = z.infer<typeof updateUnitRequestSchema>;
 
 export const listUnitsQuerySchema = paginationQuerySchema.extend({
-  includeArchived: z.coerce.boolean().default(false),
+  includeArchived: booleanQuery(false),
   search: z.string().trim().min(1).max(120).optional(),
 });
 export type ListUnitsQuery = z.infer<typeof listUnitsQuerySchema>;

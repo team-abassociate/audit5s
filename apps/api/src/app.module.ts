@@ -17,6 +17,7 @@ import { PermissionsModule } from './modules/roles-permissions/permissions.modul
 import { MembershipsModule } from './modules/unit-memberships/memberships.module';
 import { UnitsModule } from './modules/units/units.module';
 import { UsersModule } from './modules/users/users.module';
+import { ZonesModule } from './modules/zones/zones.module';
 
 /**
  * The guard chain is **global and composed**, in this order (ARCHITECTURE.md §6.1):
@@ -37,6 +38,7 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     UsersModule,
     UnitsModule,
+    ZonesModule,
     MembershipsModule,
     PermissionsModule,
     AuditLogsModule,
