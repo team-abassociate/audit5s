@@ -910,13 +910,23 @@ Indexes: `UNIQUE(version_id, section, order_in_section)`;
 > questions, 10 per section, contiguous `order_in_section` 1…N. Validated at publish time and
 > asserted by a check constraint on `total_questions`.
 
-### `checklist_import_job` / `checklist_import_row`
+### `checklist_import_job` / `checklist_import_sheet` / `checklist_import_row`
 
-| `checklist_import_job` | `id uuid PK` · `template_id uuid FK NULL` (null = create new template) · `uploaded_by_user_id uuid FK` · `file_object_key text` · `file_checksum text` · `status import_job_status` · `parsed_row_count int` · `error_count int` · `warning_count int` · `duplicate_of_version_id uuid NULL` · `preview_expires_at` · `committed_version_id uuid FK NULL` · `error_report_object_key text NULL` |
+Three levels, because the real workbook is **nine department sheets in one file** (R-6a) and
+each sheet becomes one template version: a job fans out to sheets, and a sheet to rows. The
+per-sheet level is where the duplicate verdict and the committed version live; `template_id`
+and `committed_version_id` are properties of a *sheet*, not of the upload (DECISIONS.md R-7a).
+
+| `checklist_import_job` | `id uuid PK` · `uploaded_by_user_id uuid FK` · `file_name text` · `file_object_key text` · `file_checksum text` · `file_byte_size int` · `status import_job_status` · `sheet_count int` · `parsed_row_count int` · `error_count int` · `warning_count int` · `preview_expires_at` · `error_report_object_key text NULL` · `skipped_sheets jsonb` (the non-checklist tabs and why, Q7) |
 | --- | --- |
-| `checklist_import_row` | `id uuid PK` · `job_id uuid FK` · `source_row_number int` · `raw jsonb` · `parsed_section s_section NULL` · `parsed_order int NULL` · `parsed_text text NULL` · `severity text` (`OK`/`WARNING`/`ERROR`) · `messages text[]` |
+| `checklist_import_sheet` | `id uuid PK` · `job_id uuid FK` · `sheet_name text` · `sheet_index int` · `template_code text` · `template_name text` · `template_id uuid FK NULL` (null = create new template) · `content_hash text` · `question_count int` · `severity text` · `duplicate_of_version_id uuid NULL` · `duplicate_is_published boolean` · `committed_version_id uuid FK NULL` · `messages text[]` |
+| `checklist_import_row` | `id uuid PK` · `job_id uuid FK` · `sheet_id uuid FK` · `source_row_number int` · `raw jsonb` · `parsed_section s_section NULL` · `parsed_order int NULL` · `parsed_global_order int NULL` · `parsed_text text NULL` · `severity text` (`OK`/`WARNING`/`ERROR`) · `messages text[]` |
 
-Indexes: `(job_id, severity)`; `(status, preview_expires_at)` for cleanup.
+Indexes: `(job_id, severity)` on both child tables; `(sheet_id, source_row_number)`;
+`UNIQUE(job_id, sheet_index)`; `(status, preview_expires_at)` for cleanup.
+
+`checklist_version.source_import_job_id` remains the link in the other direction — the
+provenance of a version back to the file it came from.
 
 ## 5.5 Assignments and audits
 
@@ -2075,6 +2085,8 @@ stored response; the same key with a *different* body returns `422 IDEMPOTENCY_K
               • duplicate text within a section         WARNING
               • duplicate text across sections          WARNING
               • trailing whitespace / smart quotes      WARNING (auto-normalized)
+                — and nothing else: the workbook punctuates
+                  with en dashes, so they are content (R-7b)
 4 DUPLICATE   content_hash vs existing versions
               • identical to the published version      BLOCK "no changes to import"
               • identical to an older version           WARNING "reverting to v{n}"
