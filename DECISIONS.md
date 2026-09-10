@@ -1,9 +1,9 @@
-# Decision record — resolutions R-1 … R-5
+# Decision record — resolutions R-1 … R-6
 
 Companion to [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`STACK.md`](./STACK.md), the
 Stack Decision Record (the engineering handoff).
 
-These five resolutions settle points where the two source documents disagreed or were silent.
+These resolutions settle points where the two source documents disagreed or were silent.
 They are **binding** and carry the same weight as the decisions in `ARCHITECTURE.md` §1.4.
 Where a resolution changes something in `ARCHITECTURE.md`, the affected section is named.
 
@@ -14,6 +14,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-3 | Scope resolver enforcement | Settled |
 | R-4 | Mobile local storage encryption | Settled |
 | R-5 | Evidence redaction | Settled — **build before the append-only triggers ship** |
+| R-6 | Source-file reconciliation | Settled |
 
 ---
 
@@ -145,6 +146,90 @@ altering it becomes a migration nobody wants to run.
 
 **Not built now:** no erasure request queue, no admin UI, no self-service flow. A Super Admin
 endpoint plus the schema above is the whole scope. The workflow comes when someone asks.
+
+---
+
+## R-6 — Source-file reconciliation
+
+`ARCHITECTURE.md` was written before the department workbook and the two sample report PDFs
+were available; its assumptions A1–A6 stood in for them. All three files are now in
+`docs/requirements/`, `HANDOFF.md` §3–§4 reconciles the blueprint against them, and
+`ARCHITECTURE.md` §1.6, §8.5 and §11.6 have been rewritten to match. This entry records the
+outcome so the tie-breaker file carries it.
+
+**Every fact below was verified against the real files**, not carried over on trust.
+
+### R-6a — Nine departments, from the sheet names
+
+One `ChecklistTemplate` per workbook sheet, in workbook order:
+
+| Template `name` (= sheet name) | `code` |
+| --- | --- |
+| Shop Floor | `SHOP_FLOOR` |
+| Office | `OFFICE` |
+| Stores (RM) | `STORES_RM` |
+| Production | `PRODUCTION` |
+| FG Stores | `FG_STORES` |
+| Packing Area | `PACKING_AREA` |
+| Boiler & Utility | `BOILER_UTILITY` |
+| Maintenance | `MAINTENANCE` |
+| Premises | `PREMISES` |
+
+The workbook's first three sheets — `5S Audit Team`, `Audit Schedule`, `Monthly Zone Scores` —
+are legacy planning sheets. They are **not** imported, and the platform replaces them
+(analytics, assignments and Zone master data respectively). A sheet is a checklist only if its
+cell `A1` matches `^5S AUDIT CHECK SHEET [–—-] (.+)$`.
+
+A1 is confirmed unchanged: every sheet is exactly 5 sections × 10 questions, numbered globally
+1–50.
+
+### R-6b — The rating scale is four bands at 90 / 75 / 60
+
+| Band token | Range | Label | Colour | Tint |
+| --- | --- | --- | --- | --- |
+| `band-outstanding` | ≥ 90 % | Outstanding | `#1B7F4B` | `#E2F4E9` |
+| `band-on-track` | 75 – 89.99 % | On Track | `#2A7097` | `#E2EEF7` |
+| `band-improving` | 60 – 74.99 % | Improving | `#BE7D0F` | `#FDF3DB` |
+| `band-needs-support` | < 60 % | Needs Support | `#B3261E` | `#FCE7E5` |
+
+The placeholder in `ARCHITECTURE.md` §11.6 had the wrong labels and put the third boundary at
+50. Response colours are `SCORE_2` `#1B7F4B` "Well implemented", `SCORE_1` `#BE7D0F`
+"Progressing well", `SCORE_0` `#B3261E` "Needs improvement", `NA` neutral grey. Brand tokens:
+maroon `#5C1816`, orange `#F46A00`, table border `#E8D7D1`, row tints `#FFFAF7` / `#FFF7F3`.
+
+The sample reports contain no `NA` row, so the neutral grey is the one value here that is a
+house choice rather than a measurement; it is marked as such in the token file.
+
+### R-6c — The tokens live in `packages/domain`
+
+`ARCHITECTURE.md` §11.6 named `packages/config/rating-scale.ts`, but `packages/config` does not
+exist in the PART 13 layout. The file is **`packages/domain/src/rating-scale.ts`**:
+`percentage → band` is a scoring rule, and `domain` is already imported by the API, the web app
+and the mobile app. It exports `RATING_BANDS`, `RESPONSE_TOKENS`, `BRAND_TOKENS` and
+`bandFor(pct: number | null)`, where `null` (a fully-`NA` section, D4) is not a band. Nothing
+else in the codebase hard-codes a colour.
+
+### R-6d — The import profile is sheet-per-department
+
+The workbook is not a flat one-row-per-question table. `ChecklistImportProfile` implements a
+sheet-per-department, section-header-row layout: a merged section header above each block of
+ten questions, a sub-total row after each block, and trailing total / percentage / rating /
+signature rows that are skipped. Sections are detected by regex on column A, never by row
+number. The sheet's `Yes / No` and `Marks` columns are legacy and are not imported — the
+application scale is `2 / 1 / 0 / NA` (D3). The parse rules are written out in
+`ARCHITECTURE.md` §8.5.
+
+**This changes the PARSE stage's column mapping only.** The six-stage pipeline and the commit
+semantics are unchanged, which is what A4 predicted would happen. VALIDATE gains one row-level
+check that the corrected layout makes checkable — that `Sr.` runs contiguously 1–50 across a
+sheet and agrees with each question's position in its section.
+
+### R-6e — Precedence
+
+These facts sit at precedence level 2 (`HANDOFF.md` §2): above the business brief and the
+brainstorm, below `STACK.md` on technology names and `ARCHITECTURE.md` on behaviour. They
+supersede the placeholders they replace and nothing else. The workbook and the sample PDFs are
+data and styling truth, never architecture.
 
 ---
 
