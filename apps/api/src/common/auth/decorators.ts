@@ -20,9 +20,44 @@ export interface PermissionRequirement {
   action: string;
 }
 
+/**
+ * A route whose PART 6 cell depends on a discriminator in the request.
+ *
+ * There is exactly one of these: `POST /audits`, because §8.6 gives audit creation one
+ * endpoint with an `auditType` in the body while PART 6 gives it three cells —
+ * `create_external`, `create_walk_by` and `create_cross` — whose resolvers differ by role.
+ * A static decorator would have to pick one, which for a Zone Leader starting a cross
+ * audit means a 403 from a cell that was never meant to judge them.
+ *
+ * Nothing is widened by this. The guards run unchanged: `select` only chooses *which*
+ * cell of the same matrix is consulted, and an actor naming a type they hold no grant for
+ * is refused by `PermissionGuard` exactly as before. `candidates` lists every cell the
+ * route can reach so a reader — and the authorization suite — can see them without
+ * running the selector.
+ */
+export interface DynamicPermissionRequirement {
+  candidates: readonly PermissionRequirement[];
+  select: (body: unknown) => PermissionRequirement;
+}
+
+export type PermissionMetadata = PermissionRequirement | DynamicPermissionRequirement;
+
 /** Check 2 of §6.1: does the role hold this permission at all? */
 export const RequirePermission = (resource: Resource, action: string) =>
   SetMetadata(PERMISSION_KEY, { resource, action } satisfies PermissionRequirement);
+
+/** The dynamic form. See `DynamicPermissionRequirement` for why it exists. */
+export const RequirePermissionFor = (requirement: DynamicPermissionRequirement) =>
+  SetMetadata(PERMISSION_KEY, requirement);
+
+/** Resolves either form against a request body. Both guards go through this one path. */
+export function resolvePermission(
+  metadata: PermissionMetadata | undefined,
+  body: unknown,
+): PermissionRequirement | undefined {
+  if (!metadata) return undefined;
+  return 'select' in metadata ? metadata.select(body) : metadata;
+}
 
 export interface ScopeRequirement {
   /**

@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { SyncCatalogue, SyncCatalogueQuery, Unit } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
-import { grantFor } from '@audit5s/domain';
+import { scopeFor } from '../../common/auth/scope-for';
+import { AssignmentsRepository } from '../audit-assignments/assignments.repository';
+import { toAssignment } from '../audit-assignments/assignments.service';
 import { ChecklistsService } from '../checklists/checklists.service';
 import { toUnit } from '../units/units.service';
 import { UnitsRepository } from '../units/units.repository';
@@ -26,6 +28,7 @@ export class SyncService {
     private readonly units: UnitsRepository,
     private readonly zones: ZonesRepository,
     private readonly checklists: ChecklistsService,
+    private readonly assignments: AssignmentsRepository,
   ) {}
 
   async catalogue(scope: ScopeContext, query: SyncCatalogueQuery): Promise<SyncCatalogue> {
@@ -45,6 +48,12 @@ export class SyncService {
     const versions = await this.checklists.publishedVersionsWithQuestions(
       scopeFor(scope, 'checklist_version:read'),
     );
+    // Only the actor's **own** open assignments: a Zone Leader reads their Unit's through
+    // `/audit-assignments`, but a device's catalogue is the auditor's own task list (§2.3).
+    const assignmentRows = await this.assignments.listOpenForAuditor(
+      scopeFor(scope, 'audit_assignment:read'),
+      scope.actor.userId,
+    );
 
     const units: Unit[] = unitRows.map(toUnit);
     const zones = zoneRows.map(toZone);
@@ -56,6 +65,7 @@ export class SyncService {
       // description of it: no timestamp is needed to notice a change.
       ...versions.map((version) => `v:${version.id}:${version.contentHash}`),
       ...templatePage.data.map((template) => `t:${template.id}:${template.updatedAt}`),
+      ...assignmentRows.map((assignment) => `a:${assignment.id}:${assignment.status}:${assignment.updatedAt.toISOString()}`),
     ]);
 
     // Unchanged: the device keeps everything it has and writes nothing. This is the cheap
@@ -68,6 +78,7 @@ export class SyncService {
         zones: [],
         checklistTemplates: [],
         checklistVersions: [],
+        assignments: [],
       };
     }
 
@@ -78,26 +89,9 @@ export class SyncService {
       zones,
       checklistTemplates: templatePage.data,
       checklistVersions: versions,
+      assignments: assignmentRows.map(toAssignment),
     };
   }
-}
-
-/**
- * The scope for one resource, taken from PART 6 rather than inherited.
- *
- * A role with no grant for the resource gets a scope that matches nothing, which is what
- * an absent cell in the matrix means.
- */
-function scopeFor(scope: ScopeContext, permissionKey: string): ScopeContext {
-  const grant = grantFor(scope.actor.role, permissionKey);
-  if (!grant) {
-    return { actor: { ...scope.actor, unitIds: [], activeUnitId: null }, resolver: 'own_unit' };
-  }
-  return {
-    actor: scope.actor,
-    resolver: grant.resolver,
-    ...(grant.condition ? { condition: grant.condition } : {}),
-  };
 }
 
 /** Stable over content, so an unchanged catalogue yields an unchanged token. */

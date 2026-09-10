@@ -55,7 +55,8 @@ export interface TestWorld {
   ) => Promise<{ status: number; body: unknown }>;
 }
 
-const PASSWORD = 'orchard-piston-58-VQ';
+export const FIXTURE_PASSWORD = 'orchard-piston-58-VQ';
+const PASSWORD = FIXTURE_PASSWORD;
 
 export async function startWorld(): Promise<TestWorld> {
   // Through the package's own script, so tests apply migrations exactly as CI and the
@@ -281,4 +282,35 @@ export async function expiredToken(app: NestFastifyApplication, userId: string, 
     .setIssuer(config.JWT_ISSUER)
     .setAudience(config.JWT_AUDIENCE)
     .sign(key);
+}
+
+/**
+ * Signs an actor in again from a device, returning a token bound to it.
+ *
+ * An audit is a device's work: `owning_device_id` is a foreign key to `device`, and the
+ * single-writer lock (D7) has nothing to hold without one. Logging in with a `deviceId`
+ * both registers the device row and binds the session to it, exactly as the mobile app
+ * does — the audit suites use this rather than inserting a device row behind the API.
+ */
+export async function loginFromDevice(
+  world: TestWorld,
+  actor: TestActor,
+  deviceId: string,
+): Promise<string> {
+  const response = await world.request('POST', `${API_BASE_PATH}/auth/login`, {
+    body: {
+      loginId: actor.loginId,
+      password: PASSWORD,
+      deviceId,
+      platform: 'android',
+      model: 'Pixel 8',
+      osVersion: '15',
+      appVersion: '1.0.0',
+    },
+  });
+
+  if (response.status !== 200) {
+    throw new Error(`Device login failed for ${actor.role}: ${JSON.stringify(response.body)}`);
+  }
+  return (response.body as { accessToken: string }).accessToken;
 }

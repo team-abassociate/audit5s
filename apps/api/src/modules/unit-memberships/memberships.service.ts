@@ -8,6 +8,7 @@ import type {
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
+import { AssignmentsService } from '../audit-assignments/assignments.service';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { UsersRepository } from '../users/users.repository';
@@ -20,6 +21,7 @@ export class MembershipsService {
     private readonly repository: MembershipsRepository,
     private readonly users: UsersRepository,
     private readonly auth: AuthRepository,
+    private readonly assignments: AssignmentsService,
     private readonly auditLog: AuditLogService,
   ) {}
 
@@ -106,6 +108,11 @@ export class MembershipsService {
     // Sessions are ended too: a revoked assignment should not leave a live token that can
     // still reach the rest of the application.
     await this.auth.revokeAllUserTokens(membership.userId);
+
+    // Invariant AA-1: open assignments for this Unit are **cancelled**, never deleted, so
+    // the record of what was asked for outlives the access to do it. The device drops them
+    // on its next catalogue sync, because the catalogue carries only open ones.
+    await this.assignments.cancelForRevokedMembership(scope, membership.userId, membership.unitId);
 
     await this.auditLog.record({
       action: membership.role === 'CONSULTANT' ? 'consultant.revoked' : 'coordinator.revoked',
