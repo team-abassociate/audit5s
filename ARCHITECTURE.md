@@ -10,7 +10,7 @@
 
 > ### Superseded technology choices
 >
-> **Precedence rule (R-1): the engineering handoff wins on any technology name; this document
+> **Precedence rule (R-1): [`STACK.md`](./STACK.md) wins on any technology name; this document
 > wins on any behaviour.** The table below is the complete list of names this document states
 > that are no longer current. Anything not listed here stands as written. Rules stated in terms
 > of a superseded technology keep their intent — only the name changes.

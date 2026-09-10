@@ -1,6 +1,7 @@
 # Decision record — resolutions R-1 … R-5
 
-Companion to `ARCHITECTURE.md` and the Stack Decision Record (the engineering handoff).
+Companion to [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`STACK.md`](./STACK.md), the
+Stack Decision Record (the engineering handoff).
 
 These five resolutions settle points where the two source documents disagreed or were silent.
 They are **binding** and carry the same weight as the decisions in `ARCHITECTURE.md` §1.4.
@@ -18,14 +19,18 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 
 ## R-1 — Document precedence
 
-**The handoff wins on any technology name. `ARCHITECTURE.md` wins on any behaviour.**
+**`STACK.md` wins on any technology name. `ARCHITECTURE.md` wins on any behaviour.**
 
-This replaces the topic split ("infrastructure → handoff, domain → `ARCHITECTURE.md`"), which
+This replaces the topic split in `STACK.md` §10 ("infrastructure → handoff, domain →
+`ARCHITECTURE.md`"), which
 could not be applied cleanly because several rules in `ARCHITECTURE.md` are stated in terms of
 a specific technology.
 
 The complete list of superseded technology choices is the **Superseded technology choices**
 table at the top of `ARCHITECTURE.md`. Anything not on that table stands as written.
+
+Both documents are now in the repository, so the rule resolves without outside context:
+`STACK.md` is the stack, `ARCHITECTURE.md` is the design, this file is the tie-breaker.
 
 One consequence worth stating separately, because it is a rule rather than a name:
 `ARCHITECTURE.md` §6.1 rule **AZ-1** is restated as —
