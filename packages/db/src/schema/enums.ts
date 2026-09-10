@@ -13,6 +13,8 @@ import {
   LOCATION_PROVIDERS,
   RESPONSE_VALUES,
   SYNC_STATES,
+  EVIDENCE_KINDS,
+  EVIDENCE_CLASSIFICATIONS,
 } from '@audit5s/contracts';
 
 /**
@@ -42,3 +44,10 @@ export const assignmentStatusEnum = pgEnum('assignment_status', ASSIGNMENT_STATU
 export const responseValueEnum = pgEnum('response_value', RESPONSE_VALUES);
 export const syncStateEnum = pgEnum('sync_state', SYNC_STATES);
 export const locationProviderEnum = pgEnum('location_provider', LOCATION_PROVIDERS);
+
+// Phase 4 (0007_evidence_and_sync).
+export const evidenceKindEnum = pgEnum('evidence_kind', EVIDENCE_KINDS);
+export const evidenceClassificationEnum = pgEnum(
+  'evidence_classification',
+  EVIDENCE_CLASSIFICATIONS,
+);

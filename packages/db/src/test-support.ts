@@ -37,7 +37,8 @@ export function migrate(): void {
  */
 export async function resetFixtures(owner: Client): Promise<void> {
   await owner.query(`
-    TRUNCATE question_response, audit_zone_section_score, audit_zone, audit,
+    TRUNCATE evidence, sync_conflict, device_sync_record,
+             question_response, audit_zone_section_score, audit_zone, audit,
              audit_assignment,
              checklist_import_row, checklist_import_sheet, checklist_import_job,
              checklist_question, checklist_version, checklist_template, zone,
