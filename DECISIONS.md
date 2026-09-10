@@ -272,6 +272,78 @@ warnings — which is the assertion that would have caught this.
 
 ---
 
+## R-8 — What building the audit engine settled
+
+`R-7` recorded what implementing the importer against the real workbook revealed. Phase 3
+turned up three points where the sources are each individually right and jointly need a
+decision. All three are recorded here rather than being decided again in a later phase.
+
+### R-8a — One `POST /audits`, three PART 6 cells
+
+`ARCHITECTURE.md` §8.6 gives audit creation **one** endpoint carrying an `auditType` in the
+body. PART 6 gives it **three** permissions — `audit:create_external`, `create_walk_by` and
+`create_cross` — whose scope resolvers differ by role: a Consultant holds `assigned_units`
+on the first two, a Zone Leader `own_unit` on the third.
+
+A statically declared `@RequirePermission` has to name one cell, and whichever it names is
+wrong for somebody: a Zone Leader starting a cross audit would be refused by
+`create_external`, a cell that was never meant to judge them. Splitting the route into three
+would contradict §8.6, which is binding on behaviour (R-1).
+
+So the route declares a **dynamic requirement**: it lists the three candidate cells and a
+selector that picks the one the request's `auditType` names. The guards are otherwise
+untouched — same matrix, same resolver derivation, same `PermissionGuard` refusal for a role
+holding no grant. Nothing widens: an actor naming a type they lack is refused exactly as
+before, and an absent or unrecognised type falls through to `create_external`, the narrowest
+of the three, so a malformed body cannot select the most permissive cell.
+
+This is the **only** dynamic requirement in the codebase, and adding a second one needs a
+reason as specific as this one.
+
+### R-8b — A-2 needs its own trigger and a named carve-out
+
+Invariant A-2 is conditional: `audit`, `audit_zone` and `question_response` become
+append-only **after** `COMPLETED`, not from insert. The generic `enforce_append_only()`
+written in `0001` cannot express that — it freezes a table from its first row, which is
+correct for `audit_log` and wrong here, because until completion the auditor is still
+answering.
+
+Migration `0006` therefore carries `enforce_completed_audit_append_only()`, in the shape of
+`0005`'s `enforce_published_version_immutable()`: a status-aware trigger with its exception
+written beside the rule it bends. Two details are deliberate.
+
+The **carve-out is named, not implicit**: the Super Admin override endpoint sets
+`app.post_completion_override = 'on'` inside the transaction that also writes the
+`AuditLog` entry, and `app_post_completion_override()` additionally requires the actor to be
+a Super Admin — so the flag alone opens nothing. Without a path like this the override
+happens in a DBA's psql session and leaves no trail at all, which is the outcome A-2 exists
+to prevent.
+
+The **audit's own lifecycle stays open**: corrective actions move a completed audit through
+`CORRECTIVE_ACTION_OPEN`, `PARTIALLY_CLOSED` and `CLOSED`, so `status`, `closed_at`,
+`updated_at` and `version` remain writable on the `audit` row. Those are status changes, not
+edits to what was audited. Every other column, and both child tables, are frozen.
+
+`DELETE` has no carve-out at any level, for anyone, under any flag (A-1, D8).
+
+### R-8c — The `selfie_captured` guard is a seam, not a stub
+
+`ARCHITECTURE.md` §7.1 guards `ASSIGNED → READY` on a captured selfie. The `evidence` table
+arrives in Phase 4, so in Phase 3 there is no row a selfie could be and
+`audit.selfie_evidence_id` has no referent to point at.
+
+Both obvious readings are wrong. A guard written to require a row that cannot exist refuses
+every start; a guard quietly omitted has to be remembered back into existence three phases
+later, and the state machine would meanwhile say something untrue.
+
+`SelfieRequirement` is therefore an injectable with one method and one named constant,
+`EVIDENCE_ENFORCED`, in the shape `ObjectStorage` and `zone_has_in_progress_audit()` already
+use in this repository: Phase 4 replaces the implementation with one that reads `evidence`
+and flips the constant, and every caller stays as it is. A grep for the constant finds the
+whole of what Phase 4 has to change.
+
+---
+
 ## Related: migrations
 
 There is one environment. Migrations are files in git, applied by CI — never
