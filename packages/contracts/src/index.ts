@@ -7,6 +7,7 @@ export * from './unit';
 export * from './zone';
 export * from './checklist';
 export * from './audit';
+export * from './evidence';
 export * from './sync';
 export * from './membership';
 export * from './device';

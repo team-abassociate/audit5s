@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDateTimeSchema, paginationQuerySchema, uuidSchema } from './common';
+import { booleanQuery, isoDateTimeSchema, paginationQuerySchema, uuidSchema } from './common';
 import { devicePlatformSchema } from './auth';
 
 export const deviceSchema = z.object({
@@ -31,6 +31,7 @@ export type RegisterDeviceRequest = z.infer<typeof registerDeviceRequestSchema>;
 
 export const listDevicesQuerySchema = paginationQuerySchema.extend({
   userId: uuidSchema.optional(),
-  includeRevoked: z.coerce.boolean().default(false),
+  /** Through `booleanQuery`: `z.coerce.boolean()` reads the string "false" as true. */
+  includeRevoked: booleanQuery(false),
 });
 export type ListDevicesQuery = z.infer<typeof listDevicesQuerySchema>;
