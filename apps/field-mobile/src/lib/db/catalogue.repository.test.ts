@@ -73,6 +73,9 @@ function catalogue(overrides: Partial<SyncCatalogue> = {}): SyncCatalogue {
       zone('bbbbbbbb-0000-4000-8000-000000000001', UNIT_B, 'Z-01', 'Other press', 1),
     ],
     checklistTemplates: [],
+    // Phase 3 added open assignments to the catalogue envelope. The reference-data
+    // replacement ignores them — they are the auditor's task list, not cached master data.
+    assignments: [],
     checklistVersions: [
       {
         id: 'cccccccc-0000-4000-8000-000000000001',
@@ -141,20 +144,24 @@ function question(
 }
 
 describe('the local schema', () => {
-  it('creates every Phase 2 table and records its version', async () => {
+  it('creates every cached reference-data table and records its version', async () => {
     expect(await executor.userVersion()).toBe(LOCAL_SCHEMA_VERSION);
 
     const tables = (await executor.query(
       "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
       [],
     )).flat();
-    expect(tables).toEqual([
-      'checklist_question',
-      'checklist_version',
-      'sync_meta',
-      'unit',
-      'zone',
-    ]);
+    // The reference-data half. The locally authored tables arrived with the audit engine
+    // and are asserted in `audit.repository.test.ts`, alongside the code that writes them.
+    expect(tables).toEqual(
+      expect.arrayContaining([
+        'checklist_question',
+        'checklist_version',
+        'sync_meta',
+        'unit',
+        'zone',
+      ]),
+    );
   });
 
   it('is safe to migrate twice — a reopened app must not re-run a step', async () => {
@@ -228,6 +235,7 @@ describe('catalogue sync', () => {
       zones: [],
       checklistTemplates: [],
       checklistVersions: [],
+      assignments: [],
     });
 
     expect(await listLocalUnits(database)).toHaveLength(1);
