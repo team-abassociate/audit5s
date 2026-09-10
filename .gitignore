@@ -1,0 +1,27 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+# Expo / React Native
+.expo/
+apps/field-mobile/android/
+apps/field-mobile/ios/
+
+# Vite
+apps/admin-web/dist/
+
+# Playwright / test output
+test-results/
+playwright-report/
+
+# Local infra state
+infra/.local/
+pgdata/
+
+.DS_Store
