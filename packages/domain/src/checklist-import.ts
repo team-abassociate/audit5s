@@ -89,11 +89,18 @@ export interface TextNormalization {
   notes: string[];
 }
 
+/**
+ * Exactly what §8.5 stage 3 names: smart quotes. Nothing else.
+ *
+ * Dashes are deliberately absent. The real workbook uses en dashes as ordinary
+ * punctuation — "Shop floor is clean – free of dust", "within 2–3 minutes" — so
+ * normalising them would quietly rewrite the business's own wording in fifteen questions
+ * and make every one of them a warning on a file that has nothing wrong with it. The
+ * section labels keep their en dash for the same reason (R-6d).
+ */
 const SMART_QUOTES: Array<[RegExp, string, string]> = [
   [/[‘’‛]/g, "'", 'curly apostrophes replaced with a straight quote'],
   [/[“”‟]/g, '"', 'curly quotes replaced with straight quotes'],
-  [/[–—]/g, '-', 'en/em dashes replaced with a hyphen'],
-  [/…/g, '...', 'ellipsis character expanded'],
 ];
 
 /**

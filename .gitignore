@@ -23,5 +23,7 @@ playwright-report/
 # Local infra state
 infra/.local/
 pgdata/
+# The filesystem object-storage driver's root, used when R2_ENDPOINT is unset.
+.data/
 
 .DS_Store

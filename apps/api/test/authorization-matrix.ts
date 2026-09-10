@@ -348,6 +348,137 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     },
   },
 
+  // -------------------------------------------------------------- checklists
+  // Organization-wide reference data (D2): read is broad, write is Super Admin only.
+  {
+    method: 'GET',
+    path: '/api/v1/checklist-templates',
+    description: 'checklist_template:read — the catalogue every client caches',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/checklist-templates/:id',
+    description: 'checklist_template:read — one department; no Unit is involved',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: OK },
+      ZONE_LEADER: { inScope: OK, outOfScope: OK },
+    },
+    coveredBy: 'checklists.e2e.test.ts',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/checklist-templates/:id',
+    description: 'checklist_template:update — SUPER_ADMIN only',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'checklists.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/checklist-versions',
+    description: 'checklist_version:read — ?status=PUBLISHED is the catalogue-sync source',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/checklist-versions/:id',
+    description: 'checklist_version:read — immutable once published (CV-1), hence the ETag',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: OK },
+      ZONE_LEADER: { inScope: OK, outOfScope: OK },
+    },
+    coveredBy: 'checklists.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/checklist-versions/:id/publish',
+    description: 'checklist_version:publish — SUPER_ADMIN only; supersedes the previous',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'checklists.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/checklist-versions/:id/deactivate',
+    description: 'checklist_version:deactivate — in-flight audits keep their pinned version',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'checklists.e2e.test.ts',
+  },
+
+  // ----------------------------------------------------------- checklist import
+  {
+    method: 'POST',
+    path: '/api/v1/checklist-imports',
+    description: 'checklist_import:upload — SUPER_ADMIN only; multipart workbook',
+    expected: { SUPER_ADMIN: { inScope: CREATED } },
+    coveredBy: 'checklist-import.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/checklist-imports',
+    description: 'checklist_import:preview — the import history',
+    expected: { SUPER_ADMIN: { inScope: OK } },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/checklist-imports/:jobId',
+    description: 'checklist_import:preview — one job',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND } },
+    coveredBy: 'checklist-import.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/checklist-imports/:jobId/validate',
+    description: 'checklist_import:preview — enqueues stages 2–5 on worker-general (R-2)',
+    expected: { SUPER_ADMIN: { inScope: 202, outOfScope: NOT_FOUND } },
+    coveredBy: 'checklist-import.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/checklist-imports/:jobId/preview',
+    description: 'checklist_import:preview — stage 5; no writes have occurred',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND } },
+    coveredBy: 'checklist-import.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/checklist-imports/:jobId/error-report',
+    description: 'checklist_import:preview — the annotated .xlsx',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND } },
+    coveredBy: 'checklist-import.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/checklist-imports/:jobId/commit',
+    description: 'checklist_import:commit — stage 6, the first write to checklist_version',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND } },
+    coveredBy: 'checklist-import.e2e.test.ts',
+  },
+
+  // -------------------------------------------------------------------- sync
+  {
+    method: 'GET',
+    path: '/api/v1/sync/catalogue',
+    description: 'sync:pull — the offline bootstrap; device roles only (§8.11)',
+    expected: {
+      CONSULTANT: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+
   // ------------------------------------------------------- roles/permissions
   {
     method: 'GET',
