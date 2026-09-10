@@ -15,6 +15,7 @@ export const AUDIT_LOG_ACTIONS = [
   'consultant.assigned',
   'consultant.revoked',
   'coordinator.assigned',
+  'coordinator.revoked',
   'zone.created',
   'zone.updated',
   'zone.archived',

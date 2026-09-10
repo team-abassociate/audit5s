@@ -18,6 +18,9 @@
     "declarationMap": true,
     "sourceMap": true,
     "incremental": true,
+    // Inside dist, so removing dist genuinely forces a rebuild rather than leaving
+    // tsc convinced everything is already emitted.
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "composite": false
   },
   "exclude": ["node_modules", "dist"]

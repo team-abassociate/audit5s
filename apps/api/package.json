@@ -1,0 +1,47 @@
+{
+  "name": "@audit5s/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "start:dev": "tsx watch src/main.ts",
+    "worker:general": "node dist/worker.general.js",
+    "worker:report": "node dist/worker.report.js",
+    "seed": "tsx src/seed.ts",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+  },
+  "dependencies": {
+    "@audit5s/contracts": "workspace:*",
+    "@audit5s/db": "workspace:*",
+    "@audit5s/domain": "workspace:*",
+    "@fastify/helmet": "^13.0.1",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/platform-fastify": "^11.0.1",
+    "@nestjs/swagger": "^11.0.3",
+    "argon2": "^0.41.1",
+    "drizzle-orm": "^0.45.2",
+    "jose": "^5.9.6",
+    "pg": "^8.13.1",
+    "pg-boss": "^12.30.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "uuid": "^11.0.5",
+    "zod": "^4.6.1",
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.0.1",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
