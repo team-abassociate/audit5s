@@ -40,6 +40,87 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
       `CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)`,
     ],
   },
+  {
+    /*
+     * Phase 3: the locally authored tables of §9.1, and the outbox.
+     *
+     * These are the ones that make forward-only a rule rather than a preference. A device
+     * in a plant holds the **only** copy of its unsynced work; there is no rollback of
+     * this step that does not risk it, so every statement is additive and idempotent.
+     *
+     * `sync_state` defaults to `LOCAL_ONLY` on all three: a row exists on the device the
+     * instant the auditor taps, and becomes the server's business later. That ordering is
+     * §9.1's whole claim — a save is complete when SQLite commits.
+     */
+    version: 2,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS audit (
+         id TEXT PRIMARY KEY, assignment_id TEXT, unit_id TEXT NOT NULL,
+         audit_type TEXT NOT NULL, status TEXT NOT NULL, checklist_version_id TEXT,
+         selfie_evidence_id TEXT, started_at TEXT, completed_at TEXT,
+         paused_at TEXT, pause_reason TEXT, resume_audit_zone_id TEXT,
+         start_latitude REAL, start_longitude REAL, start_accuracy_m REAL,
+         start_location_provider TEXT, start_location_is_mocked INTEGER,
+         client_created_at TEXT NOT NULL, client_updated_at TEXT NOT NULL,
+         sync_state TEXT NOT NULL DEFAULT 'LOCAL_ONLY'
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_status ON audit (status, client_updated_at)`,
+
+      `CREATE TABLE IF NOT EXISTS audit_zone (
+         id TEXT PRIMARY KEY, audit_id TEXT NOT NULL, zone_id TEXT NOT NULL,
+         sequence_no INTEGER NOT NULL, status TEXT NOT NULL,
+         zone_code_snapshot TEXT NOT NULL, zone_name_snapshot TEXT NOT NULL,
+         zone_description_snapshot TEXT,
+         zone_leader_user_id_snapshot TEXT, zone_leader_name_snapshot TEXT,
+         checklist_version_id TEXT, checklist_template_name_snapshot TEXT,
+         zone_remark TEXT, resume_question_id TEXT,
+         started_at TEXT, completed_at TEXT, client_updated_at TEXT NOT NULL,
+         sync_state TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+         UNIQUE (audit_id, zone_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_zone_audit ON audit_zone (audit_id, sequence_no)`,
+
+      /*
+       * `UNIQUE (audit_zone_id, checklist_question_id)` mirrors the server's index of the
+       * same shape. It is the idempotency backbone on both sides: re-answering a question
+       * updates one row here and updates one row there, so a replayed outbox item cannot
+       * turn one answer into two.
+       */
+      `CREATE TABLE IF NOT EXISTS question_response (
+         id TEXT PRIMARY KEY, audit_zone_id TEXT NOT NULL, audit_id TEXT NOT NULL,
+         checklist_question_id TEXT NOT NULL, section TEXT NOT NULL,
+         global_order INTEGER NOT NULL, value TEXT NOT NULL, numeric_score INTEGER,
+         remark TEXT, answered_at TEXT NOT NULL, client_updated_at TEXT NOT NULL,
+         sync_state TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+         UNIQUE (audit_zone_id, checklist_question_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_response_zone
+         ON question_response (audit_zone_id, global_order)`,
+
+      /*
+       * The outbox (§9.1). `UNIQUE (entity_type, entity_id, operation)` is the coalescing
+       * rule: a second save of the same row replaces the pending item rather than queueing
+       * a second one, so an auditor who changes an answer four times syncs once.
+       */
+      `CREATE TABLE IF NOT EXISTS outbox (
+         id TEXT PRIMARY KEY,
+         entity_type TEXT NOT NULL,
+         entity_id TEXT NOT NULL,
+         operation TEXT NOT NULL,
+         payload TEXT NOT NULL,
+         queue TEXT NOT NULL DEFAULT 'data',
+         priority INTEGER NOT NULL DEFAULT 100,
+         attempts INTEGER NOT NULL DEFAULT 0,
+         next_attempt_at TEXT,
+         last_error TEXT,
+         state TEXT NOT NULL DEFAULT 'PENDING',
+         created_at TEXT NOT NULL,
+         UNIQUE (entity_type, entity_id, operation)
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_outbox_ready
+         ON outbox (queue, state, next_attempt_at, priority, created_at)`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;
