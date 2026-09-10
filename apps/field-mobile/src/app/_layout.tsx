@@ -4,6 +4,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { LocalDatabaseProvider } from '../lib/db/provider';
 import { SessionProvider, useSession } from '../lib/session';
 import { theme } from '../lib/theme';
 
@@ -11,7 +12,8 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       // Field devices lose the network constantly; a failed fetch is usually a tunnel,
-      // not a dead server. Phase 4 replaces this with the SQLite-backed offline store.
+      // not a dead server. Reference data no longer depends on this at all — it is read
+      // from SQLite and refreshed by the catalogue sync.
       retry: 2,
       staleTime: 30_000,
       refetchOnWindowFocus: false,
@@ -35,13 +37,16 @@ function AuthGate() {
     if (status === 'loading') return;
 
     const group = segments[0];
-    const inTabs = group === '(tabs)';
+    // Screens pushed on top of a tab — a Unit's Zones, a checklist — are part of the
+    // signed-in app, so a redirect back to the tab root would make every drill-down
+    // bounce straight home.
+    const insideApp = group === '(tabs)' || group === 'unit' || group === 'checklist';
 
     if (status === 'signed-out' && group !== 'login') {
       router.replace('/login');
     } else if (status === 'must-reset' && group !== 'reset-password') {
       router.replace('/reset-password');
-    } else if (status === 'ready' && !inTabs) {
+    } else if (status === 'ready' && !insideApp) {
       router.replace('/');
     }
   }, [status, segments, router]);
@@ -61,10 +66,12 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <SessionProvider>
-          <StatusBar style="light" />
-          <AuthGate />
-        </SessionProvider>
+        <LocalDatabaseProvider>
+          <SessionProvider>
+            <StatusBar style="light" />
+            <AuthGate />
+          </SessionProvider>
+        </LocalDatabaseProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
   );
