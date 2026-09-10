@@ -2,7 +2,9 @@ import { z } from 'zod';
 import {
   emailSchema,
   isoDateTimeSchema,
+  clearable,
   loginIdSchema,
+  optional,
   paginationQuerySchema,
   phoneE164Schema,
   uuidSchema,
@@ -32,7 +34,7 @@ export const fullNameSchema = z.string().trim().min(1).max(160);
 export const createUserRequestSchema = z.object({
   fullName: fullNameSchema,
   phone: phoneE164Schema,
-  email: emailSchema.optional(),
+  email: optional(emailSchema),
   role: roleSchema,
   /**
    * Optional at the type level, required by the service for every role except SUPER_ADMIN:
@@ -40,7 +42,7 @@ export const createUserRequestSchema = z.object({
    * nothing. A Coordinator creating a user may only create ZONE_LEADERs, and the unit is
    * taken from their own membership rather than the body (AZ-2).
    */
-  unitId: uuidSchema.optional(),
+  unitId: optional(uuidSchema),
 });
 export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 
@@ -63,8 +65,8 @@ export const ADMIN_EDITABLE_USER_FIELDS = ['fullName', 'email', 'phone'] as cons
 export const updateUserRequestSchema = z
   .object({
     fullName: fullNameSchema.optional(),
-    email: emailSchema.nullable().optional(),
-    phone: phoneE164Schema.optional(),
+    email: clearable(emailSchema),
+    phone: optional(phoneE164Schema),
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'No fields to update' });
 export type UpdateUserRequest = z.infer<typeof updateUserRequestSchema>;

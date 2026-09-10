@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import {
+  clearable,
   emailSchema,
   isoDateTimeSchema,
+  optional,
   paginationQuerySchema,
   phoneE164Schema,
   uuidSchema,
@@ -90,14 +92,14 @@ export const UNIT_IMMUTABLE_FIELDS = ['code'] as const;
 export const createUnitRequestSchema = z.object({
   code: unitCodeSchema,
   name: unitNameSchema,
-  address: z.string().trim().max(400).optional(),
-  city: z.string().trim().max(120).optional(),
-  state: z.string().trim().max(120).optional(),
-  country: z.string().trim().max(120).optional(),
-  postalCode: z.string().trim().max(20).optional(),
-  contactName: z.string().trim().max(160).optional(),
-  contactPhone: phoneE164Schema.optional(),
-  contactEmail: emailSchema.optional(),
+  address: optional(z.string().trim().max(400)),
+  city: optional(z.string().trim().max(120)),
+  state: optional(z.string().trim().max(120)),
+  country: optional(z.string().trim().max(120)),
+  postalCode: optional(z.string().trim().max(20)),
+  contactName: optional(z.string().trim().max(160)),
+  contactPhone: optional(phoneE164Schema),
+  contactEmail: optional(emailSchema),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   geofenceRadiusM: z.number().int().min(10).max(20000).nullable().optional(),
@@ -106,15 +108,16 @@ export const createUnitRequestSchema = z.object({
 });
 export type CreateUnitRequest = z.infer<typeof createUnitRequestSchema>;
 
+// On an update, an emptied field is a request to clear it — `clearable`, not `optional`.
 const coordinatorEditableShape = {
-  address: z.string().trim().max(400).nullable().optional(),
-  city: z.string().trim().max(120).nullable().optional(),
-  state: z.string().trim().max(120).nullable().optional(),
-  country: z.string().trim().max(120).nullable().optional(),
-  postalCode: z.string().trim().max(20).nullable().optional(),
-  contactName: z.string().trim().max(160).nullable().optional(),
-  contactPhone: phoneE164Schema.nullable().optional(),
-  contactEmail: emailSchema.nullable().optional(),
+  address: clearable(z.string().trim().max(400)),
+  city: clearable(z.string().trim().max(120)),
+  state: clearable(z.string().trim().max(120)),
+  country: clearable(z.string().trim().max(120)),
+  postalCode: clearable(z.string().trim().max(20)),
+  contactName: clearable(z.string().trim().max(160)),
+  contactPhone: clearable(phoneE164Schema),
+  contactEmail: clearable(emailSchema),
   latitude: z.number().min(-90).max(90).nullable().optional(),
   longitude: z.number().min(-180).max(180).nullable().optional(),
   geofenceRadiusM: z.number().int().min(10).max(20000).nullable().optional(),
