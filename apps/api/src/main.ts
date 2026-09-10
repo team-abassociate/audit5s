@@ -33,8 +33,15 @@ async function bootstrap(): Promise<void> {
   });
 
   // Allow-list per environment (§12.15). Never a wildcard with credentials.
+  //
+  // The methods are named rather than defaulted: the default is `GET,HEAD,POST`, which
+  // silently refused every `PATCH` and `PUT` the admin app makes — editing a Unit, editing
+  // a Zone, and every audit upsert in §8.6. It fails as a browser "Failed to fetch" with
+  // no server-side trace, so it is exactly the kind of thing that is invisible until a
+  // browser-driven walkthrough runs against a live API.
   app.enableCors({
     origin: config.CORS_ORIGINS.length > 0 ? config.CORS_ORIGINS : false,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
     exposedHeaders: ['x-request-id', 'retry-after'],
   });

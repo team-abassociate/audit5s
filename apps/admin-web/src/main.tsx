@@ -13,6 +13,7 @@ import './styles.css';
 import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
+import { AuditsPage } from '@/features/audits/AuditsPage';
 import { ChecklistsPage } from '@/features/checklists/ChecklistsPage';
 import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -84,6 +85,12 @@ const checklistsRoute = createRoute({
   component: ChecklistsPage,
 });
 
+const auditsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/audits',
+  component: AuditsPage,
+});
+
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/users',
@@ -101,6 +108,7 @@ const routeTree = rootRoute.addChildren([
   unitsRoute,
   zonesRoute,
   checklistsRoute,
+  auditsRoute,
   usersRoute,
   auditLogRoute,
 ]);

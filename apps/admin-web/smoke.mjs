@@ -123,11 +123,28 @@ await page.getByRole('button', { name: 'Premises' }).click();
 await page.waitForSelector('text=1S – SEIRI (SORT)', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/11-checklist-questions.png` });
 
-step(13, 'audit log shows the administrative actions');
+step(13, 'assign an audit to the Consultant');
+await page.getByRole('link', { name: 'Audits' }).click();
+await page.waitForLoadState('networkidle');
+await page.screenshot({ path: `${shots}/13-audits-empty.png` });
+await page.getByRole('button', { name: 'New assignment' }).click();
+await page.locator('form select').nth(0).selectOption({ index: 1 });
+await page.locator('form select').nth(1).selectOption({ index: 1 });
+await page.getByRole('button', { name: 'Assign' }).click();
+await page.waitForSelector('text=Open assignments', { timeout: 10000 });
+await page.waitForSelector('tbody >> text=Priya Nair', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/14-assignment.png` });
+
+step(14, 'the audit board is empty until a device starts one');
+const boardRows = await page.locator('text=No audits are running right now.').isVisible();
+if (!boardRows) throw new Error('the live board is not showing its empty state');
+
+step(15, 'audit log shows the administrative actions');
 await page.getByRole('link', { name: 'Audit log' }).click();
 await page.waitForLoadState('networkidle');
 await page.waitForSelector('tbody >> text=user.created', { timeout: 10000 });
-await page.screenshot({ path: `${shots}/12-audit-log.png` });
+await page.waitForSelector('tbody >> text=audit_assignment.created', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/15-audit-log.png` });
 const rows = await page.locator('tbody tr').count();
 console.log(`     ${rows} audit entries visible`);
 
