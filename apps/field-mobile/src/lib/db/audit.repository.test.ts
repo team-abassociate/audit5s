@@ -59,7 +59,7 @@ afterEach(() => {
 
 /** Fifty questions across the five sections, as the catalogue delivers them. */
 function catalogue(): SyncCatalogue {
-  const questions = [];
+  const questions: SyncCatalogue['checklistVersions'][number]['questions'] = [];
   for (const [sectionIndex, section] of S_SECTION_ORDER.entries()) {
     for (let order = 1; order <= 10; order += 1) {
       const globalOrder = sectionIndex * 10 + order;
@@ -129,11 +129,10 @@ function catalogue(): SyncCatalogue {
         supersededByVersionId: null,
         sourceImportJobId: null,
         createdAt: '2026-09-01T00:00:00.000Z',
-        updatedAt: '2026-09-02T00:00:00.000Z',
         questions,
       },
     ],
-  } as SyncCatalogue;
+  };
 }
 
 function zone(id: string, code: string, name: string, description: string | null) {
