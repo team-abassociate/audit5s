@@ -31,6 +31,34 @@ reconciles the blueprint with the real source files in
 | Phase | Scope | State |
 | --- | --- | --- |
 | 0 | Reconcile the blueprint against the real workbook and sample reports (`HANDOFF.md` §5.1) | Done |
-| 1 | Foundation, authentication, RBAC, users and Units (`ARCHITECTURE.md` PART 14) | Next |
+| 1 | Foundation, authentication, RBAC, users and Units (`ARCHITECTURE.md` PART 14) | Done |
+| 2 | Coordinator, Zones, Zone Leaders, checklist versioning and Excel import | Next |
 
-No application code has been written yet; `apps/` and `packages/` land in Phase 1.
+## Layout
+
+```
+apps/
+  api/            NestJS 11 on Fastify — api, worker-general, worker-report, seed
+  admin-web/      React 19 + Vite 7 SPA, including the corrective-action route
+  field-mobile/   React Native + Expo (Android), expo-router
+packages/
+  contracts/      Zod schemas + inferred types — every type crossing an app boundary
+  domain/         Pure logic: login IDs, rating scale, permission matrix, scoring
+  db/             Drizzle schema + SQL migrations, RLS policies, append-only triggers
+infra/            compose, bootstrap.sh, pgBackRest, runbooks
+```
+
+pnpm workspaces, no Turborepo (`STACK.md` §6).
+
+## Working on it
+
+```sh
+pnpm install
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
+pnpm db:migrate
+pnpm seed
+pnpm -r test
+```
+
+Deployment, the required secrets and the restore drill are in
+[`infra/README.md`](./infra/README.md).
