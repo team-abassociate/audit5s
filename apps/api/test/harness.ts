@@ -176,7 +176,9 @@ export async function stopWorld(world: TestWorld | undefined): Promise<void> {
 
 export async function truncateAll(owner: Client): Promise<void> {
   await owner.query(`
-    TRUNCATE checklist_import_row, checklist_import_sheet, checklist_import_job,
+    TRUNCATE question_response, audit_zone_section_score, audit_zone, audit,
+             audit_assignment,
+             checklist_import_row, checklist_import_sheet, checklist_import_job,
              checklist_question, checklist_version, checklist_template, zone,
              audit_log, login_attempt, idempotency_key, revoked_access_token,
              refresh_token, otp_challenge, device, unit_membership, unit, "user"

@@ -302,7 +302,11 @@ describe('row-level security for the app role', () => {
 });
 
 describe('the Phase 3 seam for archiving a Zone mid-audit', () => {
-  it('answers false today, because nothing can yet be in progress', async () => {
+  // Phase 3 replaced the placeholder body with the real query; the cases that exercise it
+  // against actual audit rows live in `audit-schema.test.ts`. What is asserted here is
+  // the answer for a Zone that has no audit, which is the case the Zones module hits on
+  // every archive of a Zone that was never audited.
+  it('answers false for a Zone with no audit', async () => {
     const { rows } = await owner.query(
       `SELECT zone_has_in_progress_audit(gen_random_uuid()) AS busy`,
     );
