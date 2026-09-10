@@ -19,6 +19,8 @@ interface NavItem {
  */
 const NAV: NavItem[] = [
   { to: '/units', label: 'Units', resource: 'unit', action: 'read' },
+  { to: '/zones', label: 'Zones', resource: 'zone', action: 'read' },
+  { to: '/checklists', label: 'Checklists', resource: 'checklist_template', action: 'read' },
   { to: '/users', label: 'Users', resource: 'user', action: 'read' },
   { to: '/audit-log', label: 'Audit log', resource: 'audit_log', action: 'read' },
 ];
