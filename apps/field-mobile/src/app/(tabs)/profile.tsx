@@ -1,6 +1,9 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Heading, Muted, Screen } from '../../components/ui';
+import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
+import { useLocalDatabase } from '../../lib/db/provider';
 import { useSession } from '../../lib/session';
 import { theme } from '../../lib/theme';
 
@@ -13,6 +16,18 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function ProfileScreen() {
   const { user, scope, signOut } = useSession();
+  const database = useLocalDatabase();
+  const queryClient = useQueryClient();
+
+  const lastSync = useQuery({
+    queryKey: ['local', 'last-catalogue-sync'],
+    queryFn: () => lastCatalogueSyncAt(database),
+  });
+
+  const sync = useMutation({
+    mutationFn: () => syncCatalogue(database),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
+  });
 
   if (!user) {
     return (
@@ -49,6 +64,30 @@ export default function ProfileScreen() {
         </Card>
 
         <Card>
+          <Row
+            label="Catalogue"
+            value={
+              lastSync.data ? new Date(lastSync.data).toLocaleString() : 'Never synced'
+            }
+          />
+          <Muted>
+            Units, Zones and checklists are stored on this device and read without a
+            network.
+          </Muted>
+          <View style={styles.syncButton}>
+            <Button
+              title="Sync now"
+              variant="secondary"
+              busy={sync.isPending}
+              onPress={() => sync.mutate()}
+            />
+          </View>
+          {sync.error ? (
+            <Muted>Could not reach the server. The stored catalogue is unchanged.</Muted>
+          ) : null}
+        </Card>
+
+        <Card>
           <Muted>
             App version {Constants.expoConfig?.version ?? 'dev'}
           </Muted>
@@ -71,6 +110,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   content: { gap: theme.space.sm, paddingBottom: theme.space.xl },
+  syncButton: { marginTop: theme.space.sm },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
