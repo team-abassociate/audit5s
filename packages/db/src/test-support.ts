@@ -37,7 +37,9 @@ export function migrate(): void {
  */
 export async function resetFixtures(owner: Client): Promise<void> {
   await owner.query(`
-    TRUNCATE audit_log, login_attempt, idempotency_key, revoked_access_token,
+    TRUNCATE checklist_import_row, checklist_import_sheet, checklist_import_job,
+             checklist_question, checklist_version, checklist_template, zone,
+             audit_log, login_attempt, idempotency_key, revoked_access_token,
              refresh_token, otp_challenge, device, unit_membership, unit, "user"
     RESTART IDENTITY CASCADE;
   `);
@@ -50,6 +52,7 @@ export const IDS = {
   zoneLeaderA: '44444444-4444-4444-4444-444444444444',
   unitA: 'aaaaaaaa-0000-0000-0000-000000000001',
   unitB: 'aaaaaaaa-0000-0000-0000-000000000002',
+  templateA: 'bbbbbbbb-0000-0000-0000-000000000001',
 } as const;
 
 /** Two Units, one user per role, the Consultant assigned to both Units. */
@@ -98,4 +101,44 @@ export async function asActor<T>(
     await client.query('ROLLBACK');
     throw error;
   }
+}
+
+/**
+ * A checklist template with one DRAFT version and a single question.
+ *
+ * Deliberately minimal: these tests exercise the CV-1 trigger, not the importer, and a
+ * full fifty-question version would only slow every case down without asserting more.
+ */
+export async function seedChecklistFixture(
+  owner: Client,
+  options: { code?: string; contentHash?: string } = {},
+): Promise<{ templateId: string; versionId: string; questionId: string }> {
+  const { rows: templateRows } = await owner.query(
+    `INSERT INTO checklist_template (id, code, name, sort_order)
+     VALUES ($1, $2, 'Premises', 0) RETURNING id`,
+    [IDS.templateA, options.code ?? 'PREMISES'],
+  );
+  const templateId = templateRows[0].id as string;
+
+  const { rows: versionRows } = await owner.query(
+    `INSERT INTO checklist_version (template_id, version_number, total_questions, content_hash)
+     VALUES ($1, 1, 50, $2) RETURNING id`,
+    [templateId, options.contentHash ?? 'content-hash-v1'],
+  );
+  const versionId = versionRows[0].id as string;
+
+  const { rows: questionRows } = await owner.query(
+    `INSERT INTO checklist_question (version_id, section, order_in_section, global_order, text)
+     VALUES ($1, 'S1_SORT', 1, 1, 'Only required items are present') RETURNING id`,
+    [versionId],
+  );
+
+  return { templateId, versionId, questionId: questionRows[0].id as string };
+}
+
+export async function publish(owner: Client, versionId: string): Promise<void> {
+  await owner.query(
+    `UPDATE checklist_version SET status = 'PUBLISHED', published_at = now() WHERE id = $1`,
+    [versionId],
+  );
 }
