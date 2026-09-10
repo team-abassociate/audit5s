@@ -24,4 +24,6 @@ list of superseded technology choices is at the top of `ARCHITECTURE.md`.
 
 ## Status
 
-Architecture approved. Implementation begins at PART 14, Phase 1.
+Architecture approved. Implementation handoff is in **[HANDOFF.md](./HANDOFF.md)** — read it
+before starting; it reconciles the blueprint with the real source files in
+[`docs/requirements/`](./docs/requirements/) and defines the phase-by-phase work order.
