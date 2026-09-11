@@ -14,6 +14,7 @@ import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
 import { AuditsPage } from '@/features/audits/AuditsPage';
+import { SyncHealthPage } from '@/features/sync/SyncHealthPage';
 import { ChecklistsPage } from '@/features/checklists/ChecklistsPage';
 import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -91,6 +92,12 @@ const auditsRoute = createRoute({
   component: AuditsPage,
 });
 
+const syncRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sync',
+  component: SyncHealthPage,
+});
+
 const usersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/users',
@@ -109,6 +116,7 @@ const routeTree = rootRoute.addChildren([
   zonesRoute,
   checklistsRoute,
   auditsRoute,
+  syncRoute,
   usersRoute,
   auditLogRoute,
 ]);

@@ -116,7 +116,10 @@ export function AuditsPage() {
                   <Td>{AUDIT_TYPE_LABELS[audit.auditType]}</Td>
                   <Td>{audit.auditorName}</Td>
                   <Td>
-                    <Badge tone={STATUS_TONE[audit.status]}>{STATUS_LABELS[audit.status]}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={STATUS_TONE[audit.status]}>{STATUS_LABELS[audit.status]}</Badge>
+                      <LocationFlag audit={audit} />
+                    </div>
                   </Td>
                   <Td>
                     <ScoreCell audit={audit} />
@@ -174,6 +177,43 @@ export function AuditsPage() {
  * A score cell. `null` prints `N/A`, never `0%` (D4) — a Zone with nothing applicable has
  * no percentage, and showing zero would report a failure that did not happen.
  */
+/**
+ * §12.9's flag, surfaced — and deliberately not turned into a judgement.
+ *
+ * > surfaces flagged audits to Super Admin and marks them on the report; **never blocks an
+ * > audit** on location.
+ *
+ * The wording matters as much as the badge. §12.9 is explicit that this system makes no
+ * anti-spoofing claim, so the tooltip says what was observed — the distance, or that there
+ * was no reading — and stops there. "Suspicious" is the column's word for *look at this*,
+ * not for *this person did something*, and the copy is written so a reviewer reading it
+ * quickly does not come away with the stronger meaning.
+ */
+function LocationFlag({ audit }: { audit: Audit }) {
+  if (!audit.locationSuspicious) return null;
+
+  const distance =
+    audit.startDistanceFromUnitM === null
+      ? null
+      : `${Math.round(audit.startDistanceFromUnitM).toLocaleString()} m from the Unit`;
+
+  const reason =
+    audit.startLatitude === null
+      ? 'No location was recorded when this audit started.'
+      : audit.startLocationIsMocked
+        ? `The device reported a mock location provider${distance ? ` (${distance})` : ''}.`
+        : (distance ?? 'The Unit has no coordinates to measure against.');
+
+  return (
+    <span
+      title={`${reason} Location is supporting evidence for a reviewer — it is recorded, never used to block an audit.`}
+      className="cursor-help"
+    >
+      <Badge tone="warn">check location</Badge>
+    </span>
+  );
+}
+
 function ScoreCell({ audit }: { audit: Audit }) {
   if (audit.status !== 'COMPLETED' && audit.totals.maxScore === 0) {
     return <span className="text-neutral-400">—</span>;

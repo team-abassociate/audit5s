@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 
@@ -28,6 +28,60 @@ const DEVICE_ID = '01930000-0000-7000-8000-0000000f1e1d';
 function step(n, message) {
   console.log(`  ${n}. ${message}`);
 }
+
+/**
+ * The whole of §9.4's media flow against a live API: intent → presigned PUT → commit.
+ *
+ * The PUT deliberately carries **no** session. A presigned URL is its own authority, and a
+ * smoke script that authenticated it would be exercising a protocol the device does not
+ * use — which is the class of bug these scripts exist to catch.
+ */
+async function captureEvidence({ token, auditId, auditZoneId, kind }) {
+  const bytes = TINY_JPEG;
+  const checksum = createHash('sha256').update(bytes).digest('hex');
+  const evidenceId = randomUUID();
+
+  const intent = await call('/evidence/upload-intent', {
+    method: 'POST',
+    token,
+    body: {
+      id: evidenceId,
+      kind,
+      auditId,
+      ...(auditZoneId ? { auditZoneId } : {}),
+      contentType: 'image/jpeg',
+      byteSize: bytes.byteLength,
+      checksumSha256: checksum,
+      capturedAt: new Date().toISOString(),
+      isLiveCapture: true,
+    },
+  });
+
+  const uploaded = await fetch(intent.uploadUrl, {
+    method: 'PUT',
+    headers: { ...intent.requiredHeaders, 'content-type': 'image/jpeg' },
+    body: bytes,
+  });
+  if (!uploaded.ok) {
+    throw new Error(`presigned PUT failed: ${uploaded.status} ${await uploaded.text()}`);
+  }
+
+  await call(`/evidence/${evidenceId}/commit`, {
+    method: 'POST',
+    token,
+    body: { checksumSha256: checksum },
+  });
+
+  return evidenceId;
+}
+
+/** A one-by-one pixel JPEG, with real magic bytes — `commit` sniffs them (§12.8). */
+const TINY_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a' +
+    'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA' +
+    'AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+  'base64',
+);
 
 async function call(path, { method = 'GET', body, token } = {}) {
   const response = await fetch(`${API}${path}`, {
@@ -125,9 +179,9 @@ const zone = catalogue.zones[0];
 const version = catalogue.checklistVersions.find((candidate) => candidate.questions.length === 50);
 if (!version) throw new Error('no fifty-question checklist on the device');
 
-step(3, 'start an audit and add the Zone');
+step(3, 'start an audit — the selfie gate first, then the Zone');
 const auditId = randomUUID();
-await call('/audits', {
+const created = await call('/audits', {
   method: 'POST',
   token,
   body: {
@@ -137,9 +191,40 @@ await call('/audits', {
     assignmentId: catalogue.assignments[0].id,
     checklistVersionId: version.id,
     deviceId: DEVICE_ID,
+    // §12.9's reading, sent raw. The server computes the distance and the flag; nothing
+    // the device sends about location is trusted as a conclusion.
+    location: {
+      latitude: 19.9975,
+      longitude: 73.7898,
+      accuracyM: 14,
+      provider: 'FUSED',
+      isMocked: false,
+    },
   },
 });
-await call(`/audits/${auditId}/start`, { method: 'POST', token, body: { deviceId: DEVICE_ID } });
+
+// §7.1: no selfie, no READY. This is the guard Phase 4 made real, and the smoke script
+// checks it against a live API because it is the one gate a broken deployment would show
+// as "nothing starts" with no other symptom.
+if (created.status !== 'ASSIGNED') {
+  throw new Error(`a new audit with no selfie should be ASSIGNED, not ${created.status}`);
+}
+
+const selfieId = await captureEvidence({
+  token,
+  auditId,
+  kind: 'AUDITOR_SELFIE',
+});
+console.log(`     selfie ${selfieId.slice(0, 8)}… captured, uploaded and committed`);
+
+const started = await call(`/audits/${auditId}/start`, {
+  method: 'POST',
+  token,
+  body: { deviceId: DEVICE_ID },
+});
+if (started.selfieEvidenceId !== selfieId) {
+  throw new Error('committing the selfie did not point the audit at it');
+}
 
 const auditZoneId = randomUUID();
 await call(`/audits/${auditId}/zones/${auditZoneId}`, {
@@ -170,7 +255,33 @@ for (const [index, question] of questions.entries()) {
   });
 }
 
-step(5, 'finish the Zone and the audit');
+step(5, 'attach a photograph to the first answer, through the real presigned PUT');
+const photoId = await captureEvidence({
+  token,
+  auditId,
+  auditZoneId,
+  kind: 'QUESTION_EVIDENCE',
+});
+const photo = await call(`/evidence/${photoId}`, { token });
+// E-1: question 1 was answered SCORE_0 above, so the server files it as a nonconformity —
+// whatever the device might have claimed.
+if (photo.classification !== 'NONCONFORMITY') {
+  throw new Error(`E-1 should have derived NONCONFORMITY, got ${photo.classification}`);
+}
+if (photo.syncState !== 'SYNCED') {
+  throw new Error(`the photograph should be SYNCED after commit, got ${photo.syncState}`);
+}
+
+// §12.6: a presigned GET, minted after the scope check, and it has to actually work —
+// this is the half no unit test exercises, because it leaves the API process.
+const view = await call(`/evidence/${photoId}/view-url`, { token });
+const fetched = await fetch(view.url);
+if (!fetched.ok) {
+  throw new Error(`the presigned view URL did not resolve: ${fetched.status}`);
+}
+console.log(`     view URL resolves, expires in ${view.expiresIn}s`);
+
+step(6, 'finish the Zone and the audit');
 await call(`/audits/${auditId}/zones/${auditZoneId}/complete`, {
   method: 'POST',
   token,
@@ -188,7 +299,7 @@ if (completed.totals.scorePercentage !== expected.totals.scorePercentage) {
   throw new Error('the server score does not match the shared domain function');
 }
 
-step(6, 'the admin board shows the finished audit with its S-wise scores');
+step(7, 'the admin board shows the finished audit with its S-wise scores');
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
 });
@@ -214,7 +325,7 @@ await page.getByRole('button', { name: 'Show all' }).click();
 await page.waitForSelector('tbody >> text=Completed', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/16-audit-board.png` });
 
-step(7, 'open it: S-wise scores, the D6 snapshots, and every response');
+step(8, 'open it: S-wise scores, the D6 snapshots, and every response');
 await page.getByRole('button', { name: 'Open' }).first().click();
 await page.waitForSelector('text=1S – SEIRI (SORT)', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/17-audit-detail.png`, fullPage: true });
@@ -222,7 +333,7 @@ await page.screenshot({ path: `${shots}/17-audit-detail.png`, fullPage: true });
 const shown = await page.locator('text=/\\d+\\.\\d%/').first().innerText();
 console.log(`     rendered percentage: ${shown}`);
 
-step(8, 'edit the Zone afterwards — the completed audit must not move (D6)');
+step(9, 'edit the Zone afterwards — the completed audit must not move (D6)');
 const beforeRename = (await page.locator('h3').first().innerText()).trim();
 
 await page.getByRole('link', { name: 'Zones' }).click();
@@ -252,6 +363,60 @@ if (afterRename !== beforeRename) {
   throw new Error(`the audit Zone snapshot moved: "${beforeRename}" became "${afterRename}"`);
 }
 console.log(`     the audit still names the Zone "${afterRename}"`);
+
+step(10, 'the sync dashboard shows a quarantined item with its payload');
+
+// Push a deliberately poisoned item so the queue has something in it. §9.5's promise —
+// nothing is dropped — is only worth something if a person can see what was held, and
+// that is a claim about a rendered page, not about a row.
+const poisoned = {
+  auditZoneId,
+  checklistQuestionId: questions[0].id,
+  value: 'SCORE_SEVENTEEN',
+  remark: 'Third rack from the door — bin unlabelled since Tuesday',
+  answeredAt: new Date().toISOString(),
+};
+
+const batch = await call('/sync/batch', {
+  method: 'POST',
+  token,
+  body: {
+    batchId: randomUUID(),
+    deviceId: DEVICE_ID,
+    items: [
+      {
+        outboxId: randomUUID(),
+        entityType: 'question_response',
+        entityId: randomUUID(),
+        operation: 'upsert',
+        payload: poisoned,
+      },
+    ],
+  },
+});
+
+if (batch.results[0].status !== 'REJECTED') {
+  throw new Error(`expected the poisoned item to be REJECTED, got ${batch.results[0].status}`);
+}
+
+await page.getByRole('link', { name: 'Sync health' }).click();
+await page.waitForLoadState('networkidle');
+await page.screenshot({ path: `${shots}/20-sync-health.png`, fullPage: true });
+
+await page.getByText('Payload could not be read').first().click();
+await page.waitForSelector('text=What the device sent', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/21-conflict-payload.png`, fullPage: true });
+
+// The auditor's own words, on the screen, in full. That is the thing §9.5 is protecting.
+const payloadShown = await page.locator('pre').first().innerText();
+if (!payloadShown.includes(poisoned.remark)) {
+  throw new Error('the quarantined payload is not rendered in full on the dashboard');
+}
+console.log('     the held payload renders verbatim, remark and all');
+
+// And the device is listed, so a stale one can be chased (§9.6).
+const deviceShown = await page.getByText(DEVICE_ID).first().isVisible();
+if (!deviceShown) throw new Error('the device is not listed on the sync dashboard');
 
 await browser.close();
 
