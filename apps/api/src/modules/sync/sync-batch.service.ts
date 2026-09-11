@@ -305,12 +305,19 @@ export class SyncBatchService {
 
       case 'audit:pause': {
         const body = pauseAuditRequestSchema.parse(item.payload);
+        // A device that paused offline never told the server it *started*: §9.1 has it
+        // move its own audit to IN_PROGRESS locally, and the server catches up here.
+        // Without this the pause arrives at an ASSIGNED audit and is refused as a
+        // transition the machine does not define — losing the abort's cursors, which are
+        // exactly what a replacement device needs.
+        await this.ensureStarted(scope, deviceId, item.entityId);
         const audit = await this.audits.pause(scope, item.entityId, body);
         return audit.version;
       }
 
       case 'audit:resume': {
         const body = resumeAuditRequestSchema.parse({ ...item.payload, deviceId });
+        await this.ensureStarted(scope, deviceId, item.entityId);
         // A resume also claims the lock, which is what makes it the item that surfaces
         // `DEVICE_NOT_OWNER` when a second device has taken over.
         const audit = await this.audits.resume(scope, item.entityId, body);

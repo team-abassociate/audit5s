@@ -348,12 +348,20 @@ export async function completeLocalZone(
   auditZoneId: string,
   now: string = new Date().toISOString(),
 ): Promise<void> {
+  const [zone] = await getLocalAuditZone(database, auditZoneId);
+
   await database
     .update(localAuditZones)
     .set({ status: 'COMPLETED', completedAt: now, resumeQuestionId: null, clientUpdatedAt: now })
     .where(eq(localAuditZones.id, auditZoneId));
 
-  await enqueue(database, 'audit_zone', auditZoneId, 'complete', { completedAt: now });
+  // `auditId` rides in the payload because §8.6 addresses this as
+  // `/audits/{auditId}/zones/{auditZoneId}/complete` — the outbox row carries the entity id
+  // in its own column, and everything else the route needs has to be in the payload.
+  await enqueue(database, 'audit_zone', auditZoneId, 'complete', {
+    ...(zone ? { auditId: zone.auditId } : {}),
+    completedAt: now,
+  });
 }
 
 /**

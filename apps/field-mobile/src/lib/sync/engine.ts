@@ -88,11 +88,26 @@ const EMPTY: SyncResult = {
 };
 
 /**
- * One full sync cycle: recover, push photographs, push data.
+ * One full sync cycle, in the order §9.3 sets out and **not** in any other:
  *
- * The order is deliberate. §9.3's topological order ends with `evidence(commit)`, and a
- * commit is only meaningful once the object is up — so the media queue runs first and the
- * commits it queues ride the same cycle's data batch.
+ *   `audit → audit_zone → question_response → evidence(metadata) → evidence(commit)`
+ *
+ * Read literally, that order runs *through* the media queue rather than beside it, so a
+ * cycle is three passes and not two:
+ *
+ *   1. **structure** — the `upsert`s and `delete`s on the data queue. These create the
+ *      audit, its Zones and its answers, which is what an `upload-intent` names.
+ *   2. **media** — the photographs. A media pass ahead of the structure pass asks the
+ *      server to accept a photograph for an audit it has never heard of: a 404, and after
+ *      eight of them a dead-lettered photograph that was never at fault.
+ *   3. **the rest** — `commit`, `pause`, `resume`, `complete`. These have to follow the
+ *      photographs, because §7.1's `selfie_captured` guard is what moves an audit from
+ *      ASSIGNED to READY: run them first and an audit sits at ASSIGNED while its pause,
+ *      its resume and its completion all fail as transitions the machine does not define.
+ *
+ * That third point is the one that is easy to get wrong and expensive to get wrong: the
+ * failures are three dead-lettered lifecycle items and an audit stranded at ASSIGNED, with
+ * every answer present and none of it completable.
  */
 export async function runSync(
   database: LocalDatabase,
@@ -103,18 +118,34 @@ export async function runSync(
 
   await recoverStaleWork(database, transport, now());
 
+  const structure = await drainDataQueue(database, transport, options, now, STRUCTURE_OPERATIONS);
   const media = await drainMediaQueue(database, transport, now);
-  const data = await drainDataQueue(database, transport, options, now);
+  const rest = await drainDataQueue(database, transport, options, now);
+
+  const passes = [structure, rest];
 
   return {
-    accepted: data.accepted,
-    conflicted: data.conflicted,
-    failed: data.failed + media.failed,
-    deferred: data.deferred,
+    accepted: sum(passes, 'accepted'),
+    conflicted: sum(passes, 'conflicted'),
+    failed: sum(passes, 'failed') + media.failed,
+    deferred: sum(passes, 'deferred'),
     photosUploaded: media.uploaded,
-    idle: data.idle && media.uploaded === 0 && media.failed === 0,
-    ...(data.error ? { error: data.error } : {}),
+    idle:
+      passes.every((pass) => pass.idle) && media.uploaded === 0 && media.failed === 0,
+    ...(structure.error ?? rest.error ? { error: structure.error ?? rest.error } : {}),
   };
+}
+
+/**
+ * The operations that must precede the photographs.
+ *
+ * `commit` is deliberately absent: it confirms an object, so it belongs after the upload,
+ * in the third pass.
+ */
+const STRUCTURE_OPERATIONS: readonly SyncOperation[] = ['upsert', 'delete'];
+
+function sum(passes: SyncResult[], key: 'accepted' | 'conflicted' | 'failed' | 'deferred'): number {
+  return passes.reduce((total, pass) => total + pass[key], 0);
 }
 
 // --------------------------------------------------------------------- crash recovery
@@ -217,8 +248,14 @@ async function drainDataQueue(
   transport: SyncTransport,
   options: { deviceId: string; appVersion?: string },
   now: () => number,
+  /** When given, only these operations are sent — the pass structure above. */
+  operations?: readonly SyncOperation[],
 ): Promise<SyncResult> {
-  const ready = await readyItems(database, 'data', new Date(now()).toISOString());
+  const all = await readyItems(database, 'data', new Date(now()).toISOString());
+  const ready = operations
+    ? all.filter((row) => operations.includes(row.operation as SyncOperation))
+    : all;
+
   if (ready.length === 0) {
     return { ...EMPTY };
   }

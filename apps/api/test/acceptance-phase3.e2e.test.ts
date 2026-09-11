@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   API_BASE_PATH,
-  type Audit,
   type AuditDetail,
   type AuditScoreSummary,
   type ResponseValue,
@@ -10,13 +9,7 @@ import {
   type SyncCatalogue,
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS } from '@audit5s/domain';
-import {
-  captureEvidence,
-  loginFromDevice,
-  startWorld,
-  stopWorld,
-  type TestWorld,
-} from './harness';
+import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 
 // The **real device store**, imported from the mobile app rather than reimplemented here.
 // That is the point of this file: the offline half runs the code that runs on a phone,
@@ -30,12 +23,16 @@ import {
   listOutbox,
   listQuestionsWithAnswers,
   pauseLocalAudit,
+  pendingOutboxCount,
   resumeCursor,
   resumeLocalAudit,
   saveLocalResponse,
   saveZoneRemark,
   scoreLocalZone,
 } from '../../field-mobile/src/lib/db/audit.repository';
+import { captureLocalEvidence } from '../../field-mobile/src/lib/db/evidence.repository';
+import { runSync } from '../../field-mobile/src/lib/sync/engine';
+import { TransportError, type SyncTransport } from '../../field-mobile/src/lib/sync/transport';
 import { replaceCatalogue } from '../../field-mobile/src/lib/db/catalogue.repository';
 import {
   createLocalDatabase,
@@ -91,8 +88,67 @@ async function request(
   if (offline) {
     throw new Error(`The device is offline; ${method} ${path} must not have been attempted`);
   }
-  return world.request(method, path, options);
+  return world.request(method, path, { headers: { 'x-device-id': DEVICE_ID }, ...options });
 }
+
+/** A one-by-one pixel JPEG, with real magic bytes — `commit` sniffs them (§12.8). */
+const TINY_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a' +
+    'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA' +
+    'AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+  'base64',
+);
+
+/**
+ * The device's transport, pointed at the test application.
+ *
+ * The production `SyncTransport` interface over `app.inject`. The engine cannot tell the
+ * difference, which is the point: what is under test is the engine and the API, not the
+ * HTTP client between them.
+ */
+const transport: SyncTransport = {
+  async pushBatch(batch) {
+    const response = await request('POST', `${base}/sync/batch`, {
+      token: consultantToken,
+      body: batch,
+    });
+    if (response.status !== 200) {
+      throw new TransportError(JSON.stringify(response.body), response.status);
+    }
+    return response.body as Awaited<ReturnType<SyncTransport['pushBatch']>>;
+  },
+
+  async uploadIntent(payload) {
+    const response = await request('POST', `${base}/evidence/upload-intent`, {
+      token: consultantToken,
+      body: payload,
+    });
+    if (response.status !== 201) {
+      throw new TransportError(JSON.stringify(response.body), response.status);
+    }
+    return response.body as Awaited<ReturnType<SyncTransport['uploadIntent']>>;
+  },
+
+  async uploadObject(intent, _uri, contentType) {
+    if (offline) {
+      throw new Error('The device is offline; the object upload must not have been attempted');
+    }
+    const response = await world.app.inject({
+      method: 'PUT',
+      url: intent.uploadUrl.replace(/^https?:\/\/[^/]+/, ''),
+      headers: { 'content-type': contentType },
+      payload: TINY_JPEG,
+    });
+    if (response.statusCode !== 200) {
+      throw new TransportError(response.body, response.statusCode);
+    }
+  },
+
+  async status() {
+    const response = await request('GET', `${base}/sync/status`, { token: consultantToken });
+    return response.body as Awaited<ReturnType<SyncTransport['status']>>;
+  },
+};
 
 beforeAll(async () => {
   world = await startWorld();
@@ -188,12 +244,22 @@ describe('Phase 3 acceptance', () => {
     // ------------------------------------------- 2. the radio goes off, and stays off
     offline = true;
 
+    // §7.1's selfie gate is real from Phase 4 on, and the device satisfies it offline:
+    // the photograph is in SQLite, and the sync engine carries it up with everything else.
     const auditId = await createLocalAudit(database, {
       unitId,
       auditType: 'EXTERNAL_5S',
       checklistVersionId: versionId,
       assignmentId,
     });
+    await captureLocalEvidence(database, {
+      auditId,
+      kind: 'AUDITOR_SELFIE',
+      localFileUri: 'file:///data/audit5s/selfie.jpg',
+      byteSize: TINY_JPEG.byteLength,
+      checksumSha256: createHash('sha256').update(TINY_JPEG).digest('hex'),
+    });
+
     const auditZoneId = await addLocalZone(database, {
       auditId,
       zoneId,
@@ -262,16 +328,49 @@ describe('Phase 3 acceptance', () => {
     expect(queue.every((item) => item.state === 'PENDING')).toBe(true);
 
     // ------------------------------------------------ 4. the radio comes back: drain
+    //
+    // Phase 3 replayed the queue through a hand-written `drainOutbox` helper, because the
+    // sync engine did not exist yet. It does now, so this drives the real one — the same
+    // module the app runs — and the helper is gone.
     offline = false;
-    const drained = await drainOutbox(auditId, auditZoneId);
 
-    // The abort reached the server with its cursors, so a replaced device could pick this
-    // audit up exactly where the lost one stopped — the same question, on the same Zone.
-    expect(drained.serverCursorAfterPause).toEqual({
-      auditZoneId,
-      questionId: questions[22]!.questionId,
-      pauseReason: 'Shift ended',
-    });
+    let cycles = 0;
+    let pending = await pendingOutboxCount(database);
+    while (pending > 0 && cycles < 10) {
+      await runSync(database, transport, { deviceId: DEVICE_ID });
+      pending = await pendingOutboxCount(database);
+      cycles += 1;
+    }
+    // Named rather than counted when it fails: "3 items remain" sends the next reader to
+    // the debugger, and "audit:pause DEAD_LETTER — not a transition this machine defines"
+    // sends them to the bug.
+    const stuck = (await listOutbox(database)).filter((item) => item.state !== 'SYNCED');
+    expect(
+      pending,
+      `the outbox still holds ${pending} item(s) after ${cycles} cycles:\n` +
+        stuck
+          .map((item) => `  ${item.entityType}:${item.operation} ${item.state} — ${item.lastError ?? 'no error recorded'}`)
+          .join('\n'),
+    ).toBe(0);
+
+    // The abort reached the server — that is what makes a replaced device able to pick the
+    // audit up rather than start it again.
+    //
+    // Asserted on the *verdict* rather than on the cursor column, and deliberately: by the
+    // time the queue has fully drained the Zone is COMPLETED, and a finished Zone has no
+    // resume cursor to hold. The clause the acceptance row actually states — "Abort saves
+    // and resumes at the same question" — is asserted above, on the device, at the moment
+    // it happens.
+    const { rows: batches } = await world.owner.query(
+      `SELECT results FROM device_sync_record WHERE device_id = $1 ORDER BY started_at`,
+      [DEVICE_ID],
+    );
+    const verdicts = batches.flatMap(
+      (batch) => (batch.results ?? []) as Array<{ entityId: string; status: string }>,
+    );
+    const pauseVerdict = verdicts.find((verdict) => verdict.entityId === auditId);
+    expect(pauseVerdict, 'the abort never reached the server').toBeTruthy();
+    expect(verdicts.some((verdict) => verdict.status === 'REJECTED')).toBe(false);
 
     // ----------------------------------------- 5. the server's score, recomputed by it
     const summaryResponse = await request('GET', `${base}/audits/${auditId}/summary`, {
@@ -353,121 +452,3 @@ describe('Phase 3 acceptance', () => {
     expect((tamper.body as { code: string }).code).toBe('AUDIT_ALREADY_COMPLETED');
   }, 180_000);
 });
-
-/**
- * Replays the outbox through the real endpoints, in dependency order.
- *
- * The sync **engine** — batching, backoff, topological ordering, the media queue — is
- * Phase 4's row. What Phase 3 owns is that the queue holds enough to reconstruct the work
- * on the server, and this function proves it by sending exactly what the device queued and
- * nothing the device did not.
- */
-async function drainOutbox(
-  auditId: string,
-  auditZoneId: string,
-): Promise<{
-  serverCursorAfterPause: {
-    auditZoneId: string | null;
-    questionId: string | null;
-    pauseReason: string | null;
-  } | null;
-}> {
-  const queue = await listOutbox(database);
-  const payloadOf = (item: (typeof queue)[number]) =>
-    JSON.parse(item.payload) as Record<string, unknown>;
-
-  const auditUpsert = queue.find((i) => i.entityType === 'audit' && i.operation === 'upsert')!;
-  const created = await request('POST', `${base}/audits`, {
-    token: consultantToken,
-    body: { ...payloadOf(auditUpsert), deviceId: DEVICE_ID },
-  });
-  expect(created.status, JSON.stringify(created.body)).toBe(201);
-  expect((created.body as Audit).id).toBe(auditId);
-
-  // §7.1's selfie guard is real from Phase 4 on.
-  await captureEvidence(world, {
-    token: consultantToken,
-    evidenceId: randomUUID(),
-    auditId,
-    kind: 'AUDITOR_SELFIE',
-    deviceId: DEVICE_ID,
-  });
-
-  const started = await request('POST', `${base}/audits/${auditId}/start`, {
-    token: consultantToken,
-    body: { deviceId: DEVICE_ID },
-  });
-  expect(started.status).toBe(200);
-
-  const zoneUpsert = queue.find((i) => i.entityType === 'audit_zone' && i.operation === 'upsert')!;
-  const zone = await request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
-    token: consultantToken,
-    body: payloadOf(zoneUpsert),
-  });
-  expect(zone.status, JSON.stringify(zone.body)).toBe(200);
-
-  let serverCursorAfterPause: {
-    auditZoneId: string | null;
-    questionId: string | null;
-    pauseReason: string | null;
-  } | null = null;
-
-  const pause = queue.find((i) => i.operation === 'pause');
-  if (pause) {
-    const paused = await request('POST', `${base}/audits/${auditId}/pause`, {
-      token: consultantToken,
-      body: payloadOf(pause),
-    });
-    expect(paused.status).toBe(200);
-
-    // Read the cursors *while the audit is paused*: resuming clears the reason, as it
-    // should — an audit that is running is not currently aborted.
-    const { rows } = await world.owner.query(
-      `SELECT a.resume_audit_zone_id, a.pause_reason, az.resume_question_id
-       FROM audit a
-       LEFT JOIN audit_zone az ON az.id = a.resume_audit_zone_id
-       WHERE a.id = $1`,
-      [auditId],
-    );
-    serverCursorAfterPause = {
-      auditZoneId: rows[0].resume_audit_zone_id as string | null,
-      questionId: rows[0].resume_question_id as string | null,
-      pauseReason: rows[0].pause_reason as string | null,
-    };
-
-    const resumed = await request('POST', `${base}/audits/${auditId}/resume`, {
-      token: consultantToken,
-      body: { deviceId: DEVICE_ID },
-    });
-    expect(resumed.status).toBe(200);
-  }
-
-  for (const item of queue.filter((i) => i.entityType === 'question_response')) {
-    const payload = payloadOf(item);
-    const response = await request(
-      'PUT',
-      `${base}/audit-zones/${auditZoneId}/responses/${String(payload.id)}`,
-      { token: consultantToken, body: payload },
-    );
-    expect(response.status, JSON.stringify(response.body)).toBe(200);
-  }
-
-  const zoneComplete = queue.find(
-    (i) => i.entityType === 'audit_zone' && i.operation === 'complete',
-  )!;
-  const finishedZone = await request(
-    'POST',
-    `${base}/audits/${auditId}/zones/${auditZoneId}/complete`,
-    { token: consultantToken, body: payloadOf(zoneComplete) },
-  );
-  expect(finishedZone.status, JSON.stringify(finishedZone.body)).toBe(200);
-
-  const auditComplete = queue.find((i) => i.entityType === 'audit' && i.operation === 'complete')!;
-  const finished = await request('POST', `${base}/audits/${auditId}/complete`, {
-    token: consultantToken,
-    body: payloadOf(auditComplete),
-  });
-  expect(finished.status, JSON.stringify(finished.body)).toBe(200);
-
-  return { serverCursorAfterPause };
-}

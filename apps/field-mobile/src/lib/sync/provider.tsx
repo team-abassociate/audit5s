@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { runSync, type SyncResult } from './engine';
-import { createSyncTransport } from './transport';
+import { createSyncTransport } from './http-transport';
 import { readFileBytes } from '../capture/media';
 import { getDeviceId } from '../secure-storage';
 import { useLocalDatabase } from '../db/provider';
