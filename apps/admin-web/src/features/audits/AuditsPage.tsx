@@ -215,6 +215,9 @@ function LocationFlag({ audit }: { audit: Audit }) {
 }
 
 function ScoreCell({ audit }: { audit: Audit }) {
+  if (!audit.scored) {
+    return <span className="text-neutral-500">Not scored</span>;
+  }
   if (audit.status !== 'COMPLETED' && audit.totals.maxScore === 0) {
     return <span className="text-neutral-400">—</span>;
   }
