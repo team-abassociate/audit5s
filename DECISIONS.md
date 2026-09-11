@@ -344,6 +344,128 @@ whole of what Phase 4 has to change.
 
 ---
 
+## R-9 — What "presigned" means under the filesystem driver
+
+`ObjectStorage` has two drivers (STACK.md §2): S3 for the deployed environment, and a
+filesystem driver for development and CI. Phase 4 needs `presignPut` and `presignGet`
+(§9.4, §12.6) — and a filesystem has no signing authority, so the port's two newest verbs
+have no literal meaning under it. MinIO would have supplied one; it cannot be pulled here
+(Docker Hub answers 403 under this session's egress policy), and in any case pinning the
+development path to a container that CI may not be able to fetch trades one problem for
+another.
+
+Three readings were available, and two are worse than they look.
+
+**Refuse to presign, and upload through the API instead.** The device would then POST its
+bytes to an authenticated endpoint in development and PUT them to a signed URL in
+production. That is not one protocol with two drivers; it is two protocols, and the one the
+tests exercise is the one that never ships. Every bug specific to the presigned flow —
+a header the signature covers, a checksum the store enforces, a session the PUT must *not*
+carry — would be invisible until deployment.
+
+**Return an unsigned URL to a public route.** One line of code, and it makes the
+development environment a file server with no access control, which is exactly the shape of
+mistake that reaches production by being convenient.
+
+**What was built.** The filesystem driver mints a real URL with a real expiry, signed with
+HMAC-SHA256 over the method, the object key and every query parameter, and serves it from a
+`@Public()` route this application hosts under `/api/v1/__local-object-storage/`. Every
+property the calling code depends on is genuine:
+
+* the URL expires — `expires` is inside the signature, and a stale link is refused as
+  `EXPIRED`, not merely ignored;
+* the signature is the only authority — the route carries no session, so a test that
+  accidentally authenticates the PUT fails the same way it would against R2;
+* the PUT's declared content type and byte size are signed, and the route enforces both, so
+  an oversized or mistyped body is rejected before `commit` ever runs;
+* the SHA-256 is verified where §9.4 puts it, at `commit`, from a `head()` both drivers
+  implement. S3 additionally signs `ChecksumSHA256` so the provider refuses a mismatched
+  body at the edge; the filesystem driver computes the digest on read instead. That is the
+  one asymmetry, and it fails *closed* — the weaker driver is the one used only in
+  development, and `commit` catches what it lets through;
+* the TTL caps of §12.6 (GET ≤ 300 s, PUT ≤ 900 s) are applied in the port, above both
+  drivers, so neither can exceed them.
+
+What is *not* genuine is the one thing a filesystem cannot do: the bytes transit the API
+process rather than going straight to object storage. The port says so out loud rather than
+hiding it — `presignsOffProcess` is `false` on this driver and `true` on S3 — and the API
+logs a warning at every boot naming the driver, the directory and this decision. The route
+prefix is `__local-object-storage` precisely so that a request to it in an access log from a
+deployed environment is unmistakable; there, `R2_ENDPOINT` is set, the S3 driver is
+selected, and the route answers 404.
+
+The signing secret defaults to 32 random bytes per process, so a restart invalidates
+outstanding links. That is the right default for a driver that is not a production path:
+`OBJECT_STORAGE_SIGNING_SECRET` exists for the one case that needs stability, which is a
+test run spanning a restart.
+
+This branch is not untested. `local-object-storage.test.ts` covers the signature, the
+tamper cases, expiry, the size and type enforcement and the key encoding; the evidence e2e
+suite drives intent → PUT → commit through it; and both browser walkthroughs fetch evidence
+back through a presigned GET, out of process, with no session.
+
+One implementation detail is worth recording because the obvious version is a hazard. The
+object key contains slashes, and a Fastify wildcard route declared inside a controller
+prefix registers as a **root-level** `*` — which would have matched every unmatched path in
+the API and turned a storage route into a catch-all. The key is therefore base64url-encoded
+into a single path segment.
+
+---
+
+## R-10 — Evidence is append-only after completion, not from insert
+
+D8 freezes "post-completion Evidence", and `0001`'s generic `enforce_append_only()` cannot
+express that: it freezes a table from its first row. Evidence has a life before completion —
+`commit` fills in the object key and the checksum, E-2 reclassifies it when the answer
+changes, the auditor flags it for the summary, and E-4 allows a soft delete — so an
+unconditional trigger would break the capture flow it is meant to protect.
+
+`0007` therefore carries `enforce_completed_evidence_append_only()` in the shape R-8b
+established for A-2: status-aware, reading the parent audit's status, and refusing both
+`UPDATE` and `DELETE` once it is `COMPLETED`. It takes its carve-out from `TG_ARGV` the way
+`0001` parameterised the generic trigger, and the three columns named there are exactly
+R-5's redaction fields — `redacted_at`, `redacted_by_user_id`, `redaction_reason`. Naming
+them in the `CREATE TRIGGER` rather than inside the function keeps the exception visible at
+the point the rule is attached.
+
+R-5 is why the carve-out exists at all: redaction replaces the object and records who
+replaced it and why. It never deletes the row, so `DELETE` has no carve-out here either.
+
+---
+
+## R-11 — `expo-camera` vs `react-native-vision-camera` *(open — needs a ruling)*
+
+The two source documents disagree, and R-1's precedence rule does not settle it cleanly:
+
+* `STACK.md` §2: *Camera — react-native-vision-camera (in-app live capture only, no gallery path)*
+* `ARCHITECTURE.md` §12.10: *Custom camera view (`expo-camera`)*
+
+R-1 says STACK.md wins on any technology name, so on the letter of the rule the answer is
+vision-camera. Phase 4 shipped `expo-camera` anyway, and this entry exists so that is a
+recorded deviation rather than a silent one.
+
+**Why it was built that way.** The app is a managed Expo project pinned to React Native
+0.86.3 with `expo-router`. `expo-camera` is in that dependency set already and needs no
+native build to run or to prove; `react-native-vision-camera` needs a config plugin and a
+custom dev client, neither of which can be produced in this environment — so choosing it
+would have meant writing a capture component nobody could execute, and `is_live_capture` is
+not a property worth asserting from untested code (§12.10 is already explicit that live
+capture is deterrence plus evidence, not prevention).
+
+**What the deviation actually costs.** One file: `src/components/camera-capture.tsx` is the
+only importer of `expo-camera` in the workspace, and everything downstream of it — the
+capture contract, the object key, `is_live_capture`, E-1, the outbox row — is library-
+agnostic. Swapping it is a component rewrite and a dependency change, not a redesign.
+
+**What is needed.** A ruling on which document is right. If `STACK.md` is, the swap should
+happen in a phase that can produce a dev client and put a real camera in front of it; if
+`ARCHITECTURE.md` is, `STACK.md` §2 should be corrected and this entry closed with the
+change recorded in the header table.
+
+Until then the code follows `ARCHITECTURE.md` §12.10 and this entry is the flag.
+
+---
+
 ## Related: migrations
 
 There is one environment. Migrations are files in git, applied by CI — never
