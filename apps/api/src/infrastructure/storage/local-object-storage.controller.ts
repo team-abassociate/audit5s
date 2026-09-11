@@ -79,6 +79,7 @@ export class LocalObjectStorageController {
   @Public()
   @Get(':encodedKey')
   @Header('cache-control', 'private, no-store')
+  @Header('cross-origin-resource-policy', 'cross-origin')
   async download(
     @Param('encodedKey') encodedKey: string,
     @Query() query: Record<string, string>,

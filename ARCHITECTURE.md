@@ -50,6 +50,12 @@
 > partial unique index for invariant M-1 ships in the first migration with a test that proves
 > it (R-3a), and `evidence` carries `redacted_at` / `redacted_by_user_id` / `redaction_reason`
 > with a matching carve-out in its append-only trigger (R-5).
+>
+> **Phase 5 implementation (2026-09-11).** Walk-by capture now runs end to end through the
+> mobile SQLite outbox, including offline evidence patches, preview/delete, re-judgement and
+> summary flags. The admin audit detail has the cursor-paged evidence gallery and on-demand
+> original viewer. `acceptance-phase5.e2e.test.ts` enforces the three-Zone offline acceptance
+> row and both sides of the empty-Zone photo guard. No migration was added; `0009` remains next.
 
 **How to read this document.** PART 1 fixes the vocabulary and settles every contradiction in
 the source brainstorm — read it first, and treat its decisions as binding. PART 5 (database)

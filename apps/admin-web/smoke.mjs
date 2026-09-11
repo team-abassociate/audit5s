@@ -1,9 +1,14 @@
 import { chromium } from 'playwright';
+import { fileURLToPath } from 'node:url';
 
 const BASE = 'http://127.0.0.1:4173';
 const shots = '/tmp/claude-0/shots';
+const workbook = fileURLToPath(
+  new URL('../../docs/requirements/5S_lean_audit_data_1.xlsx', import.meta.url),
+);
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const problems = [];
 page.on('console', (m) => {
@@ -92,7 +97,7 @@ await page.waitForLoadState('networkidle');
 await page.getByRole('button', { name: 'Import workbook' }).click();
 await page
   .locator('input[type=file]')
-  .setInputFiles('../../docs/requirements/5S_lean_audit_data_1.xlsx');
+  .setInputFiles(workbook);
 
 // Validation runs on worker-general, so the wizard polls. Give it room.
 await page.waitForSelector('text=Review the diff', { timeout: 60000 });

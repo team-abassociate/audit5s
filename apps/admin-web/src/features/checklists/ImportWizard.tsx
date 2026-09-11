@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type {
   ChecklistImportJob,
@@ -261,8 +261,8 @@ function PreviewStep({
             const diff = preview.diffs.find((candidate) => candidate.sheetId === sheet.id);
             const blocked = sheet.severity === 'ERROR' || sheet.duplicateIsPublished;
             return (
-              <>
-                <tr key={sheet.id}>
+              <Fragment key={sheet.id}>
+                <tr>
                   <Td>
                     <input
                       type="checkbox"
@@ -299,13 +299,13 @@ function PreviewStep({
                   </Td>
                 </tr>
                 {openSheet === sheet.id && diff && (
-                  <tr key={`${sheet.id}-diff`}>
+                  <tr>
                     <td colSpan={6} className="bg-neutral-50 p-0">
                       <SideBySideDiff diff={diff} />
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             );
           })}
         </tbody>

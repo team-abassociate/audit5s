@@ -556,6 +556,7 @@ describe('DECISIONS.md R-9 — the signed storage route', () => {
     });
     expect(fetched.statusCode).toBe(200);
     expect(fetched.headers['content-type']).toBe('image/jpeg');
+    expect(fetched.headers['cross-origin-resource-policy']).toBe('cross-origin');
     expect(fetched.rawPayload.equals(TINY_JPEG)).toBe(true);
   });
 

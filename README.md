@@ -36,7 +36,7 @@ reconciles the blueprint with the real source files in
 | 2 | Coordinator, Zones, Zone Leaders, checklist versioning and Excel import | Done |
 | 3 | Audit engine and scoring | Done |
 | 4 | Mobile camera, selfie, GPS and the synchronization engine | Done |
-| 5 | Walk-by audit and evidence management | Backend, migrations and tests done — web and mobile next (`HANDOFF-PHASE5.md`) |
+| 5 | Walk-by audit and evidence management | Done |
 
 ## Layout
 

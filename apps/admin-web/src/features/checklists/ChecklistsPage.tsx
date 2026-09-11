@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ChecklistTemplate,
@@ -86,8 +86,8 @@ export function ChecklistsPage() {
             </thead>
             <tbody>
               {templates.data.data.map((template) => (
-                <>
-                  <tr key={template.id}>
+                <Fragment key={template.id}>
+                  <tr>
                     <Td>
                       <button
                         type="button"
@@ -115,13 +115,13 @@ export function ChecklistsPage() {
                     <Td>50</Td>
                   </tr>
                   {openTemplate === template.id && (
-                    <tr key={`${template.id}-detail`}>
+                    <tr>
                       <td colSpan={5} className="bg-neutral-50 p-0">
                         <TemplateDetail template={template} />
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </Table>

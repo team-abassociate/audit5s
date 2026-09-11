@@ -5,7 +5,8 @@ import { chromium } from 'playwright';
 // `require`, because `@audit5s/domain` publishes a CommonJS main and this script is ESM.
 // It matters that it is the package rather than a copy: the number asserted below is
 // produced by the *same* function the API and the device run (D5).
-const { S_SECTION_ORDER, scoreZone } = createRequire(import.meta.url)('@audit5s/domain');
+const { S_SECTION_ORDER, scoreZone, zoneDisplayLabel } =
+  createRequire(import.meta.url)('@audit5s/domain');
 
 /**
  * The second half of the walkthrough: a device runs a real audit against the live API,
@@ -36,7 +37,14 @@ function step(n, message) {
  * smoke script that authenticated it would be exercising a protocol the device does not
  * use — which is the class of bug these scripts exist to catch.
  */
-async function captureEvidence({ token, auditId, auditZoneId, questionResponseId, kind }) {
+async function captureEvidence({
+  token,
+  auditId,
+  auditZoneId,
+  questionResponseId,
+  kind,
+  classification,
+}) {
   const bytes = TINY_JPEG;
   const checksum = createHash('sha256').update(bytes).digest('hex');
   const evidenceId = randomUUID();
@@ -55,6 +63,7 @@ async function captureEvidence({ token, auditId, auditZoneId, questionResponseId
       checksumSha256: checksum,
       capturedAt: new Date().toISOString(),
       isLiveCapture: true,
+      ...(classification ? { classification } : {}),
     },
   });
 
@@ -303,10 +312,11 @@ if (completed.totals.scorePercentage !== expected.totals.scorePercentage) {
 }
 
 step(7, 'the admin board shows the finished audit with its S-wise scores');
-const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-});
+const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const page = await browser.newPage({ viewport: { width: 1280, height: 1100 } });
+const completedScoredRow = () =>
+  page.getByRole('row').filter({ hasText: 'External 5S' }).filter({ hasText: 'Completed' }).first();
 const problems = [];
 page.on('console', (message) => {
   if (message.type() === 'error' && !message.text().includes('favicon')) {
@@ -329,7 +339,7 @@ await page.waitForSelector('tbody >> text=Completed', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/16-audit-board.png` });
 
 step(8, 'open it: S-wise scores, the D6 snapshots, and every response');
-await page.getByRole('button', { name: 'Open' }).first().click();
+await completedScoredRow().getByRole('button', { name: 'Open' }).click();
 await page.waitForSelector('text=1S – SEIRI (SORT)', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/17-audit-detail.png`, fullPage: true });
 
@@ -337,7 +347,10 @@ const shown = await page.locator('text=/\\d+\\.\\d%/').first().innerText();
 console.log(`     rendered percentage: ${shown}`);
 
 step(9, 'edit the Zone afterwards — the completed audit must not move (D6)');
-const beforeRename = (await page.locator('h3').first().innerText()).trim();
+const zoneSnapshotLabel = zoneDisplayLabel(zone.code, zone.name);
+const beforeRename = (
+  await page.getByRole('heading', { name: zoneSnapshotLabel, exact: true }).innerText()
+).trim();
 
 await page.getByRole('link', { name: 'Zones' }).click();
 await page.waitForLoadState('networkidle');
@@ -355,19 +368,105 @@ if (!renamedVisible) throw new Error('the Zone rename did not take');
 await page.getByRole('link', { name: 'Audits' }).click();
 await page.waitForLoadState('networkidle');
 await page.getByRole('button', { name: 'Show all' }).click();
-await page.getByRole('button', { name: 'Open' }).first().click();
+await completedScoredRow().getByRole('button', { name: 'Open' }).click();
 await page.waitForSelector('text=1S – SEIRI (SORT)', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/19-audit-detail-after-rename.png`, fullPage: true });
 
 // Exact, not a substring: the renamed label contains the old one, so `toContain` here
 // would pass even if the snapshot had moved.
-const afterRename = (await page.locator('h3').first().innerText()).trim();
+const afterRename = (
+  await page.getByRole('heading', { name: zoneSnapshotLabel, exact: true }).innerText()
+).trim();
 if (afterRename !== beforeRename) {
   throw new Error(`the audit Zone snapshot moved: "${beforeRename}" became "${afterRename}"`);
 }
 console.log(`     the audit still names the Zone "${afterRename}"`);
 
-step(10, 'the sync dashboard shows a quarantined item with its payload');
+step(10, 'run a live walk-by and open its flagged photograph in the admin gallery');
+
+const walkByAuditId = randomUUID();
+const walkByCreated = await call('/audits', {
+  method: 'POST',
+  token,
+  body: {
+    id: walkByAuditId,
+    auditType: 'WALK_BY',
+    unitId: unit.id,
+    deviceId: DEVICE_ID,
+  },
+});
+if (walkByCreated.scored !== false) throw new Error('the walk-by should not be scored');
+
+await captureEvidence({ token, auditId: walkByAuditId, kind: 'AUDITOR_SELFIE' });
+await call(`/audits/${walkByAuditId}/start`, {
+  method: 'POST',
+  token,
+  body: { deviceId: DEVICE_ID },
+});
+
+const walkByZoneId = randomUUID();
+await call(`/audits/${walkByAuditId}/zones/${walkByZoneId}`, {
+  method: 'PUT',
+  token,
+  body: {
+    zoneId: zone.id,
+    sequenceNo: 1,
+    zoneDescription: 'Walk-by observation beside the press line',
+    ...(zone.zoneLeaderId ? { zoneLeaderUserId: zone.zoneLeaderId } : {}),
+  },
+});
+
+const flaggedPhotoId = await captureEvidence({
+  token,
+  auditId: walkByAuditId,
+  auditZoneId: walkByZoneId,
+  kind: 'WALK_BY_PHOTO',
+  classification: 'GOOD',
+});
+await captureEvidence({
+  token,
+  auditId: walkByAuditId,
+  auditZoneId: walkByZoneId,
+  kind: 'WALK_BY_PHOTO',
+  classification: 'NONCONFORMITY',
+});
+await call(`/evidence/${flaggedPhotoId}`, {
+  method: 'PATCH',
+  token,
+  body: { isSummaryFlagged: true, remark: 'Clear access and labelled storage' },
+});
+await call(`/audits/${walkByAuditId}/zones/${walkByZoneId}/complete`, {
+  method: 'POST',
+  token,
+  body: { zoneRemark: 'Walk-by completed during the live smoke run' },
+});
+await call(`/audits/${walkByAuditId}/complete`, { method: 'POST', token, body: {} });
+
+await page.reload();
+await page.waitForLoadState('networkidle');
+await page.getByRole('button', { name: 'Show all' }).click();
+const walkByRow = page
+  .getByRole('row')
+  .filter({ hasText: 'Walk-by' })
+  .filter({ hasText: 'Completed' })
+  .first();
+await walkByRow.getByRole('button', { name: 'Open' }).click();
+await page.waitForSelector('text=Evidence gallery', { timeout: 10000 });
+await page.getByLabel('Classification').selectOption('GOOD');
+await page.waitForSelector('text=Summary photo', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/20-walk-by-gallery.png`, fullPage: true });
+
+await page.getByRole('button', { name: 'Open Good evidence' }).first().click();
+await page.getByRole('dialog', { name: 'Full-size evidence' }).waitFor();
+await page.waitForFunction(() => {
+  const image = globalThis.document.querySelector('img[alt="Full-size audit evidence"]');
+  return image instanceof globalThis.HTMLImageElement && image.complete && image.naturalWidth > 0;
+});
+await page.screenshot({ path: `${shots}/21-walk-by-viewer.png`, fullPage: true });
+await page.getByRole('button', { name: 'Close viewer' }).click();
+console.log('     gallery filtered to GOOD and loaded the flagged original on demand');
+
+step(11, 'the sync dashboard shows a quarantined item with its payload');
 
 // Push a deliberately poisoned item so the queue has something in it. §9.5's promise —
 // nothing is dropped — is only worth something if a person can see what was held, and
@@ -404,11 +503,11 @@ if (batch.results[0].status !== 'REJECTED') {
 
 await page.getByRole('link', { name: 'Sync health' }).click();
 await page.waitForLoadState('networkidle');
-await page.screenshot({ path: `${shots}/20-sync-health.png`, fullPage: true });
+await page.screenshot({ path: `${shots}/22-sync-health.png`, fullPage: true });
 
 await page.getByText('Payload could not be read').first().click();
 await page.waitForSelector('text=What the device sent', { timeout: 10000 });
-await page.screenshot({ path: `${shots}/21-conflict-payload.png`, fullPage: true });
+await page.screenshot({ path: `${shots}/23-conflict-payload.png`, fullPage: true });
 
 // The auditor's own words, on the screen, in full. That is the thing §9.5 is protecting.
 const payloadShown = await page.locator('pre').first().innerText();
