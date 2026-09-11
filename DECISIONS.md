@@ -433,36 +433,44 @@ replaced it and why. It never deletes the row, so `DELETE` has no carve-out here
 
 ---
 
-## R-11 — `expo-camera` vs `react-native-vision-camera` *(open — needs a ruling)*
+## R-11 — Camera: `expo-camera`, superseding `react-native-vision-camera`
 
-The two source documents disagree, and R-1's precedence rule does not settle it cleanly:
+The two source documents disagreed:
 
 * `STACK.md` §2: *Camera — react-native-vision-camera (in-app live capture only, no gallery path)*
 * `ARCHITECTURE.md` §12.10: *Custom camera view (`expo-camera`)*
 
-R-1 says STACK.md wins on any technology name, so on the letter of the rule the answer is
-vision-camera. Phase 4 shipped `expo-camera` anyway, and this entry exists so that is a
-recorded deviation rather than a silent one.
+**Settled: `ARCHITECTURE.md` §12.10 is right.** `STACK.md` §2 has been corrected and the
+change recorded in `ARCHITECTURE.md`'s header table. The library is `expo-camera`.
 
-**Why it was built that way.** The app is a managed Expo project pinned to React Native
-0.86.3 with `expo-router`. `expo-camera` is in that dependency set already and needs no
-native build to run or to prove; `react-native-vision-camera` needs a config plugin and a
-custom dev client, neither of which can be produced in this environment — so choosing it
-would have meant writing a capture component nobody could execute, and `is_live_capture` is
-not a property worth asserting from untested code (§12.10 is already explicit that live
-capture is deterrence plus evidence, not prevention).
+This is the one case where R-1's precedence rule is overridden rather than applied, and it
+is worth being explicit about why, because R-1 is otherwise binding: R-1 gives `STACK.md`
+the technology name so that a *behavioural* document does not quietly re-pick a dependency.
+Here the disagreement is not behavioural at all — both libraries can open a camera, and
+§12.10's requirement is about what the capture surface must *not* offer. The row was simply
+stale.
 
-**What the deviation actually costs.** One file: `src/components/camera-capture.tsx` is the
-only importer of `expo-camera` in the workspace, and everything downstream of it — the
-capture contract, the object key, `is_live_capture`, E-1, the outbox row — is library-
-agnostic. Swapping it is a component rewrite and a dependency change, not a redesign.
+Everything §12.10 actually asks for is unchanged by the choice:
 
-**What is needed.** A ruling on which document is right. If `STACK.md` is, the swap should
-happen in a phase that can produce a dev client and put a real camera in front of it; if
-`ARCHITECTURE.md` is, `STACK.md` §2 should be corrected and this entry closed with the
-change recorded in the header table.
+* **In-app live capture only.** The capture component is the sole path to a photograph.
+* **No gallery picker** in the corrective-action or walk-by flows — `expo-image-picker` is
+  not a dependency of `apps/field-mobile`, so there is nothing to reach for.
+* **`is_live_capture = true` is set by the capture component and nowhere else**, and §12.10
+  is already explicit that this is deterrence plus evidence, not prevention: a modified
+  build or a rooted device can inject frames, and no library choice changes that.
 
-Until then the code follows `ARCHITECTURE.md` §12.10 and this entry is the flag.
+The practical argument that made the decision easy: the app is a managed Expo project
+pinned to React Native 0.86.3 with `expo-router`, and `expo-camera` runs there with no
+custom dev client. `react-native-vision-camera` needs a config plugin and a prebuilt client,
+which means a capture component that cannot be executed in CI or in this environment — and
+`is_live_capture` is not a property worth asserting from code nobody has run.
+
+The seam is narrow either way, which is why reopening this later would be cheap:
+`src/components/camera-capture.tsx` is the only importer of the library in the workspace,
+and everything downstream of it — the capture contract, the object key, `is_live_capture`,
+E-1's classification, the outbox row — is library-agnostic.
+
+`expo-location` was never in dispute; both documents name it.
 
 ---
 
