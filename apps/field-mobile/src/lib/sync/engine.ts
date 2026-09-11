@@ -38,6 +38,7 @@ import {
   queueEvidenceCommit,
   recordUploadAttempt,
 } from '../db/evidence.repository';
+import { confirmLocalSubmission, settleLocalSubmission } from '../db/corrective-action.repository';
 import type { SyncTransport } from './transport';
 
 /**
@@ -348,6 +349,9 @@ async function applyVerdict(
       if (row.entityType === 'evidence' && row.operation === 'commit') {
         await markEvidenceSynced(database, row.entityId);
       }
+      if (row.entityType === 'corrective_action_submission') {
+        await confirmLocalSubmission(database, row.entityId);
+      }
       await removeItem(database, row.id);
       result.accepted += 1;
       return;
@@ -367,6 +371,9 @@ async function applyVerdict(
       // payload and it is therefore safe. The device stops retrying; a human decides.
       if (row.entityType === 'evidence') {
         await markEvidenceSynced(database, row.entityId);
+      }
+      if (row.entityType === 'corrective_action_submission') {
+        await settleLocalSubmission(database, row.entityId);
       }
       await markSettled(database, row.id, `Held for review: ${verdict.reason ?? 'conflict'}`);
       result.conflicted += 1;

@@ -80,8 +80,9 @@ const PHOTO = {
 
 describe('the local schema reaches version 3', () => {
   it('creates evidence and the media-queue columns', async () => {
-    expect(LOCAL_SCHEMA_VERSION).toBe(3);
-    expect(await executor.userVersion()).toBe(3);
+    // Version 3 brought evidence; later phases only add, so it is a floor, not a pin.
+    expect(LOCAL_SCHEMA_VERSION).toBeGreaterThanOrEqual(3);
+    expect(await executor.userVersion()).toBe(LOCAL_SCHEMA_VERSION);
 
     const columns = await executor.query(`PRAGMA table_info(evidence)`, []);
     const names = columns.map((row) => String(row[1]));
@@ -127,7 +128,7 @@ describe('the local schema reaches version 3', () => {
     // A device that upgrades twice — an OTA landing while the app restarts — must not lose
     // the only copy of its unsynced work.
     await migrateLocalDatabase(executor);
-    expect(await executor.userVersion()).toBe(3);
+    expect(await executor.userVersion()).toBe(LOCAL_SCHEMA_VERSION);
     expect(await listLocalEvidenceForZone(database, auditZoneId)).toHaveLength(1);
   });
 });

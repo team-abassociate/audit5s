@@ -1,9 +1,11 @@
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
+import { awaitsResponse } from '@audit5s/domain';
 import { Card, EmptyState, ErrorBanner, Muted, Screen } from '../../components/ui';
 import { syncCatalogue } from '../../lib/catalogue';
 import { listLocalUnits } from '../../lib/db/catalogue.repository';
+import { listLocalCorrectiveActions } from '../../lib/db/corrective-action.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { useSession } from '../../lib/session';
 import { theme } from '../../lib/theme';
@@ -47,6 +49,14 @@ export default function UnitsScreen() {
     staleTime: 60_000,
   });
 
+  // §2.4 step 5: a Zone Leader's nonconformities, from the device's own copy.
+  const actions = useQuery({
+    queryKey: ['local', 'corrective-actions'],
+    queryFn: () => listLocalCorrectiveActions(database),
+    enabled: scope?.role === 'ZONE_LEADER',
+  });
+  const toDo = actions.data?.filter((action) => awaitsResponse(action.effectiveStatus)).length ?? 0;
+
   if (units.isLoading) {
     return (
       <Screen style={styles.centered}>
@@ -62,6 +72,17 @@ export default function UnitsScreen() {
           sync.error ? 'Could not refresh — showing what is stored on this device.' : null
         }
       />
+
+      {scope?.role === 'ZONE_LEADER' && (
+        <Link href="/actions" asChild>
+          <Card>
+            <Text style={styles.name}>Nonconformities</Text>
+            <Muted>
+              {toDo > 0 ? `${toDo} waiting for your response` : 'Nothing waiting for you'}
+            </Muted>
+          </Card>
+        </Link>
+      )}
 
       <FlatList
         data={units.data ?? []}

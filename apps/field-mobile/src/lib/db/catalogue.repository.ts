@@ -5,6 +5,7 @@ import {
   SYNC_META_KEYS,
   checklistQuestions,
   checklistVersions,
+  localCorrectiveActions,
   syncMeta,
   units,
   zones,
@@ -33,6 +34,7 @@ export async function replaceCatalogue(
     return;
   }
 
+  await database.delete(localCorrectiveActions);
   await database.delete(checklistQuestions);
   await database.delete(checklistVersions);
   await database.delete(zones);
@@ -97,6 +99,28 @@ export async function replaceCatalogue(
         })),
       );
     }
+  }
+
+  if (catalogue.correctiveActions.length > 0) {
+    await database.insert(localCorrectiveActions).values(
+      catalogue.correctiveActions.map((action) => ({
+        id: action.id,
+        unitId: action.unitId,
+        auditId: action.auditId,
+        zoneId: action.zoneId,
+        zoneCode: action.zoneCode,
+        zoneName: action.zoneName,
+        status: action.status,
+        section: action.section,
+        questionGlobalOrder: action.questionGlobalOrder,
+        questionText: action.questionText,
+        findingRemark: action.findingRemark,
+        beforeEvidenceId: action.evidenceId,
+        assignedZoneLeaderUserId: action.assignedZoneLeaderUserId,
+        dueAt: action.dueAt,
+        reopenCount: action.reopenCount,
+      })),
+    );
   }
 
   await setSyncMeta(database, SYNC_META_KEYS.catalogueVersion, catalogue.catalogueVersion);
