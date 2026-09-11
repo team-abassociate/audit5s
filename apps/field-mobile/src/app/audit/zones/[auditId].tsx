@@ -1,4 +1,5 @@
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { zoneDisplayLabel } from '@audit5s/domain';
@@ -27,6 +28,11 @@ export default function AuditZonesScreen() {
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const [walkBySetup, setWalkBySetup] = useState<{
+    zoneId: string;
+    description: string;
+    leaderId: string | null;
+  } | null>(null);
 
   const audit = useQuery({
     queryKey: ['local', 'audit', auditId],
@@ -50,18 +56,33 @@ export default function AuditZonesScreen() {
   });
 
   const addZone = useMutation({
-    mutationFn: async (zoneId: string) => {
+    mutationFn: async (input: {
+      zoneId: string;
+      zoneDescription?: string | null;
+      zoneLeaderUserId?: string;
+    }) => {
       const sequenceNo = (auditZones.data?.length ?? 0) + 1;
       return addLocalZone(database, {
         auditId,
-        zoneId,
+        zoneId: input.zoneId,
         sequenceNo,
         checklistVersionId: audit.data?.checklistVersionId ?? null,
+        ...(input.zoneDescription !== undefined
+          ? { zoneDescription: input.zoneDescription }
+          : {}),
+        ...(input.zoneLeaderUserId ? { zoneLeaderUserId: input.zoneLeaderUserId } : {}),
       });
     },
     onSuccess: async (auditZoneId) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
-      router.push({ pathname: '/audit/[auditZoneId]', params: { auditZoneId } });
+      setWalkBySetup(null);
+      router.push({
+        pathname:
+          audit.data?.auditType === 'WALK_BY'
+            ? '/walk-by/[auditZoneId]'
+            : '/audit/[auditZoneId]',
+        params: { auditZoneId },
+      });
     },
   });
 
@@ -74,7 +95,10 @@ export default function AuditZonesScreen() {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       if (target.auditZoneId) {
         router.push({
-          pathname: '/audit/[auditZoneId]',
+          pathname:
+            audit.data?.auditType === 'WALK_BY'
+              ? '/walk-by/[auditZoneId]'
+              : '/audit/[auditZoneId]',
           params: { auditZoneId: target.auditZoneId },
         });
       }
@@ -104,6 +128,16 @@ export default function AuditZonesScreen() {
   const remaining = (available.data ?? []).filter((zone) => !usedZoneIds.has(zone.id));
   const allComplete = zonesInAudit.length > 0 && zonesInAudit.every((z) => z.status === 'COMPLETED');
   const paused = audit.data?.status === 'PAUSED';
+  const walkBy = audit.data?.auditType === 'WALK_BY';
+  const canAddZone =
+    audit.data?.status !== 'COMPLETED' && (zonesInAudit.length === 0 || allComplete);
+  const leaderChoices = Array.from(
+    new Map(
+      (available.data ?? [])
+        .filter((zone) => zone.zoneLeaderId && zone.zoneLeaderName)
+        .map((zone) => [zone.zoneLeaderId!, { id: zone.zoneLeaderId!, name: zone.zoneLeaderName! }]),
+    ).values(),
+  );
 
   return (
     <Screen>
@@ -112,8 +146,9 @@ export default function AuditZonesScreen() {
       {paused && cursor.data?.auditZoneId ? (
         <Card style={styles.resumeBanner}>
           <Text style={styles.resumeText}>
-            Paused — {cursor.data.answered} question{cursor.data.answered === 1 ? '' : 's'} answered
-            in this Zone
+            {walkBy
+              ? 'Paused — your photographs and remarks are saved on this device'
+              : `Paused — ${cursor.data.answered} question${cursor.data.answered === 1 ? '' : 's'} answered in this Zone`}
           </Text>
           <Button title="Resume" busy={resume.isPending} onPress={() => resume.mutate()} />
         </Card>
@@ -123,7 +158,10 @@ export default function AuditZonesScreen() {
         data={zonesInAudit}
         keyExtractor={(zone) => zone.id}
         ListEmptyComponent={
-          <EmptyState title="No Zones yet" detail="Add the first Zone to begin the questionnaire." />
+          <EmptyState
+            title="No Zones yet"
+            detail={walkBy ? 'Select the first Zone to begin the walk-by.' : 'Add the first Zone to begin the questionnaire.'}
+          />
         }
         renderItem={({ item }) => (
           <Card>
@@ -139,7 +177,7 @@ export default function AuditZonesScreen() {
                 variant="secondary"
                 onPress={() =>
                   router.push({
-                    pathname: '/audit/[auditZoneId]',
+                    pathname: walkBy ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
                     params: { auditZoneId: item.id },
                   })
                 }
@@ -149,7 +187,7 @@ export default function AuditZonesScreen() {
         )}
         ListFooterComponent={
           <View style={styles.footer}>
-            {remaining.length > 0 && !allComplete ? (
+            {remaining.length > 0 && canAddZone ? (
               <>
                 <Text style={styles.sectionTitle}>Add next Zone</Text>
                 {remaining.map((zone) => (
@@ -160,12 +198,69 @@ export default function AuditZonesScreen() {
                       <Button
                         title="Start this Zone"
                         busy={addZone.isPending}
-                        onPress={() => addZone.mutate(zone.id)}
+                        onPress={() =>
+                          walkBy
+                            ? setWalkBySetup({
+                                zoneId: zone.id,
+                                description: zone.description ?? '',
+                                leaderId: zone.zoneLeaderId,
+                              })
+                            : addZone.mutate({ zoneId: zone.id })
+                        }
                       />
                     </View>
                   </Card>
                 ))}
               </>
+            ) : null}
+
+            {walkBySetup ? (
+              <Card style={styles.setupCard}>
+                <Text style={styles.name}>Describe and confirm this Zone</Text>
+                <Text style={styles.fieldLabel}>Description (optional)</Text>
+                <TextInput
+                  multiline
+                  style={styles.input}
+                  value={walkBySetup.description}
+                  onChangeText={(description) =>
+                    setWalkBySetup((current) => current && { ...current, description })
+                  }
+                  placeholder="What are you walking through?"
+                  placeholderTextColor={theme.color.textMuted}
+                />
+                <Text style={styles.fieldLabel}>Zone leader</Text>
+                {leaderChoices.length === 0 ? <Muted>No Zone Leader is recorded for this Unit.</Muted> : null}
+                {leaderChoices.map((leader) => (
+                  <Pressable
+                    key={leader.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: walkBySetup.leaderId === leader.id }}
+                    onPress={() =>
+                      setWalkBySetup((current) => current && { ...current, leaderId: leader.id })
+                    }
+                    style={[
+                      styles.leaderChoice,
+                      walkBySetup.leaderId === leader.id && styles.leaderChoiceSelected,
+                    ]}
+                  >
+                    <Text style={styles.leaderText}>{leader.name}</Text>
+                  </Pressable>
+                ))}
+                <Button
+                  title="Open camera"
+                  busy={addZone.isPending}
+                  onPress={() =>
+                    addZone.mutate({
+                      zoneId: walkBySetup.zoneId,
+                      zoneDescription: walkBySetup.description.trim() || null,
+                      ...(walkBySetup.leaderId
+                        ? { zoneLeaderUserId: walkBySetup.leaderId }
+                        : {}),
+                    })
+                  }
+                />
+                <Button title="Cancel" variant="secondary" onPress={() => setWalkBySetup(null)} />
+              </Card>
             ) : null}
 
             {allComplete && audit.data?.status !== 'COMPLETED' ? (
@@ -205,4 +300,23 @@ const styles = StyleSheet.create({
   },
   resumeBanner: { backgroundColor: '#FDF3DB', borderColor: '#BE7D0F' },
   resumeText: { fontSize: theme.font.base, color: theme.color.text, marginBottom: theme.space.sm },
+  setupCard: { gap: theme.space.sm, borderColor: theme.color.brand },
+  fieldLabel: { fontSize: theme.font.sm, fontWeight: '600', color: theme.color.textMuted },
+  input: {
+    minHeight: 88,
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.sm,
+    padding: theme.space.md,
+    color: theme.color.text,
+    textAlignVertical: 'top',
+  },
+  leaderChoice: {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    borderRadius: theme.radius.sm,
+    padding: theme.space.md,
+  },
+  leaderChoiceSelected: { borderColor: theme.color.brand, backgroundColor: '#FFF7F3' },
+  leaderText: { color: theme.color.text, fontWeight: '600' },
 });

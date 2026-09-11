@@ -313,16 +313,44 @@ export async function setLocalSummaryFlag(
     .set({ isSummaryFlagged: flagged ? 1 : 0, clientUpdatedAt: now })
     .where(eq(localEvidence.id, evidenceId));
 
-  await enqueue(
-    database,
-    'evidence',
-    evidenceId,
-    'upsert',
-    await intentPayload(database, evidenceId),
-    now,
-    { queue: 'media', priority: 200 },
-  );
+  await queueEvidencePatch(database, evidenceId, now);
 
+  return { ok: true };
+}
+
+/** Updates the fields an auditor may change after taking a walk-by photograph. */
+export async function updateLocalWalkByEvidence(
+  database: LocalDatabase,
+  evidenceId: string,
+  patch: { classification?: EvidenceClassification; remark?: string | null },
+  now: string = new Date().toISOString(),
+): Promise<{ ok: true } | { ok: false; reason: 'TAKEN' }> {
+  const [row] = await getLocalEvidence(database, evidenceId);
+  if (!row || row.kind !== 'WALK_BY_PHOTO') {
+    throw new Error('Only walk-by photographs can be re-judged');
+  }
+
+  const classification = patch.classification ?? (row.classification as EvidenceClassification);
+  if (
+    row.isSummaryFlagged === 1 &&
+    classification !== row.classification &&
+    classification !== 'NEUTRAL' &&
+    (await summaryFlagTaken(database, row.auditZoneId, classification, evidenceId))
+  ) {
+    return { ok: false, reason: 'TAKEN' };
+  }
+
+  await database
+    .update(localEvidence)
+    .set({
+      ...(patch.classification !== undefined ? { classification } : {}),
+      ...(patch.remark !== undefined ? { remark: patch.remark } : {}),
+      ...(classification === 'NEUTRAL' ? { isSummaryFlagged: 0 } : {}),
+      clientUpdatedAt: now,
+    })
+    .where(eq(localEvidence.id, evidenceId));
+
+  await queueEvidencePatch(database, evidenceId, now);
   return { ok: true };
 }
 
@@ -446,26 +474,39 @@ export async function pendingPhotoCount(database: LocalDatabase): Promise<number
   return rows.length;
 }
 
-/** The intent payload, rebuilt from the row so a re-enqueue carries the current values. */
-async function intentPayload(
+/** Coalesced patch payload: later edits keep earlier offline changes instead of replacing them. */
+async function queueEvidencePatch(
   database: LocalDatabase,
   evidenceId: string,
-): Promise<Record<string, unknown>> {
+  now: string,
+): Promise<void> {
   const [row] = await getLocalEvidence(database, evidenceId);
-  if (!row) return {};
+  if (!row) return;
 
-  return {
-    id: row.id,
-    kind: row.kind,
-    auditId: row.auditId,
-    ...(row.auditZoneId ? { auditZoneId: row.auditZoneId } : {}),
-    ...(row.questionResponseId ? { questionResponseId: row.questionResponseId } : {}),
-    contentType: row.contentType,
-    byteSize: row.byteSize,
-    checksumSha256: row.checksumSha256,
-    capturedAt: row.capturedAt,
-    isLiveCapture: row.isLiveCapture === 1,
+  await enqueue(database, 'evidence', evidenceId, 'patch', {
+    remark: row.remark,
+    isSummaryFlagged: row.isSummaryFlagged === 1,
     ...(row.kind === 'WALK_BY_PHOTO' ? { classification: row.classification } : {}),
-    ...(row.remark ? { remark: row.remark } : {}),
-  };
+  }, now);
+}
+
+async function summaryFlagTaken(
+  database: LocalDatabase,
+  auditZoneId: string | null,
+  classification: EvidenceClassification,
+  evidenceId: string,
+): Promise<boolean> {
+  if (!auditZoneId) return false;
+  const rows = await database
+    .select({ id: localEvidence.id })
+    .from(localEvidence)
+    .where(
+      and(
+        eq(localEvidence.auditZoneId, auditZoneId),
+        eq(localEvidence.classification, classification),
+        eq(localEvidence.isSummaryFlagged, 1),
+        isNull(localEvidence.deletedAt),
+      ),
+    );
+  return rows.some((row) => row.id !== evidenceId);
 }

@@ -19,6 +19,7 @@ import {
   reclassifyLocalEvidence,
   responseIdFor,
   setLocalSummaryFlag,
+  updateLocalWalkByEvidence,
   zoneHasLocalEvidence,
 } from './evidence.repository';
 import { replaceCatalogue } from './catalogue.repository';
@@ -370,6 +371,46 @@ describe('§5.6 — one flagged photo of each classification per Zone', () => {
 
     expect(await setLocalSummaryFlag(database, good, true)).toEqual({ ok: true });
     expect(await setLocalSummaryFlag(database, bad, true)).toEqual({ ok: true });
+
+    const patches = (await listOutbox(database)).filter(
+      (item) => item.entityType === 'evidence' && item.operation === 'patch',
+    );
+    expect(patches).toHaveLength(2);
+    expect(patches.every((item) => item.queue === 'data')).toBe(true);
+    expect(patches.map((item) => JSON.parse(item.payload).isSummaryFlagged)).toEqual([
+      true,
+      true,
+    ]);
+  });
+
+  it('coalesces a walk-by re-judgement, remark and flag into one data patch', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    const evidenceId = await captureLocalEvidence(database, {
+      auditId,
+      auditZoneId,
+      kind: 'WALK_BY_PHOTO',
+      classification: 'GOOD',
+      ...PHOTO,
+    });
+
+    expect(await setLocalSummaryFlag(database, evidenceId, true)).toEqual({ ok: true });
+    expect(
+      await updateLocalWalkByEvidence(database, evidenceId, {
+        classification: 'NONCONFORMITY',
+        remark: 'Guard missing from the drive',
+      }),
+    ).toEqual({ ok: true });
+
+    const patches = (await listOutbox(database)).filter(
+      (item) => item.entityType === 'evidence' && item.operation === 'patch',
+    );
+    expect(patches).toHaveLength(1);
+    expect(patches[0]!.queue).toBe('data');
+    expect(JSON.parse(patches[0]!.payload)).toEqual({
+      classification: 'NONCONFORMITY',
+      isSummaryFlagged: true,
+      remark: 'Guard missing from the drive',
+    });
   });
 
   it('refuses to flag a NEUTRAL photograph', async () => {

@@ -100,6 +100,8 @@ export interface AddZoneInput {
   zoneId: string;
   sequenceNo: number;
   checklistVersionId: string | null;
+  zoneDescription?: string | null;
+  zoneLeaderUserId?: string;
   id?: string;
   now?: string;
 }
@@ -129,6 +131,30 @@ export async function addLocalZone(
     throw new Error(`Zone ${input.zoneId} is not in this device's catalogue`);
   }
 
+  const selectedLeader = input.zoneLeaderUserId
+    ? (
+        await database
+          .select({ id: zones.zoneLeaderId, name: zones.zoneLeaderName })
+          .from(zones)
+          .where(
+            and(
+              eq(zones.unitId, zone.unitId),
+              eq(zones.zoneLeaderId, input.zoneLeaderUserId),
+            ),
+          )
+          .limit(1)
+      )[0]
+    : null;
+
+  if (input.zoneLeaderUserId && !selectedLeader) {
+    throw new Error(`Zone leader ${input.zoneLeaderUserId} is not in this device's catalogue`);
+  }
+
+  const zoneDescription =
+    input.zoneDescription === undefined ? zone.description : input.zoneDescription;
+  const zoneLeaderUserId = input.zoneLeaderUserId ?? zone.zoneLeaderId;
+  const zoneLeaderName = selectedLeader?.name ?? zone.zoneLeaderName;
+
   await database.insert(localAuditZones).values({
     id,
     auditId: input.auditId,
@@ -137,9 +163,9 @@ export async function addLocalZone(
     status: 'DRAFT',
     zoneCodeSnapshot: zone.code,
     zoneNameSnapshot: zone.name,
-    zoneDescriptionSnapshot: zone.description,
-    zoneLeaderUserIdSnapshot: zone.zoneLeaderId,
-    zoneLeaderNameSnapshot: zone.zoneLeaderName,
+    zoneDescriptionSnapshot: zoneDescription,
+    zoneLeaderUserIdSnapshot: zoneLeaderUserId,
+    zoneLeaderNameSnapshot: zoneLeaderName,
     checklistVersionId: input.checklistVersionId,
     clientUpdatedAt: now,
   });
@@ -154,6 +180,8 @@ export async function addLocalZone(
     zoneId: input.zoneId,
     sequenceNo: input.sequenceNo,
     checklistVersionId: input.checklistVersionId ?? undefined,
+    ...(input.zoneDescription !== undefined ? { zoneDescription: input.zoneDescription } : {}),
+    ...(input.zoneLeaderUserId ? { zoneLeaderUserId: input.zoneLeaderUserId } : {}),
   });
 
   return id;
@@ -337,6 +365,10 @@ export async function saveZoneRemark(
       zoneId: zone.zoneId,
       sequenceNo: zone.sequenceNo,
       checklistVersionId: zone.checklistVersionId ?? undefined,
+      zoneDescription: zone.zoneDescriptionSnapshot,
+      ...(zone.zoneLeaderUserIdSnapshot
+        ? { zoneLeaderUserId: zone.zoneLeaderUserIdSnapshot }
+        : {}),
       zoneRemark: remark,
     });
   }

@@ -18,6 +18,7 @@ import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { useSession } from '../../lib/session';
 import { theme } from '../../lib/theme';
+import type { AuditType } from '@audit5s/contracts';
 
 /**
  * A Unit's active Zones, read from SQLite, and the way into an audit.
@@ -51,29 +52,26 @@ export default function UnitZonesScreen() {
 
   const title = unit.data?.[0]?.name ?? 'Zones';
 
-  // A Zone Leader runs cross audits (N4, D9); a Consultant runs external ones against an
-  // assignment. The device picks the type from the role rather than asking, because those
-  // are the only two an auditor on this screen could be starting.
-  const auditType = scope?.role === 'ZONE_LEADER' ? 'CROSS_5S' : 'EXTERNAL_5S';
-
   // §7.1's selfie gate, on the device. The audit row is created first — `evidence.audit_id`
   // is a foreign key on the server and the device mirrors its shape — then the camera
   // opens, and the audit is only usable once the selfie is in SQLite.
   const [capturing, setCapturing] = useState(false);
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null);
+  const [pendingAuditType, setPendingAuditType] = useState<AuditType | null>(null);
 
   const startAudit = useMutation({
-    mutationFn: () =>
+    mutationFn: (auditType: AuditType) =>
       createLocalAudit(database, {
         unitId,
         auditType,
         // The first published version on the device. Phase 4 lets the auditor pick the
         // department when a Unit uses more than one.
-        checklistVersionId: versions.data?.[0]?.id ?? null,
+        checklistVersionId: auditType === 'WALK_BY' ? null : (versions.data?.[0]?.id ?? null),
       }),
-    onSuccess: async (auditId) => {
+    onSuccess: async (auditId, auditType) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       setPendingAuditId(auditId);
+      setPendingAuditType(auditType);
       setCapturing(true);
     },
   });
@@ -113,6 +111,7 @@ export default function UnitZonesScreen() {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       setCapturing(false);
       setPendingAuditId(null);
+      setPendingAuditType(null);
       router.push({ pathname: '/audit/zones/[auditId]', params: { auditId } });
     },
   });
@@ -121,7 +120,7 @@ export default function UnitZonesScreen() {
     return (
       <CameraCapture
         facing="front"
-        prompt="Take your photograph to begin the audit"
+        prompt={`Take your photograph to begin the ${pendingAuditType === 'WALK_BY' ? 'walk-by' : 'audit'}`}
         onCaptured={async (image) => {
           await saveSelfie.mutateAsync(image);
         }}
@@ -130,6 +129,7 @@ export default function UnitZonesScreen() {
           // §7.1 describes, and the auditor can come back to it from History.
           setCapturing(false);
           setPendingAuditId(null);
+          setPendingAuditType(null);
         }}
       />
     );
@@ -152,10 +152,20 @@ export default function UnitZonesScreen() {
           (zones.data ?? []).length > 0 ? (
             <View style={styles.start}>
               <Button
-                title="Start an audit here"
+                title={scope?.role === 'ZONE_LEADER' ? 'Start cross audit' : 'Start 5S audit'}
                 busy={startAudit.isPending}
-                onPress={() => startAudit.mutate()}
+                onPress={() =>
+                  startAudit.mutate(scope?.role === 'ZONE_LEADER' ? 'CROSS_5S' : 'EXTERNAL_5S')
+                }
               />
+              {scope?.role === 'CONSULTANT' ? (
+                <Button
+                  title="Start walk-by"
+                  variant="secondary"
+                  busy={startAudit.isPending}
+                  onPress={() => startAudit.mutate('WALK_BY')}
+                />
+              ) : null}
               <Muted>
                 You will be asked for a photograph of yourself first. Works with the radio
                 off — everything is saved on this device.

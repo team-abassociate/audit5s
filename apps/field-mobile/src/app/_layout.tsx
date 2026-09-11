@@ -43,7 +43,11 @@ function AuthGate() {
     // signed-in app, so a redirect back to the tab root would make every drill-down
     // bounce straight home.
     const insideApp =
-      group === '(tabs)' || group === 'unit' || group === 'checklist' || group === 'audit';
+      group === '(tabs)' ||
+      group === 'unit' ||
+      group === 'checklist' ||
+      group === 'audit' ||
+      group === 'walk-by';
 
     if (status === 'signed-out' && group !== 'login') {
       router.replace('/login');

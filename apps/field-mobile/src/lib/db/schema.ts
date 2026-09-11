@@ -189,6 +189,7 @@ export const outbox = sqliteTable('outbox', {
  */
 export const OUTBOX_OPERATIONS = [
   'upsert',
+  'patch',
   'complete',
   'pause',
   'resume',

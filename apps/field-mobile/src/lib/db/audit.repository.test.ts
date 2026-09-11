@@ -177,6 +177,44 @@ describe('starting an audit', () => {
     });
   });
 
+  it('carries walk-by description and leader choices in the first queued write', async () => {
+    const auditId = await createLocalAudit(database, {
+      unitId: UNIT,
+      auditType: 'WALK_BY',
+      checklistVersionId: null,
+    });
+    const auditZoneId = await addLocalZone(database, {
+      auditId,
+      zoneId: ZONE_A,
+      sequenceNo: 1,
+      checklistVersionId: null,
+      zoneDescription: 'North bay during the night shift',
+      zoneLeaderUserId: 'eeeeeeee-0000-4000-8000-000000000001',
+    });
+
+    expect((await getLocalAuditZone(database, auditZoneId))[0]).toMatchObject({
+      zoneDescriptionSnapshot: 'North bay during the night shift',
+      zoneLeaderNameSnapshot: 'Leader One',
+    });
+    const queued = (await listOutbox(database)).find(
+      (item) => item.entityType === 'audit_zone' && item.entityId === auditZoneId,
+    );
+    expect(JSON.parse(queued!.payload)).toMatchObject({
+      zoneDescription: 'North bay during the night shift',
+      zoneLeaderUserId: 'eeeeeeee-0000-4000-8000-000000000001',
+    });
+
+    await saveZoneRemark(database, auditZoneId, 'Observed after cleanup');
+    const coalesced = (await listOutbox(database)).find(
+      (item) => item.entityType === 'audit_zone' && item.entityId === auditZoneId,
+    );
+    expect(JSON.parse(coalesced!.payload)).toMatchObject({
+      zoneDescription: 'North bay during the night shift',
+      zoneLeaderUserId: 'eeeeeeee-0000-4000-8000-000000000001',
+      zoneRemark: 'Observed after cleanup',
+    });
+  });
+
   it('refuses a Zone that is not in this device’s catalogue', async () => {
     const auditId = await createLocalAudit(database, {
       unitId: UNIT,
