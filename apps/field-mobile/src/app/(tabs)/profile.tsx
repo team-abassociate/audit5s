@@ -1,10 +1,12 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Heading, Muted, Screen } from '../../components/ui';
 import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { useSession } from '../../lib/session';
+import { useSync } from '../../lib/sync/provider';
+import { checkLogoutGate } from '../../lib/sync/status';
 import { theme } from '../../lib/theme';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -18,6 +20,56 @@ export default function ProfileScreen() {
   const { user, scope, signOut } = useSession();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
+  // Named `pushWork` rather than `sync`: this screen already has a `sync` mutation for the
+  // *catalogue* pull, and the two are opposite directions.
+  const { sync: pushWork } = useSync();
+
+  /**
+   * §9.7's logout gate.
+   *
+   * > 0 unsynced → clear tokens, wipe local audit data, log out.
+   * > \>0 → BLOCK with "You have 14 unsynced items (3 photos)…" — Sync now / Keep & log out.
+   *
+   * "Keep & log out" is offered and it **keeps** the data: §9.7 is explicit that a
+   * force-logout never wipes unsynced work, and the retained database stays tagged to this
+   * user so a different one neither reads it nor clears it. There is no branch here that
+   * deletes anything.
+   */
+  const attemptSignOut = async () => {
+    const gate = await checkLogoutGate(database);
+    if (!gate.blocked) {
+      await signOut();
+      return;
+    }
+
+    Alert.alert('You have work that has not synced', gate.message ?? '', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sync now',
+        onPress: () => {
+          void (async () => {
+            const result = await pushWork();
+            const after = await checkLogoutGate(database);
+            if (!after.blocked) {
+              await signOut();
+            } else {
+              Alert.alert(
+                'Still not synced',
+                result.error
+                  ? `${result.error}. Your work is safe on this device.`
+                  : 'Some items are still waiting. Your work is safe on this device.',
+              );
+            }
+          })();
+        },
+      },
+      {
+        text: 'Keep & log out',
+        // The database is retained, tagged to this user. Nothing is deleted.
+        onPress: () => void signOut(),
+      },
+    ]);
+  };
 
   const lastSync = useQuery({
     queryKey: ['local', 'last-catalogue-sync'],
@@ -93,7 +145,11 @@ export default function ProfileScreen() {
           </Muted>
         </Card>
 
-        <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
+        <Button
+          title="Sign out"
+          variant="secondary"
+          onPress={() => void attemptSignOut()}
+        />
       </ScrollView>
     </Screen>
   );

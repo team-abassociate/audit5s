@@ -6,6 +6,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LocalDatabaseProvider } from '../lib/db/provider';
 import { SessionProvider, useSession } from '../lib/session';
+import { SyncProvider } from '../lib/sync/provider';
+import { SyncStatusBar } from '../components/sync-status-bar';
 import { theme } from '../lib/theme';
 
 const queryClient = new QueryClient({
@@ -60,7 +62,17 @@ function AuthGate() {
     );
   }
 
-  return <Slot />;
+  // §9.9: the status affordance is on **every** field screen, not on a sync page nobody
+  // visits. The login and forced-reset screens are the exception — there is no device
+  // store to report on until somebody is signed in.
+  const signedIn = status === 'ready';
+
+  return (
+    <>
+      {signedIn && <SyncStatusBar />}
+      <Slot />
+    </>
+  );
 }
 
 export default function RootLayout() {
@@ -69,8 +81,10 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <LocalDatabaseProvider>
           <SessionProvider>
-            <StatusBar style="light" />
-            <AuthGate />
+            <SyncProvider>
+              <StatusBar style="light" />
+              <AuthGate />
+            </SyncProvider>
           </SessionProvider>
         </LocalDatabaseProvider>
       </QueryClientProvider>

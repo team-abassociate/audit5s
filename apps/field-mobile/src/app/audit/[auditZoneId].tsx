@@ -5,6 +5,15 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { ResponseValue, SSection } from '@audit5s/contracts';
 import { S_SECTION_LABELS, TOTAL_QUESTIONS, bandFor } from '@audit5s/domain';
 import { Button, Card, Muted, Screen } from '../../components/ui';
+import { CameraCapture } from '../../components/camera-capture';
+import {
+  captureLocalEvidence,
+  listLocalEvidenceForZone,
+  reclassifyLocalEvidence,
+  responseIdFor,
+} from '../../lib/db/evidence.repository';
+import { readLocation } from '../../lib/capture/location';
+import type { ProcessedImage } from '../../lib/capture/media';
 import { ResponseChips } from '../../components/response-chips';
 import {
   completeLocalZone,
@@ -40,6 +49,7 @@ export default function QuestionnaireScreen() {
   const [remarkDraft, setRemarkDraft] = useState('');
   const [zoneRemarkDraft, setZoneRemarkDraft] = useState('');
   const [showingSummary, setShowingSummary] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const zone = useQuery({
     queryKey: ['local', 'audit-zone', auditZoneId],
@@ -71,6 +81,11 @@ export default function QuestionnaireScreen() {
   const rows = questions.data ?? [];
   const current = rows[index];
 
+  const photos = useQuery({
+    queryKey: ['local', 'zone-evidence', auditZoneId],
+    queryFn: () => listLocalEvidenceForZone(database, auditZoneId),
+  });
+
   useEffect(() => {
     setRemarkDraft(current?.remark ?? '');
   }, [current?.questionId, current?.remark]);
@@ -88,7 +103,7 @@ export default function QuestionnaireScreen() {
     mutationFn: async (input: { value: ResponseValue; remark: string | null }) => {
       if (!current) return;
       // SQLite commits before this resolves; the UI is free the moment it does.
-      await saveLocalResponse(database, {
+      const responseId = await saveLocalResponse(database, {
         auditZoneId,
         auditId: zone.data!.auditId,
         checklistQuestionId: current.questionId,
@@ -97,6 +112,13 @@ export default function QuestionnaireScreen() {
         value: input.value,
         remark: input.remark,
       });
+
+      // E-2, on the device: a photograph already attached to this question is re-filed to
+      // match the answer as it now stands. The server does this authoritatively inside its
+      // own transaction; doing it here means the badge under the question is right
+      // *before* the sync, and an auditor who marks a question down never sees a green
+      // tick that contradicts them.
+      await reclassifyLocalEvidence(database, responseId, input.value);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
@@ -111,6 +133,47 @@ export default function QuestionnaireScreen() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       router.back();
+    },
+  });
+
+  /**
+   * A photograph for the question on screen (§9.4).
+   *
+   * The classification is derived from the answer as it stands — `classifyEvidence` again,
+   * the same function the server runs — so the tick or the warning appears the instant the
+   * shutter closes, offline, and matches what the report will print.
+   */
+  const capture = useMutation({
+    mutationFn: async (image: ProcessedImage) => {
+      const responseId = await responseIdFor(database, auditZoneId, current!.questionId);
+      const location = await readLocation();
+
+      await captureLocalEvidence(database, {
+        auditId: zone.data!.auditId,
+        auditZoneId,
+        kind: 'QUESTION_EVIDENCE',
+        ...(responseId ? { questionResponseId: responseId } : {}),
+        scoreAtCapture: (current!.value as ResponseValue | null) ?? null,
+        localFileUri: image.uri,
+        byteSize: image.byteSize,
+        width: image.width,
+        height: image.height,
+        checksumSha256: image.checksumSha256,
+        ...(location
+          ? {
+              location: {
+                latitude: location.latitude,
+                longitude: location.longitude,
+                accuracyM: location.accuracyM ?? null,
+                provider: location.provider,
+              },
+            }
+          : {}),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['local'] });
+      setCameraOpen(false);
     },
   });
 
@@ -186,6 +249,22 @@ export default function QuestionnaireScreen() {
     );
   }
 
+  if (cameraOpen) {
+    return (
+      <CameraCapture
+        prompt={`Photograph for question ${current.globalOrder}`}
+        onCaptured={async (image) => {
+          await capture.mutateAsync(image);
+        }}
+        onCancel={() => setCameraOpen(false)}
+      />
+    );
+  }
+
+  const photosHere = (photos.data ?? []).filter(
+    (photo) => photo.questionResponseId !== null && photo.scoreAtCapture !== undefined,
+  );
+
   return (
     <Screen>
       <Stack.Screen options={{ title }} />
@@ -216,6 +295,20 @@ export default function QuestionnaireScreen() {
             if (index < rows.length - 1) setIndex(index + 1);
           }}
         />
+
+        <Card>
+          <Text style={styles.label}>Evidence</Text>
+          <Muted>
+            {photosHere.length === 0
+              ? 'No photographs for this Zone yet.'
+              : `${photosHere.length} photograph${photosHere.length === 1 ? '' : 's'} in this Zone.`}
+          </Muted>
+          <Button
+            title="Take a photograph"
+            variant="secondary"
+            onPress={() => setCameraOpen(true)}
+          />
+        </Card>
 
         <Card>
           <Text style={styles.label}>Remark (optional)</Text>

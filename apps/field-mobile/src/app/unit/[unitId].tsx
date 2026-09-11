@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,6 +11,11 @@ import {
   listLocalZones,
 } from '../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
+import { CameraCapture } from '../../components/camera-capture';
+import { captureLocalEvidence } from '../../lib/db/evidence.repository';
+import { recordAuditStartLocation } from '../../lib/db/audit.repository';
+import { readLocation } from '../../lib/capture/location';
+import type { ProcessedImage } from '../../lib/capture/media';
 import { useSession } from '../../lib/session';
 import { theme } from '../../lib/theme';
 
@@ -50,6 +56,12 @@ export default function UnitZonesScreen() {
   // are the only two an auditor on this screen could be starting.
   const auditType = scope?.role === 'ZONE_LEADER' ? 'CROSS_5S' : 'EXTERNAL_5S';
 
+  // §7.1's selfie gate, on the device. The audit row is created first — `evidence.audit_id`
+  // is a foreign key on the server and the device mirrors its shape — then the camera
+  // opens, and the audit is only usable once the selfie is in SQLite.
+  const [capturing, setCapturing] = useState(false);
+  const [pendingAuditId, setPendingAuditId] = useState<string | null>(null);
+
   const startAudit = useMutation({
     mutationFn: () =>
       createLocalAudit(database, {
@@ -61,9 +73,67 @@ export default function UnitZonesScreen() {
       }),
     onSuccess: async (auditId) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
+      setPendingAuditId(auditId);
+      setCapturing(true);
+    },
+  });
+
+  const saveSelfie = useMutation({
+    mutationFn: async (image: ProcessedImage) => {
+      const auditId = pendingAuditId!;
+      // The location reading rides with the selfie. It never blocks: `readLocation`
+      // returns null on a denied permission or a timeout, and §12.9 requires that an
+      // absent fix be recorded and flagged rather than treated as a failure.
+      const location = await readLocation();
+
+      await captureLocalEvidence(database, {
+        auditId,
+        kind: 'AUDITOR_SELFIE',
+        localFileUri: image.uri,
+        byteSize: image.byteSize,
+        width: image.width,
+        height: image.height,
+        checksumSha256: image.checksumSha256,
+        ...(location
+          ? {
+              location: {
+                latitude: location.latitude,
+                longitude: location.longitude,
+                accuracyM: location.accuracyM ?? null,
+                provider: location.provider,
+              },
+            }
+          : {}),
+      });
+
+      await recordAuditStartLocation(database, auditId, location);
+      return auditId;
+    },
+    onSuccess: async (auditId) => {
+      await queryClient.invalidateQueries({ queryKey: ['local'] });
+      setCapturing(false);
+      setPendingAuditId(null);
       router.push({ pathname: '/audit/zones/[auditId]', params: { auditId } });
     },
   });
+
+  if (capturing && pendingAuditId) {
+    return (
+      <CameraCapture
+        facing="front"
+        prompt="Take your photograph to begin the audit"
+        onCaptured={async (image) => {
+          await saveSelfie.mutateAsync(image);
+        }}
+        onCancel={() => {
+          // The audit row stays: it is at ASSIGNED with no selfie, which is exactly what
+          // §7.1 describes, and the auditor can come back to it from History.
+          setCapturing(false);
+          setPendingAuditId(null);
+        }}
+      />
+    );
+  }
 
   return (
     <Screen>
@@ -86,7 +156,10 @@ export default function UnitZonesScreen() {
                 busy={startAudit.isPending}
                 onPress={() => startAudit.mutate()}
               />
-              <Muted>Works with the radio off. Everything is saved on this device.</Muted>
+              <Muted>
+                You will be asked for a photograph of yourself first. Works with the radio
+                off — everything is saved on this device.
+              </Muted>
             </View>
           ) : null
         }

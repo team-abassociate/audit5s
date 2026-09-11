@@ -16,7 +16,8 @@ import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
  * those rows carries a `sync_state`, and the outbox row is written in the *same*
  * transaction as the data it describes.
  *
- * `evidence` and its media queue arrive with the camera work in Phase 4.
+ * Phase 4 adds `evidence`, which belongs to the second half: a photograph exists on the
+ * device before it is the server's business, exactly like an answer.
  */
 
 export const units = sqliteTable('unit', {
@@ -75,6 +76,8 @@ export const SYNC_META_KEYS = {
   catalogueVersion: 'catalogue_version',
   lastCatalogueSyncAt: 'last_catalogue_sync_at',
   serverTimeOffsetMs: 'server_time_offset_ms',
+  /** §9.9's "last successful sync", shown relative and absolute on tap. */
+  lastSuccessfulPushAt: 'last_successful_push_at',
 } as const;
 
 // ---------------------------------------------------------------- locally authored
@@ -171,8 +174,70 @@ export const outbox = sqliteTable('outbox', {
   lastError: text('last_error'),
   state: text('state').notNull().default('PENDING'),
   createdAt: text('created_at').notNull(),
+  /** When the current attempt began — §9.6's ten-minute stale-SYNCING reset reads this. */
+  startedAt: text('started_at'),
+  /** The batch that carried it, so a verdict can be matched back to the row. */
+  batchId: text('batch_id'),
 });
 
-/** The operations the outbox carries. `delete` and `submit` join them in later phases. */
-export const OUTBOX_OPERATIONS = ['upsert', 'complete', 'pause', 'resume'] as const;
+/**
+ * The operations the outbox carries.
+ *
+ * `delete` and `commit` join in Phase 4 with evidence: a photo removed before completion
+ * is a soft delete the server has to hear about, and `commit` is the second half of §9.4's
+ * two-phase media flow. `submit` joins with corrective actions in Phase 6.
+ */
+export const OUTBOX_OPERATIONS = [
+  'upsert',
+  'complete',
+  'pause',
+  'resume',
+  'delete',
+  'commit',
+] as const;
 export type OutboxOperation = (typeof OUTBOX_OPERATIONS)[number];
+
+/** `data` carries small ordered JSON; `media` carries large binary, in parallel (§9.3). */
+export const OUTBOX_QUEUES = ['data', 'media'] as const;
+export type OutboxQueue = (typeof OUTBOX_QUEUES)[number];
+
+/**
+ * The device's evidence rows (§9.1).
+ *
+ * `syncState` moves `LOCAL_ONLY → PENDING → SYNCING → SYNCED` exactly as §7.4 draws it,
+ * and `DEAD_LETTER` is the device-local sixth state the outbox tracks — so the UI can
+ * distinguish "retrying" from "needs your attention", which the server enum cannot.
+ */
+export const localEvidence = sqliteTable('evidence', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(),
+  auditId: text('audit_id').notNull(),
+  auditZoneId: text('audit_zone_id'),
+  questionResponseId: text('question_response_id'),
+  /** The file on this device. Retained 7 days after sync for offline report preview. */
+  localFileUri: text('local_file_uri'),
+  /** Minted by `upload-intent`; null until the device has been online once. */
+  objectKey: text('object_key'),
+  contentType: text('content_type').notNull().default('image/jpeg'),
+  byteSize: integer('byte_size').notNull().default(0),
+  width: integer('width'),
+  height: integer('height'),
+  checksumSha256: text('checksum_sha256').notNull(),
+  scoreAtCapture: text('score_at_capture'),
+  /** The device's own E-1 result, so the badge is right offline. The server re-derives it. */
+  classification: text('classification').notNull().default('NEUTRAL'),
+  remark: text('remark'),
+  isSummaryFlagged: integer('is_summary_flagged').notNull().default(0),
+  /** Set by the capture component only (§12.10). There is no gallery path in these flows. */
+  isLiveCapture: integer('is_live_capture').notNull().default(1),
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+  accuracyM: real('accuracy_m'),
+  locationProvider: text('location_provider'),
+  capturedAt: text('captured_at').notNull(),
+  uploadedAt: text('uploaded_at'),
+  deletedAt: text('deleted_at'),
+  clientUpdatedAt: text('client_updated_at').notNull(),
+  syncState: text('sync_state').notNull().default('LOCAL_ONLY'),
+  uploadAttempts: integer('upload_attempts').notNull().default(0),
+});
