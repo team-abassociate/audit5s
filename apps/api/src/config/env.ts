@@ -52,6 +52,24 @@ const envSchema = z.object({
   R2_BUCKET_REPORTS: z.string().default('audit5s-reports'),
   R2_BUCKET_IMPORTS: z.string().default('audit5s-imports'),
   OBJECT_STORAGE_LOCAL_DIR: z.string().default('.data/object-storage'),
+  /**
+   * Where the filesystem driver's presigned URLs point (R-9). Absolute, because a device
+   * and a browser both have to resolve it without knowing how the API is mounted.
+   */
+  OBJECT_STORAGE_PUBLIC_URL: z.string().default('http://127.0.0.1:3000/api/v1'),
+  /**
+   * Signs those URLs. Unset means a fresh key per process, so a restart invalidates
+   * outstanding links — the right default for a driver that is not a production path.
+   */
+  OBJECT_STORAGE_SIGNING_SECRET: z.string().min(16).optional(),
+  /** §12.6: presigned GET ≤ 300 s, presigned PUT ≤ 900 s. Both capped in the port. */
+  EVIDENCE_GET_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(300).default(300),
+  EVIDENCE_PUT_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(900),
+  /**
+   * §9.5's Layer 1 grace: a PAUSED audit keeps its device lock this long, then the sweep
+   * releases it so a lost phone does not strand the work on it.
+   */
+  DEVICE_RELEASE_GRACE_HOURS: z.coerce.number().int().min(1).max(168).default(24),
 
   /** §12.8: a hard cap on the workbook an import will even attempt to read. */
   CHECKLIST_IMPORT_MAX_BYTES: z.coerce

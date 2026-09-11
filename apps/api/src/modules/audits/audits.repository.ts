@@ -124,6 +124,12 @@ export interface CreateAuditInput {
     provider: LocationProvider;
     isMocked: boolean;
   } | null;
+  /**
+   * §12.9's server-side assessment: the distance from the Unit's own coordinates, and
+   * whether the reading is flagged. Computed by `packages/domain`, never by the client —
+   * "never trusting a client-computed distance" is the section's own wording.
+   */
+  locationAssessment: { distanceM: number | null; suspicious: boolean };
 }
 
 /** The D6 snapshot, read from the live Zone at creation and never again. */
@@ -167,6 +173,8 @@ export class AuditsRepository extends BaseRepository {
         owningDeviceId: input.owningDeviceId,
         clientCreatedAt: input.clientCreatedAt,
         clientUpdatedAt: input.clientCreatedAt,
+        startDistanceFromUnitM: input.locationAssessment.distanceM?.toFixed(2) ?? null,
+        locationSuspicious: input.locationAssessment.suspicious,
         ...(input.location
           ? {
               startLatitude: input.location.latitude.toFixed(6),
@@ -284,6 +292,13 @@ export class AuditsRepository extends BaseRepository {
       resumeAuditZoneId: string | null;
       owningDeviceId: string | null;
       selfieEvidenceId: string | null;
+      startLatitude: string | null;
+      startLongitude: string | null;
+      startAccuracyM: string | null;
+      startLocationProvider: LocationProvider | null;
+      startLocationIsMocked: boolean | null;
+      startDistanceFromUnitM: string | null;
+      locationSuspicious: boolean;
       clientUpdatedAt: Date;
     }>,
   ): Promise<string | null> {
@@ -844,6 +859,30 @@ export class AuditsRepository extends BaseRepository {
         .innerJoin(audits, eq(audits.id, auditZones.auditId))
         .where(and(eq(auditZones.auditId, auditId), this.scoped(scope, auditScopeColumns)))
         .orderBy(desc(auditZoneSectionScores.auditZoneId));
+    });
+  }
+
+  /**
+   * The Unit's geofence anchor (§12.9).
+   *
+   * Read under the actor's `unit:read` grant rather than the one that admitted the audit
+   * write, for the same reason `readZoneSnapshot` does: reusing `own_audits` here would
+   * ask `unit` for an `ownerUserId` column it does not have.
+   */
+  async readUnitGeofence(scope: ScopeContext, unitId: string) {
+    const unitScope = scopeFor(scope, 'unit:read');
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .select({
+          latitude: units.latitude,
+          longitude: units.longitude,
+          geofenceRadiusM: units.geofenceRadiusM,
+        })
+        .from(units)
+        .where(and(eq(units.id, unitId), this.scoped(unitScope, { unitId: units.id })))
+        .limit(1);
+      return row ?? null;
     });
   }
 

@@ -1,12 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import multipart from '@fastify/multipart';
-import { API_BASE_PATH, type Role } from '@audit5s/contracts';
+import { API_BASE_PATH, HEADER_DEVICE_ID, type Role } from '@audit5s/contracts';
 import { Client } from 'pg';
 import { AppModule } from '../src/app.module';
+import { FASTIFY_ADAPTER_OPTIONS, registerHttpPlugins } from '../src/bootstrap';
 import { RequestContextMiddleware } from '../src/common/observability/request-context.middleware';
 import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 import { seedPermissionMatrix } from '../src/seed';
@@ -40,6 +40,8 @@ export interface TestWorld {
   actors: Record<Role, TestActor>;
   /** A user in Unit B, for out-of-scope reads. */
   outOfScopeUserId: string;
+  /** The same user, whole, so a suite can act *as* them rather than only name them. */
+  outOfScopeActor: TestActor;
   /** A user in Unit A, safe to read in scope. */
   inScopeUserId: string;
   request: (
@@ -75,13 +77,16 @@ export async function startWorld(): Promise<TestWorld> {
   await seedPermissionMatrix(createDatabase(ownerPool));
   await ownerPool.end();
 
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter(FASTIFY_ADAPTER_OPTIONS),
+    {
     logger: process.env.TEST_LOG === '1' ? undefined : false,
   });
   app.setGlobalPrefix(API_BASE_PATH);
-  // Registered here as well as in main.ts, because the suites build the application
-  // themselves: without it the checklist upload route would 415 in tests only.
-  await app.register(multipart, { limits: { files: 1, fileSize: 10 * 1024 * 1024, fields: 8 } });
+  // The same list `main.ts` applies, from the same function: the suites build the
+  // application themselves, and two copies of this list drift the moment either changes.
+  await registerHttpPlugins(app, { CHECKLIST_IMPORT_MAX_BYTES: 10 * 1024 * 1024 });
   // Nest's `configure()` middleware is registered by the platform on init; applying it
   // explicitly here keeps the request context available under `app.inject`.
   void RequestContextMiddleware;
@@ -163,9 +168,15 @@ export async function startWorld(): Promise<TestWorld> {
   };
 
   world.inScopeUserId = world.actors.ZONE_LEADER.userId;
-  world.outOfScopeUserId = (
-    await makeActor(owner, request, 'ZONE_LEADER', 'Otto Outside', '+919000000105', unitB)
-  ).userId;
+  world.outOfScopeActor = await makeActor(
+    owner,
+    request,
+    'ZONE_LEADER',
+    'Otto Outside',
+    '+919000000105',
+    unitB,
+  );
+  world.outOfScopeUserId = world.outOfScopeActor.userId;
 
   return world;
 }
@@ -314,4 +325,97 @@ export async function loginFromDevice(
     throw new Error(`Device login failed for ${actor.role}: ${JSON.stringify(response.body)}`);
   }
   return (response.body as { accessToken: string }).accessToken;
+}
+
+/**
+ * A one-by-one pixel JPEG. Real bytes, with a real JPEG magic number, because `commit`
+ * sniffs them (§12.8) and a buffer of zeros would be refused exactly as a renamed ZIP is.
+ */
+export const TINY_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a' +
+    'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA' +
+    'AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+  'base64',
+);
+
+export function sha256Hex(bytes: Buffer): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+/**
+ * The whole of §9.4's media flow, as the device performs it: intent → PUT → commit.
+ *
+ * It goes through the real endpoints and the real presigned URL rather than inserting a
+ * row, because the point of having it in the harness is that every suite that needs a
+ * photograph exercises the actual three-step protocol. The PUT is injected at the signed
+ * storage route (R-9), which is where the filesystem driver's URL points.
+ */
+export async function captureEvidence(
+  world: TestWorld,
+  options: {
+    token: string;
+    evidenceId: string;
+    auditId: string;
+    kind?: 'AUDITOR_SELFIE' | 'QUESTION_EVIDENCE' | 'WALK_BY_PHOTO';
+    auditZoneId?: string;
+    questionResponseId?: string;
+    classification?: 'GOOD' | 'NONCONFORMITY' | 'NEUTRAL';
+    deviceId?: string;
+    bytes?: Buffer;
+    /** Skips the commit, leaving the row SYNCING — §9.4's `orphan_metadata` case. */
+    skipCommit?: boolean;
+  },
+): Promise<{ evidenceId: string; objectKey: string; uploadUrl: string; checksum: string }> {
+  const bytes = options.bytes ?? TINY_JPEG;
+  const checksum = sha256Hex(bytes);
+  const headers: Record<string, string> = options.deviceId
+    ? { [HEADER_DEVICE_ID]: options.deviceId }
+    : {};
+
+  const intent = await world.request('POST', `${API_BASE_PATH}/evidence/upload-intent`, {
+    token: options.token,
+    headers,
+    body: {
+      id: options.evidenceId,
+      kind: options.kind ?? 'AUDITOR_SELFIE',
+      auditId: options.auditId,
+      ...(options.auditZoneId ? { auditZoneId: options.auditZoneId } : {}),
+      ...(options.questionResponseId ? { questionResponseId: options.questionResponseId } : {}),
+      ...(options.classification ? { classification: options.classification } : {}),
+      contentType: 'image/jpeg',
+      byteSize: bytes.byteLength,
+      checksumSha256: checksum,
+      capturedAt: new Date().toISOString(),
+      isLiveCapture: true,
+    },
+  });
+
+  if (intent.status !== 201) {
+    throw new Error(`upload-intent failed: ${JSON.stringify(intent.body)}`);
+  }
+  const { objectKey, uploadUrl } = intent.body as { objectKey: string; uploadUrl: string };
+
+  // Straight to the presigned URL, carrying no session — exactly as a device would.
+  const put = await world.app.inject({
+    method: 'PUT',
+    url: uploadUrl.replace(/^https?:\/\/[^/]+/, ''),
+    headers: { 'content-type': 'image/jpeg' },
+    payload: bytes,
+  });
+  if (put.statusCode !== 200) {
+    throw new Error(`presigned PUT failed: ${put.statusCode} ${put.body}`);
+  }
+
+  if (!options.skipCommit) {
+    const commit = await world.request(
+      'POST',
+      `${API_BASE_PATH}/evidence/${options.evidenceId}/commit`,
+      { token: options.token, headers, body: { checksumSha256: checksum } },
+    );
+    if (commit.status !== 200) {
+      throw new Error(`commit failed: ${JSON.stringify(commit.body)}`);
+    }
+  }
+
+  return { evidenceId: options.evidenceId, objectKey, uploadUrl, checksum };
 }

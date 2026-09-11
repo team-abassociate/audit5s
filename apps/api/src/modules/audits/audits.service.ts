@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type {
   Audit,
   AuditDetail,
@@ -16,7 +16,13 @@ import type {
   ResumeAuditRequest,
   StartAuditRequest,
 } from '@audit5s/contracts';
-import { assertTransition, type ScopeContext, type TransitionGuard } from '@audit5s/domain';
+import {
+  assertTransition,
+  assessLocation,
+  type LocationAssessment,
+  type ScopeContext,
+  type TransitionGuard,
+} from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { getRequestContext } from '../../common/observability/request-context';
@@ -47,6 +53,8 @@ import { SelfieRequirement } from './selfie-requirement';
  */
 @Injectable()
 export class AuditsService {
+  private readonly logger = new Logger(AuditsService.name);
+
   constructor(
     private readonly repository: AuditsRepository,
     private readonly assignments: AssignmentsRepository,
@@ -87,10 +95,21 @@ export class AuditsService {
       ]);
     }
 
-    // §7.1: the auditor opening an assignment with a selfie and a location captured is
-    // already READY; without the selfie the audit waits at ASSIGNED.
+    // §7.1: an auditor who has already captured their selfie is READY; otherwise the
+    // audit waits at ASSIGNED until one arrives.
+    //
+    // Phase 3 made this conditional on there being an assignment, because `evidence` did
+    // not exist and a self-initiated CROSS_5S or WALK_BY would otherwise have been stuck
+    // at a guard nothing could satisfy. Now that a selfie is a real row, the condition is
+    // the selfie alone — §2.6 and §2.7 both open with one, and an audit created straight
+    // into READY would be an audit that never passes the guard at all.
     const selfieHeld = await this.selfies.isSatisfied(scope, request.selfieEvidenceId ?? null);
-    const status: 'ASSIGNED' | 'READY' = assignmentId && !selfieHeld ? 'ASSIGNED' : 'READY';
+    const status: 'ASSIGNED' | 'READY' = selfieHeld ? 'READY' : 'ASSIGNED';
+
+    // §12.9: the distance is computed here, from the Unit's stored coordinates, and the
+    // flag with it. Neither blocks anything — `assessLocation` returns no verdict a caller
+    // could act on, deliberately — but both are recorded so a reviewer can see them.
+    const assessment = await this.assessStartLocation(scope, request.unitId, request.location);
 
     await this.repository.create(scope, {
       id: request.id,
@@ -103,6 +122,7 @@ export class AuditsService {
       selfieEvidenceId: request.selfieEvidenceId ?? null,
       owningDeviceId: deviceId,
       clientCreatedAt: request.clientCreatedAt ? new Date(request.clientCreatedAt) : new Date(),
+      locationAssessment: { distanceM: assessment.distanceM, suspicious: assessment.suspicious },
       location: request.location
         ? {
             latitude: request.location.latitude,
@@ -217,7 +237,7 @@ export class AuditsService {
 
     try {
       if (audit.status === 'ASSIGNED') {
-        const selfieHeld = await this.selfies.isSatisfied(scope, audit.selfieEvidenceId);
+        const selfieHeld = await this.selfies.isSatisfied(scope, audit.selfieEvidenceId, auditId);
         assertTransition('audit', 'ASSIGNED', 'READY', {
           role: scope.actor.role,
           satisfied: selfieHeld ? ['selfie_captured'] : [],
@@ -231,13 +251,39 @@ export class AuditsService {
       throw asAppError(error);
     }
 
+    // §8.6 lets `start` carry its own reading — an audit created at the gate and started
+    // on the shop floor is two different places — so it is assessed again here rather than
+    // leaving the creation-time flag standing for a location the auditor has left.
+    const location = request.location
+      ? await this.assessStartLocation(scope, audit.unitId, request.location)
+      : null;
+
     await this.repository.updateAudit(scope, auditId, {
       status: 'IN_PROGRESS',
       startedAt: request.startedAt ? new Date(request.startedAt) : new Date(),
       pausedAt: null,
       pauseReason: null,
+      ...(request.location
+        ? {
+            startLatitude: request.location.latitude.toFixed(6),
+            startLongitude: request.location.longitude.toFixed(6),
+            startAccuracyM: request.location.accuracyM?.toFixed(2) ?? null,
+            startLocationProvider: request.location.provider,
+            startLocationIsMocked: request.location.isMocked,
+            startDistanceFromUnitM: location!.distanceM?.toFixed(2) ?? null,
+            locationSuspicious: location!.suspicious,
+          }
+        : {}),
       clientUpdatedAt: new Date(),
     });
+
+    if (location?.suspicious) {
+      // Logged, surfaced on the audit board, and never acted on automatically. §12.9's
+      // recommendation is explicit: supporting evidence in a review process, not a gate.
+      this.logger.log(
+        `audit ${auditId} started with a flagged location: ${location.reasons.join(', ')}`,
+      );
+    }
 
     if (audit.assignmentId) {
       await this.assignments.setStatus(
@@ -523,6 +569,27 @@ export class AuditsService {
           scorePercentage: section.scorePercentage,
         })),
       })),
+    });
+  }
+
+  /**
+   * §12.9's server-side assessment.
+   *
+   * The Unit is read under `unit:read`, and a Unit the actor cannot read yields no
+   * coordinates — which `assessLocation` reports as `UNIT_NOT_GEOCODED` rather than as a
+   * clean bill. Failing safe here means "we could not check", never "it checked out".
+   */
+  private async assessStartLocation(
+    scope: ScopeContext,
+    unitId: string,
+    reading: CreateAuditRequest['location'],
+  ): Promise<LocationAssessment> {
+    const unit = await this.repository.readUnitGeofence(scope, unitId);
+    return assessLocation(reading ?? null, {
+      latitude: unit?.latitude === undefined || unit?.latitude === null ? null : Number(unit.latitude),
+      longitude:
+        unit?.longitude === undefined || unit?.longitude === null ? null : Number(unit.longitude),
+      geofenceRadiusM: unit?.geofenceRadiusM ?? null,
     });
   }
 

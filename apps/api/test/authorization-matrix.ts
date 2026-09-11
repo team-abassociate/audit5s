@@ -641,6 +641,108 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'audits.e2e.test.ts',
   },
 
+  // ---------------------------------------------------------------- evidence
+  {
+    method: 'POST',
+    path: '/api/v1/evidence/upload-intent',
+    description:
+      'evidence:create — the metadata half of §9.4. Field roles only: a Super Admin has no ' +
+      'grant to create evidence at all, because evidence is captured, not administered',
+    expected: {
+      CONSULTANT: { inScope: CREATED },
+      ZONE_LEADER: { inScope: CREATED },
+    },
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/evidence/:evidenceId/commit',
+    description: 'evidence:create — HEAD, checksum, magic bytes, then E-1. Replaying it is §9.6',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/evidence/:evidenceId',
+    description: 'evidence:read — metadata; a Coordinator and a Zone Leader get own_unit',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/evidence/:evidenceId/view-url',
+    description: 'evidence:view_url — a ≤300 s presigned GET, minted after the scope check (§12.6)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/evidence/:evidenceId',
+    description: 'evidence:set_summary_flag — a clash is 409 SUMMARY_FLAG_TAKEN, from the index',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/evidence/:evidenceId',
+    description: 'evidence:soft_delete — soft, and 409 once the audit is completed (E-4)',
+    expected: {
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/audit-zones/:auditZoneId/evidence',
+    description: 'evidence:read — the Zone gallery, filtered by classification',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+
+  // ------------------------------------------------- the signed storage route (R-9)
+  {
+    method: 'PUT',
+    path: '/api/v1/__local-object-storage/:encodedKey',
+    description:
+      'DECISIONS.md R-9 — the filesystem driver’s presigned PUT. Public by design: a ' +
+      'presigned URL carries its own authority, which is the whole point of §5 having the ' +
+      'device upload without an API session. Authorization is the HMAC and the expiry, ' +
+      'verified before a byte is touched; with R2_ENDPOINT set this route answers 404',
+    public: true,
+    expected: {},
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/__local-object-storage/:encodedKey',
+    description: 'R-9 — the filesystem driver’s presigned GET, signed and expiring (§12.6)',
+    public: true,
+    expected: {},
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+
   // -------------------------------------------------------------------- sync
   {
     method: 'GET',

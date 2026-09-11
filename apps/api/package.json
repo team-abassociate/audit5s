@@ -19,6 +19,7 @@
     "@audit5s/db": "workspace:*",
     "@audit5s/domain": "workspace:*",
     "@aws-sdk/client-s3": "^3.1129.0",
+    "@aws-sdk/s3-request-presigner": "^3.1130.0",
     "@fastify/helmet": "^13.0.1",
     "@fastify/multipart": "^9.4.0",
     "@nestjs/common": "^11.0.1",

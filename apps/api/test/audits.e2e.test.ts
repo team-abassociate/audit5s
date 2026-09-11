@@ -11,7 +11,13 @@ import {
   type ResponseValue,
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
-import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
+import {
+  captureEvidence,
+  loginFromDevice,
+  startWorld,
+  stopWorld,
+  type TestWorld,
+} from './harness';
 
 /**
  * The audit engine (PART 14, Phase 3 tests row).
@@ -131,6 +137,18 @@ async function startAuditWithZone(options: {
     },
   });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
+
+  // Phase 4 made §7.1's `selfie_captured` guard real, so an audit reaches READY only once
+  // a live-captured `AUDITOR_SELFIE` exists for it. The selfie is taken *after* the audit
+  // row exists, because `evidence.audit_id` is a foreign key — which is why this sits
+  // between creation and start rather than before both.
+  await captureEvidence(world, {
+    token: options.token,
+    evidenceId: randomUUID(),
+    auditId,
+    kind: 'AUDITOR_SELFIE',
+    deviceId: options.deviceId,
+  });
 
   const started = await world.request('POST', `${base}/audits/${auditId}/start`, {
     token: options.token,

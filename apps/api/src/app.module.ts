@@ -14,6 +14,7 @@ import { StorageModule } from './infrastructure/storage/storage.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AssignmentsModule } from './modules/audit-assignments/assignments.module';
 import { AuditsModule } from './modules/audits/audits.module';
+import { EvidenceModule } from './modules/evidence/evidence.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChecklistsModule } from './modules/checklists/checklists.module';
 import { HealthModule } from './modules/health/health.module';
@@ -48,6 +49,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     ChecklistsModule,
     AssignmentsModule,
     AuditsModule,
+    EvidenceModule,
     SyncModule,
     MembershipsModule,
     PermissionsModule,
