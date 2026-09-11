@@ -121,6 +121,71 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
          ON outbox (queue, state, next_attempt_at, priority, created_at)`,
     ],
   },
+  {
+    /*
+     * Phase 4: `evidence`, and the columns the media queue needs.
+     *
+     * Forward-only matters most here. A device in a plant holds the only copy of its
+     * unsynced photographs *and* the only copy of the files they point at — there is no
+     * rollback of this step that does not risk both, so every statement is additive and
+     * idempotent, and `ALTER TABLE ... ADD COLUMN` is used rather than a table rebuild.
+     */
+    version: 3,
+    statements: [
+      /*
+       * The evidence row of §9.1. It exists from the instant the shutter closes: the
+       * photograph is on the device and in SQLite before any of it is the server's
+       * business, which is the same ordering every other locally authored table follows.
+       *
+       * `upload_attempts` is here rather than on the outbox because §9.1 puts it here, and
+       * because it survives the outbox row being deleted on success — a photo that took
+       * six attempts is worth knowing about when a support call asks why a Zone was slow.
+       */
+      `CREATE TABLE IF NOT EXISTS evidence (
+         id TEXT PRIMARY KEY,
+         kind TEXT NOT NULL,
+         audit_id TEXT NOT NULL,
+         audit_zone_id TEXT,
+         question_response_id TEXT,
+         local_file_uri TEXT,
+         object_key TEXT,
+         content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+         byte_size INTEGER NOT NULL DEFAULT 0,
+         width INTEGER,
+         height INTEGER,
+         checksum_sha256 TEXT NOT NULL,
+         score_at_capture TEXT,
+         classification TEXT NOT NULL DEFAULT 'NEUTRAL',
+         remark TEXT,
+         is_summary_flagged INTEGER NOT NULL DEFAULT 0,
+         is_live_capture INTEGER NOT NULL DEFAULT 1,
+         latitude REAL, longitude REAL, accuracy_m REAL,
+         location_provider TEXT,
+         captured_at TEXT NOT NULL,
+         uploaded_at TEXT,
+         deleted_at TEXT,
+         client_updated_at TEXT NOT NULL,
+         sync_state TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+         upload_attempts INTEGER NOT NULL DEFAULT 0
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_evidence_zone
+         ON evidence (audit_zone_id, deleted_at, captured_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_evidence_audit ON evidence (audit_id, kind)`,
+      /* The media queue's own hot path: what still has to go up. */
+      `CREATE INDEX IF NOT EXISTS idx_evidence_pending
+         ON evidence (sync_state, upload_attempts) WHERE deleted_at IS NULL`,
+
+      /*
+       * §9.6: "Outbox row is `SYNCING` with a `started_at`. On start, any `SYNCING` older
+       * than 10 min is reset to `PENDING`." Phase 3's outbox had no `started_at`, so a
+       * row that went SYNCING and then lost the process stayed SYNCING forever — and a
+       * stuck row blocks logout (§9.7) with something that will never retry.
+       */
+      `ALTER TABLE outbox ADD COLUMN started_at TEXT`,
+      /* Which batch carried it, so a device can match the server's verdicts to its rows. */
+      `ALTER TABLE outbox ADD COLUMN batch_id TEXT`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

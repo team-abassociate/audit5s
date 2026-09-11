@@ -1,0 +1,179 @@
+import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import type { LocalDatabase } from './local-database';
+import { localEvidence, outbox } from './schema';
+
+/**
+ * Every query against the outbox, in one place.
+ *
+ * The sync engine is about *policy* — which verdict means what, when to retry, what order
+ * to send in — and this is the data access underneath it. Keeping them apart is the same
+ * split the server makes between a service and a repository, and it has the same two
+ * payoffs: the engine is testable against the rules rather than against SQL, and the
+ * workspace's `no-restricted-syntax` rule stays on everywhere instead of being switched
+ * off for a directory.
+ *
+ * There is no `ScopeContext` here, and there is nothing for one to do: AZ-1 is a
+ * *server* invariant about a multi-tenant database, and a device's SQLite holds exactly
+ * one user's work by construction (§9.7 keeps a retained database tagged to its owner and
+ * refuses to show it to anybody else).
+ */
+
+export type OutboxRow = typeof outbox.$inferSelect;
+
+/** The states that mean "not yet acknowledged by the server" (§9.9). */
+export const UNSETTLED_STATES = ['PENDING', 'SYNCING', 'FAILED', 'DEAD_LETTER'] as const;
+
+/**
+ * Items whose backoff has elapsed, in queue order.
+ *
+ * The ordering mirrors §9.1's `idx_outbox_ready` — priority, then age — so the index is
+ * the one the query actually uses rather than one that merely exists.
+ */
+export function readyItems(
+  database: LocalDatabase,
+  queue: 'data' | 'media',
+  nowIso: string,
+): Promise<OutboxRow[]> {
+  return database
+    .select()
+    .from(outbox)
+    .where(
+      and(
+        eq(outbox.queue, queue),
+        inArray(outbox.state, ['PENDING', 'FAILED']),
+        or(isNull(outbox.nextAttemptAt), lte(outbox.nextAttemptAt, nowIso)),
+      ),
+    )
+    .orderBy(asc(outbox.priority), asc(outbox.createdAt));
+}
+
+export function itemsInState(database: LocalDatabase, state: string): Promise<OutboxRow[]> {
+  return database.select().from(outbox).where(eq(outbox.state, state));
+}
+
+export function unsettledItems(database: LocalDatabase): Promise<OutboxRow[]> {
+  return database
+    .select()
+    .from(outbox)
+    .where(inArray(outbox.state, [...UNSETTLED_STATES]));
+}
+
+export async function markSyncing(
+  database: LocalDatabase,
+  outboxId: string,
+  startedAtIso: string,
+  batchId?: string,
+): Promise<void> {
+  await database
+    .update(outbox)
+    .set({
+      state: 'SYNCING',
+      // The timestamp §9.6's sweep reads. Without it a row that loses its process is stuck
+      // SYNCING forever, and a stuck row blocks logout with something that never retries.
+      startedAt: startedAtIso,
+      ...(batchId ? { batchId } : {}),
+    })
+    .where(eq(outbox.id, outboxId));
+}
+
+export async function markPending(
+  database: LocalDatabase,
+  outboxId: string,
+  lastError?: string | null,
+): Promise<void> {
+  await database
+    .update(outbox)
+    .set({
+      state: 'PENDING',
+      startedAt: null,
+      nextAttemptAt: null,
+      ...(lastError !== undefined ? { lastError } : {}),
+    })
+    .where(eq(outbox.id, outboxId));
+}
+
+export async function markSettled(
+  database: LocalDatabase,
+  outboxId: string,
+  lastError: string,
+): Promise<void> {
+  // `SYNCED` rather than deleted: a quarantined item is settled from the device's point of
+  // view, and keeping the row with its reason is what lets the UI explain it (§9.3).
+  await database
+    .update(outbox)
+    .set({ state: 'SYNCED', startedAt: null, lastError })
+    .where(eq(outbox.id, outboxId));
+}
+
+export async function scheduleRetry(
+  database: LocalDatabase,
+  outboxId: string,
+  input: { attempts: number; nextAttemptAtIso: string; lastError: string },
+): Promise<void> {
+  await database
+    .update(outbox)
+    .set({
+      state: 'FAILED',
+      attempts: input.attempts,
+      startedAt: null,
+      nextAttemptAt: input.nextAttemptAtIso,
+      lastError: input.lastError,
+    })
+    .where(eq(outbox.id, outboxId));
+}
+
+/** Never discarded: the row and the file stay, and logout stays blocked (§7.4, §9.7). */
+export async function markDeadLetter(
+  database: LocalDatabase,
+  outboxId: string,
+  input: { attempts: number; lastError: string },
+): Promise<void> {
+  await database
+    .update(outbox)
+    .set({
+      state: 'DEAD_LETTER',
+      attempts: input.attempts,
+      startedAt: null,
+      lastError: input.lastError,
+    })
+    .where(eq(outbox.id, outboxId));
+}
+
+export async function removeItem(database: LocalDatabase, outboxId: string): Promise<void> {
+  await database.delete(outbox).where(eq(outbox.id, outboxId));
+}
+
+/** §7.4's "manual Sync Now or app upgrade re-enqueue". */
+export async function resetDeadLetters(database: LocalDatabase): Promise<number> {
+  const rows = await itemsInState(database, 'DEAD_LETTER');
+  for (const row of rows) {
+    await markPending(database, row.id);
+  }
+  return rows.length;
+}
+
+/** Evidence whose object went up but whose commit never did — §9.6's stranded case. */
+export function strandedUploads(database: LocalDatabase) {
+  return database
+    .select()
+    .from(localEvidence)
+    .where(
+      and(
+        eq(localEvidence.syncState, 'SYNCING'),
+        sql`${localEvidence.objectKey} IS NOT NULL`,
+        isNull(localEvidence.deletedAt),
+      ),
+    );
+}
+
+export function evidenceById(database: LocalDatabase, evidenceId: string) {
+  return database.select().from(localEvidence).where(eq(localEvidence.id, evidenceId)).limit(1);
+}
+
+/** Photographs not yet acknowledged, for §9.9's separate photo count. */
+export function unsyncedPhotos(database: LocalDatabase) {
+  return database
+    .select({ id: localEvidence.id })
+    .from(localEvidence)
+    .where(and(sql`${localEvidence.syncState} <> 'SYNCED'`, isNull(localEvidence.deletedAt)));
+}

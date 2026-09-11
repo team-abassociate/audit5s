@@ -1,5 +1,10 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import type { AuditType, ResponseValue, SSection } from '@audit5s/contracts';
+import type {
+  AuditType,
+  LocationReading,
+  ResponseValue,
+  SSection,
+} from '@audit5s/contracts';
 import { numericScoreFor, scoreZone, type ScoreBreakdown } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import {
@@ -10,6 +15,7 @@ import {
   outbox,
   zones,
   type OutboxOperation,
+  type OutboxQueue,
 } from './schema';
 
 /**
@@ -247,6 +253,64 @@ export async function saveLocalResponse(
   });
 
   return id;
+}
+
+/**
+ * Stores the start location on the audit, and re-queues the creation payload with it.
+ *
+ * §12.9 computes the distance and the flag **server-side**, from the Unit's own
+ * coordinates — so the device sends the raw reading and nothing derived from it. A null
+ * reading is stored as null and flagged by the server as `LOCATION_ABSENT`; it is never a
+ * reason to stop.
+ */
+export async function recordAuditStartLocation(
+  database: LocalDatabase,
+  auditId: string,
+  location: LocationReading | null,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  await database
+    .update(audits)
+    .set({
+      startLatitude: location?.latitude ?? null,
+      startLongitude: location?.longitude ?? null,
+      startAccuracyM: location?.accuracyM ?? null,
+      startLocationProvider: location?.provider ?? null,
+      startLocationIsMocked: location?.isMocked ? 1 : 0,
+      clientUpdatedAt: now,
+    })
+    .where(eq(audits.id, auditId));
+
+  const [audit] = await getLocalAudit(database, auditId);
+  if (!audit) return;
+
+  await enqueue(
+    database,
+    'audit',
+    auditId,
+    'upsert',
+    {
+      id: auditId,
+      auditType: audit.auditType,
+      unitId: audit.unitId,
+      ...(audit.assignmentId ? { assignmentId: audit.assignmentId } : {}),
+      ...(audit.checklistVersionId ? { checklistVersionId: audit.checklistVersionId } : {}),
+      clientCreatedAt: audit.clientCreatedAt,
+      ...(location
+        ? {
+            location: {
+              latitude: location.latitude,
+              longitude: location.longitude,
+              accuracyM: location.accuracyM ?? null,
+              provider: location.provider,
+              isMocked: location.isMocked,
+              capturedAt: location.capturedAt ?? now,
+            },
+          }
+        : {}),
+    },
+    now,
+  );
 }
 
 /** The optional overall remark, saved after the fifty questions. */
@@ -496,6 +560,7 @@ export async function enqueue(
   operation: OutboxOperation,
   payload: Record<string, unknown>,
   now: string = new Date().toISOString(),
+  options: { queue?: OutboxQueue; priority?: number } = {},
 ): Promise<void> {
   await database
     .insert(outbox)
@@ -505,6 +570,8 @@ export async function enqueue(
       entityId,
       operation,
       payload: JSON.stringify(payload),
+      queue: options.queue ?? 'data',
+      priority: options.priority ?? 100,
       createdAt: now,
     })
     .onConflictDoUpdate({
@@ -515,6 +582,9 @@ export async function enqueue(
         attempts: 0,
         lastError: null,
         nextAttemptAt: null,
+        // Cleared with the state: a coalesced re-save is a fresh attempt, and leaving a
+        // stale `started_at` behind would make §9.6's sweep think it was already in flight.
+        startedAt: null,
       },
     });
 }

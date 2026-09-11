@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ResponseValue, SyncCatalogue } from '@audit5s/contracts';
+import type { ResponseValue } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
 import {
   addLocalZone,
@@ -23,6 +23,13 @@ import { replaceCatalogue } from './catalogue.repository';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
 import { LOCAL_SCHEMA_VERSION } from './migrations';
 import { createNodeExecutor } from './node-executor';
+import {
+  FIXTURE_UNIT as UNIT,
+  FIXTURE_VERSION as VERSION,
+  FIXTURE_ZONE_A as ZONE_A,
+  FIXTURE_ZONE_B as ZONE_B,
+  catalogue,
+} from './test-fixtures';
 
 /**
  * The device's audit store, against **real SQLite**.
@@ -41,11 +48,6 @@ import { createNodeExecutor } from './node-executor';
 let executor: ReturnType<typeof createNodeExecutor>;
 let database: LocalDatabase;
 
-const UNIT = '11111111-1111-4111-8111-111111111111';
-const ZONE_A = 'aaaaaaaa-0000-4000-8000-000000000001';
-const ZONE_B = 'aaaaaaaa-0000-4000-8000-000000000002';
-const VERSION = 'cccccccc-0000-4000-8000-000000000001';
-
 beforeEach(async () => {
   executor = createNodeExecutor();
   await migrateLocalDatabase(executor);
@@ -57,102 +59,9 @@ afterEach(() => {
   executor.close();
 });
 
-/** Fifty questions across the five sections, as the catalogue delivers them. */
-function catalogue(): SyncCatalogue {
-  const questions: SyncCatalogue['checklistVersions'][number]['questions'] = [];
-  for (const [sectionIndex, section] of S_SECTION_ORDER.entries()) {
-    for (let order = 1; order <= 10; order += 1) {
-      const globalOrder = sectionIndex * 10 + order;
-      questions.push({
-        id: `q-${String(globalOrder).padStart(2, '0')}`,
-        versionId: VERSION,
-        section,
-        orderInSection: order,
-        globalOrder,
-        text: `Question ${globalOrder}`,
-        guidance: null,
-        // Question 13 is the one that may be NA, so the NA path is exercised on a
-        // question that permits it rather than on one that does not.
-        allowsNa: globalOrder === 13 || globalOrder === 28 || globalOrder === 45,
-        requiresEvidenceOnNonconformity: false,
-      });
-    }
-  }
 
-  return {
-    serverTime: '2026-09-10T10:00:00.000Z',
-    catalogueVersion: 'v1',
-    units: [
-      {
-        id: UNIT,
-        code: 'U-NASHIK',
-        name: 'Nashik Plant',
-        address: null,
-        city: null,
-        state: null,
-        country: null,
-        postalCode: null,
-        contactName: null,
-        contactPhone: null,
-        contactEmail: null,
-        latitude: null,
-        longitude: null,
-        geofenceRadiusM: 300,
-        timezone: 'Asia/Kolkata',
-        photoCapPerZone: 30,
-        version: 1,
-        archivedAt: null,
-        createdAt: '2026-09-01T00:00:00.000Z',
-        updatedAt: '2026-09-01T00:00:00.000Z',
-      },
-    ],
-    zones: [
-      zone(ZONE_A, 'Z-01', 'Press', 'Press shop, bay 3'),
-      zone(ZONE_B, 'Z-02', 'Assembly', null),
-    ],
-    checklistTemplates: [],
-    assignments: [],
-    checklistVersions: [
-      {
-        id: VERSION,
-        templateId: 'dddddddd-0000-4000-8000-000000000001',
-        templateCode: 'SHOP_FLOOR',
-        templateName: 'Shop Floor',
-        versionNumber: 1,
-        status: 'PUBLISHED',
-        questionsPerSection: 10,
-        totalQuestions: TOTAL_QUESTIONS,
-        contentHash: 'hash-v1',
-        publishedAt: '2026-09-02T00:00:00.000Z',
-        publishedByUserId: null,
-        supersededAt: null,
-        supersededByVersionId: null,
-        sourceImportJobId: null,
-        createdAt: '2026-09-01T00:00:00.000Z',
-        questions,
-      },
-    ],
-  };
-}
 
-function zone(id: string, code: string, name: string, description: string | null) {
-  return {
-    id,
-    unitId: UNIT,
-    code,
-    name,
-    description,
-    departmentHint: null,
-    defaultChecklistTemplateId: null,
-    zoneLeaderId: 'eeeeeeee-0000-4000-8000-000000000001',
-    zoneLeaderName: 'Leader One',
-    sortOrder: 1,
-    version: 1,
-    archivedAt: null,
-    createdAt: '2026-09-01T00:00:00.000Z',
-    updatedAt: '2026-09-01T00:00:00.000Z',
-  };
-}
+
 
 async function startAudit(): Promise<{ auditId: string; auditZoneId: string }> {
   const auditId = await createLocalAudit(database, {
@@ -198,9 +107,12 @@ async function answerAll(auditId: string, auditZoneId: string, values: readonly 
 }
 
 describe('the local schema', () => {
-  it('is at version 2, with the locally authored tables of §9.1', async () => {
+  it('carries the locally authored tables of §9.1', async () => {
+    // The applied version tracks the schema rather than a literal: the *number* is pinned
+    // by whichever phase last added a migration (Phase 4's evidence step owns it now), and
+    // what this file cares about is that Phase 3's tables are there.
     expect(await executor.userVersion()).toBe(LOCAL_SCHEMA_VERSION);
-    expect(LOCAL_SCHEMA_VERSION).toBe(2);
+    expect(LOCAL_SCHEMA_VERSION).toBeGreaterThanOrEqual(2);
 
     const tables = await executor.query(
       `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,
