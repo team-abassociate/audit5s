@@ -36,7 +36,7 @@ function step(n, message) {
  * smoke script that authenticated it would be exercising a protocol the device does not
  * use — which is the class of bug these scripts exist to catch.
  */
-async function captureEvidence({ token, auditId, auditZoneId, kind }) {
+async function captureEvidence({ token, auditId, auditZoneId, questionResponseId, kind }) {
   const bytes = TINY_JPEG;
   const checksum = createHash('sha256').update(bytes).digest('hex');
   const evidenceId = randomUUID();
@@ -49,6 +49,7 @@ async function captureEvidence({ token, auditId, auditZoneId, kind }) {
       kind,
       auditId,
       ...(auditZoneId ? { auditZoneId } : {}),
+      ...(questionResponseId ? { questionResponseId } : {}),
       contentType: 'image/jpeg',
       byteSize: bytes.byteLength,
       checksumSha256: checksum,
@@ -242,8 +243,9 @@ const values = questions.map((question, index) => {
   return 'SCORE_2';
 });
 
+const responseIds = questions.map(() => randomUUID());
 for (const [index, question] of questions.entries()) {
-  await call(`/audit-zones/${auditZoneId}/responses/${randomUUID()}`, {
+  await call(`/audit-zones/${auditZoneId}/responses/${responseIds[index]}`, {
     method: 'PUT',
     token,
     body: {
@@ -260,6 +262,7 @@ const photoId = await captureEvidence({
   token,
   auditId,
   auditZoneId,
+  questionResponseId: responseIds[0],
   kind: 'QUESTION_EVIDENCE',
 });
 const photo = await call(`/evidence/${photoId}`, { token });
