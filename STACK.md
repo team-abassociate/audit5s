@@ -39,7 +39,7 @@ assumption.
 | Layer | Technology |
 |---|---|
 | Field mobile | React Native 0.8x + Expo (prebuild / custom dev client), TypeScript, expo-router |
-| Camera | react-native-vision-camera (in-app live capture only — no gallery path) |
+| Camera | `expo-camera` (in-app live capture only — no gallery path). Superseded react-native-vision-camera; see `DECISIONS.md` R-11 |
 | Location | expo-location |
 | Offline store | expo-sqlite + Drizzle (SQLite dialect) + hand-written `outbox` and `media_queue` |
 | Mobile state | Zustand (UI) + TanStack Query (server cache) |

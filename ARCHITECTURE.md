@@ -11,7 +11,7 @@
 > ### Superseded technology choices — change record
 >
 > **Precedence rule (R-1): [`STACK.md`](./STACK.md) wins on any technology name; this document
-> wins on any behaviour.** Resolutions R-1 … R-5 live in [`DECISIONS.md`](./DECISIONS.md) and
+> wins on any behaviour.** Resolutions R-1 … R-11 live in [`DECISIONS.md`](./DECISIONS.md) and
 > are binding.
 >
 > **The body of this document has been swept to match** — every section below now states the
@@ -30,6 +30,7 @@
 > | Generic S3-compatible object storage | Cloudflare R2 via `@aws-sdk/client-s3` | §3.1, §5.6 |
 > | Managed backups + PITR | Self-hosted pgBackRest → R2 (RPO < 5 min unchanged) | §16 |
 > | WhatsApp BSP + SMS gateway wired at MVP | `NotificationChannel` interface defined; in-app + FCM only at MVP. No channel wired. | §2.8, §14 Phase 6 |
+> | react-native-vision-camera | `expo-camera` (R-11). The only case where `STACK.md` lost a technology name: the row was stale, not a decision. | §12.10 (unchanged — it already named `expo-camera`), `STACK.md` §2 |
 > | SQLCipher on mobile | Not used (R-4) | §14 Phase 4 |
 > | Staging + production environments | One environment. Migrations are files in git applied by CI. | §13, §14, §16 |
 > | Chaos test "Redis down" | Removed | §15 |
@@ -49,6 +50,12 @@
 > partial unique index for invariant M-1 ships in the first migration with a test that proves
 > it (R-3a), and `evidence` carries `redacted_at` / `redacted_by_user_id` / `redaction_reason`
 > with a matching carve-out in its append-only trigger (R-5).
+>
+> **Phase 5 implementation (2026-09-11).** Walk-by capture now runs end to end through the
+> mobile SQLite outbox, including offline evidence patches, preview/delete, re-judgement and
+> summary flags. The admin audit detail has the cursor-paged evidence gallery and on-demand
+> original viewer. `acceptance-phase5.e2e.test.ts` enforces the three-Zone offline acceptance
+> row and both sides of the empty-Zone photo guard. No migration was added; `0009` remains next.
 
 **How to read this document.** PART 1 fixes the vocabulary and settles every contradiction in
 the source brainstorm — read it first, and treat its decisions as binding. PART 5 (database)
@@ -57,13 +64,14 @@ Drizzle schema and the first controllers without asking a business question. PAR
 mobile contract. PART 14 is the delivery plan. Anything not stated here is a genuine open
 question and must be escalated, not invented.
 
-**A note on inputs.** The source `brainstorm.md`, the department-question `.xlsx` and the
-sample zone-report PDF were not available when this document was written. The written
-specification supplied by the business has been treated as authoritative. Question text,
-department names and the exact report colour hex values are **seed data and styling tokens,
-not architecture** — they load through the Excel import pipeline (PART 5.9, PART 8.7) and a
-theme token file (PART 11.6) without any structural change. Every place this matters is
-recorded as a numbered assumption in §1.6.
+**A note on inputs.** The source `brainstorm.md`, the department-question `.xlsx` and both
+sample report PDFs now live in `docs/requirements/`; the written specification supplied by the
+business remains authoritative on intent. Question text, department names and the exact report
+colour hex values are **seed data and styling tokens, not architecture** — they load through
+the Excel import pipeline (PART 5.4, PART 8.5) and a theme token file (PART 11.6) without any
+structural change, which is why reconciling this document against the real files changed no
+structure. Assumptions A1–A6 in §1.6 are resolved against those files; `HANDOFF.md` §3 carries
+the reconciliation and `DECISIONS.md` R-6 records it.
 
 ---
 
@@ -256,17 +264,20 @@ edge at ~80% JPEG quality before it ever touches SQLite, a per-`AuditZone` soft 
 
 ## 1.6 Assumptions
 
-Numbered so they can be confirmed or corrected in one pass. A1–A6 exist because the source
-files were unavailable; they affect **content and styling only**, not structure.
+Numbered so they can be confirmed or corrected in one pass. A1–A6 existed because the source
+files were unavailable. All six are now **settled against the real files** in
+`docs/requirements/` — three confirmed, three corrected — and each row below states which.
+They affected **content and styling only**: nothing structural moved when they were settled.
+A7–A12 remain open assumptions.
 
 | # | Assumption | Impact if wrong |
 | --- | --- | --- |
-| A1 | The 50 questions are exactly 5 sections × 10 questions, ordered 1S→5S. | None structurally: `ChecklistVersion` validates a configurable `questions_per_section` (default 10). A different count is a config change. |
-| A2 | Department names (e.g. Production, Stores, Maintenance, Quality, Office) come from the `.xlsx` and are not known yet. | None. Departments are `ChecklistTemplate` rows created by the import. |
-| A3 | The rating-scale colours in the sample PDF form a 4-step scale (needs-improvement → progressing → good → excellent). | None. Colours live in one token file consumed by both the PDF template and the web charts; swapping them is a one-file change (PART 11.6). |
-| A4 | The Excel sheet has one row per question with at least: section (S1–S5), question order, question text. Optional: guidance/help text, department. | Import column mapping is configuration, declared in `ChecklistImportProfile`. A different layout changes the mapping, not the pipeline. |
-| A5 | The report is A4 portrait, English, with the organization logo in the header. | Template-only change. |
-| A6 | Audit scores are reported to one decimal place. | Presentation-only; the database stores `numeric(6,3)`. |
+| A1 | **Confirmed.** The 50 questions are exactly 5 sections × 10 questions, ordered 1S→5S and numbered globally 1–50. Every department sheet in the workbook has this shape. | None. `questions_per_section = 10` and `total_questions = 50` stay configurable on `ChecklistVersion`; no change was needed. |
+| A2 | **Resolved.** Nine departments, one per workbook sheet, in this order: Shop Floor (`SHOP_FLOOR`), Office (`OFFICE`), Stores (RM) (`STORES_RM`), Production (`PRODUCTION`), FG Stores (`FG_STORES`), Packing Area (`PACKING_AREA`), Boiler & Utility (`BOILER_UTILITY`), Maintenance (`MAINTENANCE`), Premises (`PREMISES`). The workbook's first three sheets — `5S Audit Team`, `Audit Schedule`, `Monthly Zone Scores` — are legacy planning sheets and are **not** imported. | None. Departments are `ChecklistTemplate` rows created by the import; the skip rule is in the PARSE profile (§8.5). |
+| A3 | **Corrected.** Four bands, boundaries **90 / 75 / 60** — Outstanding, On Track, Improving, Needs Support. The placeholder had the wrong labels and a third boundary at 50. Exact hex values, response colours and brand tokens: §11.6. | None. Colours and boundaries live in one token file consumed by the PDF templates, the web charts and the mobile chips; swapping them is a one-file change (PART 11.6). |
+| A4 | **Corrected.** The workbook is **not** one row per question. It is one **sheet per department**, each with a merged section-header row above every block of ten questions, a sub-total row after each block, and trailing total/percentage/rating/signature rows. Full layout and parse rules: §8.5. | As predicted: the mapping is configuration in `ChecklistImportProfile`, so the corrected layout changes the PARSE stage only. The six-stage pipeline is unchanged. |
+| A5 | **Confirmed, with specifics.** A4 portrait, English. Maroon header band with an orange rounded "5S" badge at the left, the title and a one-line subtitle in white, and the AB Associates logo in a white card at the right; a footer on every page. Tokens: §11.6. | Template-only change. |
+| A6 | **Confirmed.** Percentages render to one decimal (`75.0%`); marks render as `achieved / max` integers. | Presentation-only; the database stores `numeric(6,3)`. |
 | A7 | A Unit has one Coordinator (the schema permits several; no rule forbids it). | None — `UnitMembership` already models many. |
 | A8 | Volume: ≲100 Units, ≲500 Zones/Unit, ≲2,000 audits/month, ≲60 photos/audit. | Sets the "modular monolith, single Postgres" decision (D10). An order of magnitude more would trigger read-replica + partitioning, both anticipated in PART 11.4. |
 | A9 | WhatsApp delivery is via an approved Business Solution Provider with pre-approved message templates; SMS is a fallback provider. | Provider is behind a `NotificationChannel` interface; swapping providers touches one adapter. |
@@ -906,13 +917,23 @@ Indexes: `UNIQUE(version_id, section, order_in_section)`;
 > questions, 10 per section, contiguous `order_in_section` 1…N. Validated at publish time and
 > asserted by a check constraint on `total_questions`.
 
-### `checklist_import_job` / `checklist_import_row`
+### `checklist_import_job` / `checklist_import_sheet` / `checklist_import_row`
 
-| `checklist_import_job` | `id uuid PK` · `template_id uuid FK NULL` (null = create new template) · `uploaded_by_user_id uuid FK` · `file_object_key text` · `file_checksum text` · `status import_job_status` · `parsed_row_count int` · `error_count int` · `warning_count int` · `duplicate_of_version_id uuid NULL` · `preview_expires_at` · `committed_version_id uuid FK NULL` · `error_report_object_key text NULL` |
+Three levels, because the real workbook is **nine department sheets in one file** (R-6a) and
+each sheet becomes one template version: a job fans out to sheets, and a sheet to rows. The
+per-sheet level is where the duplicate verdict and the committed version live; `template_id`
+and `committed_version_id` are properties of a *sheet*, not of the upload (DECISIONS.md R-7a).
+
+| `checklist_import_job` | `id uuid PK` · `uploaded_by_user_id uuid FK` · `file_name text` · `file_object_key text` · `file_checksum text` · `file_byte_size int` · `status import_job_status` · `sheet_count int` · `parsed_row_count int` · `error_count int` · `warning_count int` · `preview_expires_at` · `error_report_object_key text NULL` · `skipped_sheets jsonb` (the non-checklist tabs and why, Q7) |
 | --- | --- |
-| `checklist_import_row` | `id uuid PK` · `job_id uuid FK` · `source_row_number int` · `raw jsonb` · `parsed_section s_section NULL` · `parsed_order int NULL` · `parsed_text text NULL` · `severity text` (`OK`/`WARNING`/`ERROR`) · `messages text[]` |
+| `checklist_import_sheet` | `id uuid PK` · `job_id uuid FK` · `sheet_name text` · `sheet_index int` · `template_code text` · `template_name text` · `template_id uuid FK NULL` (null = create new template) · `content_hash text` · `question_count int` · `severity text` · `duplicate_of_version_id uuid NULL` · `duplicate_is_published boolean` · `committed_version_id uuid FK NULL` · `messages text[]` |
+| `checklist_import_row` | `id uuid PK` · `job_id uuid FK` · `sheet_id uuid FK` · `source_row_number int` · `raw jsonb` · `parsed_section s_section NULL` · `parsed_order int NULL` · `parsed_global_order int NULL` · `parsed_text text NULL` · `severity text` (`OK`/`WARNING`/`ERROR`) · `messages text[]` |
 
-Indexes: `(job_id, severity)`; `(status, preview_expires_at)` for cleanup.
+Indexes: `(job_id, severity)` on both child tables; `(sheet_id, source_row_number)`;
+`UNIQUE(job_id, sheet_index)`; `(status, preview_expires_at)` for cleanup.
+
+`checklist_version.source_import_job_id` remains the link in the other direction — the
+provenance of a version back to the file it came from.
 
 ## 5.5 Assignments and audits
 
@@ -2065,10 +2086,14 @@ stored response; the same key with a *different* body returns `422 IDEMPOTENCY_K
               • section ∈ {1S..5S}                     ERROR if not
               • exactly 10 questions per section        ERROR
               • order 1..10 contiguous, no gaps         ERROR
+              • Sr. contiguous 1..50 across the sheet,
+                and agreeing with the section position  ERROR
               • question text non-empty, ≤500 chars     ERROR
               • duplicate text within a section         WARNING
               • duplicate text across sections          WARNING
               • trailing whitespace / smart quotes      WARNING (auto-normalized)
+                — and nothing else: the workbook punctuates
+                  with en dashes, so they are content (R-7b)
 4 DUPLICATE   content_hash vs existing versions
               • identical to the published version      BLOCK "no changes to import"
               • identical to an older version           WARNING "reverting to v{n}"
@@ -2078,6 +2103,34 @@ stored response; the same key with a *different* body returns `422 IDEMPOTENCY_K
               link source_import_job_id                 → COMMITTED (DRAFT version)
   ACTIVATE    separate explicit publish step
 ```
+
+**The PARSE profile is sheet-per-department.** The department workbook is not a flat
+one-row-per-question table, so `ChecklistImportProfile` declares a *sheet-per-department,
+section-header-row* layout in which one sheet becomes one `ChecklistTemplate`:
+
+- A sheet is a checklist only if cell `A1` matches `^5S AUDIT CHECK SHEET [–—-] (.+)$`. Every
+  other sheet is skipped, which is how the workbook's three legacy planning sheets are excluded.
+- The template `name` is the **sheet name** (`Stores (RM)`). It is authoritative: the `A1` title
+  is upper-cased, and the `Area / Dept.` cell mirrors the sheet name on most sheets but is blank
+  on `Office`.
+- A section begins at a row whose column A matches
+  `^([1-5])S\s*[–—-]\s*(SEIRI|SEITON|SEISO|SEIKETSU|SHITSUKE)`, with en dash, em dash and
+  hyphen normalized. Row numbers are never relied on — rows may shift.
+- A question row is one whose column A is an integer and whose column B is non-empty: column A
+  is the global `Sr.`, column B the question text. `order_in_section` is the position within the
+  current section (1–10), `global_order` is `Sr.`, and VALIDATE asserts the two agree.
+- Sub-total rows and the trailing `TOTAL SCORE` / `PERCENTAGE` / `RATING` / rating-scale note /
+  signature rows are skipped.
+- The `Yes / No` and `Marks` columns are **legacy** — the sheet's own note reads "Yes = 2 marks,
+  No = 0 marks". They are not imported. The application scale is `2 / 1 / 0 / NA` (D3), which is
+  what the sample reports already use.
+- Section display labels are carried through exactly as written: `1S – SEIRI (SORT)`,
+  `2S – SEITON (SET IN ORDER)`, `3S – SEISO (SHINE)`, `4S – SEIKETSU (STANDARDIZE)`,
+  `5S – SHITSUKE (SUSTAIN)`. The `s_section → label` map lives in `packages/domain`.
+
+The import runs in `worker-general`. The seed (`apps/api/src/seed.ts`) imports all nine
+templates through this same pipeline, so the seed doubles as the importer's first integration
+test.
 
 **Nothing is written to `checklist_version` before stage 6.** Preview is genuinely a dry run,
 so a bad spreadsheet can never leave half a checklist behind.
@@ -2853,30 +2906,45 @@ view behind a toggle.
 
 ## 11.6 Rating-scale colour tokens
 
-The sample report's rating scale is the single source of colour truth for both the PDF and the
-dashboards. It lives in **one file**, `packages/config/rating-scale.ts`, consumed by the report
-template, the web charts and the mobile response chips — so the printed report and the
-dashboard can never disagree.
+The sample reports are the single source of colour truth for both the PDF and the dashboards.
+The tokens live in **one file**, `packages/domain/src/rating-scale.ts` — `percentage → band` is
+a scoring rule, and `domain` is already imported by the API, the web app and the mobile app —
+consumed by the report templates, the web charts and the mobile response chips, so the printed
+report and the dashboard can never disagree. **Nothing else in the codebase hard-codes a
+colour.**
 
 ```ts
-// Placeholder values (A3). Replace with the exact hex values from the sample report PDF;
-// no other file changes.
+// Values read from docs/requirements/sample-zone-report.pdf and sample-summary-report.pdf.
 export const RATING_BANDS = [
-  { min: 90, max: 100, label: 'Excellent',         token: 'band-excellent' },
-  { min: 75, max: 89.99, label: 'Good',            token: 'band-good' },
-  { min: 50, max: 74.99, label: 'Needs attention', token: 'band-attention' },
-  { min: 0,  max: 49.99, label: 'Critical',        token: 'band-critical' },
+  { min: 90, max: 100,   label: 'Outstanding',   token: 'band-outstanding',   color: '#1B7F4B', tint: '#E2F4E9' },
+  { min: 75, max: 89.99, label: 'On Track',      token: 'band-on-track',      color: '#2A7097', tint: '#E2EEF7' },
+  { min: 60, max: 74.99, label: 'Improving',     token: 'band-improving',     color: '#BE7D0F', tint: '#FDF3DB' },
+  { min: 0,  max: 59.99, label: 'Needs Support', token: 'band-needs-support', color: '#B3261E', tint: '#FCE7E5' },
 ] as const;
 
 export const RESPONSE_TOKENS = {
-  SCORE_2: 'response-well-implemented',   // 2 = Well Implemented
-  SCORE_1: 'response-progressing',        // 1 = Progressing Well
-  SCORE_0: 'response-needs-improvement',  // 0 = Needs Improvement
-  NA:      'response-not-applicable',     // NA = neutral, unscored
+  SCORE_2: { token: 'response-well-implemented',  label: 'Well implemented',  color: '#1B7F4B' },
+  SCORE_1: { token: 'response-progressing',       label: 'Progressing well',  color: '#BE7D0F' },
+  SCORE_0: { token: 'response-needs-improvement', label: 'Needs improvement', color: '#B3261E' },
+  // Neutral grey: the sample reports contain no NA row, so this hex is a house value, not a
+  // value read from them. Everything above is read from the samples.
+  NA:      { token: 'response-not-applicable',    label: 'Not applicable',    color: '#6B6B6B' },
 } as const;
+
+export const BRAND_TOKENS = {
+  maroon:      '#5C1816', // header band, table header rows, section rows, radar polygon stroke
+  orange:      '#F46A00', // the "5S" badge, achieved/max labels on the radar
+  tableBorder: '#E8D7D1',
+  rowTintA:    '#FFFAF7', // alternating checklist rows
+  rowTintB:    '#FFF7F3',
+} as const;
+
+/** null (a fully-NA section, D4) is not a band: it renders "N/A" and is never coloured. */
+export function bandFor(pct: number | null): Band | null;
 ```
 
-Band boundaries and hex values are configuration. Swapping them re-colours every report,
+The band boundaries are **90 / 75 / 60**, and the labels are the ones the business already
+prints. Boundaries and hex values are configuration: swapping them re-colours every report,
 chart and chip at once, with no code change and no risk of the PDF drifting from the screen.
 
 ---
@@ -3253,7 +3321,7 @@ sequencing, not commitments.
 | Track | Tasks |
 | --- | --- |
 | **Backend** | All 16 metrics; analytics endpoints; nightly rollup jobs (idempotent upserts); analytics indexes |
-| **Web** | Super Admin org dashboard (KPI tiles, Unit ranking with sample counts, trends); Coordinator Unit dashboard (Zone ranking, S radar, open nonconformities, closure funnel); all charts using `rating-scale.ts` tokens; CSV export; table view behind every chart |
+| **Web** | Super Admin org dashboard (KPI tiles, Unit ranking with sample counts, trends); Coordinator Unit dashboard (Zone ranking, S radar, open nonconformities, closure funnel); all charts using the `packages/domain` rating-scale tokens (§11.6); CSV export; table view behind every chart |
 | **Mobile** | Consultant "my activity" summary |
 | **Migrations** | `metric_daily_unit`, `metric_daily_zone`, `metric_section_daily` + unique keys; analytics indexes; BRIN on `audit_log` |
 | **Tests** | Metric correctness against seeded fixtures with known answers. Walk-by excluded from score metrics. Null sections excluded from averages. Rollup idempotency (run twice → identical rows). Timezone bucketing at a month boundary. Performance: dashboards p95 <500 ms on a 2-year seeded dataset. |

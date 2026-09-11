@@ -1,0 +1,29 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+# Expo / React Native
+.expo/
+apps/field-mobile/android/
+apps/field-mobile/ios/
+
+# Vite
+apps/admin-web/dist/
+
+# Playwright / test output
+test-results/
+playwright-report/
+
+# Local infra state
+infra/.local/
+pgdata/
+# The filesystem object-storage driver's root, used when R2_ENDPOINT is unset.
+.data/
+
+.DS_Store
