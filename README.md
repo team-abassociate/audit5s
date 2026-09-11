@@ -18,7 +18,7 @@ build order — is the Stack Decision Record in **[STACK.md](./STACK.md)**. It s
 `ARCHITECTURE.md` PART 3.1.
 
 Points where the blueprint and `STACK.md` disagreed or were silent are
-settled in **[DECISIONS.md](./DECISIONS.md)** (R-1 … R-11). The precedence rule is:
+settled in **[DECISIONS.md](./DECISIONS.md)** (R-1 … R-12). The precedence rule is:
 **`STACK.md` wins on any technology name, `ARCHITECTURE.md` wins on any behaviour.** The complete
 list of superseded technology choices is at the top of `ARCHITECTURE.md`.
 
@@ -27,6 +27,7 @@ list of superseded technology choices is at the top of `ARCHITECTURE.md`.
 **Implementation in progress — see [HANDOFF.md](./HANDOFF.md).** Read it before starting: it
 reconciles the blueprint with the real source files in
 [`docs/requirements/`](./docs/requirements/) and defines the phase-by-phase work order.
+[`HANDOFF-PHASE5.md`](./HANDOFF-PHASE5.md) carries the current state of the phase in flight.
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -35,7 +36,7 @@ reconciles the blueprint with the real source files in
 | 2 | Coordinator, Zones, Zone Leaders, checklist versioning and Excel import | Done |
 | 3 | Audit engine and scoring | Done |
 | 4 | Mobile camera, selfie, GPS and the synchronization engine | Done |
-| 5 | Walk-by audit and evidence management | Next |
+| 5 | Walk-by audit and evidence management | Backend, migrations and tests done — web and mobile next (`HANDOFF-PHASE5.md`) |
 
 ## Layout
 
