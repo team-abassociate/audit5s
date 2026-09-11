@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   cancelAuditRequestSchema,
+  releaseDeviceRequestSchema,
   completeAuditRequestSchema,
   createAuditRequestSchema,
   listAuditsQuerySchema,
@@ -23,6 +24,7 @@ import {
   type AuditDetail,
   type AuditScoreSummary,
   type CancelAuditRequest,
+  type ReleaseDeviceRequest,
   type CompleteAuditRequest,
   type CreateAuditRequest,
   type Page,
@@ -192,6 +194,25 @@ export class AuditsController {
     @Body(new ZodValidationPipe(cancelAuditRequestSchema)) body: CancelAuditRequest,
   ): Promise<Audit> {
     return this.audits.cancel(scope, auditId, body);
+  }
+
+  /**
+   * D7's force-release (§9.5 Layer 1) — what unblocks a lost phone.
+   *
+   * Super Admin only, always audit-logged, and it changes nothing but the lock: the audit
+   * keeps its status and every answer. Without this route the only remedy for a dropped
+   * device is a psql session, which leaves no trail on exactly the action that needs one.
+   */
+  @RequirePermission('audit', 'release_device')
+  @Scope({ param: 'auditId', intent: 'write' })
+  @Post(':auditId/release-device')
+  @HttpCode(HttpStatus.OK)
+  releaseDevice(
+    @CurrentScope() scope: ScopeContext,
+    @Param('auditId', ParseUUIDPipe) auditId: string,
+    @Body(new ZodValidationPipe(releaseDeviceRequestSchema)) body: ReleaseDeviceRequest,
+  ): Promise<Audit> {
+    return this.audits.releaseDevice(scope, auditId, body);
   }
 
   /** A-2's only door. Writes `audit.changed_after_completion` with before and after. */

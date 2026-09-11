@@ -17,7 +17,9 @@ import type { AppConfig } from './config/env';
 export const FASTIFY_ADAPTER_OPTIONS: ConstructorParameters<typeof FastifyAdapter>[0] = {
   trustProxy: true,
   bodyLimit: 1_048_576,
-  maxParamLength: 512,
+  // Under `routerOptions`, not at the top level: Fastify 5 deprecated the flat form and
+  // warns on every boot, and `fastify@6` removes it.
+  routerOptions: { maxParamLength: 512 },
 };
 
 /**

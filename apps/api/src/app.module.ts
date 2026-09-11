@@ -10,10 +10,12 @@ import { IdempotencyInterceptor } from './common/idempotency/idempotency.interce
 import { RequestContextMiddleware } from './common/observability/request-context.middleware';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { QueueModule } from './infrastructure/queue/queue.module';
+import { PushModule } from './infrastructure/push/push.module';
 import { StorageModule } from './infrastructure/storage/storage.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AssignmentsModule } from './modules/audit-assignments/assignments.module';
 import { AuditsModule } from './modules/audits/audits.module';
+import { DevicesModule } from './modules/devices/devices.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChecklistsModule } from './modules/checklists/checklists.module';
@@ -40,6 +42,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     DatabaseModule,
     QueueModule,
     StorageModule,
+    PushModule,
     AuthorizationModule,
     AuditLogModule,
     AuthModule,
@@ -50,6 +53,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     AssignmentsModule,
     AuditsModule,
     EvidenceModule,
+    DevicesModule,
     SyncModule,
     MembershipsModule,
     PermissionsModule,

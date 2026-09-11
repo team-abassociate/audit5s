@@ -36,6 +36,17 @@ import { SelfieRequirement } from './selfie-requirement';
     ScoringService,
     SelfieRequirement,
   ],
-  exports: [AuditsService, AuditsRepository, ScoringService],
+  // `AuditZonesService` and `ResponsesService` are exported for `/sync/batch`, which AZ-5
+  // requires to dispatch through the same services the controllers use rather than
+  // reaching for the repository — so a rule added to an endpoint is a rule the sync path
+  // gets too, with no second place to remember it.
+  exports: [
+    AuditsService,
+    AuditsRepository,
+    ScoringService,
+    AuditZonesService,
+    ResponsesService,
+    SelfieRequirement,
+  ],
 })
 export class AuditsModule {}

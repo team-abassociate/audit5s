@@ -390,6 +390,14 @@ export const PERMISSION_MATRIX: readonly PermissionDefinition[] = [
     grants: { SUPER_ADMIN: org },
   },
   {
+    // §9.5 Layer 1's force-release. A Super Admin only: breaking another device's
+    // single-writer lock is an administrative act, and the endpoint audit-logs it.
+    resource: 'audit',
+    action: 'release_device',
+    description: 'Force-release the device lock on an audit (D7)',
+    grants: { SUPER_ADMIN: org },
+  },
+  {
     resource: 'audit_zone',
     action: 'create',
     description: 'Add a Zone to an audit, snapshotting its identity',

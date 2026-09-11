@@ -13,6 +13,7 @@ import type {
   PauseAuditRequest,
   PostCompletionOverrideRequest,
   QuestionResponse,
+  ReleaseDeviceRequest,
   ResumeAuditRequest,
   StartAuditRequest,
 } from '@audit5s/contracts';
@@ -24,6 +25,7 @@ import {
   type TransitionGuard,
 } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
+import { scopeFor } from '../../common/auth/scope-for';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { getRequestContext } from '../../common/observability/request-context';
 import { UnitsRepository } from '../units/units.repository';
@@ -80,7 +82,13 @@ export class AuditsService {
       return this.get(scope, request.id);
     }
 
-    const unit = await this.units.findById(scope, request.unitId);
+    // Read under the actor's **`unit:read`** grant, not the one that admitted this call.
+    // The two differ: a `POST /audits` arrives under `audit:create_*` (`assigned_units`),
+    // and the same service reached through `/sync/batch` arrives under `sync:push`
+    // (`own_audits`) — which asks `unit` for an `ownerUserId` column it does not have.
+    // `scopeFor` re-derives the resolver from PART 6 for the resource actually being read,
+    // which is the rule `readZoneSnapshot` and the sync catalogue already follow.
+    const unit = await this.units.findById(scopeFor(scope, 'unit:read'), request.unitId);
     if (!unit) {
       // AZ-3: a Unit outside scope reads as absent, so ids cannot be probed.
       throw AppError.notFound('No such Unit');
@@ -211,11 +219,27 @@ export class AuditsService {
     const deviceId = this.requireDevice(scope, request.deviceId);
 
     // Idempotent: the owning device restarting a running audit gets the audit back.
+    if (audit.status === 'IN_PROGRESS' && audit.owningDeviceId === deviceId) {
+      return toAudit(audit);
+    }
+
+    // An IN_PROGRESS audit whose lock is **free** is claimable. That is the whole point of
+    // the force-release of §9.5 Layer 1: a Super Admin clears the lock on a lost phone so
+    // a replacement can pick the audit up. Refusing here because the status is already
+    // IN_PROGRESS would make the release a no-op and leave the audit stranded — which is
+    // the situation it exists to resolve.
+    if (audit.status === 'IN_PROGRESS' && audit.owningDeviceId !== null) {
+      throw this.notOwner();
+    }
+
     if (audit.status === 'IN_PROGRESS') {
-      if (audit.owningDeviceId !== deviceId) {
+      const reclaimed = await this.repository.claimOwnership(scope, auditId, deviceId, [
+        'IN_PROGRESS',
+      ]);
+      if (!reclaimed) {
         throw this.notOwner();
       }
-      return toAudit(audit);
+      return this.get(scope, auditId);
     }
 
     const claimed = await this.repository.claimOwnership(scope, auditId, deviceId, [
@@ -420,6 +444,55 @@ export class AuditsService {
         'COMPLETED',
       );
     }
+
+    return this.get(scope, auditId);
+  }
+
+  /**
+   * `POST /audits/{id}/release-device` (§9.5 Layer 1).
+   *
+   * > Ownership is released on `COMPLETED`, `PAUSED` (after a 24 h grace period), or by a
+   * > Super Admin force-release (`POST /audits/{id}/release-device`, audit-logged) for a
+   * > lost or broken phone.
+   *
+   * This is the third case, and it is what unblocks a lost phone. Without it a dropped
+   * device holds its audit's single-writer lock indefinitely and the only remedy is a
+   * psql session — which leaves no trail, on precisely the action that most needs one.
+   *
+   * It does not cancel the audit or touch a single answer. The audit stays exactly where
+   * it was; what changes is that another device may now claim it. Any work still on the
+   * lost phone is, of course, still lost — that is a property of offline-first (§9.6), and
+   * the release makes the *rest* recoverable rather than pretending otherwise.
+   */
+  async releaseDevice(
+    scope: ScopeContext,
+    auditId: string,
+    request: ReleaseDeviceRequest,
+  ): Promise<Audit> {
+    const audit = await this.mustFind(scope, auditId);
+
+    if (audit.owningDeviceId === null) {
+      // Idempotent: an audit nobody holds is already released.
+      return toAudit(audit);
+    }
+
+    await this.repository.updateAudit(scope, auditId, {
+      owningDeviceId: null,
+      clientUpdatedAt: new Date(),
+    });
+
+    await this.auditLog.record({
+      action: 'audit.device_released',
+      resourceType: 'audit',
+      resourceId: auditId,
+      unitId: audit.unitId,
+      before: { owningDeviceId: audit.owningDeviceId },
+      after: { owningDeviceId: null, reason: request.reason },
+    });
+
+    this.logger.warn(
+      `device ${audit.owningDeviceId} force-released from audit ${auditId}: ${request.reason}`,
+    );
 
     return this.get(scope, auditId);
   }
@@ -644,8 +717,10 @@ export class AuditsService {
       return request.assignmentId ?? null;
     }
 
+    const assignmentScope = scopeFor(scope, 'audit_assignment:read');
+
     if (request.assignmentId) {
-      const assignment = await this.assignments.findById(scope, request.assignmentId);
+      const assignment = await this.assignments.findById(assignmentScope, request.assignmentId);
       if (!assignment || assignment.auditorUserId !== scope.actor.userId) {
         throw AppError.notFound('No such assignment');
       }
@@ -653,7 +728,7 @@ export class AuditsService {
     }
 
     const open = await this.assignments.findOpenForUnit(
-      scope,
+      assignmentScope,
       scope.actor.userId,
       request.unitId,
       'EXTERNAL_5S',
