@@ -102,15 +102,39 @@ await page.screenshot({ path: `${shots}/08-import-preview.png` });
 const errorBadge = await page.locator('text=/^0 errors$/').isVisible();
 if (!errorBadge) throw new Error('the real workbook reported errors');
 
-step(10, 'open the side-by-side diff for one department');
-await page.getByRole('button', { name: '50 new' }).first().click();
-await page.waitForSelector('text=No published version yet', { timeout: 10000 });
-await page.screenshot({ path: `${shots}/09-import-diff.png` });
+// `pnpm seed` imports and publishes the same nine sheets through the same pipeline, so
+// whether this workbook is new depends on how the database was prepared. Both states are
+// worth walking: a first import proves the wizard publishes, and a re-import proves the
+// idempotence the seed claims — every sheet unchanged, nothing committable.
+const firstImport = await page
+  .getByRole('button', { name: '50 new' })
+  .first()
+  .isVisible()
+  .catch(() => false);
 
-step(11, 'commit and publish all nine');
-await page.getByRole('button', { name: /Commit and publish 9 checklists/ }).click();
-await page.waitForSelector('text=Imported and published', { timeout: 60000 });
-await page.getByRole('button', { name: 'Done' }).click();
+if (firstImport) {
+  step(10, 'open the side-by-side diff for one department');
+  await page.getByRole('button', { name: '50 new' }).first().click();
+  await page.waitForSelector('text=No published version yet', { timeout: 10000 });
+  await page.screenshot({ path: `${shots}/09-import-diff.png` });
+
+  step(11, 'commit and publish all nine');
+  await page.getByRole('button', { name: /Commit and publish 9 checklists/ }).click();
+  await page.waitForSelector('text=Imported and published', { timeout: 60000 });
+  await page.getByRole('button', { name: 'Done' }).click();
+} else {
+  step(10, 'the nine are already published — the diff shows every sheet unchanged');
+  await page.getByRole('button', { name: '0 changed · 0 added · 0 removed' }).first().click();
+  await page.waitForSelector('text=Show all 50', { timeout: 10000 });
+  await page.screenshot({ path: `${shots}/09-import-diff.png` });
+
+  step(11, 'and nothing is committable, so the wizard offers nothing to write');
+  await page.waitForSelector('text=/Nothing to import/', { timeout: 10000 });
+  const commit = page.getByRole('button', { name: /^Commit and publish/ });
+  if (await commit.isEnabled()) throw new Error('a no-op import offered to commit');
+  await page.getByRole('button', { name: 'Close' }).click();
+}
+
 await page.waitForSelector('text=SHOP_FLOOR', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/10-checklists.png` });
 
