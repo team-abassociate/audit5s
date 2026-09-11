@@ -28,7 +28,7 @@ RUN pnpm --filter @audit5s/contracts build \
  && pnpm --filter @audit5s/api build
 
 # Drops dev dependencies from the tree that gets copied forward.
-RUN pnpm install --frozen-lockfile --prod
+RUN CI=true pnpm install --frozen-lockfile --prod
 
 # ---- runtime ----------------------------------------------------------------
 FROM node:22-alpine AS runtime
