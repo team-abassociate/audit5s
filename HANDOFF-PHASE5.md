@@ -3,8 +3,13 @@
 > Continues `HANDOFF.md`, which still governs: its §2 precedence order, §5.3 coding rules and
 > §7 open questions are unchanged. Read that first if you have not.
 
-Branch `claude/Krishna`, head `91fe48e`. Phases 0–4 complete; **Phase 5 backend, migrations
-and tests complete**; Phase 5 web, mobile and the acceptance row **not started**.
+Branch `claude/Krishna`. Phases 0–4 complete; **Phase 5 backend, migrations and tests
+complete**; Phase 5 web, mobile and the acceptance row **not started**.
+
+The backend work is commit `91fe48e`; `ae54209` fixes a pre-existing Dockerfile bug that
+had failed `Build API image` on every CI run that reached it, and `894a3be` merges `main`
+in. CI is green on all three jobs. Read `AGENTS.md` too — `main` brought it in, and it is
+addressed to every agent working here.
 
 ---
 
