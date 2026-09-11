@@ -10,6 +10,16 @@ FROM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /repo
 
+# A container build has no TTY, and pnpm asks before removing a `node_modules` it did not
+# create the current way — which the `--prod` install at the end of this stage does, since
+# switching from a dev tree to a production one is a purge. Without this it aborts with
+# `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`, and pnpm's own message names this as the
+# remedy. It is also simply true: this is an automated build, not an interactive shell.
+#
+# Nothing else in this stage is affected — the only other commands are `tsc` — and it
+# additionally silences the update notifier that would otherwise print a box on every build.
+ENV CI=true
+
 # Manifests first, so a dependency install is cached across source-only changes.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/
@@ -27,7 +37,8 @@ RUN pnpm --filter @audit5s/contracts build \
  && pnpm --filter @audit5s/db build \
  && pnpm --filter @audit5s/api build
 
-# Drops dev dependencies from the tree that gets copied forward.
+# Drops dev dependencies from the tree that gets copied forward. This purges and reinstalls
+# rather than pruning in place, which is why the stage needs `CI=true` above.
 RUN pnpm install --frozen-lockfile --prod
 
 # ---- runtime ----------------------------------------------------------------
