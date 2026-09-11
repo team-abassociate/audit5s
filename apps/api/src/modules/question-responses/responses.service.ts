@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { QuestionResponse, UpsertQuestionResponseRequest } from '@audit5s/contracts';
 import { assertTransition, numericScoreFor, type ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { asAppError } from '../audit-assignments/assignments.service';
 import { AuditsRepository } from '../audits/audits.repository';
 import { toQuestionResponse } from '../audits/audits.service';
+import { EvidenceService } from '../evidence/evidence.service';
 
 /**
  * Question responses (§8.6).
@@ -22,7 +23,12 @@ import { toQuestionResponse } from '../audits/audits.service';
  */
 @Injectable()
 export class ResponsesService {
-  constructor(private readonly repository: AuditsRepository) {}
+  private readonly logger = new Logger(ResponsesService.name);
+
+  constructor(
+    private readonly repository: AuditsRepository,
+    private readonly evidence: EvidenceService,
+  ) {}
 
   async upsert(
     scope: ScopeContext,
@@ -122,6 +128,17 @@ export class ResponsesService {
       resumeQuestionId: request.checklistQuestionId,
       clientUpdatedAt,
     });
+
+    // Invariant E-2: a photograph attached to this question is reclassified to match the
+    // answer as it now stands. §5.6 gives the reason in one line — "otherwise a photo
+    // silently misfiles into the wrong report section" — and a NONCONFORMITY filed as a
+    // GOOD is a corrective action nobody is ever asked to close.
+    const reclassified = await this.evidence.reclassifyForResponse(scope, storedId, request.value);
+    if (reclassified > 0) {
+      this.logger.log(
+        `response ${storedId} changed to ${request.value}: reclassified ${reclassified} photo(s) (E-2)`,
+      );
+    }
 
     const responses = await this.repository.listResponses(scope, zone.auditId);
     const stored = responses.find((response) => response.id === storedId);

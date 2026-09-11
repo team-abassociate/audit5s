@@ -10,7 +10,13 @@ import {
   type SyncCatalogue,
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS } from '@audit5s/domain';
-import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
+import {
+  captureEvidence,
+  loginFromDevice,
+  startWorld,
+  stopWorld,
+  type TestWorld,
+} from './harness';
 
 // The **real device store**, imported from the mobile app rather than reimplemented here.
 // That is the point of this file: the offline half runs the code that runs on a phone,
@@ -377,6 +383,15 @@ async function drainOutbox(
   });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   expect((created.body as Audit).id).toBe(auditId);
+
+  // §7.1's selfie guard is real from Phase 4 on.
+  await captureEvidence(world, {
+    token: consultantToken,
+    evidenceId: randomUUID(),
+    auditId,
+    kind: 'AUDITOR_SELFIE',
+    deviceId: DEVICE_ID,
+  });
 
   const started = await request('POST', `${base}/audits/${auditId}/start`, {
     token: consultantToken,

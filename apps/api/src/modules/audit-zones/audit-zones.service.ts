@@ -4,13 +4,14 @@ import type {
   CompleteAuditZoneRequest,
   UpsertAuditZoneRequest,
 } from '@audit5s/contracts';
-import { assertTransition, type ScopeContext } from '@audit5s/domain';
+import { assertTransition, type ScopeContext, type TransitionGuard } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { asAppError } from '../audit-assignments/assignments.service';
 import { AuditsRepository, type AuditRow, type ZoneSnapshot } from '../audits/audits.repository';
 import { ScoringService } from '../audits/scoring.service';
 import { toAuditZone } from '../audits/audits.service';
+import { EvidenceService } from '../evidence/evidence.service';
 
 /**
  * Audit Zones (§7.2, §8.6).
@@ -30,6 +31,7 @@ export class AuditZonesService {
   constructor(
     private readonly repository: AuditsRepository,
     private readonly scoring: ScoringService,
+    private readonly evidence: EvidenceService,
   ) {}
 
   async upsert(
@@ -142,12 +144,31 @@ export class AuditZonesService {
 
     this.assertWritable(scope, audit);
 
-    const answered = await this.answeredEveryQuestion(scope, zone.checklistVersionId, auditZoneId);
+    // §7.2 gives this edge two forms, and which one applies is decided by the audit type,
+    // not by which happens to be satisfiable. A walk-by needs a photograph; a scored Zone
+    // needs its answers. Resolving the applicable guard here — rather than offering both
+    // and letting the table pick — is what stops a fifty-question Zone completing on the
+    // strength of one photo and no answers.
+    const satisfied: TransitionGuard[] = [];
+
+    if (audit.auditType === 'WALK_BY') {
+      if (!(await this.evidence.hasEvidenceInZone(scope, auditZoneId))) {
+        // Named rather than left to the generic guard refusal, because this is the one an
+        // auditor standing in the Zone can act on: take a photograph.
+        throw AppError.conflict(
+          'EVIDENCE_REQUIRED',
+          'A walk-by Zone needs at least one photograph before it can be finished (§7.2)',
+        );
+      }
+      satisfied.push('has_evidence');
+    } else if (await this.answeredEveryQuestion(scope, zone.checklistVersionId, auditZoneId)) {
+      satisfied.push('all_questions_answered');
+    }
 
     try {
       assertTransition('audit_zone', zone.status, 'COMPLETED', {
         role: scope.actor.role,
-        satisfied: answered ? ['all_questions_answered'] : [],
+        satisfied,
       });
     } catch (error) {
       throw asAppError(error);
@@ -169,16 +190,21 @@ export class AuditZonesService {
     return this.get(scope, auditZoneId);
   }
 
-  /** Every question of the pinned version has an answer. A walk-by pins no version. */
+  /**
+   * Every question of the pinned version has an answer.
+   *
+   * A walk-by pins no version and has no questions, so this is vacuously *not* the guard
+   * that applies to it — `has_evidence` is, and the state-machine table names which edge
+   * needs which. Returning `true` here for a walk-by, as Phase 3 did while `evidence` did
+   * not exist, would have let a walk-by Zone finish with no photograph at all.
+   */
   private async answeredEveryQuestion(
     scope: ScopeContext,
     checklistVersionId: string | null,
     auditZoneId: string,
   ): Promise<boolean> {
     if (!checklistVersionId) {
-      // WALK_BY: the guard is "at least one live photo", which arrives with evidence in
-      // Phase 4. Until then a walk-by Zone finishes on the auditor's say-so.
-      return true;
+      return false;
     }
     const [expected, actual] = await Promise.all([
       this.repository.countQuestionsInVersion(scope, checklistVersionId),

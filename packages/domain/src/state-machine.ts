@@ -155,7 +155,23 @@ export const AUDIT_ZONE_TRANSITIONS: readonly Transition<AuditZoneStatus>[] = [
     to: 'COMPLETED',
     actors: ['CONSULTANT', 'ZONE_LEADER'],
     guards: ['all_questions_answered'],
-    note: 'Finish Zone. Section scores are written on this edge',
+    note: 'Finish a scored Zone (EXTERNAL_5S, CROSS_5S). Section scores are written here',
+  },
+  {
+    // §7.2's guard table gives this move two forms, by audit type: a scored Zone needs
+    // every question answered, a walk-by needs "≥1 non-deleted evidence row" — the
+    // "minimum one live photo per Zone" rule, which is the *whole* of a walk-by's
+    // completion requirement because it has no questionnaire to answer (§2.7).
+    //
+    // Two edges rather than one edge with two guards, because the guards are alternatives
+    // and not a conjunction: requiring both would make a walk-by uncompletable and a
+    // scored Zone need a photograph it was never asked for. The service supplies whichever
+    // guard the audit type makes applicable, so exactly one of these can ever be met.
+    from: 'IN_PROGRESS',
+    to: 'COMPLETED',
+    actors: ['CONSULTANT', 'ZONE_LEADER'],
+    guards: ['has_evidence'],
+    note: 'Finish a WALK_BY Zone: at least one photograph (§7.2)',
   },
   {
     from: 'COMPLETED',
@@ -255,17 +271,22 @@ export function canTransition(
   }
 
   const satisfied = new Set(context.satisfied ?? []);
-  let lastUnmet: TransitionGuard | null = null;
+  let firstUnmet: TransitionGuard | null = null;
 
   for (const edge of permitted) {
     const unmet = (edge.guards ?? []).find((guard) => !satisfied.has(guard));
     if (!unmet) {
       return { allowed: true };
     }
-    lastUnmet = unmet;
+    // The **first** edge's unmet guard, not the last. Where a move has alternative forms —
+    // `audit_zone IN_PROGRESS → COMPLETED` has one for a scored Zone and one for a walk-by
+    // — the refusal should name the guard of the canonical form, which is the one declared
+    // first. Reporting whichever edge happened to be examined last makes the message
+    // depend on table order rather than on what the caller was actually trying to do.
+    firstUnmet ??= unmet;
   }
 
-  return { allowed: false, reason: 'GUARD_UNMET', guard: lastUnmet! };
+  return { allowed: false, reason: 'GUARD_UNMET', guard: firstUnmet! };
 }
 
 /**
@@ -317,19 +338,28 @@ function describeRefusal(
   }
 }
 
-/** Every status reachable from `from` for this actor, ignoring guards. Drives UI affordances. */
+/**
+ * Every status reachable from `from` for this actor, ignoring guards. Drives UI affordances.
+ *
+ * De-duplicated, because a move may have more than one form: `audit_zone IN_PROGRESS →
+ * COMPLETED` is declared twice, once for a scored Zone and once for a walk-by. They are
+ * alternative routes to one destination, and a screen that rendered "Finish Zone" twice
+ * would be showing the table's shape rather than the auditor's choices.
+ */
 export function nextStatuses(
   entity: StateMachineEntity,
   from: string,
   role: Role | null,
 ): string[] {
-  return TABLES[entity]
+  const reachable = TABLES[entity]
     .filter(
       (edge) =>
         edge.from === from &&
         (role === null ? edge.actors.length === 0 : (edge.actors as readonly Role[]).includes(role)),
     )
     .map((edge) => edge.to);
+
+  return [...new Set(reachable)];
 }
 
 /** The whole table for one entity, for tests and for the admin console's status legend. */
