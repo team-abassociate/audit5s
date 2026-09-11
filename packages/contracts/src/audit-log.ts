@@ -28,6 +28,8 @@ export const AUDIT_LOG_ACTIONS = [
   'audit_assignment.cancelled',
   'audit.changed_after_completion',
   'audit.cancelled',
+  /** §9.5 Layer 1's force-release: a Super Admin breaks a device's single-writer lock. */
+  'audit.device_released',
   'report.generated',
   'report.token_revoked',
   'corrective_action.verified',

@@ -295,6 +295,18 @@ export const cancelAuditRequestSchema = z.object({
 export type CancelAuditRequest = z.infer<typeof cancelAuditRequestSchema>;
 
 /**
+ * `POST /audits/{id}/release-device` — D7's force-release (§9.5 Layer 1).
+ *
+ * The reason is required rather than optional for the same reason the cancellation's is:
+ * the point of the endpoint is the `AuditLog` entry it writes. Breaking a single-writer
+ * lock without saying why is the case the audit trail exists to prevent.
+ */
+export const releaseDeviceRequestSchema = z.object({
+  reason: z.string().trim().min(1).max(1000),
+});
+export type ReleaseDeviceRequest = z.infer<typeof releaseDeviceRequestSchema>;
+
+/**
  * `PATCH /audits/{id}/post-completion` — the **only** way a completed audit changes (A-2).
  *
  * The justification is required rather than optional because the whole point of the route

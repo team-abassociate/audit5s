@@ -604,6 +604,15 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'audits.e2e.test.ts',
   },
   {
+    method: 'POST',
+    path: '/api/v1/audits/:auditId/release-device',
+    description:
+      'audit:release_device — D7’s force-release (§9.5 Layer 1). SUPER_ADMIN only, always ' +
+      'audit-logged; it is what unblocks a lost phone and it changes nothing but the lock',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+  {
     method: 'PATCH',
     path: '/api/v1/audits/:auditId/post-completion',
     description: 'audit:edit_after_completion — A-2’s only door, always audit-logged',
@@ -752,6 +761,102 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       CONSULTANT: { inScope: OK },
       ZONE_LEADER: { inScope: OK },
     },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/sync/batch',
+    description:
+      'sync:push — the push path (§9.3). Answers 200 whatever happened inside: one ' +
+      'malformed row produces a verdict, never a status that discards the other 99',
+    expected: {
+      CONSULTANT: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/sync/status',
+    description: 'sync:pull — the server’s view of this device, so a field problem is diagnosable',
+    expected: {
+      CONSULTANT: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+
+  // ------------------------------------------------------------- sync conflicts
+  {
+    method: 'GET',
+    path: '/api/v1/sync-conflicts',
+    description: 'sync_conflict:read — the quarantine queue (§9.5 Layer 3); SUPER_ADMIN only',
+    expected: { SUPER_ADMIN: { inScope: OK } },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/sync-conflicts/:conflictId',
+    description: 'sync_conflict:read — one quarantined item, with its full incoming payload',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/sync-conflicts/:conflictId/resolve',
+    description:
+      'sync_conflict:resolve — APPLY routes through the post-completion override so it is ' +
+      'audit-logged; DISCARD marks it resolved and keeps the payload',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+
+  // ----------------------------------------------------------------- devices
+  {
+    method: 'POST',
+    path: '/api/v1/devices/register',
+    description:
+      'device:list — §8.11’s registration, idempotent on id. A device registers itself ' +
+      'under whoever is signed in; there is no userId in the shape, so nobody registers ' +
+      'a device for somebody else',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/devices',
+    description: 'device:list — own_record for the field roles, organization for a Super Admin',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/devices/:deviceId',
+    description: 'device:list — a single device record',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: NOT_FOUND, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: NOT_FOUND, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/devices/:deviceId/revoke',
+    description:
+      'device:revoke — revokes the device and its sessions. The audits it owns are released ' +
+      'separately, because a credential decision is not an audit decision',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: NOT_FOUND, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: NOT_FOUND, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'sync.e2e.test.ts',
   },
 
   // ------------------------------------------------------- roles/permissions
