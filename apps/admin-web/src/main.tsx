@@ -14,6 +14,8 @@ import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
 import { AuditsPage } from '@/features/audits/AuditsPage';
+import { CorrectiveActionsPage } from '@/features/corrective-actions/CorrectiveActionsPage';
+import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { SyncHealthPage } from '@/features/sync/SyncHealthPage';
 import { ChecklistsPage } from '@/features/checklists/ChecklistsPage';
 import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
@@ -92,6 +94,18 @@ const auditsRoute = createRoute({
   component: AuditsPage,
 });
 
+const correctiveActionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/corrective-actions',
+  component: CorrectiveActionsPage,
+});
+
+const notificationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/notifications',
+  component: NotificationsPage,
+});
+
 const syncRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sync',
@@ -116,6 +130,8 @@ const routeTree = rootRoute.addChildren([
   zonesRoute,
   checklistsRoute,
   auditsRoute,
+  correctiveActionsRoute,
+  notificationsRoute,
   syncRoute,
   usersRoute,
   auditLogRoute,
