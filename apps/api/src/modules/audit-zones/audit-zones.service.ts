@@ -4,7 +4,13 @@ import type {
   CompleteAuditZoneRequest,
   UpsertAuditZoneRequest,
 } from '@audit5s/contracts';
-import { assertTransition, type ScopeContext, type TransitionGuard } from '@audit5s/domain';
+import {
+  assertTransition,
+  auditTypeRequiresZonePhoto,
+  auditTypeUsesChecklist,
+  type ScopeContext,
+  type TransitionGuard,
+} from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { asAppError } from '../audit-assignments/assignments.service';
@@ -22,9 +28,15 @@ import { EvidenceService } from '../evidence/evidence.service';
  * copies nothing. That is why a Coordinator may keep editing Zone master data — the
  * report renders the copy, and history cannot move under it.
  *
- * A client cannot supply a snapshot. The upsert contract has no field for one, and the
- * repository writes them only in the INSERT branch, so "the device sent a different name"
- * is not a case that has to be defended against.
+ * A client cannot supply a snapshot — with two exceptions §2.7 asks for by name, and only
+ * on a walk-by. Steps 3 and 4 of that flow are "Zone description: optional; defaults to the
+ * Zone's current description, snapshotted either way" and "Zone leader: confirmed/selected,
+ * snapshotted". A walk-by is an observation rather than a questionnaire, so what the auditor
+ * says they were looking at, and who they were standing with, *is* the record. Both are
+ * validated before they are snapshotted: a leader must hold an ACTIVE `ZONE_LEADER`
+ * membership in the audit's Unit, and on a scored audit both fields are ignored rather than
+ * refused — a device replaying an old payload should not have a Zone rejected over a field
+ * the server was always going to overwrite.
  */
 @Injectable()
 export class AuditZonesService {
@@ -65,17 +77,35 @@ export class AuditZonesService {
       ]);
     }
 
-    const checklistVersionId = request.checklistVersionId ?? audit.checklistVersionId ?? null;
+    // §2.7: a walk-by pins nothing, and 0008's trigger refuses it outright. Dropped rather
+    // than refused when the audit-level default carries one, because a device that started
+    // a walk-by from a screen holding a version id is not making a claim about the Zone.
+    const usesChecklist = auditTypeUsesChecklist(audit.auditType);
+    if (usesChecklist === false && request.checklistVersionId) {
+      throw AppError.validation('A walk-by Zone has no questionnaire', [
+        {
+          field: 'checklistVersionId',
+          message: 'A WALK_BY Zone pins no checklist version (§2.7, QR-2)',
+        },
+      ]);
+    }
+
+    const checklistVersionId = usesChecklist
+      ? (request.checklistVersionId ?? audit.checklistVersionId ?? null)
+      : null;
     const templateName = checklistVersionId
       ? await this.repository.readTemplateNameForVersion(scope, checklistVersionId)
       : null;
 
+    // §2.7 steps 3 and 4, honoured on a walk-by and ignored on a scored audit.
+    const leader = await this.resolveWalkByLeader(scope, audit, request);
+
     const snapshot: ZoneSnapshot = {
       zoneCodeSnapshot: zone.code,
       zoneNameSnapshot: zone.name,
-      zoneDescriptionSnapshot: zone.description,
-      zoneLeaderUserIdSnapshot: zone.zoneLeaderId,
-      zoneLeaderNameSnapshot: zone.zoneLeaderName,
+      zoneDescriptionSnapshot: walkByDescription(audit, request) ?? zone.description,
+      zoneLeaderUserIdSnapshot: leader?.id ?? zone.zoneLeaderId,
+      zoneLeaderNameSnapshot: leader?.fullName ?? zone.zoneLeaderName,
       checklistTemplateNameSnapshot: templateName,
     };
 
@@ -151,7 +181,7 @@ export class AuditZonesService {
     // strength of one photo and no answers.
     const satisfied: TransitionGuard[] = [];
 
-    if (audit.auditType === 'WALK_BY') {
+    if (auditTypeRequiresZonePhoto(audit.auditType)) {
       if (!(await this.evidence.hasEvidenceInZone(scope, auditZoneId))) {
         // Named rather than left to the generic guard refusal, because this is the one an
         // auditor standing in the Zone can act on: take a photograph.
@@ -213,6 +243,39 @@ export class AuditZonesService {
     return expected > 0 && actual >= expected;
   }
 
+  /**
+   * §2.7 step 4: the Zone leader a walk-by auditor confirmed or selected.
+   *
+   * Null means "use the Zone's own leader", which is both the absent case and the
+   * "confirmed" case — confirming the current leader and saying nothing produce the same
+   * snapshot, so the flow does not need to distinguish them.
+   *
+   * The membership is the check, not the role on the user row: C2 is explicit that the
+   * Zone's leader pointer grants nothing, and a Zone Leader of another Unit standing in
+   * this Zone's snapshot would put a name on a report for a plant they do not work in.
+   */
+  private async resolveWalkByLeader(
+    scope: ScopeContext,
+    audit: AuditRow,
+    request: UpsertAuditZoneRequest,
+  ): Promise<{ id: string; fullName: string } | null> {
+    if (!request.zoneLeaderUserId || auditTypeUsesChecklist(audit.auditType)) {
+      return null;
+    }
+
+    const leader = await this.repository.readZoneLeaderForUnit(
+      scope,
+      audit.unitId,
+      request.zoneLeaderUserId,
+    );
+    if (!leader) {
+      throw AppError.validation('The named Zone Leader is not an active member of this Unit', [
+        { field: 'zoneLeaderUserId', message: 'Not an active Zone Leader of this Unit' },
+      ]);
+    }
+    return leader;
+  }
+
   private async mustFindAudit(scope: ScopeContext, auditId: string): Promise<AuditRow> {
     const audit = await this.repository.findById(scope, auditId);
     if (!audit) {
@@ -243,4 +306,18 @@ export class AuditZonesService {
       );
     }
   }
+}
+
+/**
+ * §2.7 step 3's description, or null to fall back to the Zone's own.
+ *
+ * `undefined` means the client said nothing; `null` means it cleared the field, and both
+ * fall back — a walk-by Zone with an empty description renders the Zone's, which is what
+ * "defaults to the Zone's current description" says. Only a non-empty string overrides.
+ */
+function walkByDescription(audit: AuditRow, request: UpsertAuditZoneRequest): string | null {
+  if (auditTypeUsesChecklist(audit.auditType)) {
+    return null;
+  }
+  return request.zoneDescription ?? null;
 }

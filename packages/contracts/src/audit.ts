@@ -141,6 +141,11 @@ export type ScoreSummary = z.infer<typeof scoreSummarySchema>;
 
 /** `GET /audits/{id}/summary` (§8.6). Explicitly **not** an official report (N6). */
 export const auditScoreSummarySchema = z.object({
+  /**
+   * False for a `WALK_BY`. Every `totals` and `sections` below is then empty with a `null`
+   * percentage — not a score of zero, and not a score yet to arrive (§2.7, PART 11).
+   */
+  scored: z.boolean(),
   audit: scoreSummarySchema,
   zones: z.array(
     scoreSummarySchema.extend({
@@ -162,6 +167,18 @@ export const auditSchema = z.object({
   unitName: z.string(),
   auditType: auditTypeSchema,
   status: auditStatusSchema,
+  /**
+   * False for a `WALK_BY`, whose §2.7 opens "No questionnaire, no score".
+   *
+   * Stated on the response rather than left for each reader to re-derive from
+   * `auditType`. `totals` on a walk-by is all zeros with a `null` percentage, which is
+   * indistinguishable from a scored audit nobody has answered yet — and the difference
+   * matters: one will have a score, the other never will. A client that renders `0 / 0`
+   * as a result, or an analytics query that averages it in, is reading the field that
+   * does not say which case this is. PART 11's "walk-by audits are excluded from every
+   * score metric" is this flag.
+   */
+  scored: z.boolean(),
   auditorUserId: uuidSchema,
   auditorName: z.string(),
   /** The single-writer lock (D7). Null once released. */
@@ -362,6 +379,30 @@ export const upsertAuditZoneRequestSchema = z.object({
   zoneId: uuidSchema,
   sequenceNo: z.number().int().min(1).max(1000),
   checklistVersionId: uuidSchema.optional(),
+  /**
+   * §2.7 step 3 — the walk-by Zone description: "Optional; defaults to the Zone's current
+   * description, snapshotted either way."
+   *
+   * The one exception to "a client cannot supply a snapshot", and it is an exception §2.7
+   * asks for by name rather than a loophole: a walk-by is an observation of what the
+   * auditor found, and the description is part of the observation. Absent, the server
+   * copies the Zone's own description, which is the default half of that sentence.
+   *
+   * Honoured for `WALK_BY` and ignored on a scored audit — the same shape as
+   * `classification` on an upload intent, and for the same reason: a device replaying an
+   * old payload should not have a Zone refused over a field the server was always going
+   * to overwrite.
+   */
+  zoneDescription: clearable(z.string().trim().max(2000)),
+  /**
+   * §2.7 step 4 — the walk-by Zone leader: "Confirmed/selected, snapshotted."
+   *
+   * Absent means confirm the Zone's own leader. Present must name a `ZONE_LEADER` holding
+   * an ACTIVE membership in the audit's Unit, or the request is
+   * `422 ZONE_LEADER_NOT_IN_UNIT` — the service checks it, because a membership is not
+   * expressible here.
+   */
+  zoneLeaderUserId: uuidSchema.optional(),
   zoneRemark: clearable(z.string().trim().max(4000)),
   resumeQuestionId: uuidSchema.nullable().optional(),
   clientUpdatedAt: isoDateTimeSchema.optional(),

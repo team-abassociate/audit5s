@@ -44,6 +44,23 @@ export const evidenceSchema = z.object({
   correctiveActionSubmissionId: uuidSchema.nullable(),
   objectKey: z.string(),
   thumbnailObjectKey: z.string().nullable(),
+  /**
+   * When the media worker finished with this row (§5.6's "produced by the media worker").
+   *
+   * Null means the thumbnail is not there *yet* — the job is queued or retrying — which a
+   * gallery renders as the original rather than as a broken image.
+   */
+  mediaProcessedAt: isoDateTimeSchema.nullable(),
+  /**
+   * The checksum of the object **as stored**, set only when the worker had to rewrite it.
+   *
+   * Null is the normal case and means the bytes in storage are still the bytes the device
+   * sent. Non-null means the server found metadata the device should already have stripped
+   * (§12.8) and removed it — so it is both the new verification value and the record that
+   * a sanitisation happened. `checksumSha256` is never overwritten: it is what the device
+   * asserted at capture and what `commit` verified, and that is a historical fact.
+   */
+  storedChecksumSha256: z.string().nullable(),
   contentType: z.string(),
   byteSize: z.number().int().nonnegative(),
   width: z.number().int().nullable(),
@@ -150,10 +167,28 @@ export const patchEvidenceRequestSchema = z
   .object({
     remark: clearable(z.string().trim().max(2000)),
     isSummaryFlagged: z.boolean().optional(),
+    /**
+     * The auditor's judgement on a walk-by photograph, changed after the fact.
+     *
+     * §2.7 gives the auditor this choice because there is no score to derive it from, and
+     * an auditor who takes ten photographs and then reviews them is doing the job in the
+     * order the job happens — the upload intent carries a first answer, and this is how a
+     * second one reaches the server.
+     *
+     * Honoured for `WALK_BY_PHOTO` **only** (E-1). On any other kind it is refused rather
+     * than ignored: unlike the field on an upload intent, nothing replays a patch, so a
+     * classification sent here is a caller asserting something E-1 reserves to the server,
+     * and answering `409` says so instead of accepting a request that changes nothing.
+     */
+    classification: evidenceClassificationSchema.optional(),
   })
-  .refine((patch) => patch.remark !== undefined || patch.isSummaryFlagged !== undefined, {
-    message: 'Nothing to change',
-  });
+  .refine(
+    (patch) =>
+      patch.remark !== undefined ||
+      patch.isSummaryFlagged !== undefined ||
+      patch.classification !== undefined,
+    { message: 'Nothing to change' },
+  );
 export type PatchEvidenceRequest = z.infer<typeof patchEvidenceRequestSchema>;
 
 /** `GET /evidence/{id}/view-url` — minted **after** the scope check, TTL ≤ 300 s (§12.6). */
@@ -164,6 +199,28 @@ export const evidenceViewUrlSchema = z.object({
 });
 export type EvidenceViewUrl = z.infer<typeof evidenceViewUrlSchema>;
 
+/**
+ * `GET /evidence/{id}/view-url?variant=` (§12.6).
+ *
+ * PART 16: "thumbnails generated for gallery views; originals fetched only on demand." A
+ * gallery of forty photographs asking for forty full-size presigned GETs is the load that
+ * line exists to prevent, so the variant is a parameter on the same endpoint rather than a
+ * second one — one scope check, one TTL cap, one place the ordering of check-then-mint is
+ * enforced.
+ *
+ * A row whose thumbnail has not been produced yet answers with the original, because a
+ * gallery tile showing the real photograph is better than one showing nothing while a
+ * queue drains.
+ */
+export const EVIDENCE_VARIANTS = ['original', 'thumbnail'] as const;
+export const evidenceVariantSchema = z.enum(EVIDENCE_VARIANTS);
+export type EvidenceVariant = z.infer<typeof evidenceVariantSchema>;
+
+export const evidenceViewUrlQuerySchema = z.object({
+  variant: evidenceVariantSchema.default('original'),
+});
+export type EvidenceViewUrlQuery = z.infer<typeof evidenceViewUrlQuerySchema>;
+
 export const listEvidenceQuerySchema = paginationQuerySchema.extend({
   classification: evidenceClassificationSchema.optional(),
   kind: evidenceKindSchema.optional(),
@@ -172,3 +229,17 @@ export const listEvidenceQuerySchema = paginationQuerySchema.extend({
   summaryFlaggedOnly: booleanQuery(false),
 });
 export type ListEvidenceQuery = z.infer<typeof listEvidenceQuerySchema>;
+
+/**
+ * `GET /audits/{auditId}/evidence` — the whole audit's gallery (§8.7's Zone listing, one
+ * level up).
+ *
+ * The per-Zone endpoint answers "what did this Zone look like"; this answers "what did
+ * this audit find", which is the question the admin gallery and the summary report both
+ * ask. `auditZoneId` narrows it back down, so one screen can filter without changing
+ * endpoints mid-interaction.
+ */
+export const listAuditEvidenceQuerySchema = listEvidenceQuerySchema.extend({
+  auditZoneId: uuidSchema.optional(),
+});
+export type ListAuditEvidenceQuery = z.infer<typeof listAuditEvidenceQuerySchema>;

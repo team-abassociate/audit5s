@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, ilike, isNull, sql, type SQL } from 'drizzle-orm';
-import { unitMemberships, users, zones, type Database } from '@audit5s/db';
+import { unitMemberships, zones, type Database } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { CreateZoneRequest, ListZonesQuery } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
@@ -34,7 +34,19 @@ const zoneColumns = {
   departmentHint: zones.departmentHint,
   defaultChecklistTemplateId: zones.defaultChecklistTemplateId,
   zoneLeaderId: zones.zoneLeaderId,
-  zoneLeaderName: users.fullName,
+  /**
+   * Through `app_zone_leader_name`, not a join on `"user"`.
+   *
+   * PART 6 gives a Consultant and a Zone Leader `own_record` on `user:read`, so
+   * `user_select` admits their own row and no other — and a left join therefore produced
+   * a silent NULL for every reader but a Super Admin or the Unit's Coordinator. That is
+   * how `GET /sync/catalogue` came to cache Zones whose leader had no name. The definer
+   * function of 0008 returns the display name alone, scoped to the caller's own Units
+   * (DECISIONS.md R-12f).
+   */
+  zoneLeaderName: sql<
+    string | null
+  >`app_zone_leader_name(${zones.unitId}, ${zones.zoneLeaderId})`,
   sortOrder: zones.sortOrder,
   version: zones.version,
   archivedAt: zones.archivedAt,
@@ -79,7 +91,6 @@ export class ZonesRepository extends BaseRepository {
       const [row] = await tx
         .select(zoneColumns)
         .from(zones)
-        .leftJoin(users, eq(users.id, zones.zoneLeaderId))
         .where(and(eq(zones.id, zoneId), this.scoped(scope, { unitId: zones.unitId })))
         .limit(1);
       return row ?? null;
@@ -100,7 +111,6 @@ export class ZonesRepository extends BaseRepository {
       return tx
         .select(zoneColumns)
         .from(zones)
-        .leftJoin(users, eq(users.id, zones.zoneLeaderId))
         .where(this.scoped(scope, { unitId: zones.unitId }, ...filters))
         // Cursor paging is on the id, so the sort order the dropdown wants is applied by
         // the caller. Zones per Unit are tens, not thousands.
@@ -116,7 +126,6 @@ export class ZonesRepository extends BaseRepository {
       return tx
         .select(zoneColumns)
         .from(zones)
-        .leftJoin(users, eq(users.id, zones.zoneLeaderId))
         .where(this.scoped(scope, { unitId: zones.unitId }, isNull(zones.archivedAt)))
         .orderBy(asc(zones.unitId), asc(zones.sortOrder), asc(zones.code));
     });

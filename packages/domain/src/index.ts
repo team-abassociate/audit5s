@@ -8,6 +8,8 @@ export * from './permission-matrix';
 export * from './scope';
 export * from './scoring';
 export * from './state-machine';
+export * from './audit-type';
 export * from './evidence';
+export * from './image-metadata';
 export * from './geofence';
 export * from './sync-policy';

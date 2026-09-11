@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SYNC_ENTITY_TYPES } from '@audit5s/contracts';
+import { SYNC_ENTITY_TYPES, SYNC_OPERATIONS } from '@audit5s/contracts';
 import {
   MAX_SYNC_ATTEMPTS,
   MAX_SYNC_BATCH_ITEMS,
@@ -261,5 +261,54 @@ describe('stale SYNCING detection', () => {
     // Otherwise it sticks forever — and a stuck item blocks logout (§9.7) with something
     // that will never retry, which is the worst of both.
     expect(isStaleSyncing(null, now)).toBe(true);
+  });
+});
+
+describe('the patch operation Phase 5 added', () => {
+  const item = (
+    entityType: OrderableSyncItem['entityType'],
+    operation: OrderableSyncItem['operation'],
+    createdAt = '2026-09-09T10:00:00.000Z',
+  ): OrderableSyncItem => ({ entityType, operation, createdAt });
+
+  it('follows the commit, because a flag needs a classification to carry it', () => {
+    // E-3 refuses a flag on a NEUTRAL photo, and `commit` is where E-1 writes the
+    // authoritative classification. A patch sent first would be refused for a reason the
+    // auditor could do nothing about.
+    const sorted = sortSyncItems([
+      item('evidence', 'patch'),
+      item('evidence', 'commit'),
+      item('evidence', 'upsert'),
+    ]);
+    expect(sorted.map((entry) => `${entry.entityType}:${entry.operation}`)).toEqual([
+      'evidence:upsert',
+      'evidence:commit',
+      'evidence:patch',
+    ]);
+  });
+
+  it('still precedes the completions', () => {
+    // A flag toggled offline has to reach the server before the audit freezes: A-2 and
+    // R-10 refuse an evidence UPDATE once the audit is COMPLETED.
+    const sorted = sortSyncItems([
+      item('audit', 'complete'),
+      item('audit_zone', 'complete'),
+      item('evidence', 'patch'),
+    ]);
+    expect(sorted.map((entry) => `${entry.entityType}:${entry.operation}`)).toEqual([
+      'evidence:patch',
+      'audit_zone:complete',
+      'audit:complete',
+    ]);
+  });
+
+  it('ranks every operation the contract declares', () => {
+    // An operation with no rank sorts as NaN, which silently makes the comparator return
+    // 0 for every pair it touches — a total order that quietly stops being one.
+    for (const operation of SYNC_OPERATIONS) {
+      const sorted = sortSyncItems([item('evidence', operation), item('audit', 'upsert')]);
+      expect(sorted).toHaveLength(2);
+      expect(sorted.map((entry) => entry.operation)).toContain(operation);
+    }
   });
 });

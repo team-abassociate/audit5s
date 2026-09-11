@@ -151,3 +151,42 @@ export function sniffImageType(header: Uint8Array): AllowedImageType | null {
 
   return null;
 }
+
+/**
+ * Whether the auditor, rather than the score, decides this photo's classification.
+ *
+ * The affordance half of E-1. `classifyEvidence` already honours `auditorSelected` for
+ * `WALK_BY_PHOTO` and ignores it elsewhere, but a *caller* — the phone deciding whether to
+ * show three chips, `PATCH /evidence/{id}` deciding whether a classification in the body is
+ * a change or a lie — needs to ask the question before it has an answer to classify.
+ *
+ * There is exactly one such kind, and §2.7 says why: a walk-by has no questionnaire, so
+ * there is no score to derive anything from.
+ */
+export function auditorChoosesClassification(kind: EvidenceKind): boolean {
+  return kind === 'WALK_BY_PHOTO';
+}
+
+/**
+ * The thumbnail's long edge, in pixels.
+ *
+ * PART 16's checklist asks that "thumbnails [be] generated for gallery views; originals
+ * fetched only on demand", and a gallery tile on a laptop is ~160 px wide. 320 covers a
+ * 2× display without making the thumbnail a second copy of the photograph.
+ */
+export const THUMBNAIL_LONG_EDGE_PX = 320;
+
+/**
+ * The thumbnail's key, derived from the original's.
+ *
+ * A suffix rather than a prefix, deliberately. §5.6 embeds `unit_id` in the key "so an S3
+ * lifecycle or a per-Unit export can be expressed as a prefix operation" — and a
+ * `thumb/...` prefix would put the thumbnails outside every such prefix, so a per-Unit
+ * export would quietly miss them and a retention rule would never reach them.
+ */
+export function thumbnailObjectKey(objectKey: string): string {
+  const dot = objectKey.lastIndexOf('.');
+  return dot === -1
+    ? `${objectKey}.thumb.jpg`
+    : `${objectKey.slice(0, dot)}.thumb${objectKey.slice(dot)}`;
+}

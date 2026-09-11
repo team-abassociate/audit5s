@@ -2,7 +2,9 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type {
   CommitEvidenceRequest,
   Evidence,
+  EvidenceVariant,
   EvidenceViewUrl,
+  ListAuditEvidenceQuery,
   ListEvidenceQuery,
   Page,
   PatchEvidenceRequest,
@@ -11,6 +13,7 @@ import type {
 } from '@audit5s/contracts';
 import {
   ALLOWED_IMAGE_TYPES,
+  auditorChoosesClassification,
   canBeSummaryFlagged,
   classifyEvidence,
   evidenceObjectKey,
@@ -20,6 +23,7 @@ import {
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { CONFIG, type AppConfig } from '../../config/env';
+import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
 import { EvidenceRepository, type EvidenceRow } from './evidence.repository';
 
@@ -46,6 +50,7 @@ export class EvidenceService {
   constructor(
     private readonly repository: EvidenceRepository,
     private readonly storage: ObjectStorage,
+    private readonly queue: QueueService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -204,7 +209,12 @@ export class EvidenceService {
       );
     }
 
-    if (head.byteSize !== Number(row.byteSize)) {
+    // The object in storage is the sanitised one once the media worker has been here
+    // (R-12), so the size it declared at capture is no longer what is there. `byte_size`
+    // is refreshed below from this same HEAD, so a replay compares against the truth.
+    const sanitised = row.storedChecksumSha256 !== null;
+
+    if (!sanitised && head.byteSize !== Number(row.byteSize)) {
       throw AppError.conflict(
         'CHECKSUM_MISMATCH',
         `The stored object is ${head.byteSize} bytes; the intent declared ${row.byteSize}`,
@@ -213,7 +223,15 @@ export class EvidenceService {
 
     // Null when the provider recorded no checksum — verify what is verifiable rather than
     // refusing a photo for an infrastructure reason (see `StoredObjectHead`).
-    if (head.checksumSha256 !== null && head.checksumSha256 !== row.checksumSha256) {
+    //
+    // `storedChecksumSha256` wins when it is set: R-12 keeps `checksum_sha256` as the
+    // capture-time fact §12.8 verified, and records what is actually in the bucket
+    // separately. Comparing against the capture value here would answer
+    // `409 CHECKSUM_MISMATCH` on the replay path §9.6 depends on, for a photograph the
+    // server itself rewrote — and the device would retry until it dead-lettered a good
+    // upload.
+    const expectedChecksum = row.storedChecksumSha256 ?? row.checksumSha256;
+    if (head.checksumSha256 !== null && head.checksumSha256 !== expectedChecksum) {
       throw AppError.conflict(
         'CHECKSUM_MISMATCH',
         'The stored object does not match the checksum recorded at capture',
@@ -245,13 +263,30 @@ export class EvidenceService {
       auditorSelected: row.kind === 'WALK_BY_PHOTO' ? row.classification : null,
     });
 
-    await this.repository.markCommitted(scope, evidenceId, {
-      classification,
-      scoreAtCapture: linkedResponse?.value ?? null,
-      byteSize: head.byteSize,
-      width: request.width ?? null,
-      height: request.height ?? null,
-    });
+    // R-2: the enqueue is on the **same transaction** as the commit, so a job cannot
+    // exist for a photograph whose commit rolled back. That is why pg-boss is the queue
+    // and why there is no outbox table (DECISIONS.md R-2).
+    await this.repository.markCommittedAndEnqueueMedia(
+      scope,
+      evidenceId,
+      {
+        classification,
+        scoreAtCapture: linkedResponse?.value ?? null,
+        byteSize: head.byteSize,
+        width: request.width ?? null,
+        height: request.height ?? null,
+      },
+      (tx) =>
+        this.queue
+          .sendInTransaction(tx, QUEUES.mediaProcess, {
+            evidenceId,
+            // Identity, never authority: the worker re-reads the role and the grant. It
+            // is the committer because `evidence:create` is granted on `own_audits`, so
+            // the actor here is the audit's own auditor.
+            auditorUserId: scope.actor.userId,
+          })
+          .then(() => undefined),
+    );
 
     if (row.kind === 'AUDITOR_SELFIE') {
       // §7.1's guard reads the audit; this is what points it at the selfie. It is a
@@ -274,7 +309,37 @@ export class EvidenceService {
     auditZoneId: string,
     query: ListEvidenceQuery,
   ): Promise<Page<Evidence>> {
+    // The parent is checked before the collection is read, the way `ZonesService.list`
+    // checks its Unit. A scope predicate alone would answer an out-of-scope Zone with an
+    // empty page — which leaks nothing (AZ-3 is satisfied either way) but tells a client
+    // with a stale id that the Zone has no photographs rather than that it cannot see it.
+    if (!(await this.repository.findZoneForEvidence(scope, auditZoneId))) {
+      throw AppError.notFound('No such audit Zone');
+    }
+
     const rows = await this.repository.listForZone(scope, auditZoneId, query);
+    const hasMore = rows.length > query.limit;
+    const page = hasMore ? rows.slice(0, query.limit) : rows;
+    return { data: page.map(toEvidence), nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };
+  }
+
+  /**
+   * The whole audit's gallery (`GET /audits/{auditId}/evidence`).
+   *
+   * Same page shape and same filters as the per-Zone listing, one level up: the admin
+   * gallery and the summary report both ask "what did this audit find" rather than
+   * "what did this Zone look like".
+   */
+  async listForAudit(
+    scope: ScopeContext,
+    auditId: string,
+    query: ListAuditEvidenceQuery,
+  ): Promise<Page<Evidence>> {
+    if (!(await this.repository.findAuditForEvidence(scope, auditId))) {
+      throw AppError.notFound('No such audit');
+    }
+
+    const rows = await this.repository.listForAudit(scope, auditId, query);
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;
     return { data: page.map(toEvidence), nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };
@@ -288,7 +353,11 @@ export class EvidenceService {
    * ever minted for an object the actor could already read. Minting first and checking
    * afterwards would hand out a working link on the way to a 404.
    */
-  async viewUrl(scope: ScopeContext, evidenceId: string): Promise<EvidenceViewUrl> {
+  async viewUrl(
+    scope: ScopeContext,
+    evidenceId: string,
+    variant: EvidenceVariant = 'original',
+  ): Promise<EvidenceViewUrl> {
     const row = await this.mustFind(scope, evidenceId);
 
     if (row.redactedAt) {
@@ -297,7 +366,14 @@ export class EvidenceService {
       this.logger.log(`view-url for redacted evidence ${evidenceId}`);
     }
 
-    const download = await this.storage.presignGet(row.objectKey, {
+    // PART 16 asks that galleries use thumbnails and fetch originals "only on demand". A
+    // row whose thumbnail has not been produced yet falls back to the original rather
+    // than failing: a tile showing the real photograph beats one showing nothing while a
+    // queue drains, and the fallback costs one larger download rather than a broken page.
+    const key =
+      variant === 'thumbnail' && row.thumbnailObjectKey ? row.thumbnailObjectKey : row.objectKey;
+
+    const download = await this.storage.presignGet(key, {
       expiresInSeconds: this.config.EVIDENCE_GET_URL_TTL_SECONDS,
     });
 
@@ -329,21 +405,43 @@ export class EvidenceService {
       throw AppError.conflict('CONFLICT', 'This evidence was deleted');
     }
 
-    if (request.isSummaryFlagged === true && !canBeSummaryFlagged(row.classification)) {
-      // E-3, as an affordance. The CHECK constraint says the same thing; this says it in
-      // words the auditor can act on rather than as a constraint-violation string.
+    // §2.7: the auditor's judgement on a walk-by photograph, changed after the fact.
+    // Refused rather than ignored on every other kind — unlike the field on an upload
+    // intent, nothing replays a patch, so a classification here is a caller asserting
+    // something E-1 reserves to the server.
+    if (request.classification !== undefined && !auditorChoosesClassification(row.kind)) {
+      throw AppError.conflict(
+        'CONFLICT',
+        `A ${row.kind} photo's classification is derived from its response, not chosen ` +
+          '(E-1). Only a walk-by photograph is the auditor’s to judge (§2.7).',
+      );
+    }
+
+    const classification = request.classification ?? row.classification;
+
+    // E-3, twice over: the flag being set now, and the flag already set on a photograph
+    // whose classification is about to become NEUTRAL. The CHECK constraint refuses both,
+    // and would refuse the *whole* statement — including the reclassification the auditor
+    // actually asked for — so the flag is dropped here instead, in the same patch.
+    if (request.isSummaryFlagged === true && !canBeSummaryFlagged(classification)) {
       throw AppError.conflict(
         'CONFLICT',
         'Only a GOOD or NONCONFORMITY photo can be the Zone summary; this one is NEUTRAL',
       );
     }
 
+    const clearsFlag =
+      row.isSummaryFlagged && !canBeSummaryFlagged(classification) && request.isSummaryFlagged !== true;
+
     try {
       await this.repository.patch(scope, evidenceId, {
         ...(request.remark !== undefined ? { remark: request.remark } : {}),
+        ...(request.classification !== undefined ? { classification: request.classification } : {}),
         ...(request.isSummaryFlagged !== undefined
           ? { isSummaryFlagged: request.isSummaryFlagged }
-          : {}),
+          : clearsFlag
+            ? { isSummaryFlagged: false }
+            : {}),
       });
     } catch (error) {
       if (
@@ -352,7 +450,7 @@ export class EvidenceService {
       ) {
         throw AppError.conflict(
           'SUMMARY_FLAG_TAKEN',
-          `Another ${row.classification} photo in this Zone is already flagged for the summary. ` +
+          `Another ${classification} photo in this Zone is already flagged for the summary. ` +
             'Unflag it first.',
         );
       }
@@ -503,6 +601,8 @@ export function toEvidence(row: EvidenceRow): Evidence {
     correctiveActionSubmissionId: row.correctiveActionSubmissionId,
     objectKey: row.objectKey,
     thumbnailObjectKey: row.thumbnailObjectKey,
+    mediaProcessedAt: row.mediaProcessedAt?.toISOString() ?? null,
+    storedChecksumSha256: row.storedChecksumSha256,
     contentType: row.contentType,
     byteSize: Number(row.byteSize),
     width: row.width,
