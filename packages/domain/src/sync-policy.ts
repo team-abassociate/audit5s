@@ -47,6 +47,7 @@ const OPERATION_PHASE: Record<SyncOperation, number> = {
   upsert: PHASE.STRUCTURE,
   delete: PHASE.STRUCTURE,
   commit: PHASE.STRUCTURE,
+  patch: PHASE.STRUCTURE,
   pause: PHASE.LIFECYCLE,
   resume: PHASE.LIFECYCLE,
   complete: PHASE.FINALIZE,
@@ -57,6 +58,10 @@ const STRUCTURE_OPERATION_RANK: Record<SyncOperation, number> = {
   upsert: 0,
   delete: 1,
   commit: 2,
+  // After `commit`, because a flag is only legal once there is a classification to carry
+  // it (E-3) and `commit` is where E-1 writes the authoritative one. A patch that arrived
+  // first would be refused for a reason the auditor could do nothing about.
+  patch: 3,
   pause: 0,
   resume: 1,
   complete: 0,

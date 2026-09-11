@@ -7,6 +7,7 @@ import type {
   ScoreTotalsPayload,
 } from '@audit5s/contracts';
 import {
+  isScoredAuditType,
   rollUpBreakdowns,
   scoreZone,
   type ScopeContext,
@@ -27,6 +28,14 @@ import { AuditsRepository } from './audits.repository';
  *
  * `numeric_score` still exists, still carries QR-1, and is what analytics aggregates in
  * SQL. It is a denormalisation of the enum, not a second source of truth for it.
+ *
+ * **A walk-by has nothing to recompute.** §2.7 opens "No questionnaire, no score", and
+ * both halves of that matter here. Running the scorer over a walk-by's zero responses
+ * would not raise — it would quietly produce five all-zero section rows and a `null`
+ * percentage per Zone, and then *write them*. PART 11's "walk-by audits are excluded from
+ * every score metric" would then have to be implemented by every query remembering to
+ * filter rows that should never have existed. So the exclusion is here, at the only place
+ * that writes them, and `scored: false` on the response says so to every reader.
  */
 @Injectable()
 export class ScoringService {
@@ -40,7 +49,14 @@ export class ScoringService {
    * every path that can change what was answered.
    */
   async recompute(scope: ScopeContext, auditId: string): Promise<Map<string, ScoreBreakdown>> {
-    const { audit: auditTotals, zones: breakdowns } = await this.summarise(scope, auditId);
+    const { scored, audit: auditTotals, zones: breakdowns } = await this.summarise(scope, auditId);
+
+    if (!scored) {
+      // Nothing is written, not even zeros. An `audit_zone_section_score` row for a
+      // walk-by is a score that does not exist, and the moment one is stored every
+      // analytics query has to know to ignore it.
+      return breakdowns;
+    }
 
     await this.repository.writeScores(scope, auditId, {
       audit: auditTotals.totals,
@@ -69,9 +85,11 @@ export class ScoringService {
   async summarise(
     scope: ScopeContext,
     auditId: string,
-  ): Promise<{ audit: ScoreBreakdown; zones: Map<string, ScoreBreakdown> }> {
+  ): Promise<{ scored: boolean; audit: ScoreBreakdown; zones: Map<string, ScoreBreakdown> }> {
+    const audit = await this.repository.findById(scope, auditId);
+    const scored = audit !== null && isScoredAuditType(audit.auditType);
     const zones = await this.repository.listZones(scope, auditId);
-    const responses = await this.repository.listResponses(scope, auditId);
+    const responses = scored ? await this.repository.listResponses(scope, auditId) : [];
 
     const byZone = new Map<string, ScorableRow[]>();
     for (const zone of zones) byZone.set(zone.id, []);
@@ -84,7 +102,11 @@ export class ScoringService {
       zoneBreakdowns.set(zone.id, scoreZone(byZone.get(zone.id) ?? []));
     }
 
-    return { audit: rollUpBreakdowns([...zoneBreakdowns.values()]), zones: zoneBreakdowns };
+    return {
+      scored,
+      audit: rollUpBreakdowns([...zoneBreakdowns.values()]),
+      zones: zoneBreakdowns,
+    };
   }
 }
 

@@ -736,6 +736,65 @@ describe('§5.6 — one flagged GOOD and one flagged NONCONFORMITY per Zone', ()
     expect((flagSecond.body as { code: string }).code).toBe('SUMMARY_FLAG_TAKEN');
   });
 
+  it('holds under a concurrent race, because the index is the enforcement', async () => {
+    // §5.6 is explicit about why the two partial unique indexes are in the database
+    // rather than in a service: "enforcing this in application logic means a duplicated
+    // sync request — which is the normal case on a weak connection, not an edge case —
+    // can produce two flagged photos, and the summary report then has to pick one
+    // arbitrarily."
+    //
+    // `EvidenceService.patch` therefore does **not** pre-check; it catches the unique
+    // violation. This test is what proves the difference: both requests are in flight at
+    // once, so a `SELECT`-then-`UPDATE` would let both pass their own check. Exactly one
+    // may win.
+    const { auditId, auditZoneId } = await runningAudit({ auditType: 'WALK_BY' });
+
+    const photos = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    for (const evidenceId of photos) {
+      await captureEvidence(world, {
+        token: consultantToken,
+        evidenceId,
+        auditId,
+        auditZoneId,
+        kind: 'WALK_BY_PHOTO',
+        classification: 'NONCONFORMITY',
+        deviceId: DEVICE_ID,
+      });
+    }
+
+    // Four at once, not awaited in turn. Four rather than two so a lucky interleaving
+    // cannot pass by accident.
+    const outcomes = await Promise.all(
+      photos.map((evidenceId) =>
+        world.request('PATCH', `${base}/evidence/${evidenceId}`, {
+          token: consultantToken,
+          body: { isSummaryFlagged: true },
+        }),
+      ),
+    );
+
+    const accepted = outcomes.filter((outcome) => outcome.status === 200);
+    const refused = outcomes.filter((outcome) => outcome.status === 409);
+
+    expect(
+      accepted.length,
+      `statuses: ${JSON.stringify(outcomes.map((outcome) => outcome.status))}`,
+    ).toBe(1);
+    expect(refused).toHaveLength(3);
+    for (const outcome of refused) {
+      // Named, not a generic conflict: the device unflags the other photo and retries.
+      expect((outcome.body as { code: string }).code).toBe('SUMMARY_FLAG_TAKEN');
+    }
+
+    // And the database agrees with the verdicts it issued.
+    const { rows } = await world.owner.query(
+      `SELECT COUNT(*)::int AS count FROM evidence
+        WHERE audit_zone_id = $1 AND is_summary_flagged AND deleted_at IS NULL`,
+      [auditZoneId],
+    );
+    expect(rows[0].count).toBe(1);
+  });
+
   it('allows one of each classification in the same Zone', async () => {
     const { auditId, auditZoneId } = await runningAudit({ auditType: 'WALK_BY' });
 

@@ -11,6 +11,7 @@ import {
   completeAuditRequestSchema,
   completeAuditZoneRequestSchema,
   createAuditRequestSchema,
+  patchEvidenceRequestSchema,
   pauseAuditRequestSchema,
   resumeAuditRequestSchema,
   uploadIntentRequestSchema,
@@ -366,6 +367,16 @@ export class SyncBatchService {
         return null;
       }
 
+      case 'evidence:patch': {
+        // The summary flag and a walk-by's classification, decided offline. `upsert`
+        // cannot carry them: §8.7 makes `upload-intent` idempotent on the id and it
+        // returns the existing intent untouched, which is what makes a retried upload
+        // safe and what makes it unable to change anything (DECISIONS.md R-12e).
+        const body = patchEvidenceRequestSchema.parse(item.payload);
+        await this.evidence.patch(scope, item.entityId, body);
+        return null;
+      }
+
       case 'evidence:delete': {
         await this.evidence.softDelete(scope, item.entityId);
         return null;
@@ -423,9 +434,14 @@ export class SyncBatchService {
         this.optionalString(item.payload, 'questionResponseId'),
       ]);
     }
-    if (item.entityType === 'evidence' && item.operation === 'commit') {
+    if (
+      item.entityType === 'evidence' &&
+      (item.operation === 'commit' || item.operation === 'patch')
+    ) {
       // The metadata row has to exist before its object can be confirmed — this is the
-      // ordering §9.3 writes as `evidence(metadata) → evidence(commit)`.
+      // ordering §9.3 writes as `evidence(metadata) → evidence(commit)`. A `patch` needs
+      // the same row for the same reason, and a device whose queue is torn between the
+      // two must be asked to come back rather than have the flag quarantined.
       parents.push(['evidence', item.entityId]);
     }
     if (

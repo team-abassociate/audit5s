@@ -20,6 +20,9 @@ import type {
 import {
   assertTransition,
   assessLocation,
+  auditTypeRequiresZonePhoto,
+  auditTypeUsesChecklist,
+  isScoredAuditType,
   type LocationAssessment,
   type ScopeContext,
   type TransitionGuard,
@@ -92,6 +95,19 @@ export class AuditsService {
     if (!unit) {
       // AZ-3: a Unit outside scope reads as absent, so ids cannot be probed.
       throw AppError.notFound('No such Unit');
+    }
+
+    // §2.7: "No questionnaire, no score." §5.5 says the same in schema terms —
+    // `checklist_version_id` is "Null for `WALK_BY`" — and 0008 makes it a CHECK. Refused
+    // here as well, with a message, because a constraint violation reaches a device as an
+    // opaque 500 and this is a mistake a client can correct.
+    if (!auditTypeUsesChecklist(request.auditType) && request.checklistVersionId) {
+      throw AppError.validation('A walk-by audit has no questionnaire', [
+        {
+          field: 'checklistVersionId',
+          message: 'A WALK_BY audit pins no checklist version (§2.7, §5.5)',
+        },
+      ]);
     }
 
     const assignmentId = await this.resolveAssignment(scope, request);
@@ -191,6 +207,7 @@ export class AuditsService {
     );
 
     return {
+      scored: isScoredAuditType(audit.auditType),
       audit: toScoreSummary(audit.id, null, auditBreakdown),
       zones: zones.map((zone) => {
         const breakdown = zoneBreakdowns.get(zone.id)!;
@@ -417,6 +434,27 @@ export class AuditsService {
     const zones = await this.repository.zoneCompletionState(scope, auditId);
     const allZonesCompleted = zones.total > 0 && zones.completed === zones.total;
 
+    // §7.1's third condition on this edge: "every `audit_zone` is `COMPLETED`; ≥1 zone;
+    // **walk-by zones each have ≥1 photo**."
+    //
+    // The third looks implied by the first — §7.2 will not complete a walk-by Zone with no
+    // photograph — but it is not, and the gap is reachable without any misuse: finish a
+    // Zone with its one photo, then delete that photo. E-4 permits the delete, because the
+    // *audit* is still IN_PROGRESS, and the Zone stays COMPLETED. Without this check the
+    // audit completes carrying a walk-by Zone that observed nothing, and a walk-by that
+    // observed nothing is a walk-by with no findings and no corrective actions — the one
+    // outcome §2.7 exists to produce.
+    if (auditTypeRequiresZonePhoto(audit.auditType)) {
+      const empty = await this.repository.zonesWithoutEvidence(scope, auditId);
+      if (empty.length > 0) {
+        throw AppError.conflict(
+          'EVIDENCE_REQUIRED',
+          `Zone ${empty.map((zone) => zone.zoneCodeSnapshot).join(', ')} has no photograph. ` +
+            'A walk-by records what was seen, so every Zone needs at least one (§7.1, §7.2).',
+        );
+      }
+    }
+
     try {
       assertTransition('audit', audit.status, 'COMPLETED', {
         role: scope.actor.role,
@@ -626,7 +664,15 @@ export class AuditsService {
 
   /** Recomputes and persists scores on a frozen audit, inside the A-2 carve-out. */
   private async recomputeUnderOverride(scope: ScopeContext, auditId: string): Promise<void> {
-    const { audit, zones } = await this.scoring.summarise(scope, auditId);
+    const { scored, audit, zones } = await this.scoring.summarise(scope, auditId);
+
+    if (!scored) {
+      // A walk-by has no responses to have corrected, so an override can only have
+      // touched a Zone remark. Writing zeros here would be the same mistake `recompute`
+      // avoids, and this path writes them *inside* the A-2 carve-out where the trigger
+      // would not stop it.
+      return;
+    }
 
     await this.repository.writeScoresUnderOverride(scope, auditId, {
       audit: audit.totals,
@@ -750,6 +796,9 @@ export function toAudit(row: AuditRow): Audit {
     unitId: row.unitId,
     unitName: row.unitName,
     auditType: row.auditType,
+    // §2.7, PART 11: a walk-by has no score, and `totals` alone cannot say so — all-zero
+    // totals with a null percentage look identical to a scored audit nobody has answered.
+    scored: isScoredAuditType(row.auditType),
     status: row.status as AuditStatus,
     auditorUserId: row.auditorUserId,
     auditorName: row.auditorName,

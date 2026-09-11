@@ -698,6 +698,20 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'evidence.e2e.test.ts',
   },
   {
+    method: 'GET',
+    path: '/api/v1/audits/:auditId/evidence',
+    description:
+      'evidence:read — the audit-wide gallery: the same filters as the Zone listing, one ' +
+      'level up, because the admin gallery and the summary report both ask what an audit found',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'evidence.e2e.test.ts',
+  },
+  {
     method: 'PATCH',
     path: '/api/v1/evidence/:evidenceId',
     description: 'evidence:set_summary_flag — a clash is 409 SUMMARY_FLAG_TAKEN, from the index',

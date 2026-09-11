@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import {
   audits,
   auditZones,
@@ -13,6 +13,7 @@ import { classifyScore, type ScopeContext } from '@audit5s/domain';
 import type {
   EvidenceClassification,
   EvidenceKind,
+  ListAuditEvidenceQuery,
   ListEvidenceQuery,
   LocationProvider,
   ResponseValue,
@@ -44,6 +45,8 @@ const evidenceColumns = {
   correctiveActionSubmissionId: evidence.correctiveActionSubmissionId,
   objectKey: evidence.objectKey,
   thumbnailObjectKey: evidence.thumbnailObjectKey,
+  mediaProcessedAt: evidence.mediaProcessedAt,
+  storedChecksumSha256: evidence.storedChecksumSha256,
   contentType: evidence.contentType,
   byteSize: evidence.byteSize,
   width: evidence.width,
@@ -215,22 +218,127 @@ export class EvidenceRepository extends BaseRepository {
     });
   }
 
-  async listForAudit(scope: ScopeContext, auditId: string) {
+  /**
+   * The whole audit's gallery, filtered the same way the per-Zone one is.
+   *
+   * Ordered by `id` rather than `captured_at` because the cursor is the id (§8.1 forbids
+   * offset paging on audit tables), and a cursor that does not match the sort order skips
+   * rows silently as the page advances — which on an append-only table is the failure
+   * cursor paging exists to prevent. `id` is a UUIDv7, so id order *is* capture order.
+   */
+  async listForAudit(scope: ScopeContext, auditId: string, query: ListAuditEvidenceQuery) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
+
+      const filters: Array<SQL | undefined> = [
+        eq(evidence.auditId, auditId),
+        query.auditZoneId ? eq(evidence.auditZoneId, query.auditZoneId) : undefined,
+        query.classification ? eq(evidence.classification, query.classification) : undefined,
+        query.kind ? eq(evidence.kind, query.kind) : undefined,
+        query.includeDeleted ? undefined : isNull(evidence.deletedAt),
+        query.summaryFlaggedOnly ? eq(evidence.isSummaryFlagged, true) : undefined,
+        query.cursor ? sql`${evidence.id} > ${query.cursor}` : undefined,
+      ];
+
       return tx
         .select(evidenceColumns)
         .from(evidence)
         .innerJoin(audits, eq(audits.id, evidence.auditId))
-        .where(
-          this.scoped(
-            scope,
-            evidenceScopeColumns,
-            eq(evidence.auditId, auditId),
-            isNull(evidence.deletedAt),
-          ),
-        )
-        .orderBy(desc(evidence.capturedAt));
+        .where(this.scoped(scope, evidenceScopeColumns, ...filters))
+        .orderBy(asc(evidence.id))
+        .limit(query.limit + 1);
+    });
+  }
+
+  /**
+   * What the media worker writes, and the pg-boss job that asks it to (R-2).
+   *
+   * The enqueue is on the same transaction as the `commit` update, so a job cannot exist
+   * for a photograph whose commit rolled back — which is the guarantee pg-boss was chosen
+   * for and the reason there is no outbox table.
+   */
+  async markCommittedAndEnqueueMedia(
+    scope: ScopeContext,
+    evidenceId: string,
+    input: {
+      classification: EvidenceClassification;
+      scoreAtCapture: ResponseValue | null;
+      byteSize: number;
+      width: number | null;
+      height: number | null;
+    },
+    enqueue: (tx: Transaction) => Promise<void>,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      await tx
+        .update(evidence)
+        .set({
+          syncState: 'SYNCED' satisfies SyncState,
+          uploadedAt: new Date(),
+          classification: input.classification,
+          scoreAtCapture: input.scoreAtCapture,
+          byteSize: input.byteSize,
+          ...(input.width !== null ? { width: input.width } : {}),
+          ...(input.height !== null ? { height: input.height } : {}),
+        })
+        .where(eq(evidence.id, evidenceId));
+
+      await enqueue(tx as Transaction);
+    });
+  }
+
+  /**
+   * The media worker's own write: the thumbnail key, the processed-at, and the stored
+   * checksum when the object had to be sanitised.
+   *
+   * These three are R-12's addition to R-10's carve-out, so this statement is one of the
+   * few that still succeeds on a completed audit's evidence. It is also why it names only
+   * those columns: the trigger refuses the whole UPDATE if any other one moves.
+   */
+  async recordMediaProcessed(
+    scope: ScopeContext,
+    evidenceId: string,
+    input: { thumbnailObjectKey: string | null; storedChecksumSha256: string | null },
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // The committing auditor's own context. There is no system bypass by design — the
+      // `evidence_update` policy admits `audit.auditor_user_id = app_actor_id()` — so the
+      // worker becomes the auditor whose commit queued it (see `MediaWorker`).
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      await tx
+        .update(evidence)
+        .set({
+          thumbnailObjectKey: input.thumbnailObjectKey,
+          storedChecksumSha256: input.storedChecksumSha256,
+          mediaProcessedAt: new Date(),
+        })
+        .where(eq(evidence.id, evidenceId));
+    });
+  }
+
+  /** The row the media worker needs, under the committing auditor's scope. */
+  async findForMediaProcessing(scope: ScopeContext, evidenceId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .select({
+          id: evidence.id,
+          objectKey: evidence.objectKey,
+          contentType: evidence.contentType,
+          byteSize: evidence.byteSize,
+          checksumSha256: evidence.checksumSha256,
+          storedChecksumSha256: evidence.storedChecksumSha256,
+          thumbnailObjectKey: evidence.thumbnailObjectKey,
+          mediaProcessedAt: evidence.mediaProcessedAt,
+          deletedAt: evidence.deletedAt,
+          redactedAt: evidence.redactedAt,
+        })
+        .from(evidence)
+        .innerJoin(audits, eq(audits.id, evidence.auditId))
+        .where(and(eq(evidence.id, evidenceId), this.scoped(scope, evidenceScopeColumns)))
+        .limit(1);
+      return row ?? null;
     });
   }
 
@@ -273,7 +381,12 @@ export class EvidenceRepository extends BaseRepository {
   async patch(
     scope: ScopeContext,
     evidenceId: string,
-    patch: { remark?: string | null; isSummaryFlagged?: boolean },
+    patch: {
+      remark?: string | null;
+      isSummaryFlagged?: boolean;
+      /** Walk-by only (E-1); the service refuses it on every other kind. */
+      classification?: EvidenceClassification;
+    },
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   index,
   integer,
   numeric,
@@ -132,6 +133,15 @@ export const audits = pgTable(
     index('audit_status_idx').on(table.status),
     index('audit_suspicious_idx').on(table.locationSuspicious),
     index('audit_owning_device_idx').on(table.owningDeviceId),
+
+    // §5.5: "`checklist_version_id` — Null for `WALK_BY`." §2.7 opens "No questionnaire,
+    // no score", and this is the half of it a constraint can express. The other half —
+    // that a walk-by *Zone* pins nothing either — is a trigger in 0008, because
+    // `audit_zone` does not carry the audit type.
+    check(
+      'audit_walk_by_has_no_checklist',
+      sql`audit_type <> 'WALK_BY' OR checklist_version_id IS NULL`,
+    ),
   ],
 );
 

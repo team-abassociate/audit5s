@@ -74,6 +74,13 @@ export type SyncEntityType = z.infer<typeof syncEntityTypeSchema>;
  * `evidence` appears twice in §9.3's ordering — `evidence(metadata)` then
  * `evidence(commit)` — because the object is uploaded between them. The operation carries
  * that distinction, so one entity type is enough.
+ *
+ * `patch` is the one §9.3 does not name, and Phase 5 needs it for a reason §9.3 could not
+ * have: the summary flag and a walk-by's classification are decided *after* the photograph
+ * exists. `upsert` cannot carry them — `POST /evidence/upload-intent` is idempotent on the
+ * id and returns the existing intent untouched (§8.7), which is exactly what makes a
+ * retried upload safe and exactly what makes it unable to change anything. So a flag
+ * toggled with the radio off reaches the server as `PATCH /evidence/{id}`, or not at all.
  */
 export const SYNC_OPERATIONS = [
   'upsert',
@@ -82,6 +89,7 @@ export const SYNC_OPERATIONS = [
   'resume',
   'delete',
   'commit',
+  'patch',
 ] as const;
 export const syncOperationSchema = z.enum(SYNC_OPERATIONS);
 export type SyncOperation = z.infer<typeof syncOperationSchema>;

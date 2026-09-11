@@ -13,12 +13,16 @@ import {
 } from '@nestjs/common';
 import {
   commitEvidenceRequestSchema,
+  evidenceViewUrlQuerySchema,
+  listAuditEvidenceQuerySchema,
   listEvidenceQuerySchema,
   patchEvidenceRequestSchema,
   uploadIntentRequestSchema,
   type CommitEvidenceRequest,
   type Evidence,
   type EvidenceViewUrl,
+  type EvidenceViewUrlQuery,
+  type ListAuditEvidenceQuery,
   type ListEvidenceQuery,
   type Page,
   type PatchEvidenceRequest,
@@ -86,18 +90,28 @@ export class EvidenceController {
     return this.evidence.get(scope, evidenceId);
   }
 
-  /** §12.6: a ≤5-minute presigned GET, minted **after** the scope check. */
+  /**
+   * §12.6: a ≤5-minute presigned GET, minted **after** the scope check.
+   *
+   * `?variant=thumbnail` serves PART 16's "thumbnails generated for gallery views;
+   * originals fetched only on demand". One endpoint rather than two, so the
+   * check-then-mint ordering and the TTL cap are enforced in one place.
+   */
   @RequirePermission('evidence', 'view_url')
   @Scope({ param: 'evidenceId', intent: 'read' })
   @Get(':evidenceId/view-url')
   viewUrl(
     @CurrentScope() scope: ScopeContext,
     @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
+    @Query(new ZodValidationPipe(evidenceViewUrlQuerySchema)) query: EvidenceViewUrlQuery,
   ): Promise<EvidenceViewUrl> {
-    return this.evidence.viewUrl(scope, evidenceId);
+    return this.evidence.viewUrl(scope, evidenceId, query.variant);
   }
 
-  /** The remark and the summary flag. A flag clash is `409 SUMMARY_FLAG_TAKEN`. */
+  /**
+   * The remark, the summary flag, and — on a walk-by photograph alone — the auditor's
+   * classification (§2.7). A flag clash is `409 SUMMARY_FLAG_TAKEN`.
+   */
   @RequirePermission('evidence', 'set_summary_flag')
   @Scope({ param: 'evidenceId', intent: 'write' })
   @Patch(':evidenceId')
@@ -141,5 +155,29 @@ export class AuditZoneEvidenceController {
     @Query(new ZodValidationPipe(listEvidenceQuerySchema)) query: ListEvidenceQuery,
   ): Promise<Page<Evidence>> {
     return this.evidence.listForZone(scope, auditZoneId, query);
+  }
+}
+
+/**
+ * The audit's gallery (§8.7's Zone listing, one level up).
+ *
+ * `:auditId` is the name every route under `/audits` uses for this position. Fastify
+ * identifies a route node by *position*, not by name, so a second name here would make the
+ * router report `:auditId|:id` and the authorization completeness check would see a route
+ * it has no entry for.
+ */
+@Controller('audits/:auditId/evidence')
+export class AuditEvidenceController {
+  constructor(private readonly evidence: EvidenceService) {}
+
+  @RequirePermission('evidence', 'read')
+  @Scope({ param: 'auditId', intent: 'read' })
+  @Get()
+  list(
+    @CurrentScope() scope: ScopeContext,
+    @Param('auditId', ParseUUIDPipe) auditId: string,
+    @Query(new ZodValidationPipe(listAuditEvidenceQuerySchema)) query: ListAuditEvidenceQuery,
+  ): Promise<Page<Evidence>> {
+    return this.evidence.listForAudit(scope, auditId, query);
   }
 }

@@ -15,6 +15,13 @@ export const QUEUES = {
   syncFailure: 'sync.failure',
   /** §9.5 Layer 1: releases the device lock on a PAUSED audit past its grace period. */
   deviceRelease: 'device.release',
+  /**
+   * §5.4's `EVIDENCE_ATTACHED` consumer: "media worker (thumbnail, EXIF strip)".
+   *
+   * Enqueued inside `commit`'s own transaction (R-2), so a job never exists for a
+   * photograph whose commit rolled back.
+   */
+  mediaProcess: 'media.process',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

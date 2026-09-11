@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, notExists, sql, type SQL } from 'drizzle-orm';
 import {
   auditLogs,
   auditZoneSectionScores,
@@ -8,7 +8,9 @@ import {
   checklistQuestions,
   checklistTemplates,
   checklistVersions,
+  evidence,
   questionResponses,
+  unitMemberships,
   units,
   users,
   zones,
@@ -442,11 +444,18 @@ export class AuditsRepository extends BaseRepository {
           name: zones.name,
           description: zones.description,
           zoneLeaderId: zones.zoneLeaderId,
-          zoneLeaderName: users.fullName,
+          // Through `app_zone_leader_name` rather than a join on `"user"`: PART 6 gives a
+          // Consultant `own_record` on `user:read`, so `user_select` admits their own row
+          // and no other — and a left join therefore yielded a silent NULL here, leaving
+          // `zone_leader_name_snapshot` empty on every audit Zone a Consultant added. The
+          // definer function returns the display name alone, and only inside the caller's
+          // own Units (0008, DECISIONS.md R-12f).
+          zoneLeaderName: sql<
+            string | null
+          >`app_zone_leader_name(${zones.unitId}, ${zones.zoneLeaderId})`,
           archivedAt: zones.archivedAt,
         })
         .from(zones)
-        .leftJoin(users, eq(users.id, zones.zoneLeaderId))
         .where(and(eq(zones.id, zoneId), this.scoped(zoneScope, { unitId: zones.unitId })))
         .limit(1);
       return row ?? null;
@@ -826,6 +835,74 @@ export class AuditsRepository extends BaseRepository {
         .from(auditZones)
         .where(eq(auditZones.auditId, auditId));
       return { total: row?.total ?? 0, completed: row?.completed ?? 0 };
+    });
+  }
+
+  /**
+   * The Zones of this audit that hold no live photograph — §7.1's "walk-by zones each
+   * have ≥1 photo", answered in one query rather than N.
+   *
+   * `NOT EXISTS` rather than a left join and a count: the question is a predicate per
+   * Zone, and a Zone with a hundred photographs should cost the same as one with two.
+   * Returns the snapshot codes so the refusal can name the Zone the auditor has to go
+   * back to.
+   */
+  async zonesWithoutEvidence(scope: ScopeContext, auditId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      return tx
+        .select({ id: auditZones.id, zoneCodeSnapshot: auditZones.zoneCodeSnapshot })
+        .from(auditZones)
+        .innerJoin(audits, eq(audits.id, auditZones.auditId))
+        .where(
+          and(
+            eq(auditZones.auditId, auditId),
+            this.scoped(scope, auditScopeColumns),
+            notExists(
+              tx
+                .select({ one: sql`1` })
+                .from(evidence)
+                .where(
+                  and(eq(evidence.auditZoneId, auditZones.id), isNull(evidence.deletedAt)),
+                ),
+            ),
+          ),
+        )
+        .orderBy(asc(auditZones.sequenceNo));
+    });
+  }
+
+  /**
+   * The Zone Leader §2.7 step 4 lets a walk-by auditor confirm or select, with their name.
+   *
+   * One read for both jobs: the membership is the validation (`ZONE_LEADER`, ACTIVE, this
+   * Unit — the same four conditions `ZonesRepository.isZoneLeaderOfUnit` applies) and the
+   * `full_name` is the D6 snapshot. Reading them separately would be two round trips for
+   * one fact, and would leave a window where the membership held and the name did not.
+   */
+  async readZoneLeaderForUnit(scope: ScopeContext, unitId: string, userId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      // `app_zone_leader_name` *is* the validation as well as the lookup: it returns a
+      // name only for an active `ZONE_LEADER` of that Unit, and only where the caller is
+      // a member of it. Null therefore answers both questions the caller has — "may this
+      // person be the Zone's leader" and "what do we print" — in one read, and without
+      // reading a user record PART 6 does not grant (0008, DECISIONS.md R-12f).
+      const [row] = await tx
+        .select({
+          fullName: sql<string | null>`app_zone_leader_name(${unitId}, ${userId})`,
+        })
+        .from(unitMemberships)
+        .where(
+          and(
+            eq(unitMemberships.userId, userId),
+            eq(unitMemberships.unitId, unitId),
+            eq(unitMemberships.role, 'ZONE_LEADER'),
+            eq(unitMemberships.status, 'ACTIVE'),
+          ),
+        )
+        .limit(1);
+      return row?.fullName ? { id: userId, fullName: row.fullName } : null;
     });
   }
 

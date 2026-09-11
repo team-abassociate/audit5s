@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { EVIDENCE_KINDS, RESPONSE_VALUES } from '@audit5s/contracts';
 import {
   ALLOWED_IMAGE_TYPES,
+  auditorChoosesClassification,
   canBeSummaryFlagged,
   classifyEvidence,
   classifyScore,
   evidenceObjectKey,
   isAllowedImageType,
   sniffImageType,
+  thumbnailObjectKey,
 } from './evidence';
 
 /**
@@ -162,5 +164,58 @@ describe('§12.8 — the bytes have to be the image type they claim to be', () =
     // the claim, and this is the check that catches the bytes.
     expect(sniffImageType(new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBeNull();
     expect(sniffImageType(new Uint8Array([]))).toBeNull();
+  });
+});
+
+describe('the auditor-chosen case (§2.7)', () => {
+  it('is the walk-by photograph and nothing else', () => {
+    // The affordance half of E-1: a caller asks this before it has anything to classify,
+    // so `classifyEvidence` cannot answer it.
+    expect(auditorChoosesClassification('WALK_BY_PHOTO')).toBe(true);
+    for (const kind of EVIDENCE_KINDS.filter((candidate) => candidate !== 'WALK_BY_PHOTO')) {
+      expect(auditorChoosesClassification(kind)).toBe(false);
+    }
+  });
+
+  it('agrees with which kinds `classifyEvidence` actually honours the choice for', () => {
+    // The two would otherwise be able to disagree, and a phone that offered the chips
+    // where the server ignores them is a phone that silently discards the auditor's
+    // judgement.
+    for (const kind of EVIDENCE_KINDS) {
+      if (kind === 'CORRECTIVE_AFTER') continue;
+      const honoured =
+        classifyEvidence({ kind, auditorSelected: 'GOOD', scoreAtCapture: null }) === 'GOOD';
+      expect(honoured).toBe(auditorChoosesClassification(kind));
+    }
+  });
+});
+
+describe('thumbnail keys', () => {
+  it('suffixes the original so every prefix rule still reaches it', () => {
+    // §5.6 embeds `unit_id` in the key so a lifecycle rule or a per-Unit export is a
+    // prefix operation. A `thumb/...` prefix would put the thumbnails outside it.
+    const original = evidenceObjectKey({
+      kind: 'WALK_BY_PHOTO',
+      unitId: 'unit-1',
+      auditId: 'audit-1',
+      auditZoneId: 'zone-1',
+      evidenceId: 'photo-1',
+    });
+
+    expect(thumbnailObjectKey(original)).toBe(
+      'evidence/unit-1/audit-1/zone-1/photo-1.thumb.jpg',
+    );
+    expect(thumbnailObjectKey(original).startsWith('evidence/unit-1/')).toBe(true);
+  });
+
+  it('is stable and distinct from the original', () => {
+    const key = 'evidence/u/a/z/e.png';
+    expect(thumbnailObjectKey(key)).toBe('evidence/u/a/z/e.thumb.png');
+    expect(thumbnailObjectKey(key)).not.toBe(key);
+    expect(thumbnailObjectKey(key)).toBe(thumbnailObjectKey(key));
+  });
+
+  it('still produces a key for something with no extension', () => {
+    expect(thumbnailObjectKey('evidence/u/a/z/e')).toBe('evidence/u/a/z/e.thumb.jpg');
   });
 });

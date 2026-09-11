@@ -60,6 +60,16 @@ export const evidence = pgTable(
 
     objectKey: text('object_key').notNull(),
     thumbnailObjectKey: text('thumbnail_object_key'),
+    /** When the media worker finished. Null ⇒ no thumbnail yet, not "never". */
+    mediaProcessedAt: timestamp('media_processed_at', { withTimezone: true }),
+    /**
+     * The stored object's checksum, set only when the worker had to sanitise it.
+     *
+     * `checksumSha256` below is never overwritten: it is what the device asserted at
+     * capture and what `commit` verified (§12.8). This is what is in the bucket now, and
+     * non-null therefore also reports that a device sent metadata it should not have.
+     */
+    storedChecksumSha256: text('stored_checksum_sha256'),
     contentType: text('content_type').notNull(),
     byteSize: bigint('byte_size', { mode: 'number' }).notNull(),
     width: integer('width'),
@@ -105,6 +115,10 @@ export const evidence = pgTable(
       .where(sql`deleted_at IS NULL`),
     index('evidence_question_response_idx').on(table.questionResponseId),
     index('evidence_audit_kind_idx').on(table.auditId, table.kind),
+    // The gallery's read: one audit, optionally one classification, never the deleted.
+    index('evidence_audit_classification_idx')
+      .on(table.auditId, table.classification)
+      .where(sql`deleted_at IS NULL`),
     index('evidence_checksum_idx').on(table.checksumSha256, table.auditId),
 
     // §5.6's enforcement of "one optional flagged GOOD and one optional flagged

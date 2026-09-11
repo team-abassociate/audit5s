@@ -479,3 +479,131 @@ E-1's classification, the outbox row — is library-agnostic.
 There is one environment. Migrations are files in git, applied by CI — never
 `drizzle-kit push` against production — and the deploy step takes a pgBackRest snapshot
 immediately before applying.
+
+---
+
+## R-12 — Phase 5: the walk-by constraints, the media worker, and a wider R-10 carve-out
+
+Four decisions Phase 5 had to make that the source documents left open. Recorded together
+because they are one change to one table's rules.
+
+### (a) What "walk-by-specific constraints" means
+
+`ARCHITECTURE.md` PART 14's Phase 5 migration row reads *"Walk-by-specific constraints;
+thumbnail key column"*. The second half was already done — `thumbnail_object_key` shipped
+with the table in `0007`, beside the object key it describes — and the first half turned
+out to be the opposite of what it sounds like.
+
+`checklist_version_id` is already nullable on both `audit` and `audit_zone`, so a walk-by
+Zone needs no schema change to *have* no questionnaire. Nothing was missing to permit a
+walk-by. What was missing was anything to **refuse** one that contradicts §2.7's opening
+four words, "No questionnaire, no score":
+
+* nothing stopped a `WALK_BY` audit from pinning a checklist version, and
+* nothing stopped a `question_response` from being written against a Zone that pinned none.
+
+Either would make a walk-by look like a scored audit to Phase 7's renderer and Phase 8's
+metrics, which is the failure PART 11's *"walk-by audits are excluded from every score
+metric"* exists to prevent. `0008` therefore carries a CHECK on `audit`, a trigger on
+`audit_zone` (which does not carry the audit type, and denormalising one onto the row to
+make a CHECK possible would create a second copy of a fact that could then disagree with
+the first), and a trigger on `question_response`.
+
+The third is stated type-agnostically — *an answer needs its Zone's pinned version* (QR-2)
+— rather than as *a walk-by has no answers*. The two are the same rule here, and the
+type-agnostic form costs one primary-key lookup on the hottest write in the system rather
+than two, on a row the INSERT's own foreign key is already touching.
+
+### (b) The image codec: a structural strip plus `jimp`
+
+The Phase 5 media-worker row asks for "thumbnails, EXIF". A thumbnail needs a decoder; the
+EXIF strip does not, and should not use one.
+
+**The strip is structural, in `packages/domain`.** `stripImageMetadata` walks the
+container's own segment or chunk list and omits the metadata ones: `APPn`/`COM` in a JPEG,
+`eXIf`/`tEXt`/`iTXt`/`zTXt` in a PNG, `EXIF`/`XMP ` in a WebP. No pixel is decoded, nothing
+is recompressed, and §12.8's *"EXIF stripped except orientation"* is honoured by rebuilding
+a minimal `APP1` carrying nothing but `Orientation`. A decode-and-re-encode would have been
+three lines and would have recompressed a photograph the reports print at full size (§4.1
+asks for print quality), lost the orientation §12.8 explicitly keeps, and put a decoder in
+front of every object. Being pure and IO-free, it lives in `domain` beside `sniffImageType`
+and is tested against hand-built adversarial files.
+
+**The thumbnail uses `jimp`.** A resample needs a real codec, and `jimp` is pure
+JavaScript: no native toolchain, no per-platform prebuilt binaries, and therefore nothing
+that can fail on the `linux/arm64` image the deploy builds for an Ampere A1. `sharp` is
+faster and is the obvious choice at volume; the volume here is ~200 photographs a day
+(`STACK.md` §5 sizes the whole queue at ~200 jobs/day), which is three orders of magnitude
+short of making the difference matter. **The trigger for revisiting it** is the media queue
+becoming the worker's bottleneck — a sustained backlog, or thumbnailing measurably
+lengthening a batch. An image codec is not on `STACK.md` §6's do-not-add table; the phase
+row cannot be built without one.
+
+`readImageDimensions` reads width and height from the header so the worker can refuse an
+oversized decode *before* allocating the bitmap. That is §12.8's *"images decoded only in
+the sandboxed media worker with resource limits"* made checkable: a 40 kB file declaring
+30000 × 30000 is refused on its header rather than after 3.6 GB of allocation.
+
+### (c) `stored_checksum_sha256` — why the sanitised object needs its own checksum
+
+`checksum_sha256` is §12.8's tamper control: *"recorded at capture and verified at
+commit"*. If the worker sanitises an object in place, the bytes in storage stop matching
+it — and `commit` is idempotent by contract, because §9.6 makes replaying it the recovery
+path for an app killed between the PUT and the confirmation. With one checksum column that
+replay would answer `409 CHECKSUM_MISMATCH` for a photograph that is perfectly fine, and
+the device would retry until it dead-lettered a good upload.
+
+So `0008` adds `stored_checksum_sha256`, and `commit` verifies against
+`stored_checksum_sha256 ?? checksum_sha256`. The capture checksum is never overwritten: it
+is a historical fact about what the device sent, and it has already been verified.
+
+The column carries a second meaning for free. Null is the normal case — the device strips
+at capture (§9.4), so there is nothing to remove. Non-null therefore *reports* that a
+device sent metadata it should not have, which is the diagnostic worth keeping and the
+reason the worker logs what it removed by name.
+
+### (d) R-10's carve-out is now six columns, not three
+
+`0007` attached `enforce_completed_evidence_append_only()` with R-5's three redaction
+columns as its `TG_ARGV`, and the carve-out **is** that argument list. The media worker
+writes `thumbnail_object_key`, `media_processed_at` and `stored_checksum_sha256`, and it
+runs asynchronously: a device that pushes the last photograph and the audit's completion in
+one batch (the ordinary case — §9.3 batches up to 100 items) has the audit `COMPLETED`
+before the job is picked up. Without those three names the job fails on every attempt and
+dead-letters, leaving a completed audit's photographs with no thumbnails and a failure that
+looks like a worker bug.
+
+`0008` therefore **drops and recreates the trigger** with a six-name carve-out. The
+function body is untouched; only the arguments change, which is what parameterising it was
+for. Three properties make this a widening rather than a hole in D8:
+
+* All three columns are **server-derived**. No API shape accepts any of them; one worker
+  writes them, from the object's own bytes.
+* None is an audited fact. A thumbnail is a smaller copy of an image the row already names;
+  a processed-at is bookkeeping; a stored checksum describes the object rather than the
+  finding. Nothing a report asserts or a corrective action answers changes when any of them
+  is written.
+* Everything the rule exists to freeze still refuses an UPDATE after completion —
+  `classification`, `score_at_capture`, `is_summary_flagged`, `remark`, `object_key`,
+  `checksum_sha256`, `captured_at`, the location columns, `deleted_at` — and `DELETE` still
+  has no carve-out at any level, for anyone, under any flag.
+
+`walk-by-schema.test.ts` asserts both halves: that the worker can write its three columns
+after completion, and that each frozen column is still refused.
+
+### (e) `evidence:patch` — a seventh sync operation
+
+§9.3 lists five entity/operation pairs and does not name a patch, because at the time
+nothing changed an evidence row after it existed. Phase 5 does: the summary flag and a
+walk-by's classification are both decided *after* the photograph, often with the radio off.
+
+`POST /evidence/upload-intent` cannot carry them. §8.7 makes it idempotent on the id — "same
+`id` returns the same intent" — which is exactly what makes a retried upload safe and
+exactly what makes it unable to change anything. So a flag toggled offline reaches the
+server as `PATCH /evidence/{id}` through the outbox, or not at all; without this operation
+the mobile flag toggle is a local-only preference that silently never syncs.
+
+It sorts in the structure phase **after** `commit`, because E-3 refuses a flag on a
+`NEUTRAL` photo and `commit` is where E-1 writes the authoritative classification — and
+before every `complete`, because A-2 and R-10 freeze evidence the moment the audit lands on
+`COMPLETED`.
