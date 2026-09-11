@@ -11,7 +11,7 @@
 > ### Superseded technology choices — change record
 >
 > **Precedence rule (R-1): [`STACK.md`](./STACK.md) wins on any technology name; this document
-> wins on any behaviour.** Resolutions R-1 … R-5 live in [`DECISIONS.md`](./DECISIONS.md) and
+> wins on any behaviour.** Resolutions R-1 … R-11 live in [`DECISIONS.md`](./DECISIONS.md) and
 > are binding.
 >
 > **The body of this document has been swept to match** — every section below now states the
@@ -30,6 +30,7 @@
 > | Generic S3-compatible object storage | Cloudflare R2 via `@aws-sdk/client-s3` | §3.1, §5.6 |
 > | Managed backups + PITR | Self-hosted pgBackRest → R2 (RPO < 5 min unchanged) | §16 |
 > | WhatsApp BSP + SMS gateway wired at MVP | `NotificationChannel` interface defined; in-app + FCM only at MVP. No channel wired. | §2.8, §14 Phase 6 |
+> | react-native-vision-camera | `expo-camera` (R-11). The only case where `STACK.md` lost a technology name: the row was stale, not a decision. | §12.10 (unchanged — it already named `expo-camera`), `STACK.md` §2 |
 > | SQLCipher on mobile | Not used (R-4) | §14 Phase 4 |
 > | Staging + production environments | One environment. Migrations are files in git applied by CI. | §13, §14, §16 |
 > | Chaos test "Redis down" | Removed | §15 |

@@ -20,6 +20,11 @@ import { theme } from '../lib/theme';
  * overstate: "A modified build or a rooted device could inject frames. Detected only
  * probabilistically." The screen says a photo was taken now; it never says it proves
  * anything. The design position is deterrence plus evidence, not prevention.
+ *
+ * `expo-camera` is the settled choice (R-11), superseding `STACK.md` §2's stale
+ * react-native-vision-camera row. This file is the only importer of it in the workspace:
+ * everything downstream — the capture contract, the object key, `isLiveCapture`, E-1 — is
+ * library-agnostic, so the choice stays reversible at the cost of one component.
  */
 export interface CameraCaptureProps {
   facing?: CameraType;
