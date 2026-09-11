@@ -598,6 +598,7 @@ export function toEvidence(row: EvidenceRow): Evidence {
     auditId: row.auditId,
     auditZoneId: row.auditZoneId,
     questionResponseId: row.questionResponseId,
+    correctiveActionId: row.correctiveActionId,
     correctiveActionSubmissionId: row.correctiveActionSubmissionId,
     objectKey: row.objectKey,
     thumbnailObjectKey: row.thumbnailObjectKey,

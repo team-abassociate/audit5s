@@ -312,3 +312,18 @@ describe('the patch operation Phase 5 added', () => {
     }
   });
 });
+
+describe('the submit operation Phase 6 added', () => {
+  it('follows the commit of the after-photo it cites', () => {
+    const sorted = sortSyncItems([
+      { entityType: 'corrective_action_submission', operation: 'submit' },
+      { entityType: 'evidence', operation: 'commit' },
+      { entityType: 'evidence', operation: 'upsert' },
+    ]);
+    expect(sorted.map((entry) => `${entry.entityType}:${entry.operation}`)).toEqual([
+      'evidence:upsert',
+      'evidence:commit',
+      'corrective_action_submission:submit',
+    ]);
+  });
+});

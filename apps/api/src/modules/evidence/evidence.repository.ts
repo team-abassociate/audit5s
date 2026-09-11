@@ -42,6 +42,7 @@ const evidenceColumns = {
   auditId: evidence.auditId,
   auditZoneId: evidence.auditZoneId,
   questionResponseId: evidence.questionResponseId,
+  correctiveActionId: evidence.correctiveActionId,
   correctiveActionSubmissionId: evidence.correctiveActionSubmissionId,
   objectKey: evidence.objectKey,
   thumbnailObjectKey: evidence.thumbnailObjectKey,

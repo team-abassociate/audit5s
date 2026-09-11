@@ -5,4 +5,6 @@ export * from './checklists';
 export * from './zones';
 export * from './audits';
 export * from './evidence';
+export * from './corrective-actions';
+export * from './notifications';
 export * from './sync';

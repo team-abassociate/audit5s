@@ -48,6 +48,9 @@ const OPERATION_PHASE: Record<SyncOperation, number> = {
   delete: PHASE.STRUCTURE,
   commit: PHASE.STRUCTURE,
   patch: PHASE.STRUCTURE,
+  // Structure, and last within it by entity rank, so an Option A submission follows the
+  // commit of the after-photo it cites.
+  submit: PHASE.STRUCTURE,
   pause: PHASE.LIFECYCLE,
   resume: PHASE.LIFECYCLE,
   complete: PHASE.FINALIZE,
@@ -62,6 +65,7 @@ const STRUCTURE_OPERATION_RANK: Record<SyncOperation, number> = {
   // it (E-3) and `commit` is where E-1 writes the authoritative one. A patch that arrived
   // first would be refused for a reason the auditor could do nothing about.
   patch: 3,
+  submit: 4,
   pause: 0,
   resume: 1,
   complete: 0,

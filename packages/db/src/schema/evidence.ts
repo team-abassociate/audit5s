@@ -55,7 +55,15 @@ export const evidence = pgTable(
     questionResponseId: uuid('question_response_id').references(() => questionResponses.id, {
       onDelete: 'restrict',
     }),
-    /** The FK arrives with `corrective_action_submission` in Phase 6. */
+    /**
+     * `CORRECTIVE_AFTER` only (R-13). The action this after-photo answers; the FK is in
+     * 0009 and not declared here, because `corrective_action` references this table too.
+     */
+    correctiveActionId: uuid('corrective_action_id'),
+    /**
+     * The attempt it was taken for, minted by the device before the attempt exists — so
+     * no FK. 0009's submission trigger enforces the link from the other side.
+     */
     correctiveActionSubmissionId: uuid('corrective_action_submission_id'),
 
     objectKey: text('object_key').notNull(),

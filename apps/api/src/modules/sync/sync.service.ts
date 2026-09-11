@@ -79,6 +79,7 @@ export class SyncService {
         checklistTemplates: [],
         checklistVersions: [],
         assignments: [],
+        correctiveActions: [],
       };
     }
 
@@ -90,6 +91,7 @@ export class SyncService {
       checklistTemplates: templatePage.data,
       checklistVersions: versions,
       assignments: assignmentRows.map(toAssignment),
+      correctiveActions: [],
     };
   }
 }
