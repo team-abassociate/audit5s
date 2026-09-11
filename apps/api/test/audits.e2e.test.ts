@@ -623,7 +623,8 @@ describe('finishing a Zone and an audit', () => {
       body: {},
     });
     expect(completed.status).toBe(200);
-    expect((completed.body as Audit).status).toBe('COMPLETED');
+    // No nonconformity photograph, so §7.1 rolls the completed audit straight to CLOSED.
+    expect((completed.body as Audit).status).toBe('CLOSED');
     expect((completed.body as Audit).totals.scorePercentage).toBe(expected.totals.scorePercentage);
 
     // §8.6: a second call on a COMPLETED audit returns 200 with the same body.

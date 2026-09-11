@@ -9,6 +9,7 @@ import type {
 import { assertTransition, InvalidStateTransition, type ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
+import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { UnitsRepository } from '../units/units.repository';
 import { AssignmentsRepository, type AssignmentRow } from './assignments.repository';
 
@@ -26,6 +27,7 @@ export class AssignmentsService {
     private readonly repository: AssignmentsRepository,
     private readonly units: UnitsRepository,
     private readonly auditLog: AuditLogService,
+    private readonly events: DomainEvents,
   ) {}
 
   async create(
@@ -45,7 +47,21 @@ export class AssignmentsService {
       ]);
     }
 
-    const id = await this.repository.create(scope, request);
+    const id = await this.repository.create(scope, request, (tx, assignmentId) =>
+      this.events.emit(tx, {
+        type: 'AUDIT_ASSIGNED',
+        actorUserId: scope.actor.userId,
+        unitId: request.unitId,
+        resourceType: 'audit_assignment',
+        resourceId: assignmentId,
+        userIds: [request.auditorUserId],
+        data: {
+          unitName: unit.name,
+          auditType: request.auditType,
+          dueAt: request.dueAt ?? null,
+        },
+      }),
+    );
     const created = await this.mustFind(scope, id);
 
     await this.auditLog.record({

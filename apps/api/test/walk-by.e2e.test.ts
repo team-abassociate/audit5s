@@ -220,7 +220,8 @@ describe('§2.7 — the ten steps, in order', () => {
       body: {},
     });
     expect(completed.status, JSON.stringify(completed.body)).toBe(200);
-    expect((completed.body as Audit).status).toBe('COMPLETED');
+    // Its nonconformity photograph opened a corrective action (§7.1).
+    expect((completed.body as Audit).status).toBe('CORRECTIVE_ACTION_OPEN');
 
     // Both photographs are on the record, with the auditor's own classifications.
     const gallery = await world.request('GET', `${base}/audits/${auditId}/evidence`, {

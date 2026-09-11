@@ -90,8 +90,8 @@ CREATE TRIGGER corrective_action_no_delete BEFORE DELETE ON corrective_action
 -- =============================================================================
 
 CREATE TABLE corrective_action_submission (
-  -- Client-minted on a device (the outbox id, and the after-photo's key segment, §5.6);
-  -- server-minted otherwise. A replayed item therefore finds its own row.
+  -- Client-minted on a device — the sync item's entity id, and the after-photo's key
+  -- segment (§5.6) — and server-minted otherwise. A replayed item finds its own row.
   id                    uuid PRIMARY KEY,
   corrective_action_id  uuid NOT NULL REFERENCES corrective_action(id) ON DELETE RESTRICT,
   attempt_no            integer NOT NULL,
@@ -277,9 +277,9 @@ BEGIN
       USING ERRCODE = 'restrict_violation';
   END IF;
 
-  -- R-13. An after-photo is taken after completion by definition; its own life — commit,
-  -- a retake withdrawn before submitting — runs until an attempt cites it. From then on it
-  -- is the record of what the Zone Leader submitted, and it freezes like any other.
+  -- R-13. An after-photo is taken after completion by definition; its own life — the
+  -- commit, the media worker — runs until an attempt cites it. From then on it is the
+  -- record of what the Zone Leader submitted, and it freezes like any other.
   IF OLD.kind = 'CORRECTIVE_AFTER' AND NOT corrective_after_is_cited(OLD.id) THEN
     RETURN NEW;
   END IF;

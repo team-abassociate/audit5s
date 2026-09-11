@@ -34,6 +34,7 @@ export const AUDIT_LOG_ACTIONS = [
   'report.token_revoked',
   'corrective_action.verified',
   'corrective_action.reopened',
+  'corrective_action.reassigned',
   'evidence.redacted',
   'permission.changed',
   'unit.created',

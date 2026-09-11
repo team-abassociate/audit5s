@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, sql, type SQL } from 'drizzle-orm';
-import { unitMemberships, units, users, type Database } from '@audit5s/db';
+import { unitMemberships, units, users, type Database, type Transaction } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { ListMembershipsQuery, Role } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
@@ -14,7 +14,11 @@ export class MembershipsRepository extends BaseRepository {
     super(db, resolvers);
   }
 
-  async create(scope: ScopeContext, input: { userId: string; unitId: string; role: Role }) {
+  async create(
+    scope: ScopeContext,
+    input: { userId: string; unitId: string; role: Role },
+    afterWrite?: (tx: Transaction) => Promise<void>,
+  ) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [row] = await tx
@@ -28,6 +32,7 @@ export class MembershipsRepository extends BaseRepository {
           assignedByUserId: scope.actor.userId,
         })
         .returning();
+      await afterWrite?.(tx as Transaction);
       return row!;
     });
   }
@@ -53,7 +58,11 @@ export class MembershipsRepository extends BaseRepository {
   }
 
   /** Soft revoke: `status='REVOKED'`, `valid_to=now()`. The row is never deleted. */
-  async revoke(scope: ScopeContext, membershipId: string) {
+  async revoke(
+    scope: ScopeContext,
+    membershipId: string,
+    afterWrite?: (tx: Transaction) => Promise<void>,
+  ) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [row] = await tx
@@ -70,6 +79,7 @@ export class MembershipsRepository extends BaseRepository {
           ),
         )
         .returning();
+      if (row) await afterWrite?.(tx as Transaction);
       return row ?? null;
     });
   }

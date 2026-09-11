@@ -25,6 +25,14 @@ const ROLLUP_STATUSES: readonly AuditStatus[] = [
   'CLOSED',
 ];
 
+/**
+ * At or past COMPLETED. Once corrective actions materialise an audit rarely *rests* on
+ * COMPLETED, so "is it completed" is never `status === 'COMPLETED'`.
+ */
+export function isAuditCompleted(status: string): boolean {
+  return (ROLLUP_STATUSES as readonly string[]).includes(status);
+}
+
 const ROLLUP_EDGES = AUDIT_TRANSITIONS.filter(
   (edge) => ROLLUP_STATUSES.includes(edge.from) && ROLLUP_STATUSES.includes(edge.to),
 );

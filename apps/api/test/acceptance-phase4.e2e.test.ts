@@ -361,7 +361,8 @@ describe('Phase 4 acceptance', () => {
     expect(detailResponse.status).toBe(200);
     const detail = detailResponse.body as AuditDetail;
 
-    expect(detail.status).toBe('COMPLETED');
+    // §7.1: completed, then rolled on — CLOSED, as none of its photographs is a finding.
+    expect(detail.status).toBe('CLOSED');
     expect(detail.zones).toHaveLength(3);
     for (const zone of detail.zones) {
       expect(zone.responses).toHaveLength(TOTAL_QUESTIONS);

@@ -358,10 +358,14 @@ export async function captureEvidence(
     token: string;
     evidenceId: string;
     auditId: string;
-    kind?: 'AUDITOR_SELFIE' | 'QUESTION_EVIDENCE' | 'WALK_BY_PHOTO';
+    kind?: 'AUDITOR_SELFIE' | 'QUESTION_EVIDENCE' | 'WALK_BY_PHOTO' | 'CORRECTIVE_AFTER';
     auditZoneId?: string;
     questionResponseId?: string;
     classification?: 'GOOD' | 'NONCONFORMITY' | 'NEUTRAL';
+    /** `CORRECTIVE_AFTER` only: the action, and the attempt the photo is taken for. */
+    correctiveActionId?: string;
+    correctiveActionSubmissionId?: string;
+    isLiveCapture?: boolean;
     deviceId?: string;
     bytes?: Buffer;
     /** Skips the commit, leaving the row SYNCING — §9.4's `orphan_metadata` case. */
@@ -384,11 +388,15 @@ export async function captureEvidence(
       ...(options.auditZoneId ? { auditZoneId: options.auditZoneId } : {}),
       ...(options.questionResponseId ? { questionResponseId: options.questionResponseId } : {}),
       ...(options.classification ? { classification: options.classification } : {}),
+      ...(options.correctiveActionId ? { correctiveActionId: options.correctiveActionId } : {}),
+      ...(options.correctiveActionSubmissionId
+        ? { correctiveActionSubmissionId: options.correctiveActionSubmissionId }
+        : {}),
       contentType: 'image/jpeg',
       byteSize: bytes.byteLength,
       checksumSha256: checksum,
       capturedAt: new Date().toISOString(),
-      isLiveCapture: true,
+      isLiveCapture: options.isLiveCapture ?? true,
     },
   });
 

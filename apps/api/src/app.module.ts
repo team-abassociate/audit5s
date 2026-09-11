@@ -11,11 +11,14 @@ import { RequestContextMiddleware } from './common/observability/request-context
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { QueueModule } from './infrastructure/queue/queue.module';
 import { PushModule } from './infrastructure/push/push.module';
+import { MessagingModule } from './infrastructure/messaging/message-channel';
 import { StorageModule } from './infrastructure/storage/storage.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AssignmentsModule } from './modules/audit-assignments/assignments.module';
 import { AuditsModule } from './modules/audits/audits.module';
 import { DevicesModule } from './modules/devices/devices.module';
+import { CorrectiveActionsModule } from './modules/corrective-actions/corrective-actions.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChecklistsModule } from './modules/checklists/checklists.module';
@@ -43,6 +46,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     QueueModule,
     StorageModule,
     PushModule,
+    MessagingModule,
     AuthorizationModule,
     AuditLogModule,
     AuthModule,
@@ -53,6 +57,8 @@ import { ZonesModule } from './modules/zones/zones.module';
     AssignmentsModule,
     AuditsModule,
     EvidenceModule,
+    CorrectiveActionsModule,
+    NotificationsModule,
     DevicesModule,
     SyncModule,
     MembershipsModule,

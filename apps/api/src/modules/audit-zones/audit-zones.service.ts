@@ -8,6 +8,7 @@ import {
   assertTransition,
   auditTypeRequiresZonePhoto,
   auditTypeUsesChecklist,
+  isAuditCompleted,
   type ScopeContext,
   type TransitionGuard,
 } from '@audit5s/domain';
@@ -290,7 +291,7 @@ export class AuditZonesService {
    * to.
    */
   private assertWritable(scope: ScopeContext, audit: AuditRow): void {
-    if (['COMPLETED', 'CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED', 'CLOSED'].includes(audit.status)) {
+    if (isAuditCompleted(audit.status)) {
       throw AppError.conflict(
         'AUDIT_ALREADY_COMPLETED',
         'This audit is completed. Use the post-completion override, which is audit-logged (A-2).',

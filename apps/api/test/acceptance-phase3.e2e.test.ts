@@ -404,7 +404,8 @@ describe('Phase 3 acceptance', () => {
       token: consultantToken,
     });
     const completed = completedResponse.body as AuditDetail;
-    expect(completed.status).toBe('COMPLETED');
+    // No photograph means no nonconformity to act on, so §7.1 closes it on completion.
+    expect(completed.status).toBe('CLOSED');
     expect(completed.zones).toHaveLength(1);
     expect(completed.zones[0]!.responses).toHaveLength(TOTAL_QUESTIONS);
     expect(completed.zones[0]!.zoneRemark).toBe('Housekeeping improving on the press line');

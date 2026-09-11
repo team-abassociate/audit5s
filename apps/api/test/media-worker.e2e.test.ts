@@ -376,7 +376,8 @@ describe('R-12d — the worker writes after the audit has completed', () => {
       body: {},
     });
     expect(completed.status, JSON.stringify(completed.body)).toBe(200);
-    expect((completed.body as Audit).status).toBe('COMPLETED');
+    // Its nonconformity photograph opened a corrective action (§7.1).
+    expect((completed.body as Audit).status).toBe('CORRECTIVE_ACTION_OPEN');
 
     // Before 0008 widened the `TG_ARGV` list, this threw and the job dead-lettered.
     await run(evidenceId);

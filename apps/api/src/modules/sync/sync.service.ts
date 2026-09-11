@@ -6,6 +6,7 @@ import { scopeFor } from '../../common/auth/scope-for';
 import { AssignmentsRepository } from '../audit-assignments/assignments.repository';
 import { toAssignment } from '../audit-assignments/assignments.service';
 import { ChecklistsService } from '../checklists/checklists.service';
+import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
 import { toUnit } from '../units/units.service';
 import { UnitsRepository } from '../units/units.repository';
 import { toZone } from '../zones/zones.service';
@@ -29,6 +30,7 @@ export class SyncService {
     private readonly zones: ZonesRepository,
     private readonly checklists: ChecklistsService,
     private readonly assignments: AssignmentsRepository,
+    private readonly correctiveActions: CorrectiveActionsService,
   ) {}
 
   async catalogue(scope: ScopeContext, query: SyncCatalogueQuery): Promise<SyncCatalogue> {
@@ -55,6 +57,9 @@ export class SyncService {
       scope.actor.userId,
     );
 
+    // §8.11's open corrective actions — a Zone Leader's to-do and what awaits review.
+    const actions = await this.correctiveActions.listForCatalogue(scope);
+
     const units: Unit[] = unitRows.map(toUnit);
     const zones = zoneRows.map(toZone);
 
@@ -66,6 +71,7 @@ export class SyncService {
       ...versions.map((version) => `v:${version.id}:${version.contentHash}`),
       ...templatePage.data.map((template) => `t:${template.id}:${template.updatedAt}`),
       ...assignmentRows.map((assignment) => `a:${assignment.id}:${assignment.status}:${assignment.updatedAt.toISOString()}`),
+      ...actions.map((action) => `c:${action.id}:${action.status}:${action.version}`),
     ]);
 
     // Unchanged: the device keeps everything it has and writes nothing. This is the cheap
@@ -91,7 +97,7 @@ export class SyncService {
       checklistTemplates: templatePage.data,
       checklistVersions: versions,
       assignments: assignmentRows.map(toAssignment),
-      correctiveActions: [],
+      correctiveActions: actions,
     };
   }
 }

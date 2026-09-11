@@ -13,6 +13,7 @@ import type { ScopeContext } from '@audit5s/domain';
 import { QUESTIONS_PER_SECTION, S_SECTION_ORDER, TOTAL_QUESTIONS } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
+import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import {
   ChecklistsRepository,
   type ChecklistQuestionRow,
@@ -25,6 +26,7 @@ export class ChecklistsService {
   constructor(
     private readonly repository: ChecklistsRepository,
     private readonly auditLog: AuditLogService,
+    private readonly events: DomainEvents,
   ) {}
 
   async listTemplates(
@@ -143,7 +145,16 @@ export class ChecklistsService {
     const questions = await this.repository.listQuestions(scope, [versionId]);
     assertFiveByTen(questions, version.questionsPerSection);
 
-    const result = await this.repository.publish(scope, versionId, scope.actor.userId);
+    const result = await this.repository.publish(scope, versionId, scope.actor.userId, (tx) =>
+      this.events.emit(tx, {
+        type: 'CHECKLIST_PUBLISHED',
+        actorUserId: scope.actor.userId,
+        unitId: null,
+        resourceType: 'checklist_version',
+        resourceId: versionId,
+        data: { templateName: version.templateName, versionNumber: version.versionNumber },
+      }),
+    );
     if (result.outcome === 'NOT_FOUND') {
       throw AppError.notFound('No such checklist version');
     }

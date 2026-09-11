@@ -22,6 +22,7 @@ import {
   assessLocation,
   auditTypeRequiresZonePhoto,
   auditTypeUsesChecklist,
+  isAuditCompleted,
   isScoredAuditType,
   type LocationAssessment,
   type ScopeContext,
@@ -30,6 +31,8 @@ import {
 import { AppError } from '../../common/errors';
 import { scopeFor } from '../../common/auth/scope-for';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
+import { DomainEvents } from '../../infrastructure/queue/domain-events';
+import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
 import { getRequestContext } from '../../common/observability/request-context';
 import { UnitsRepository } from '../units/units.repository';
 import { AssignmentsRepository } from '../audit-assignments/assignments.repository';
@@ -67,6 +70,8 @@ export class AuditsService {
     private readonly scoring: ScoringService,
     private readonly selfies: SelfieRequirement,
     private readonly auditLog: AuditLogService,
+    private readonly events: DomainEvents,
+    private readonly correctiveActions: CorrectiveActionsService,
   ) {}
 
   // ------------------------------------------------------------------------ create
@@ -316,7 +321,16 @@ export class AuditsService {
           }
         : {}),
       clientUpdatedAt: new Date(),
-    });
+    }, (tx) =>
+      this.events.emit(tx, {
+        type: 'AUDIT_STARTED',
+        actorUserId: scope.actor.userId,
+        unitId: audit.unitId,
+        resourceType: 'audit',
+        resourceId: auditId,
+        data: { auditType: audit.auditType, locationSuspicious: location?.suspicious ?? false },
+      }),
+    );
 
     if (location?.suspicious) {
       // Logged, surfaced on the audit board, and never acted on automatically. §12.9's
@@ -354,13 +368,24 @@ export class AuditsService {
       throw asAppError(error);
     }
 
+    // N7's Super Admin notification rides the same transaction as the pause (R-2), and
+    // cannot block it: the enqueue is a row in this database, not a delivery.
     await this.repository.updateAudit(scope, auditId, {
       status: 'PAUSED',
       pausedAt: new Date(),
       pauseReason: request.reason ?? null,
       ...(request.resumeAuditZoneId ? { resumeAuditZoneId: request.resumeAuditZoneId } : {}),
       clientUpdatedAt: new Date(),
-    });
+    }, (tx) =>
+      this.events.emit(tx, {
+        type: 'AUDIT_PAUSED',
+        actorUserId: scope.actor.userId,
+        unitId: audit.unitId,
+        resourceType: 'audit',
+        resourceId: auditId,
+        data: { auditType: audit.auditType, reason: request.reason ?? null },
+      }),
+    );
 
     if (request.resumeAuditZoneId && request.resumeQuestionId) {
       await this.repository.updateZone(scope, request.resumeAuditZoneId, {
@@ -369,8 +394,6 @@ export class AuditsService {
       });
     }
 
-    // The Super Admin notification of N7 is a `notification` row, which arrives with the
-    // notifications module in Phase 6. The pause itself is never blocked on it (§9.8).
     return this.get(scope, auditId);
   }
 
@@ -426,8 +449,9 @@ export class AuditsService {
   ): Promise<Audit> {
     const audit = await this.mustFind(scope, auditId);
 
-    // §8.6: a second call on a COMPLETED audit returns 200 with the same body.
-    if (audit.status === 'COMPLETED') {
+    // §8.6: a second call on a completed audit returns 200 with the same body — and since
+    // Phase 6 a completed audit has usually already rolled on to its corrective actions.
+    if (isAuditCompleted(audit.status)) {
       return toAudit(audit);
     }
 
@@ -468,12 +492,32 @@ export class AuditsService {
     // the status lands on COMPLETED, so a recompute after it would be refused.
     await this.scoring.recompute(scope, auditId);
 
-    await this.repository.updateAudit(scope, auditId, {
-      status: 'COMPLETED',
-      completedAt: request.completedAt ? new Date(request.completedAt) : new Date(),
-      owningDeviceId: null,
-      clientUpdatedAt: new Date(),
-    });
+    // One transaction: the completion, one corrective action per nonconformity photo, the
+    // audit's roll onward to CORRECTIVE_ACTION_OPEN or CLOSED, and the event (§7.1, R-2).
+    // A completed audit with its actions missing is not a state this can leave behind.
+    const completedAt = request.completedAt ? new Date(request.completedAt) : new Date();
+    await this.repository.updateAudit(
+      scope,
+      auditId,
+      { status: 'COMPLETED', completedAt, owningDeviceId: null, clientUpdatedAt: new Date() },
+      async (tx) => {
+        const outcome = await this.correctiveActions.materializeOnCompletion(
+          tx,
+          scope,
+          auditId,
+          completedAt,
+        );
+        await this.events.emit(tx, {
+          type: 'AUDIT_COMPLETED',
+          actorUserId: scope.actor.userId,
+          unitId: audit.unitId,
+          resourceType: 'audit',
+          resourceId: auditId,
+          userIds: outcome.assigneeIds,
+          data: { auditType: audit.auditType, actionsOpened: outcome.opened },
+        });
+      },
+    );
 
     if (audit.assignmentId) {
       await this.assignments.setStatus(
@@ -585,7 +629,7 @@ export class AuditsService {
   ): Promise<AuditDetail> {
     const audit = await this.mustFind(scope, auditId);
 
-    if (!['COMPLETED', 'CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED', 'CLOSED'].includes(audit.status)) {
+    if (!isAuditCompleted(audit.status)) {
       throw AppError.conflict(
         'INVALID_STATE_TRANSITION',
         'This audit is not completed; edit it through the ordinary endpoints',

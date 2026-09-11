@@ -11,8 +11,6 @@ export const QUEUES = {
   reportRender: 'report.render',
   notificationSend: 'notification.send',
   maintenanceSweep: 'maintenance.sweep',
-  /** §7.4: raised when field work lands in the quarantine or a device dead-letters. */
-  syncFailure: 'sync.failure',
   /** §9.5 Layer 1: releases the device lock on a PAUSED audit past its grace period. */
   deviceRelease: 'device.release',
   /**

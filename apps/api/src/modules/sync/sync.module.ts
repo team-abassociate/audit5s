@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AssignmentsModule } from '../audit-assignments/assignments.module';
 import { AuditsModule } from '../audits/audits.module';
 import { ChecklistsModule } from '../checklists/checklists.module';
+import { CorrectiveActionsModule } from '../corrective-actions/corrective-actions.module';
 import { DevicesModule } from '../devices/devices.module';
 import { EvidenceModule } from '../evidence/evidence.module';
 import { UnitsModule } from '../units/units.module';
@@ -11,7 +12,6 @@ import { SyncConflictsController } from './sync-conflicts.controller';
 import { SyncConflictsService } from './sync-conflicts.service';
 import { SyncController } from './sync.controller';
 import { SyncEventsService } from './sync-events.service';
-import { SyncFailureWorker } from './sync-failure.worker';
 import { SyncRepository } from './sync.repository';
 import { SyncService } from './sync.service';
 import { SyncStatusService } from './sync-status.service';
@@ -33,6 +33,7 @@ import { DeviceReleaseWorker } from './device-release.worker';
     AssignmentsModule,
     AuditsModule,
     EvidenceModule,
+    CorrectiveActionsModule,
     DevicesModule,
   ],
   controllers: [SyncController, SyncConflictsController],
@@ -43,9 +44,8 @@ import { DeviceReleaseWorker } from './device-release.worker';
     SyncStatusService,
     SyncConflictsService,
     SyncEventsService,
-    SyncFailureWorker,
     DeviceReleaseWorker,
   ],
-  exports: [SyncService, SyncRepository, SyncBatchService, SyncFailureWorker, DeviceReleaseWorker],
+  exports: [SyncService, SyncRepository, SyncBatchService, DeviceReleaseWorker],
 })
 export class SyncModule {}

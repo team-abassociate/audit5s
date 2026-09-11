@@ -189,7 +189,12 @@ export class ChecklistsRepository extends BaseRepository {
    * otherwise refuse the second statement. The database enforcing "at most one" is
    * exactly why this cannot be done in two round trips.
    */
-  async publish(scope: ScopeContext, versionId: string, publishedByUserId: string) {
+  async publish(
+    scope: ScopeContext,
+    versionId: string,
+    publishedByUserId: string,
+    afterWrite?: (tx: Transaction) => Promise<void>,
+  ) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
 
@@ -232,6 +237,8 @@ export class ChecklistsRepository extends BaseRepository {
         .update(checklistVersions)
         .set({ status: 'PUBLISHED', publishedAt: sql`now()`, publishedByUserId })
         .where(eq(checklistVersions.id, versionId));
+
+      await afterWrite?.(tx as Transaction);
 
       return { outcome: 'PUBLISHED' as const, supersededVersionId: previous?.id ?? null };
     });

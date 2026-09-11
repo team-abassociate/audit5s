@@ -14,9 +14,11 @@ import type {
 import {
   ALLOWED_IMAGE_TYPES,
   auditorChoosesClassification,
+  awaitsResponse,
   canBeSummaryFlagged,
   classifyEvidence,
   evidenceObjectKey,
+  isAuditCompleted,
   sniffImageType,
   type ScopeContext,
 } from '@audit5s/domain';
@@ -25,6 +27,7 @@ import { isUniqueViolation } from '../../common/pg-errors';
 import { CONFIG, type AppConfig } from '../../config/env';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
+import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
 import { EvidenceRepository, type EvidenceRow } from './evidence.repository';
 
 /**
@@ -51,6 +54,7 @@ export class EvidenceService {
     private readonly repository: EvidenceRepository,
     private readonly storage: ObjectStorage,
     private readonly queue: QueueService,
+    private readonly correctiveActions: CorrectiveActionsService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -64,7 +68,13 @@ export class EvidenceService {
     // retry cannot mint a second key for an upload that may already be in flight.
     const existing = await this.repository.findForIntentIdempotency(scope, request.id);
     if (existing) {
-      if (existing.auditorUserId !== scope.actor.userId) {
+      // An after-photo belongs to whoever may answer its action, not to the auditor.
+      const retrying =
+        existing.kind === 'CORRECTIVE_AFTER'
+          ? existing.correctiveActionId !== null &&
+            (await this.correctiveActions.findAnswerable(scope, existing.correctiveActionId)) !== null
+          : existing.auditorUserId === scope.actor.userId;
+      if (!retrying) {
         throw AppError.conflict(
           'CONFLICT',
           'Evidence already exists with this id and belongs to another auditor',
@@ -84,6 +94,10 @@ export class EvidenceService {
         expiresIn: upload.expiresIn,
         alreadyExists: true,
       };
+    }
+
+    if (request.kind === 'CORRECTIVE_AFTER') {
+      return this.createAfterPhotoIntent(scope, request);
     }
 
     const audit = await this.repository.findAuditForEvidence(scope, request.auditId);
@@ -150,6 +164,97 @@ export class EvidenceService {
         new Date(request.capturedAt),
       );
     }
+
+    const upload = await this.storage.presignPut(objectKey, {
+      expiresInSeconds: this.config.EVIDENCE_PUT_URL_TTL_SECONDS,
+      contentType: request.contentType,
+      byteSize: request.byteSize,
+      checksumSha256: request.checksumSha256,
+    });
+
+    return {
+      evidenceId: request.id,
+      objectKey,
+      uploadUrl: upload.url,
+      requiredHeaders: upload.requiredHeaders,
+      expiresIn: upload.expiresIn,
+      alreadyExists: false,
+    };
+  }
+
+  /**
+   * A Zone Leader's after-photo (§7.3 Option A, R-13).
+   *
+   * It hangs off an audit that is completed by definition, so the audit's write rules do
+   * not apply; the action's do. The photograph is keyed to the attempt the device minted
+   * when the form opened (§5.6), and it must be a live capture — the flow offers no other
+   * way to take one, and the submission refuses one that says otherwise (CA-2).
+   */
+  private async createAfterPhotoIntent(
+    scope: ScopeContext,
+    request: UploadIntentRequest,
+  ): Promise<UploadIntentResponse> {
+    if (!request.correctiveActionId || !request.correctiveActionSubmissionId) {
+      throw AppError.validation('An after-photo names its corrective action and attempt', [
+        { field: 'correctiveActionId', message: 'Required for CORRECTIVE_AFTER' },
+        { field: 'correctiveActionSubmissionId', message: 'Required for CORRECTIVE_AFTER' },
+      ]);
+    }
+    if (!request.isLiveCapture) {
+      throw AppError.validation('An after-photo must be a live capture (§12.10)', [
+        { field: 'isLiveCapture', message: 'Must be true' },
+      ]);
+    }
+
+    const action = await this.correctiveActions.findAnswerable(scope, request.correctiveActionId);
+    if (!action || action.auditId !== request.auditId) {
+      throw AppError.notFound('No such corrective action');
+    }
+    if (!awaitsResponse(action.status)) {
+      throw AppError.conflict(
+        'INVALID_STATE_TRANSITION',
+        `This corrective action is ${action.status}; it is not waiting for a response`,
+      );
+    }
+
+    const objectKey = evidenceObjectKey({
+      kind: 'CORRECTIVE_AFTER',
+      unitId: action.unitId,
+      auditId: action.auditId,
+      evidenceId: request.id,
+      extension: ALLOWED_IMAGE_TYPES[request.contentType],
+      correctiveActionId: action.id,
+      correctiveActionSubmissionId: request.correctiveActionSubmissionId,
+    });
+
+    await this.repository.createIntent(scope, {
+      id: request.id,
+      kind: 'CORRECTIVE_AFTER',
+      auditId: action.auditId,
+      auditZoneId: null,
+      questionResponseId: null,
+      correctiveActionId: action.id,
+      correctiveActionSubmissionId: request.correctiveActionSubmissionId,
+      objectKey,
+      contentType: request.contentType,
+      byteSize: request.byteSize,
+      checksumSha256: request.checksumSha256,
+      localDeviceId: scope.actor.deviceId ?? null,
+      localFileUri: request.localFileUri ?? null,
+      scoreAtCapture: null,
+      classification: classifyEvidence({ kind: 'CORRECTIVE_AFTER' }),
+      remark: request.remark ?? null,
+      isLiveCapture: true,
+      capturedAt: new Date(request.capturedAt),
+      location: request.location
+        ? {
+            latitude: request.location.latitude,
+            longitude: request.location.longitude,
+            accuracyM: request.location.accuracyM ?? null,
+            provider: request.location.provider,
+          }
+        : null,
+    });
 
     const upload = await this.storage.presignPut(objectKey, {
       expiresInSeconds: this.config.EVIDENCE_PUT_URL_TTL_SECONDS,
@@ -469,7 +574,7 @@ export class EvidenceService {
       return toEvidence(row);
     }
 
-    if (isCompleted(row.auditStatus)) {
+    if (isAuditCompleted(row.auditStatus)) {
       throw AppError.conflict(
         'AUDIT_ALREADY_COMPLETED',
         'This audit is completed; its evidence can no longer be removed (E-4). ' +
@@ -522,7 +627,7 @@ export class EvidenceService {
     scope: ScopeContext,
     owningDeviceId: string | null,
   ): void {
-    if (isCompleted(auditStatus)) {
+    if (isAuditCompleted(auditStatus)) {
       throw AppError.conflict(
         'AUDIT_ALREADY_COMPLETED',
         'This audit is completed. Use the post-completion override, which is audit-logged (A-2).',
@@ -585,10 +690,6 @@ export class EvidenceService {
     }
     return { id: response.id, value: response.value };
   }
-}
-
-function isCompleted(status: string): boolean {
-  return ['COMPLETED', 'CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED', 'CLOSED'].includes(status);
 }
 
 export function toEvidence(row: EvidenceRow): Evidence {
