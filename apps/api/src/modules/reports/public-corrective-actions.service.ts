@@ -8,6 +8,7 @@ import type {
 } from '@audit5s/contracts';
 import type { ScopeContext, SignedTokenScope } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
+import { scopeFor } from '../../common/auth/scope-for';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
 import { CorrectiveActionsRepository } from '../corrective-actions/corrective-actions.repository';
 import { EvidenceService } from '../evidence/evidence.service';
@@ -97,7 +98,10 @@ export class PublicCorrectiveActionsService {
       ]);
     }
 
-    return this.evidence.createUploadIntent(scope, {
+    // Re-derived for `evidence`, not reused from the link. `signed_token`'s predicate is
+    // written against `corrective_action`, which `evidence` is not — and PART 6 has its own
+    // cell for this resource anyway. `scopeFor` is the one way that question is asked.
+    return this.evidence.createUploadIntent(scopeFor(scope, 'evidence:create'), {
       ...request,
       kind: 'CORRECTIVE_AFTER',
       auditId: action.auditId,
@@ -122,7 +126,11 @@ export class PublicCorrectiveActionsService {
     evidenceId: string,
   ): Promise<string | null> {
     try {
-      const view = await this.evidence.viewUrl(scope, evidenceId, 'original');
+      const view = await this.evidence.viewUrl(
+        scopeFor(scope, 'evidence:view_url'),
+        evidenceId,
+        'original',
+      );
       return view.url;
     } catch {
       // A redacted or missing photograph must not take the page down: the Zone Leader can

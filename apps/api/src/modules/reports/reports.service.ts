@@ -19,7 +19,7 @@ import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
 import { freezePayload } from './report-payload';
-import { ReportTokensService } from './report-tokens.service';
+import { ReportTokensService, type MintedTokens } from './report-tokens.service';
 import { ReportsRepository, type ReportSnapshotRow } from './reports.repository';
 import { TEMPLATE_VERSION } from './templates/version';
 
@@ -137,7 +137,7 @@ export class ReportsService {
           kind: request.kind,
         });
 
-        const payload = await this.freeze(tx, scope, {
+        const { payload, tokens } = await this.freeze(tx, scope, {
           ...target,
           kind: request.kind,
           snapshotId,
@@ -160,6 +160,10 @@ export class ReportsService {
           generatedByUserId: scope.actor.userId,
           generatedAt: new Date(payload.generatedAt),
         });
+
+        // After the snapshot row, because a token references it — and before the commit,
+        // so a link never outlives a report that rolled back.
+        if (tokens) await this.tokens.persist(tx, tokens);
 
         await this.queue.sendInTransaction(
           tx,
@@ -259,7 +263,7 @@ export class ReportsService {
       /** False for a preview: a preview must not be a way to issue live links. */
       mintTokens?: boolean;
     },
-  ): Promise<ReportPayload> {
+  ): Promise<{ payload: ReportPayload; tokens: MintedTokens | null }> {
     const unit = await this.repository.readUnit(tx, target.unitId);
     if (!unit) throw AppError.notFound('No such Unit');
 
@@ -279,10 +283,10 @@ export class ReportsService {
 
     // A verified finding needs no button: the right half of its row already carries the
     // outcome. Minting a link for it would put a live door on a closed item.
-    const actionUrls =
+    const tokens =
       target.mintTokens === false
-        ? new Map<string, string>()
-        : await this.tokens.mintForSnapshot(tx, {
+        ? null
+        : this.tokens.prepareForSnapshot({
             snapshotId: target.snapshotId,
             unitId: target.unitId,
             createdByUserId: scope.actor.userId,
@@ -294,7 +298,7 @@ export class ReportsService {
               })),
           });
 
-    return freezePayload({
+    const payload = freezePayload({
       kind: target.kind,
       snapshotId: target.snapshotId,
       version: target.version,
@@ -309,8 +313,10 @@ export class ReportsService {
       photos,
       actions,
       selfieObjectKey,
-      actionUrls,
+      actionUrls: tokens?.urls ?? new Map<string, string>(),
     });
+
+    return { payload, tokens };
   }
 
   /**
@@ -323,20 +329,31 @@ export class ReportsService {
    */
   async preview(scope: ScopeContext, request: GenerateReportRequest): Promise<ReportPayload> {
     const snapshotId = uuidv7();
-    return this.repository.inTransaction(scope, async (tx) => {
-      const target = await this.resolveTarget(tx, request);
-      const payload = await this.freeze(tx, scope, {
-        ...target,
-        kind: request.kind,
-        snapshotId,
-        version: 0,
-        mintTokens: false,
+    let frozen: ReportPayload | null = null;
+
+    try {
+      await this.repository.inTransaction(scope, async (tx) => {
+        const target = await this.resolveTarget(tx, request);
+        const { payload } = await this.freeze(tx, scope, {
+          ...target,
+          kind: request.kind,
+          snapshotId,
+          version: 0,
+          mintTokens: false,
+        });
+        frozen = payload;
+        // Nothing was written — no snapshot, no token — but the freeze read under a
+        // transaction, and rolling it back keeps "a preview writes nothing" literally
+        // true rather than true by inspection. Drizzle signals the rollback by throwing,
+        // which is why the payload is carried out in a variable rather than returned.
+        await tx.rollback();
       });
-      // Nothing was written, but the freeze read under a transaction and the caller gets
-      // the payload rather than a row. Rolling back keeps that literally true.
-      await tx.rollback();
-      return payload;
-    });
+    } catch (error) {
+      if (!frozen) throw error;
+    }
+
+    if (!frozen) throw AppError.internal('Preview produced no payload');
+    return frozen;
   }
 
   // ---------------------------------------------------------------------------- reads

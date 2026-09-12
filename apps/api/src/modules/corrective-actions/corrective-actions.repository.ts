@@ -9,7 +9,6 @@ import {
   correctiveActionSubmissions,
   evidence,
   units,
-  users,
   zones,
   type Database,
   type Transaction,
@@ -157,11 +156,16 @@ export class CorrectiveActionsRepository extends BaseRepository {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [row] = await tx
-        .select({ unitName: units.name, auditorName: users.fullName })
+        .select({
+          unitName: units.name,
+          // Through 0010's narrow definer function rather than a join: the reader is a
+          // Zone Leader holding a link, who cannot see the Consultant's `user` row, and an
+          // inner join would empty the page rather than the name.
+          auditorName: sql<string | null>`app_audit_auditor_name(${correctiveActions.auditId})`,
+        })
         .from(correctiveActions)
         .innerJoin(audits, eq(audits.id, correctiveActions.auditId))
         .innerJoin(units, eq(units.id, correctiveActions.unitId))
-        .innerJoin(users, eq(users.id, audits.auditorUserId))
         .where(and(eq(correctiveActions.id, actionId), this.scoped(scope, scopeColumns)))
         .limit(1);
       return row ?? null;

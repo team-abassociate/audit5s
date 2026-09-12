@@ -436,15 +436,17 @@ export class ReportsRepository extends BaseRepository {
         pdfChecksumSha256: reportSnapshots.pdfChecksumSha256,
         pageCount: reportSnapshots.pageCount,
         generatedByUserId: reportSnapshots.generatedByUserId,
-        generatedByName: users.fullName,
+        // Through 0010's narrow definer function, not a join: the Coordinator and Zone
+        // Leader who read a report may not see the Super Admin who generated it, and an
+        // inner join would hide the whole report from exactly the people it is for.
+        generatedByName: sql<string>`COALESCE(app_report_author_name(${reportSnapshots.generatedByUserId}), 'Unknown')`,
         generatedAt: reportSnapshots.generatedAt,
         renderedAt: reportSnapshots.renderedAt,
         failedReason: reportSnapshots.failedReason,
         createdAt: reportSnapshots.createdAt,
         updatedAt: reportSnapshots.updatedAt,
       })
-      .from(reportSnapshots)
-      .innerJoin(users, eq(users.id, reportSnapshots.generatedByUserId));
+      .from(reportSnapshots);
   }
 }
 

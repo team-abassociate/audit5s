@@ -14,8 +14,16 @@ import { CONFIG, type AppConfig } from '../../config/env';
 import {
   ReportTokensRepository,
   type ReportAccessTokenRow,
+  type ReportAccessTokenInsert,
   type ResolvedToken,
 } from './report-tokens.repository';
+
+/** The secrets and the rows that carry their hashes, before either is written. */
+export interface MintedTokens {
+  /** `correctiveActionId → /ca/{secret}`, frozen into the payload. */
+  urls: Map<string, string>;
+  rows: ReportAccessTokenInsert[];
+}
 
 /**
  * Minting, validating and revoking a signed link (§10.4, §12.7).
@@ -42,24 +50,29 @@ export class ReportTokensService {
   ) {}
 
   /**
-   * Mint one link per corrective action, plus the report-level one (§10.2).
+   * Mint one link per corrective action (§10.2), in two halves.
    *
-   * Called **inside** the freeze transaction and **before** the render, because the PDF
-   * prints the link: tokens minted after the render could not appear in the document they
-   * belong to (DECISIONS.md R-14). The raw secrets are returned and never stored.
+   * The split is forced by an ordering the sources do not mention and the schema does: a
+   * token references its snapshot, so the token rows cannot be inserted before the
+   * snapshot exists — while the *payload* of that snapshot has to contain the links,
+   * because the PDF prints a button (DECISIONS.md R-14). One of the two has to come first,
+   * and only the secrets need to.
+   *
+   * So `prepare` generates the secrets and the URLs, which is pure and writes nothing; the
+   * caller freezes them into the payload, inserts the snapshot, and then calls `persist`.
+   * All three happen on one transaction, so a link never outlives a rolled-back report.
+   *
+   * The raw secrets exist only in the returned URLs and are never stored.
    */
-  async mintForSnapshot(
-    tx: Transaction,
-    input: {
-      snapshotId: string;
-      unitId: string;
-      createdByUserId: string;
-      actions: readonly { id: string; assignedZoneLeaderUserId: string | null }[];
-    },
-  ): Promise<Map<string, string>> {
+  prepareForSnapshot(input: {
+    snapshotId: string;
+    unitId: string;
+    createdByUserId: string;
+    actions: readonly { id: string; assignedZoneLeaderUserId: string | null }[];
+  }): MintedTokens {
     const expiresAt = new Date(Date.now() + this.config.REPORT_TOKEN_TTL_DAYS * 86_400_000);
     const urls = new Map<string, string>();
-    const rows = [];
+    const rows: ReportAccessTokenInsert[] = [];
 
     for (const action of input.actions) {
       const secret = mintSecret();
@@ -80,8 +93,12 @@ export class ReportTokensService {
       urls.set(action.id, `${this.config.WEB_APP_URL.replace(/\/+$/, '')}/ca/${secret}`);
     }
 
-    await this.repository.mint(tx, rows);
-    return urls;
+    return { urls, rows };
+  }
+
+  /** The second half: the rows, once the snapshot they reference exists. */
+  async persist(tx: Transaction, minted: MintedTokens): Promise<void> {
+    await this.repository.mint(tx, minted.rows);
   }
 
   /**

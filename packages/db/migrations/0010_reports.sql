@@ -218,6 +218,64 @@ CREATE TRIGGER report_access_token_audience_fixed BEFORE UPDATE ON report_access
   FOR EACH ROW EXECUTE FUNCTION enforce_report_token_audience_fixed();
 
 -- =============================================================================
+-- The generator's name, for a reader who may not see the generator (§5.8)
+-- =============================================================================
+
+/*
+ * A report says who generated it, and that is always a Super Admin (N5) — while the
+ * Coordinator and Zone Leader who read it may not see a Super Admin's `user` row at all.
+ * Joining `"user"` to render one display string would therefore hide the whole report
+ * from exactly the people it is for: an inner join under RLS returns no row, and the
+ * report comes back 404.
+ *
+ * So the name comes through a narrow definer function, in the shape 0008 established for
+ * `app_zone_leader_name`: one column, for one user, and only where the caller can already
+ * see a report they generated. Bypassing RLS to read a display string must not become a
+ * way to enumerate the organization's people.
+ */
+CREATE OR REPLACE FUNCTION app_report_author_name(p_user_id uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT u.full_name
+  FROM "user" u
+  WHERE u.id = p_user_id
+    AND EXISTS (
+      -- The caller's own scope, inside the definer function.
+      SELECT 1 FROM report_snapshot r
+      WHERE r.generated_by_user_id = p_user_id
+        AND (app_is_super_admin() OR r.unit_id = ANY (app_actor_unit_ids()))
+    )
+  LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION app_report_author_name(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app_report_author_name(uuid) TO audit5s_app;
+
+/*
+ * The auditor's name, for the public corrective-action page (§10.4).
+ *
+ * Same shape, same reason. The page prints who conducted the audit, and the person reading
+ * it is a Zone Leader holding a link — who cannot see a Consultant's `user` row. Joining
+ * `"user"` would empty the page rather than the name.
+ *
+ * The scope check is the audit's Unit, so this answers only for an audit the caller could
+ * already reach, and returns one display string and nothing else.
+ */
+CREATE OR REPLACE FUNCTION app_audit_auditor_name(p_audit_id uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT u.full_name
+  FROM audit a
+  JOIN "user" u ON u.id = a.auditor_user_id
+  WHERE a.id = p_audit_id
+    AND (app_is_super_admin()
+         OR a.unit_id = ANY (app_actor_unit_ids())
+         OR a.auditor_user_id = app_actor_id())
+  LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION app_audit_auditor_name(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app_audit_auditor_name(uuid) TO audit5s_app;
+
+-- =============================================================================
 -- The foreign key 0009 could not write yet
 -- =============================================================================
 

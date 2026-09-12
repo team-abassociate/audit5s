@@ -27,6 +27,7 @@ import { setActorContext } from '../users/users.repository';
  * Every other method here is an ordinary Super Admin read or write.
  */
 export type ReportAccessTokenRow = typeof reportAccessTokens.$inferSelect;
+export type ReportAccessTokenInsert = typeof reportAccessTokens.$inferInsert;
 
 export interface ResolvedToken extends ReportAccessTokenRow {
   issuedToRole: string | null;
@@ -41,7 +42,7 @@ export class ReportTokensRepository extends BaseRepository {
   }
 
   /** Minted on the caller's transaction, so tokens and their snapshot commit together. */
-  async mint(tx: Transaction, rows: readonly (typeof reportAccessTokens.$inferInsert)[]): Promise<void> {
+  async mint(tx: Transaction, rows: readonly ReportAccessTokenInsert[]): Promise<void> {
     if (rows.length === 0) return;
     await tx.insert(reportAccessTokens).values([...rows]);
   }

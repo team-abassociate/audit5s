@@ -152,9 +152,12 @@ export class ReportRenderer implements OnModuleDestroy {
     // rather than a boot failure of the API.
     const { chromium } = await import('playwright-core');
     this.browser = await chromium.launch({
+      // STACK.md §2 pins `chrome-headless-shell`, not full Chromium: it is the build
+      // without the browser UI, ~50 MB smaller, and the only thing this worker needs is a
+      // renderer. An explicit executable path wins, for an image that ships its own.
       ...(this.config.CHROMIUM_EXECUTABLE_PATH
         ? { executablePath: this.config.CHROMIUM_EXECUTABLE_PATH }
-        : {}),
+        : { channel: 'chromium-headless-shell' }),
       args: [
         // STACK.md §5, both of them. /dev/shm in a container is 64 MB by default, and
         // Chromium rendering a photo-heavy A4 page will exhaust it and crash.

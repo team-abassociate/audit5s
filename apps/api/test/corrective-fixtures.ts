@@ -42,7 +42,14 @@ export async function completedWalkBy(
     /** Photos soft-deleted before completion: they raise nothing (E-4). */
     withdrawn?: number;
   },
-): Promise<{ auditId: string; auditZoneId: string; audit: Audit; actions: CorrectiveAction[] }> {
+): Promise<{
+  auditId: string;
+  auditZoneId: string;
+  /** The live Zone this walk-by covered — what a summary report's selection names. */
+  zoneId: string;
+  audit: Audit;
+  actions: CorrectiveAction[];
+}> {
   const auditId = randomUUID();
   const headers = { 'x-device-id': options.deviceId };
 
@@ -117,6 +124,7 @@ export async function completedWalkBy(
   return {
     auditId,
     auditZoneId,
+    zoneId,
     audit: completed.body as Audit,
     actions: (listed.body as Page<CorrectiveAction>).data,
   };
