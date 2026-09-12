@@ -19,6 +19,10 @@ export default function LoginScreen() {
     try {
       await signIn(loginId, password);
     } catch (cause) {
+      // Anything that is not an ApiError is reported as a connection problem, which is the
+      // right words for an auditor in a plant and the wrong ones for whoever has to debug
+      // it: a missing global `crypto` read exactly like a dead network. The cause is kept.
+      if (!(cause instanceof ApiError)) console.error('sign-in failed', cause);
       setError(
         cause instanceof ApiError
           ? cause.message

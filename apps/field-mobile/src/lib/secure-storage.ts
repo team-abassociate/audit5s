@@ -72,9 +72,9 @@ export async function getDeviceId(): Promise<string> {
 }
 
 /**
- * UUIDv4 from `crypto.getRandomValues`, which React Native provides. Written out rather
- * than pulled from a polyfill package so there is one fewer dependency in the app bundle
- * for something this small.
+ * UUIDv4 from `crypto.getRandomValues`. Hermes defines no global `crypto`, so the app
+ * entry (`src/app/_layout.tsx`) installs `expo-crypto` as one before anything runs.
+ * Written out rather than pulled from a polyfill package for something this small.
  */
 function randomUuidV4(): string {
   const bytes = new Uint8Array(16);
