@@ -15,6 +15,7 @@ import { PushModule } from './infrastructure/push/push.module';
 import { MessagingModule } from './infrastructure/messaging/message-channel';
 import { StorageModule } from './infrastructure/storage/storage.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AssignmentsModule } from './modules/audit-assignments/assignments.module';
 import { AuditsModule } from './modules/audits/audits.module';
 import { DevicesModule } from './modules/devices/devices.module';
@@ -67,6 +68,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     MembershipsModule,
     PermissionsModule,
     AuditLogsModule,
+    AnalyticsModule,
     HealthModule,
   ],
   providers: [

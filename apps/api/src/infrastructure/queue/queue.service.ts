@@ -93,6 +93,19 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     return this.instance.send(queue, data, options);
   }
 
+  async schedule(
+    queue: QueueName,
+    cron: string,
+    data: object,
+    options: PgBossTypes.ScheduleOptions,
+  ): Promise<void> {
+    await this.instance.schedule(queue, cron, data, options);
+  }
+
+  async failedCount(): Promise<number> {
+    return (await this.instance.getQueues()).reduce((sum, queue) => sum + queue.failedCount, 0);
+  }
+
   async work<T extends object>(
     queue: QueueName,
     handler: (jobs: PgBossTypes.Job<T>[]) => Promise<void>,

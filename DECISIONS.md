@@ -1,4 +1,4 @@
-# Decision record — resolutions R-1 … R-13
+# Decision record — resolutions R-1 … R-15
 
 Companion to [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`STACK.md`](./STACK.md), the
 Stack Decision Record (the engineering handoff).
@@ -23,6 +23,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-12 | Phase 5: walk-by constraints and the media worker | Settled |
 | R-13 | Phase 6: corrective actions and notifications | Settled |
 | R-14 | Phase 7: what the reporting engine settled | Settled |
+| R-15 | Phase 8: weighted analytics, own activity and rollup identity | Settled |
 
 ---
 
@@ -869,3 +870,36 @@ Finally, `expires_at` is fixed at minting by a trigger, along with the hash and 
 audience. §10.4 makes the expiry a property of the link; extending one would change what a
 document already in somebody's hands means. The remedy is to mint another, which costs
 nothing, and the error message says so.
+
+---
+
+## R-15 — What building analytics settled
+
+### (a) Every aggregate score remains `Σraw / Σmax`
+
+PART 11 calls Unit and organization scores a mean and its illustrative queries use
+`avg(score_percentage)`. That conflicts with §10.3-C, D4, the Phase 7 handoff and the one
+shared scoring implementation: scores with different applicable denominators may not carry
+equal weight. Behaviour therefore remains `Σraw_score / Σmax_score`, through
+`packages/domain`'s `sumTotals`; a fully-NA aggregate remains `null`.
+
+The three rollup tables store `raw_score` and `max_score` in addition to the display
+percentage named by §5.9. Without those two derived columns, combining daily rows into a
+month would force a mean of percentages and silently reintroduce the disagreement.
+
+### (b) Mobile own activity has one narrow route
+
+PART 6 grants `analytics:own_activity` and Phase 8 requires the Consultant mobile summary,
+but §8.10 lists only organization and Unit analytics routes. `GET /analytics/activity/me`
+is the missing transport. It uses the existing `own_record` resolver and returns only the
+acting Consultant's or Zone Leader's row; it is not a filter on the organization-wide
+activity endpoint.
+
+### (c) The nightly job rebuilds the last complete local day
+
+Each Unit has one pg-boss schedule on `maintenance.sweep` at 02:00 in that Unit's IANA
+timezone. The job identity is stable per Unit, and the worker rebuilds the previous local
+calendar day with idempotent upserts. Derived-table writes run under the narrow system
+Super-Admin database context already admitted by their RLS policies; every source read
+still carries the Unit predicate. No rollup row is authoritative, and rerunning a day does
+not change an already-identical row.

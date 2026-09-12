@@ -13,6 +13,7 @@ import './styles.css';
 import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
+import { AnalyticsPage } from '@/features/analytics/AnalyticsPage';
 import { AuditsPage } from '@/features/audits/AuditsPage';
 import { CorrectiveActionsPage } from '@/features/corrective-actions/CorrectiveActionsPage';
 import { PublicCorrectiveActionPage } from '@/features/corrective-actions/PublicCorrectiveActionPage';
@@ -106,6 +107,12 @@ const unitsRoute = createRoute({
   component: UnitsPage,
 });
 
+const analyticsRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/analytics',
+  component: AnalyticsPage,
+});
+
 const zonesRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/zones',
@@ -165,6 +172,7 @@ const routeTree = rootRoute.addChildren([
   correctiveActionRoute,
   gatedRoute.addChildren([
     indexRoute,
+    analyticsRoute,
     unitsRoute,
     zonesRoute,
     checklistsRoute,
