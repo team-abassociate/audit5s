@@ -8,6 +8,8 @@ import { MediaWorker } from './modules/evidence/media.worker';
 import { DeviceReleaseWorker } from './modules/sync/device-release.worker';
 import { NotificationWorker } from './modules/notifications/notification.worker';
 import { StructuredLogger } from './common/observability/logger';
+import { SYSTEM_SCOPE } from './common/auth/system-scope';
+import { IntegrityWorker } from './modules/maintenance/integrity.worker';
 import { AnalyticsRollupWorker, type AnalyticsRollupJob } from './modules/analytics/analytics-rollup.worker';
 
 /**
@@ -15,7 +17,8 @@ import { AnalyticsRollupWorker, type AnalyticsRollupJob } from './modules/analyt
  * one domain implementation and one deployment artefact.
  *
  * It handles checklist import, the media pipeline of §5.4, notification fan-out (§4.2 —
- * `SYNC_FAILURE` among them), and the D7 grace sweep of §9.5.
+ * `SYNC_FAILURE` among them), the D7 grace sweep of §9.5, and §16.4's nightly
+ * data-integrity checks.
  *
  * §12.8 is the reason two of those are here rather than in a request: a workbook is
  * "parsed in a worker with a memory cap", and "images [are] decoded only in the sandboxed
@@ -37,6 +40,7 @@ async function bootstrap(): Promise<void> {
   await app.get(DeviceReleaseWorker).register(queue);
   const analytics = app.get(AnalyticsRollupWorker);
   await analytics.schedule(queue);
+  const integrity = app.get(IntegrityWorker);
 
   await queue.work<AnalyticsRollupJob>(QUEUES.maintenanceSweep, async (jobs) => {
     logger.log(`maintenance.sweep: ${jobs.length} job(s)`);
@@ -44,7 +48,12 @@ async function bootstrap(): Promise<void> {
     // schedule of its own: it is idempotent, cheap, and the tick already exists.
     await app.get(DeviceReleaseWorker).sweep();
     for (const job of jobs) {
-      if (job.data.unitId && job.data.timezone) await analytics.handle(job.data);
+      if (!job.data.unitId || !job.data.timezone) continue;
+      await analytics.handle(job.data);
+      // §16.4's checks ride the same per-Unit tick (R-17). They run after the rollup, and
+      // deliberately in the same handler: a sweep that raised its own job would be a
+      // second schedule to keep in step with this one for no gain.
+      await integrity.sweep(SYSTEM_SCOPE, job.data.unitId);
     }
   });
 

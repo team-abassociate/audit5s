@@ -41,4 +41,40 @@ describe('notification policy (§5.9)', () => {
     );
     expect(body).toBe('Zone 3 — Press, Q12: completed (attempt 2). Ready for review.');
   });
+
+  it('names only the integrity findings that fired (§16.4, R-17b)', () => {
+    const { title, body } = renderNotification(
+      job('DATA_INTEGRITY_ALERT', {
+        orphanEvidence: 2,
+        staleAudits: 0,
+        unsyncedDevices: 1,
+        scoreDrift: 0,
+        auditsSampled: 20,
+      }),
+    );
+
+    expect(title).toBe('Data integrity check');
+    // Singular and plural both, and the two zero counts absent rather than printed as "0".
+    expect(body).toBe(
+      '2 evidence rows without an uploaded photograph; ' +
+        '1 device holding an audit and not syncing. Nothing was changed.',
+    );
+    expect(body).not.toMatch(/stale|recomputation/);
+  });
+
+  it('reports drift against the size of the sample it was drawn from', () => {
+    const { body } = renderNotification(
+      job('DATA_INTEGRITY_ALERT', { orphanEvidence: 0, staleAudits: 0, unsyncedDevices: 0, scoreDrift: 1, auditsSampled: 20 }),
+    );
+
+    expect(body).toBe(
+      '1 audit score that does not match a recomputation (of 20 checked). Nothing was changed.',
+    );
+  });
+
+  it('reaches Super Admins and nobody else', () => {
+    expect(RECIPIENT_ROLES.DATA_INTEGRITY_ALERT).toEqual(['SUPER_ADMIN']);
+    // A 02:00 WhatsApp about an orphan photograph is how a channel gets muted.
+    expect(firstExternalChannel('DATA_INTEGRITY_ALERT', { whatsappEnabled: true, smsEnabled: true })).toBeNull();
+  });
 });

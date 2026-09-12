@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ScopeContext } from '@audit5s/domain';
+import { SYSTEM_SCOPE } from '../../common/auth/system-scope';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { AnalyticsRepository } from './analytics.repository';
 
@@ -7,17 +7,6 @@ export interface AnalyticsRollupJob {
   unitId: string;
   timezone: string;
 }
-
-const SYSTEM_SCOPE: ScopeContext = {
-  actor: {
-    userId: '00000000-0000-4000-8000-000000000000',
-    role: 'SUPER_ADMIN',
-    activeUnitId: null,
-    unitIds: [],
-    deviceId: null,
-  },
-  resolver: 'organization',
-};
 
 @Injectable()
 export class AnalyticsRollupWorker {

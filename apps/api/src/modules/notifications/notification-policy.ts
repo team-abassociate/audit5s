@@ -29,6 +29,10 @@ export const RECIPIENT_ROLES: Record<NotificationEventType, Role[]> = {
   // notified of their own act, so this reaches the Unit's Coordinator — the person who has
   // to act on a report they did not commission.
   REPORT_GENERATED: ['COORDINATOR'],
+  // §16.4: orphan evidence, stale audits, quiet devices and score drift are all
+  // "surfaced to Super Admin", and to nobody else — a Coordinator cannot act on any of
+  // them and a nightly alert they cannot act on is a nightly alert they stop reading.
+  DATA_INTEGRITY_ALERT: ['SUPER_ADMIN'],
 };
 
 /**
@@ -144,6 +148,23 @@ export function renderNotification(event: DomainEventJob): { title: string; body
         title: 'Checklist published',
         body: `${String(data.templateName ?? 'A checklist')} v${String(data.versionNumber ?? '?')} is now live.`,
       };
+    case 'DATA_INTEGRITY_ALERT': {
+      // Only the non-zero findings are named. A body that lists four checks and four
+      // zeroes every time teaches the reader to skip the line that matters.
+      const parts = [
+        count(data.orphanEvidence, 'evidence row', 'without an uploaded photograph'),
+        count(data.staleAudits, 'audit', 'open for more than a week'),
+        count(data.unsyncedDevices, 'device', 'holding an audit and not syncing'),
+        count(data.scoreDrift, 'audit score', `that does not match a recomputation (of ${String(data.auditsSampled ?? 0)} checked)`),
+      ].filter((part): part is string => part !== null);
+      return {
+        title: 'Data integrity check',
+        // The worker only emits when something was found, so the empty case is unreachable
+        // from the sweep. It is still written out, because a renderer whose fallback is a
+        // bare full stop is one refactor away from sending one.
+        body: parts.length === 0 ? 'No findings.' : `${parts.join('; ')}. Nothing was changed.`,
+      };
+    }
     case 'REPORT_GENERATED': {
       const version = Number(data.version ?? 1);
       return {
@@ -154,4 +175,11 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       };
     }
   }
+}
+
+/** `"3 evidence rows without an uploaded photograph"`, or null when there are none. */
+function count(value: unknown, noun: string, tail: string): string | null {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `${n} ${noun}${n === 1 ? '' : 's'} ${tail}`;
 }
