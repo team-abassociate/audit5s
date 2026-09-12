@@ -23,6 +23,9 @@ Read in this order:
 3. **[`ARCHITECTURE.md`](./ARCHITECTURE.md)** — domain model, authorization matrix, state
    machines, database schema, REST API, sync protocol. 225 KB; read the section you need,
    not the whole file. PART 1 settles the vocabulary and is binding.
+4. **[`docs/design/GEMBA-BOARD.md`](./docs/design/GEMBA-BOARD.md)** — the design system.
+   Binding for any work that renders a pixel, in `apps/admin-web` or `apps/field-mobile`.
+   Skip it if your slice is server-side only.
 
 **Precedence (R-1): `STACK.md` wins on any technology name. `ARCHITECTURE.md` wins on any
 behaviour.** The superseded-technology table at the top of `ARCHITECTURE.md` is the
@@ -53,6 +56,12 @@ list; this is the subset that most often gets quietly violated.
   `packages/contracts`. If you are copying a type between apps, stop and move it.
 - **`timestamptz` everywhere, stored in UTC.**
 - **pg-boss is the only enqueue mechanism** (R-2). There is no `domain_event` outbox table.
+- **UI is built from the design system, not invented per screen.**
+  [`docs/design/GEMBA-BOARD.md`](./docs/design/GEMBA-BOARD.md) is binding; read it and
+  `docs/design/gemba-tokens.css` in full, and open `docs/design/reference-dashboard.html`,
+  before writing any component. A UI diff that introduces a hex literal outside the token
+  file, a `border-radius`, a blurred `box-shadow`, or a third typeface is rejected — as is
+  any view that renders an all-`NA` section as `0` rather than excluding it.
 
 ### Two lists that fail CI or waste your time
 

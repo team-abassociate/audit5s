@@ -1,0 +1,857 @@
+<title>Gemba Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+
+<style>
+/* ============================================================
+   TOKENS — whiteboard (light) / slate board (dark)
+   Rhythm: 14px base unit. Motion: 143ms ease-out, once.
+   ============================================================ */
+:root{
+  --board:#EEEBE1;
+  --board-line:rgba(29,27,22,.055);
+  --tile:#FCFBF7;
+  --tile-2:#F6F3EA;
+  --ink:#1D1B16;
+  --ink-2:#5B5647;
+  --ink-3:#8A8372;
+  --edge:#1D1B16;
+  --edge-soft:#CFC9B8;
+  --hard:rgba(29,27,22,.22);
+  --tape:#D9CF9A;
+  --tape-ink:#33301F;
+  --slip:#E8E24B;
+  --slip-ink:#33301F;
+  --ok:#2F6E3A;      --ok-band:#3E8E4B;
+  --warn:#7E5C03;    --warn-band:#D79A05;
+  --crit:#AB2F1C;    --crit-band:#B4321F;
+  --accent:#0B6E77;
+  --accent-soft:#D5E7E8;
+  --u:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --board:#151816;
+    --board-line:rgba(255,255,255,.045);
+    --tile:#1E2220;
+    --tile-2:#191D1B;
+    --ink:#EDEAE0;
+    --ink-2:#A8A899;
+    --ink-3:#7B7D71;
+    --edge:#3C423D;
+    --edge-soft:#2C312D;
+    --hard:rgba(0,0,0,.55);
+    --tape:#57512F;
+    --tape-ink:#EDE6C4;
+    --slip:#D2C92F;
+    --ok:#6FC27E;      --ok-band:#49A05A;
+    --warn:#E7B03A;    --warn-band:#D79A05;
+    --crit:#F27458;    --crit-band:#D94A2E;
+    --accent:#4FD2D8;
+    --accent-soft:#12302F;
+  }
+}
+:root[data-theme="dark"]{
+  --board:#151816; --board-line:rgba(255,255,255,.045); --tile:#1E2220; --tile-2:#191D1B;
+  --ink:#EDEAE0; --ink-2:#A8A899; --ink-3:#7B7D71; --edge:#3C423D; --edge-soft:#2C312D;
+  --hard:rgba(0,0,0,.55); --tape:#57512F; --tape-ink:#EDE6C4; --slip:#D2C92F;
+  --ok:#6FC27E; --ok-band:#49A05A; --warn:#E7B03A; --warn-band:#D79A05;
+  --crit:#F27458; --crit-band:#D94A2E; --accent:#4FD2D8; --accent-soft:#12302F;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--board);
+  background-image:linear-gradient(var(--board-line) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--board-line) 1px,transparent 1px);
+  background-size:28px 28px;
+  color:var(--ink);
+  font-family:"Archivo","Helvetica Neue",Arial,sans-serif;
+  font-size:15px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{margin:0;text-wrap:balance;font-weight:800;letter-spacing:-.02em}
+button{font:inherit;color:inherit}
+.num{font-family:"DM Mono",ui-monospace,SFMono-Regular,monospace;font-variant-numeric:tabular-nums}
+.lbl{
+  font-size:10.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
+}
+
+/* ---------- app frame ---------- */
+.app{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
+
+/* ---------- board edge / nav ---------- */
+.rail{
+  border-right:2px solid var(--edge);
+  background:var(--tile-2);
+  display:flex;flex-direction:column;gap:0;
+  position:sticky;top:0;height:100vh;
+}
+.brand{padding:18px 16px 16px;border-bottom:2px solid var(--edge)}
+.brand b{
+  display:block;font-size:19px;font-weight:900;font-stretch:118%;letter-spacing:-.01em;line-height:1;
+  text-transform:uppercase;
+}
+.brand span{display:block;margin-top:4px;font-size:11px;color:var(--ink-3);letter-spacing:.06em}
+.nav{padding:10px 10px 0;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.nav a{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 10px;text-decoration:none;color:var(--ink-2);font-size:13.5px;font-weight:500;
+  border:1.5px solid transparent;
+}
+.nav a:hover{background:var(--tile);border-color:var(--edge-soft);color:var(--ink)}
+.nav a[aria-current="page"]{
+  background:var(--tile);border-color:var(--edge);color:var(--ink);font-weight:700;
+  box-shadow:2px 2px 0 var(--hard);
+}
+.nav a i{
+  font-style:normal;font-family:"DM Mono",monospace;font-size:11px;color:var(--ink-3);
+  background:var(--board);border:1px solid var(--edge-soft);padding:0 5px;line-height:16px;
+}
+.nav a[aria-current="page"] i{background:var(--crit-band);color:#fff;border-color:var(--crit-band)}
+.nav hr{border:0;border-top:1px solid var(--edge-soft);margin:10px 0}
+.railfoot{margin-top:auto;padding:12px 14px;border-top:1px solid var(--edge-soft);font-size:11.5px;color:var(--ink-3)}
+.railfoot b{display:block;color:var(--ink-2);font-size:12.5px;font-weight:600}
+
+/* ---------- top bar ---------- */
+main{min-width:0}
+.top{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:14px 28px;border-bottom:2px solid var(--edge);background:var(--tile-2);
+  position:sticky;top:0;z-index:5;
+}
+.top h1{font-size:16px;font-weight:800;font-stretch:112%;text-transform:uppercase;letter-spacing:.01em}
+.sel{display:flex;align-items:center;gap:7px}
+.sel select{
+  font:inherit;font-size:13px;font-weight:600;background:var(--tile);color:var(--ink);
+  border:1.5px solid var(--edge);padding:5px 9px;
+}
+.sel select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.pill{
+  margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2);
+  border:1.5px solid var(--edge-soft);background:var(--tile);padding:5px 10px;
+}
+.pill i{width:8px;height:8px;background:var(--ok-band);display:block}
+.who{display:flex;align-items:center;gap:9px;font-size:12.5px}
+.who b{font-weight:700}
+.who span{color:var(--ink-3);display:block;font-size:11px}
+.who .av{
+  width:32px;height:32px;background:var(--ink);color:var(--board);display:grid;place-items:center;
+  font-size:12px;font-weight:800;letter-spacing:.02em;
+}
+
+/* ---------- page body ---------- */
+.page{padding:22px 28px 40px;display:flex;flex-direction:column;gap:28px;max-width:1520px}
+
+/* section head with straight tape strip */
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  border-bottom:2px solid var(--edge);padding-bottom:8px}
+.head h2{font-size:19px;font-stretch:112%;text-transform:uppercase;letter-spacing:.02em}
+.head p{margin:3px 0 0;font-size:13px;color:var(--ink-2)}
+.tape{
+  background:var(--tape);color:var(--tape-ink);padding:4px 12px;
+  font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+}
+
+/* ---------- KPI magnets ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px}
+.kpi{
+  background:var(--tile);border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);
+  padding:12px 14px 14px;display:flex;flex-direction:column;gap:2px;
+}
+.kpi b{font-size:33px;font-weight:900;letter-spacing:-.04em;line-height:1.02;
+  font-variant-numeric:tabular-nums}
+.kpi small{font-size:12px;color:var(--ink-2)}
+.kpi .band{height:6px;margin-top:10px;background:var(--edge-soft)}
+.kpi.good .band{background:var(--ok-band)}  .kpi.good b{color:var(--ok)}
+.kpi.mid .band{background:var(--warn-band)} .kpi.mid b{color:var(--warn)}
+.kpi.bad .band{background:var(--crit-band)} .kpi.bad b{color:var(--crit)}
+
+/* ---------- board + detail ---------- */
+.split{display:grid;grid-template-columns:1fr 380px;gap:22px;align-items:start}
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.zone{
+  text-align:left;background:var(--tile);border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);
+  padding:11px 12px 12px;cursor:pointer;display:flex;flex-direction:column;gap:0;
+  transition:box-shadow 143ms ease-out,transform 143ms ease-out;
+}
+.zone:hover{box-shadow:5px 5px 0 var(--hard)}
+.zone:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zone[aria-pressed="true"]{
+  border-width:2.5px;box-shadow:5px 5px 0 var(--hard);background:var(--tile-2);
+}
+.zone .code{font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+.zone .row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:3px}
+.zone .val{font-size:29px;font-weight:900;letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.zone .delta{font-family:"DM Mono",monospace;font-size:12px;color:var(--ink-3)}
+.zone .meta{font-size:11.5px;color:var(--ink-2);margin-top:5px;display:flex;gap:10px;flex-wrap:wrap}
+.zone .meta em{font-style:normal;color:var(--crit);font-weight:700}
+.zone .band{height:6px;margin-top:9px;background:var(--edge-soft)}
+.zone.good .val{color:var(--ok)}   .zone.good .band{background:var(--ok-band)}
+.zone.mid .val{color:var(--warn)}  .zone.mid .band{background:var(--warn-band)}
+.zone.bad .val{color:var(--crit)}  .zone.bad .band{background:var(--crit-band)}
+.zone.pending{background:var(--tile-2);border-style:dashed;box-shadow:none}
+.zone.pending .val{color:var(--ink-3)}
+.zone.pending .band{background:repeating-linear-gradient(90deg,var(--edge-soft) 0 6px,transparent 6px 12px)}
+
+/* detail card */
+.detail{background:var(--tile);border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);
+  position:sticky;top:86px}
+.detail .dh{padding:13px 15px;border-bottom:2px solid var(--edge)}
+.detail .dh h3{font-size:16px;font-stretch:110%;text-transform:uppercase;letter-spacing:.02em}
+.detail .dh p{margin:4px 0 0;font-size:12px;color:var(--ink-2)}
+.detail .dbody{padding:14px 15px 16px}
+.sect{display:flex;flex-direction:column;gap:9px;margin-top:10px}
+.sect .s{display:grid;grid-template-columns:74px 1fr 46px;gap:10px;align-items:center;font-size:12px}
+.sect .s u{text-decoration:none;color:var(--ink-2);font-weight:600;font-size:11.5px}
+.sect .s .track{height:12px;background:var(--tile-2);border:1px solid var(--edge-soft);position:relative}
+.sect .s .track i{display:block;height:100%;background:var(--ok-band)}
+.sect .s.mid .track i{background:var(--warn-band)}
+.sect .s.bad .track i{background:var(--crit-band)}
+.sect .s.na .track{background:repeating-linear-gradient(-45deg,var(--edge-soft) 0 4px,transparent 4px 8px)}
+.sect .s b{font-family:"DM Mono",monospace;font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums}
+.sect .s.na b{color:var(--ink-3);font-size:11px}
+.ticks{display:grid;grid-template-columns:74px 1fr 46px;gap:10px;margin-top:4px}
+.ticks div:nth-child(2){display:flex;justify-content:space-between;font-family:"DM Mono",monospace;
+  font-size:9.5px;color:var(--ink-3)}
+.findings{margin-top:16px;border-top:1px solid var(--edge-soft);padding-top:12px}
+.findings li{list-style:none;display:flex;gap:9px;padding:7px 0;border-bottom:1px dotted var(--edge-soft);
+  font-size:12.5px;align-items:flex-start}
+.findings ul{margin:8px 0 0;padding:0}
+.findings li span{margin-left:auto;font-family:"DM Mono",monospace;font-size:11px;color:var(--ink-3);white-space:nowrap}
+.findings li i{width:4px;align-self:stretch;background:var(--warn-band);flex:none}
+.findings li.crit i{background:var(--crit-band)}
+.note{
+  background:var(--slip);color:var(--slip-ink);border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);
+  padding:12px 14px;margin-top:16px;
+}
+.note b{display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:800}
+.note p{margin:6px 0 0;font-size:13px;line-height:1.4}
+
+/* ---------- corrective actions ---------- */
+.tablewrap{border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);background:var(--tile);overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:720px}
+thead th{
+  text-align:left;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:700;padding:10px 12px;border-bottom:2px solid var(--edge);background:var(--tile-2);white-space:nowrap;
+}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--edge-soft);font-size:13px;vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--tile-2)}
+td.n{font-family:"DM Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{border-left:4px solid transparent}
+tr.overdue td:first-child{border-left-color:var(--crit-band)}
+tr.due td:first-child{border-left-color:var(--warn-band)}
+.stat{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  border:1.5px solid currentColor;padding:2px 7px;white-space:nowrap;display:inline-block}
+.stat.o{color:var(--crit)} .stat.d{color:var(--warn)} .stat.p{color:var(--ink-2)} .stat.c{color:var(--ok)}
+
+/* ---------- schedule strip ---------- */
+.sched{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:1px;
+  background:var(--edge);border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard)}
+.sched div{background:var(--tile);padding:11px 12px}
+.sched div.done{background:var(--tile-2)}
+.sched u{text-decoration:none;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);
+  display:block;font-weight:700}
+.sched b{display:block;font-size:14px;margin-top:4px;font-weight:700}
+.sched small{display:block;font-size:11.5px;color:var(--ink-2);margin-top:2px;font-family:"DM Mono",monospace}
+.sched .dot{display:inline-block;width:7px;height:7px;margin-right:6px;background:var(--ok-band)}
+.sched .dot.n{background:var(--edge-soft)}
+.sched .dot.w{background:var(--warn-band)}
+
+footer{padding:0 28px 36px;font-size:12px;color:var(--ink-3);max-width:80ch}
+
+/* ---------- buttons ---------- */
+.btn{
+  border:1.5px solid var(--edge);background:var(--tile);padding:6px 11px;
+  font-size:12.5px;font-weight:600;box-shadow:2px 2px 0 var(--hard);cursor:pointer;
+  transition:box-shadow 143ms ease-out,transform 143ms ease-out;white-space:nowrap;
+}
+.btn:hover{box-shadow:3px 3px 0 var(--hard)}
+.btn:active{box-shadow:0 0 0 var(--hard);transform:translate(2px,2px)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--ink);color:var(--board);border-color:var(--edge)}
+.btn .g{font-family:"DM Mono",monospace;margin-right:6px}
+
+/* flash strip */
+.flash{
+  background:var(--slip);color:var(--slip-ink);border:1.5px solid var(--edge);
+  box-shadow:3px 3px 0 var(--hard);padding:9px 13px;font-size:13px;font-weight:600;
+  display:flex;gap:12px;align-items:center;
+}
+.flash button{background:none;border:0;margin-left:auto;cursor:pointer;font-size:16px;line-height:1;padding:0 2px}
+
+/* ---------- matrix ---------- */
+.matrix{border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);background:var(--tile);overflow-x:auto}
+.matrix table{min-width:660px}
+.matrix th.s{text-align:center}
+.matrix td.dep{font-weight:600;white-space:nowrap}
+.matrix td.sc{
+  text-align:center;font-family:"DM Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:13px;border-left:1px solid var(--edge-soft);
+}
+.matrix td.sc.good{background:color-mix(in srgb,var(--ok-band) 20%,var(--tile));color:var(--ok)}
+.matrix td.sc.mid{background:color-mix(in srgb,var(--warn-band) 22%,var(--tile));color:var(--warn)}
+.matrix td.sc.bad{background:color-mix(in srgb,var(--crit-band) 22%,var(--tile));color:var(--crit)}
+.matrix td.sc.na{background:repeating-linear-gradient(-45deg,var(--edge-soft) 0 4px,transparent 4px 8px);color:var(--ink-3);font-size:11px}
+.matrix td.sc.none{color:var(--ink-3)}
+.matrix td.avg{
+  text-align:center;font-weight:800;font-size:15px;letter-spacing:-.02em;
+  border-left:2px solid var(--edge);font-variant-numeric:tabular-nums;
+}
+.matrix tr.below td.dep{border-left-color:var(--crit-band)}
+.badge{
+  border:1.5px solid var(--edge);background:var(--tile);padding:3px 9px;
+  font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+}
+
+/* ---------- trend ---------- */
+.trend{border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);background:var(--tile);padding:14px 16px 8px}
+.trend svg{width:100%;height:auto;display:block;max-width:100%}
+.trend .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:10px}
+.trend .legend span{display:flex;align-items:center;gap:7px}
+.trend .legend i{width:16px;height:3px;display:block;background:var(--ok-band)}
+.trend .legend i.t{background:repeating-linear-gradient(90deg,var(--crit-band) 0 5px,transparent 5px 9px)}
+.g-line{stroke:var(--edge-soft);stroke-width:1}
+.t-line{stroke:var(--crit-band);stroke-width:1.5;stroke-dasharray:5 5}
+.t-fill{fill:var(--ok-band);opacity:.12}
+.t-path{fill:none;stroke:var(--ok-band);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
+.t-dot{fill:var(--tile);stroke:var(--ok-band);stroke-width:3}
+.t-ax{fill:var(--ink-3);font-size:10px;font-family:"DM Mono",monospace}
+.t-now{fill:var(--ink);font-size:13px;font-weight:900;font-family:"Archivo",sans-serif;letter-spacing:-.02em}
+
+/* ---------- pressure ---------- */
+.press{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.card{border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);background:var(--tile);padding:14px 16px 16px}
+.card h3{font-size:15px;font-stretch:110%;text-transform:uppercase;letter-spacing:.02em}
+.card > p{margin:4px 0 0;font-size:12.5px;color:var(--ink-2)}
+.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--edge);
+  border:1.5px solid var(--edge);margin-top:13px}
+.stats3 div{background:var(--tile-2);padding:10px 12px}
+.stats3 b{display:block;font-size:27px;font-weight:900;line-height:1.05;letter-spacing:-.035em;
+  font-variant-numeric:tabular-nums}
+.stats3 .o b{color:var(--crit)} .stats3 .c b{color:var(--warn)}
+.share{margin-top:13px}
+.share .r{display:grid;grid-template-columns:128px 1fr 26px;gap:10px;align-items:center;
+  font-size:12.5px;padding:4px 0}
+.share .r b{font-weight:600}
+.share .track{height:11px;background:var(--tile-2);border:1px solid var(--edge-soft)}
+.share .track i{display:block;height:100%;background:var(--ink-3)}
+.share .r.bad .track i{background:var(--crit-band)}
+.share .r.mid .track i{background:var(--warn-band)}
+.share .r span{font-family:"DM Mono",monospace;font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.prog{height:15px;border:1.5px solid var(--edge);background:var(--tile-2);margin-top:9px}
+.prog i{display:block;height:100%;background:var(--ok-band)}
+.progmeta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-2);margin-top:6px;
+  font-family:"DM Mono",monospace}
+
+/* ---------- dialog ---------- */
+dialog{
+  border:2px solid var(--edge);background:var(--tile);color:var(--ink);
+  box-shadow:6px 6px 0 var(--hard);padding:0;max-width:460px;width:calc(100% - 32px);
+}
+dialog::backdrop{background:rgba(20,18,14,.45)}
+dialog .dlg{padding:18px 20px 20px}
+dialog h3{font-size:18px;font-stretch:112%;text-transform:uppercase;letter-spacing:.02em}
+dialog p{margin:6px 0 0;font-size:12.5px;color:var(--ink-2)}
+dialog .fields{display:grid;gap:12px;margin-top:16px}
+dialog label{display:block;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:4px}
+dialog select,dialog input,dialog textarea{
+  width:100%;font:inherit;font-size:13px;background:var(--tile-2);color:var(--ink);
+  border:1.5px solid var(--edge);padding:7px 9px;
+}
+dialog select:focus-visible,dialog input:focus-visible,dialog textarea:focus-visible{
+  outline:2px solid var(--accent);outline-offset:1px}
+dialog .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+
+/* ---------- responsive ---------- */
+@media(max-width:980px){
+  .press{grid-template-columns:1fr}
+}
+@media(max-width:1180px){
+  .split{grid-template-columns:1fr}
+  .detail{position:static}
+  .board{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:860px){
+  .app{grid-template-columns:1fr}
+  .rail{position:static;height:auto;border-right:0;border-bottom:2px solid var(--edge);
+    flex-direction:row;align-items:center;gap:0;overflow-x:auto}
+  .brand{border-bottom:0;border-right:2px solid var(--edge);white-space:nowrap;padding:12px 14px}
+  .nav{flex-direction:row;padding:8px 10px;gap:6px}
+  .nav a{white-space:nowrap}
+  .nav hr{display:none}
+  .railfoot{display:none}
+  .board{grid-template-columns:repeat(2,1fr)}
+  .top,.page,footer{padding-left:16px;padding-right:16px}
+}
+@media(max-width:440px){
+  .board{grid-template-columns:1fr}
+  .kpis{grid-template-columns:1fr 1fr}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+
+  <!-- ============ rail ============ -->
+  <aside class="rail">
+    <div class="brand">
+      <b>Gemba Board</b>
+      <span>audit5s · admin</span>
+    </div>
+    <nav class="nav">
+      <a href="#" aria-current="page">Board <i>9</i></a>
+      <a href="#">Audits</a>
+      <a href="#">Corrective actions <i>23</i></a>
+      <a href="#">Evidence</a>
+      <hr>
+      <a href="#">Units &amp; zones</a>
+      <a href="#">Checklists</a>
+      <a href="#">Schedule</a>
+      <a href="#">Users &amp; roles</a>
+      <hr>
+      <a href="#">Reports</a>
+      <a href="#">Activity log</a>
+    </nav>
+    <div class="railfoot">
+      <b>3 Units · 27 zones</b>
+      Template v4 · frozen 12 Sep
+    </div>
+  </aside>
+
+  <!-- ============ main ============ -->
+  <main>
+    <div class="top">
+      <h1>Zone board</h1>
+      <div class="sel">
+        <label class="lbl" for="unit">Unit</label>
+        <select id="unit"><option>Unit 2 — Chakan</option><option>Unit 1 — Waluj</option><option>Unit 3 — Hosur</option><option>All Units</option></select>
+      </div>
+      <div class="sel">
+        <label class="lbl" for="cycle">Cycle</label>
+        <select id="cycle"><option>37 · Sep 2026</option><option>36 · Aug 2026</option><option>35 · Jul 2026</option></select>
+      </div>
+      <div class="pill"><i></i> Last sync <span class="num">14:02 IST</span></div>
+      <button class="btn" id="theme" type="button" aria-live="polite"><span class="g">◐</span>System</button>
+      <button class="btn" id="export" type="button">Export</button>
+      <button class="btn primary" id="newaudit" type="button">New audit</button>
+      <div class="who">
+        <div class="av">KS</div>
+        <div><b>K. Suryawanshi</b><span>Super Admin</span></div>
+      </div>
+    </div>
+
+    <div class="page">
+
+      <div class="flash" id="flash" hidden>
+        <span id="flashtext"></span>
+        <button type="button" id="flashclose" aria-label="Dismiss">×</button>
+      </div>
+
+      <!-- KPIs -->
+      <section>
+        <div class="head">
+          <div>
+            <h2>Unit 2 — Chakan</h2>
+            <p>Cycle 37 · audited 12 Sep 2026 by R. Deshmukh · server-recomputed scores</p>
+          </div>
+          <span class="tape">Sample data</span>
+        </div>
+        <div class="kpis" style="margin-top:14px">
+          <div class="kpi mid"><span class="lbl">Unit score</span><b>76.9</b><small>+2.4 vs cycle 36</small><div class="band"></div></div>
+          <div class="kpi good"><span class="lbl">Zones closed</span><b>7/9</b><small>Office, Premises pending</small><div class="band"></div></div>
+          <div class="kpi bad"><span class="lbl">Overdue actions</span><b>4</b><small>oldest 11 days</small><div class="band"></div></div>
+          <div class="kpi mid"><span class="lbl">Open nonconformities</span><b>23</b><small>9 raised this cycle</small><div class="band"></div></div>
+          <div class="kpi good"><span class="lbl">Evidence captured</span><b>184</b><small>all synced to R2</small><div class="band"></div></div>
+        </div>
+      </section>
+
+      <!-- board + detail -->
+      <section>
+        <div class="head">
+          <div>
+            <h2>Departments</h2>
+            <p>Select a tile to read its section breakdown and open findings.</p>
+          </div>
+          <span class="lbl">Score % · Δ vs cycle 36</span>
+        </div>
+        <div class="split" style="margin-top:14px">
+          <div class="board" id="board"></div>
+          <div class="detail" id="detail"></div>
+        </div>
+      </section>
+
+      <!-- matrix -->
+      <section>
+        <div class="head">
+          <div>
+            <h2>Departments × 5S</h2>
+            <p>Every section of every department in one grid. Cold cells are where discipline is actually breaking.</p>
+          </div>
+          <span class="badge">Target ≥ 85</span>
+        </div>
+        <div class="matrix" style="margin-top:14px">
+          <table id="matrix"></table>
+        </div>
+      </section>
+
+      <!-- trend -->
+      <section>
+        <div class="head">
+          <div>
+            <h2>Twelve-cycle trajectory</h2>
+            <p>Unit composite score, cycle 26 to 37. The dashed rule is the ≥ 85 target.</p>
+          </div>
+          <span class="lbl">Score % · monthly cycle</span>
+        </div>
+        <div class="trend" style="margin-top:14px">
+          <div class="legend">
+            <span><i></i> Unit composite</span>
+            <span><i class="t"></i> Target 85</span>
+            <span>Current 76.9 · 8.1 points short</span>
+          </div>
+          <svg viewBox="0 0 720 182" role="img" aria-label="Unit composite score rising from 62.1 in cycle 26 to 76.9 in cycle 37, still below the 85 target">
+            <g class="g-line">
+              <line x1="44" y1="16" x2="706" y2="16"/><line x1="44" y1="60.7" x2="706" y2="60.7"/>
+              <line x1="44" y1="105.3" x2="706" y2="105.3"/><line x1="44" y1="150" x2="706" y2="150"/>
+            </g>
+            <line class="t-line" x1="44" y1="49.5" x2="706" y2="49.5"/>
+            <path class="t-fill" d="M44,100.6 L104.2,94.6 L164.4,97.5 L224.5,89.3 L284.7,85.2 L344.9,86.6 L405.1,79.4 L465.3,81 L525.5,74.5 L585.6,73.6 L645.8,72.9 L706,67.6 L706,150 L44,150 Z"/>
+            <path class="t-path" d="M44,100.6 L104.2,94.6 L164.4,97.5 L224.5,89.3 L284.7,85.2 L344.9,86.6 L405.1,79.4 L465.3,81 L525.5,74.5 L585.6,73.6 L645.8,72.9 L706,67.6"/>
+            <circle class="t-dot" cx="706" cy="67.6" r="5"/>
+            <text class="t-now" x="700" y="58" text-anchor="end">76.9</text>
+            <g class="t-ax" text-anchor="end">
+              <text x="36" y="19">100</text><text x="36" y="64">80</text><text x="36" y="109">60</text><text x="36" y="153">40</text>
+            </g>
+            <g class="t-ax" text-anchor="middle">
+              <text x="44" y="168">26</text><text x="164.4" y="168">28</text><text x="284.7" y="168">30</text>
+              <text x="405.1" y="168">32</text><text x="525.5" y="168">34</text><text x="645.8" y="168">36</text>
+              <text x="706" y="168">37</text>
+            </g>
+            <text class="t-ax" x="50" y="46" text-anchor="start">TARGET 85</text>
+          </svg>
+        </div>
+      </section>
+
+      <!-- pressure -->
+      <section>
+        <div class="head">
+          <div>
+            <h2>Action pressure</h2>
+            <p>Where the open findings sit, and how much of the cycle is still outstanding.</p>
+          </div>
+          <span class="lbl">Cycle 37</span>
+        </div>
+        <div class="press" style="margin-top:14px">
+          <div class="card">
+            <h3>Open findings · <span id="ncTotal" class="num">23</span></h3>
+            <p>Raised automatically from every nonconformity when an audit completes.</p>
+            <div class="stats3">
+              <div class="o"><b>4</b><span class="lbl">Overdue</span></div>
+              <div class="c"><b id="critCount">7</b><span class="lbl">Critical</span></div>
+              <div><b>6</b><span class="lbl">Due this week</span></div>
+            </div>
+            <div class="note" style="margin-top:14px">
+              <b>Concentration</b>
+              <p>Boiler &amp; Utility holds half the overdue actions and has fallen four cycles running.
+              Two findings there have now repeated across consecutive audits.</p>
+            </div>
+          </div>
+          <div class="card">
+            <h3>By department</h3>
+            <p>Share of the open findings, worst first.</p>
+            <div class="share" id="share"></div>
+            <div style="margin-top:18px;border-top:1px solid var(--edge-soft);padding-top:13px">
+              <span class="lbl">Cycle completion</span>
+              <div class="prog"><i style="width:77.8%"></i></div>
+              <div class="progmeta"><span>7 of 9 zones closed</span><span>77.8 %</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- corrective actions -->
+      <section>
+        <div class="head">
+          <div>
+            <h2>Corrective actions</h2>
+            <p>Overdue first. Raised automatically from every nonconformity on audit completion.</p>
+          </div>
+          <span class="tape">4 overdue</span>
+        </div>
+        <div class="tablewrap" style="margin-top:14px">
+          <table>
+            <thead><tr>
+              <th>Finding</th><th>Department</th><th>Owner</th><th>Raised</th><th>Due</th><th>Age</th><th>Status</th>
+            </tr></thead>
+            <tbody>
+              <tr class="overdue"><td>Boiler drip tray unbunded</td><td>Boiler &amp; Utility</td><td>S. Kulkarni</td><td class="n">01 Sep</td><td class="n">05 Sep</td><td class="n">11 d</td><td><span class="stat o">Overdue</span></td></tr>
+              <tr class="overdue"><td>Aisle marking worn, bay 4</td><td>Production</td><td>A. Iyer</td><td class="n">03 Sep</td><td class="n">08 Sep</td><td class="n">06 d</td><td><span class="stat o">Overdue</span></td></tr>
+              <tr class="overdue"><td>Pressure gauge log not signed</td><td>Boiler &amp; Utility</td><td>S. Kulkarni</td><td class="n">05 Sep</td><td class="n">09 Sep</td><td class="n">05 d</td><td><span class="stat o">Overdue</span></td></tr>
+              <tr class="overdue"><td>Tool shadow board incomplete</td><td>Maintenance</td><td>M. Pawar</td><td class="n">06 Sep</td><td class="n">10 Sep</td><td class="n">04 d</td><td><span class="stat o">Overdue</span></td></tr>
+              <tr class="due"><td>Rack label illegible, RM-12</td><td>Stores (RM)</td><td>N. Shaikh</td><td class="n">10 Sep</td><td class="n">14 Sep</td><td class="n">02 d</td><td><span class="stat d">Due in 2 d</span></td></tr>
+              <tr class="due"><td>Spill kit seal broken</td><td>Packing Area</td><td>A. Iyer</td><td class="n">11 Sep</td><td class="n">15 Sep</td><td class="n">01 d</td><td><span class="stat d">Due in 3 d</span></td></tr>
+              <tr><td>Bin locations unmarked, line 2</td><td>Production</td><td>A. Iyer</td><td class="n">12 Sep</td><td class="n">19 Sep</td><td class="n">00 d</td><td><span class="stat p">In progress</span></td></tr>
+              <tr><td>Extinguisher access blocked</td><td>FG Stores</td><td>N. Shaikh</td><td class="n">08 Sep</td><td class="n">12 Sep</td><td class="n">—</td><td><span class="stat c">Closed · verified</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- audit ledger -->
+      <section>
+        <div class="head">
+          <div>
+            <h2>Recent audits</h2>
+            <p>Last five completed audits in this Unit. Scores shown are the server's, not the device's.</p>
+          </div>
+          <span class="lbl">Cycle 37</span>
+        </div>
+        <div class="tablewrap" style="margin-top:14px">
+          <table>
+            <thead><tr>
+              <th>Department</th><th>Auditor</th><th>Completed</th><th>Score</th><th>Δ vs cycle 36</th><th>Evidence</th><th>Outcome</th>
+            </tr></thead>
+            <tbody>
+              <tr><td>Shop Floor</td><td>R. Deshmukh</td><td class="n">12 Sep · 17:20</td><td class="n">91.7</td><td class="n">+1.8</td><td class="n">42</td><td><span class="stat c">On track</span></td></tr>
+              <tr><td>Stores (RM)</td><td>R. Deshmukh</td><td class="n">12 Sep · 14:05</td><td class="n">88.9</td><td class="n">+0.6</td><td class="n">31</td><td><span class="stat c">On track</span></td></tr>
+              <tr class="due"><td>Packing Area</td><td>N. Shaikh</td><td class="n">11 Sep · 16:40</td><td class="n">71.4</td><td class="n">+0.2</td><td class="n">27</td><td><span class="stat d">Watch</span></td></tr>
+              <tr class="overdue"><td>Production</td><td>A. Iyer</td><td class="n">10 Sep · 13:15</td><td class="n">54.2</td><td class="n">−3.4</td><td class="n">38</td><td><span class="stat o">Action required</span></td></tr>
+              <tr class="overdue"><td>Boiler &amp; Utility</td><td>S. Kulkarni</td><td class="n">09 Sep · 18:02</td><td class="n">48.6</td><td class="n">−2.9</td><td class="n">46</td><td><span class="stat o">Re-audit booked</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- schedule -->
+      <section>
+        <div class="head">
+          <div>
+            <h2>Audit schedule</h2>
+            <p>Cycle 38 opens 19 Sep. Zone leaders are notified 48 hours ahead.</p>
+          </div>
+          <span class="lbl">Next 6 weeks</span>
+        </div>
+        <div class="sched" style="margin-top:14px">
+          <div class="done"><u>Week 37</u><b><span class="dot"></span>Complete</b><small>7 of 9 zones</small></div>
+          <div><u>Week 38</u><b><span class="dot n"></span>Scheduled</b><small>19 Sep · Chakan</small></div>
+          <div><u>Week 39</u><b><span class="dot w"></span>Re-audit</b><small>Boiler, Production</small></div>
+          <div><u>Week 40</u><b><span class="dot n"></span>Scheduled</b><small>03 Oct · Waluj</small></div>
+          <div><u>Week 41</u><b><span class="dot n"></span>Scheduled</b><small>10 Oct · Hosur</small></div>
+          <div><u>Week 42</u><b><span class="dot n"></span>Quarter close</b><small>Report sign-off</small></div>
+        </div>
+      </section>
+
+    </div>
+
+    <footer>
+      Figures are sample data. Departments, the five sections and the N/A rule follow the product's
+      own model: a section where every question is marked not applicable scores <b>N/A</b> and is
+      excluded from the average — never recorded as zero.
+    </footer>
+  </main>
+</div>
+
+<dialog id="auditDialog">
+  <form method="dialog" class="dlg" id="auditForm">
+    <h3>Start an audit</h3>
+    <p>The zone leader is notified and the frozen checklist version opens on the auditor's device.</p>
+    <div class="fields">
+      <div>
+        <label for="f-dep">Department</label>
+        <select id="f-dep" required>
+          <option>Office</option><option>Premises</option><option>Boiler &amp; Utility</option>
+          <option>Production</option><option>Shop Floor</option><option>Stores (RM)</option>
+          <option>FG Stores</option><option>Packing Area</option><option>Maintenance</option>
+        </select>
+      </div>
+      <div>
+        <label for="f-auditor">Auditor</label>
+        <input id="f-auditor" required placeholder="R. Deshmukh" value="R. Deshmukh">
+      </div>
+      <div>
+        <label for="f-type">Type</label>
+        <select id="f-type"><option>Scheduled audit</option><option>Re-audit</option><option>Walk-by observation</option></select>
+      </div>
+      <div>
+        <label for="f-note">Pre-audit note</label>
+        <textarea id="f-note" rows="2" placeholder="Optional — visible to the auditor only"></textarea>
+      </div>
+    </div>
+    <div class="acts">
+      <button class="btn" type="button" id="dlgCancel">Cancel</button>
+      <button class="btn primary" type="submit">Create audit</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+/* theme: system → light → dark, remembered per browser */
+(function(){
+  var btn=document.getElementById("theme"),modes=["system","light","dark"],
+      icon={system:"◐",light:"○",dark:"●"},label={system:"System",light:"Light",dark:"Dark"},m="system";
+  try{var s=localStorage.getItem("gemba-theme"); if(s&&modes.indexOf(s)>-1) m=s;}catch(e){}
+  function apply(){
+    if(m==="system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme",m);
+    btn.innerHTML='<span class="g">'+icon[m]+'</span>'+label[m];
+    btn.setAttribute("title","Theme: "+label[m]+" — click to change");
+  }
+  btn.addEventListener("click",function(){
+    m=modes[(modes.indexOf(m)+1)%modes.length];
+    try{localStorage.setItem("gemba-theme",m);}catch(e){}
+    apply();
+  });
+  apply();
+})();
+
+(function(){
+  var zones=[
+    {code:"SHOP_FLOOR",name:"Shop Floor",score:91.7,delta:+1.8,leader:"R. Deshmukh",nc:1,
+     s:[94,88,96,90,90],
+     f:[["Pallet stacked over line marking","2 d",0]]},
+    {code:"OFFICE",name:"Office",score:null,delta:null,leader:"P. Menon",nc:0,
+     s:[null,null,null,null,null],f:[]},
+    {code:"STORES_RM",name:"Stores (RM)",score:88.9,delta:+0.6,leader:"N. Shaikh",nc:2,
+     s:[92,85,90,88,89],
+     f:[["Rack label illegible, RM-12","2 d",0],["FIFO card missing, bin 7","4 d",0]]},
+    {code:"PRODUCTION",name:"Production",score:54.2,delta:-3.4,leader:"A. Iyer",nc:6,
+     s:[62,48,58,55,48],
+     f:[["Aisle marking worn, bay 4","6 d",1],["Bin locations unmarked, line 2","0 d",0],
+        ["WIP exceeds marked limit","3 d",1],["Cleaning schedule not signed 4 days","4 d",1]]},
+    {code:"FG_STORES",name:"FG Stores",score:86.4,delta:+2.1,leader:"N. Shaikh",nc:2,
+     s:[90,84,88,82,88],
+     f:[["Dispatch lane encroached","1 d",0]]},
+    {code:"PACKING_AREA",name:"Packing Area",score:71.4,delta:+0.2,leader:"A. Iyer",nc:3,
+     s:[78,68,74,70,67],
+     f:[["Spill kit seal broken","1 d",0],["Carton offcuts not segregated","2 d",0]]},
+    {code:"BOILER_UTILITY",name:"Boiler & Utility",score:48.6,delta:-2.9,leader:"S. Kulkarni",nc:5,
+     s:[55,42,50,null,48],
+     f:[["Boiler drip tray unbunded","11 d",1],["Pressure gauge log not signed","5 d",1],
+        ["Chemical drums unlabelled","3 d",1]]},
+    {code:"MAINTENANCE",name:"Maintenance",score:83.3,delta:+1.1,leader:"M. Pawar",nc:3,
+     s:[88,80,86,78,84],
+     f:[["Tool shadow board incomplete","4 d",1],["Grease gun stored uncapped","2 d",0]]},
+    {code:"PREMISES",name:"Premises",score:null,delta:null,leader:"P. Menon",nc:0,
+     s:[null,null,null,null,null],f:[]}
+  ];
+  var SN=["S1 Sort","S2 Order","S3 Shine","S4 Std.","S5 Sustain"];
+  function band(v){return v>=80?"good":v>=60?"mid":"bad"}
+  function esc(t){return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;")}
+
+  var board=document.getElementById("board"), detail=document.getElementById("detail"), sel=0;
+
+  board.innerHTML=zones.map(function(z,i){
+    if(z.score===null) return '<button class="zone pending" type="button" aria-pressed="false" data-i="'+i+'">'+
+      '<span class="code">'+esc(z.name)+'</span>'+
+      '<span class="row"><span class="val">—</span><span class="delta">not started</span></span>'+
+      '<span class="meta">Leader '+esc(z.leader)+'</span><span class="band"></span></button>';
+    return '<button class="zone '+band(z.score)+'" type="button" aria-pressed="false" data-i="'+i+'">'+
+      '<span class="code">'+esc(z.name)+'</span>'+
+      '<span class="row"><span class="val">'+z.score.toFixed(1)+'</span>'+
+      '<span class="delta">'+(z.delta>=0?"+":"")+z.delta.toFixed(1)+'</span></span>'+
+      '<span class="meta"><span>Leader '+esc(z.leader)+'</span>'+
+      (z.nc?'<em>'+z.nc+' NC</em>':'<span>no NC</span>')+'</span>'+
+      '<span class="band"></span></button>';
+  }).join("");
+
+  function render(i){
+    var z=zones[i];
+    var rows=SN.map(function(n,k){
+      var v=z.s[k];
+      if(v===null) return '<div class="s na"><u>'+n+'</u><div class="track"></div><b>N/A</b></div>';
+      return '<div class="s '+band(v)+'"><u>'+n+'</u><div class="track"><i style="width:'+v+'%"></i></div><b>'+v+'</b></div>';
+    }).join("");
+    var scored=z.s.filter(function(v){return v!==null});
+    var pending=z.score===null;
+    var findings=z.f.length
+      ? '<ul>'+z.f.map(function(f){return '<li class="'+(f[2]?"crit":"")+'"><i></i>'+esc(f[0])+'<span>'+f[1]+'</span></li>'}).join("")+'</ul>'
+      : '<p style="font-size:12.5px;color:var(--ink-2);margin:8px 0 0">No open findings in this department.</p>';
+
+    detail.innerHTML=
+      '<div class="dh"><h3>'+esc(z.name)+'</h3>'+
+        '<p>'+esc(z.code)+' · leader '+esc(z.leader)+' · '+
+        (pending?'not audited this cycle':'audited 12 Sep by R. Deshmukh')+'</p></div>'+
+      '<div class="dbody">'+
+        '<span class="lbl">Section breakdown</span>'+
+        '<div class="sect">'+rows+'</div>'+
+        '<div class="ticks"><div></div><div><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div><div></div></div>'+
+        (pending
+          ? '<div class="note"><b>Zone not started</b><p>Cycle 37 closes 18 Sep. '+esc(z.leader)+
+            ' has been notified twice. Re-assign if the window is going to be missed.</p></div>'
+          : (scored.length<5
+              ? '<p style="font-size:12px;color:var(--ink-2);margin:12px 0 0;border-left:2px solid var(--edge-soft);padding-left:9px">'+
+                'One section was marked not applicable throughout and is excluded from the average. '+
+                'Zone score is the mean of the '+scored.length+' scored sections.</p>'
+              : ''))+
+        '<div class="findings"><span class="lbl">Open findings · '+z.f.length+'</span>'+findings+'</div>'+
+        (z.nc>=5?'<div class="note"><b>Repeat offender</b><p>'+esc(z.name)+
+          ' has fallen for four cycles running. Cycle 39 is already booked as a re-audit.</p></div>':'')+
+      '</div>';
+  }
+
+  board.addEventListener("click",function(e){
+    var b=e.target.closest(".zone"); if(!b) return;
+    sel=+b.dataset.i;
+    board.querySelectorAll(".zone").forEach(function(el){el.setAttribute("aria-pressed",el===b?"true":"false")});
+    render(sel);
+  });
+
+  // open on the department that needs attention, not the first one
+  var worst=zones.reduce(function(a,z,i){return (z.score!==null&&(a<0||z.score<zones[a].score))?i:a},-1);
+  sel=worst;
+  board.querySelector('[data-i="'+sel+'"]').setAttribute("aria-pressed","true");
+  render(sel);
+
+  /* ---- departments × 5S matrix, same source as the board ---- */
+  var mrows=zones.map(function(z){
+    var cells=z.s.map(function(v){
+      if(v===null) return z.score===null
+        ? '<td class="sc none">—</td>'
+        : '<td class="sc na">N/A</td>';
+      return '<td class="sc '+band(v)+'">'+v+'</td>';
+    }).join("");
+    var avg=z.score===null?'<td class="avg" style="color:var(--ink-3)">—</td>'
+                          :'<td class="avg">'+z.score.toFixed(1)+'</td>';
+    return '<tr class="'+(z.score!==null&&z.score<85?"below":"")+'">'+
+           '<td class="dep">'+esc(z.name)+'</td>'+cells+avg+'</tr>';
+  }).join("");
+  document.getElementById("matrix").innerHTML=
+    '<thead><tr><th>Department</th>'+SN.map(function(n){return '<th class="s">'+n+'</th>'}).join("")+
+    '<th class="s">Zone avg</th></tr></thead><tbody>'+mrows+'</tbody>';
+
+  /* ---- open findings by department + critical count ---- */
+  var ranked=zones.filter(function(z){return z.nc>0}).sort(function(a,b){return b.nc-a.nc});
+  var top=ranked[0]?ranked[0].nc:1;
+  document.getElementById("share").innerHTML=ranked.map(function(z){
+    var cls=z.nc>=5?"bad":z.nc>=3?"mid":"";
+    return '<div class="r '+cls+'"><b>'+esc(z.name)+'</b>'+
+           '<div class="track"><i style="width:'+Math.round(z.nc/top*100)+'%"></i></div>'+
+           '<span>'+z.nc+'</span></div>';
+  }).join("");
+  document.getElementById("ncTotal").textContent=zones.reduce(function(a,z){return a+z.nc},0);
+  document.getElementById("critCount").textContent=zones.reduce(function(a,z){
+    return a+z.f.filter(function(f){return f[2]}).length},0);
+
+  /* ---- actions ---- */
+  var flash=document.getElementById("flash"),ftext=document.getElementById("flashtext"),
+      dlg=document.getElementById("auditDialog");
+  function say(t){ftext.textContent=t;flash.hidden=false}
+  document.getElementById("flashclose").addEventListener("click",function(){flash.hidden=true});
+  document.getElementById("export").addEventListener("click",function(){
+    say("Report queued. The PDF worker will email the signed snapshot to Super Admins when it finishes.");
+  });
+  document.getElementById("newaudit").addEventListener("click",function(){dlg.showModal()});
+  document.getElementById("dlgCancel").addEventListener("click",function(){dlg.close()});
+  document.getElementById("auditForm").addEventListener("submit",function(){
+    var d=document.getElementById("f-dep").value,a=document.getElementById("f-auditor").value;
+    setTimeout(function(){say("Audit created for "+d+" — assigned to "+a+". Checklist v4 is on their device.")},60);
+  });
+})();
+</script>
