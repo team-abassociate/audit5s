@@ -8,6 +8,7 @@ import { MediaWorker } from './modules/evidence/media.worker';
 import { DeviceReleaseWorker } from './modules/sync/device-release.worker';
 import { NotificationWorker } from './modules/notifications/notification.worker';
 import { StructuredLogger } from './common/observability/logger';
+import { AnalyticsRollupWorker, type AnalyticsRollupJob } from './modules/analytics/analytics-rollup.worker';
 
 /**
  * `worker-general` (STACK.md §4). Same image as the API, different entrypoint, so there is
@@ -34,12 +35,17 @@ async function bootstrap(): Promise<void> {
   await app.get(MediaWorker).register(queue);
   await app.get(NotificationWorker).register(queue);
   await app.get(DeviceReleaseWorker).register(queue);
+  const analytics = app.get(AnalyticsRollupWorker);
+  await analytics.schedule(queue);
 
-  await queue.work(QUEUES.maintenanceSweep, async (jobs) => {
+  await queue.work<AnalyticsRollupJob>(QUEUES.maintenanceSweep, async (jobs) => {
     logger.log(`maintenance.sweep: ${jobs.length} job(s)`);
     // The D7 grace sweep rides the general maintenance tick rather than carrying a
     // schedule of its own: it is idempotent, cheap, and the tick already exists.
     await app.get(DeviceReleaseWorker).sweep();
+    for (const job of jobs) {
+      if (job.data.unitId && job.data.timezone) await analytics.handle(job.data);
+    }
   });
 
   logger.log('worker-general ready');

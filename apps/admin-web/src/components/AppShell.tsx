@@ -21,6 +21,7 @@ interface NavItem {
  * request regardless.
  */
 const NAV: NavItem[] = [
+  { to: '/analytics', label: 'Analytics', resource: 'analytics', action: 'unit_dashboard' },
   { to: '/units', label: 'Units', resource: 'unit', action: 'read' },
   { to: '/zones', label: 'Zones', resource: 'zone', action: 'read' },
   { to: '/checklists', label: 'Checklists', resource: 'checklist_template', action: 'read' },

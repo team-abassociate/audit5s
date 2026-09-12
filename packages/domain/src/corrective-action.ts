@@ -18,7 +18,7 @@ export function rollupAuditStatus(actions: readonly CorrectiveActionStatus[]): R
   return verified > 0 ? 'PARTIALLY_CLOSED' : 'CORRECTIVE_ACTION_OPEN';
 }
 
-const ROLLUP_STATUSES: readonly AuditStatus[] = [
+export const COMPLETED_AUDIT_STATUSES: readonly AuditStatus[] = [
   'COMPLETED',
   'CORRECTIVE_ACTION_OPEN',
   'PARTIALLY_CLOSED',
@@ -30,11 +30,12 @@ const ROLLUP_STATUSES: readonly AuditStatus[] = [
  * COMPLETED, so "is it completed" is never `status === 'COMPLETED'`.
  */
 export function isAuditCompleted(status: string): boolean {
-  return (ROLLUP_STATUSES as readonly string[]).includes(status);
+  return (COMPLETED_AUDIT_STATUSES as readonly string[]).includes(status);
 }
 
 const ROLLUP_EDGES = AUDIT_TRANSITIONS.filter(
-  (edge) => ROLLUP_STATUSES.includes(edge.from) && ROLLUP_STATUSES.includes(edge.to),
+  (edge) =>
+    COMPLETED_AUDIT_STATUSES.includes(edge.from) && COMPLETED_AUDIT_STATUSES.includes(edge.to),
 );
 
 /**
@@ -48,7 +49,7 @@ const ROLLUP_EDGES = AUDIT_TRANSITIONS.filter(
  */
 export function rollupPath(from: AuditStatus, to: RollupStatus): Transition<AuditStatus>[] | null {
   if (from === to) return [];
-  if (!ROLLUP_STATUSES.includes(from)) return null;
+  if (!COMPLETED_AUDIT_STATUSES.includes(from)) return null;
 
   const queue: Array<{ at: AuditStatus; path: Transition<AuditStatus>[] }> = [{ at: from, path: [] }];
   const seen = new Set<AuditStatus>([from]);

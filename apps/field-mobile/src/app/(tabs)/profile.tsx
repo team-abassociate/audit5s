@@ -9,6 +9,8 @@ import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
 import { checkLogoutGate } from '../../lib/sync/status';
 import { theme } from '../../lib/theme';
+import type { ConsultantActivity } from '@audit5s/contracts';
+import { api } from '../../lib/api';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin',
@@ -82,6 +84,13 @@ export default function ProfileScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
   });
 
+  const activity = useQuery({
+    queryKey: ['analytics', 'activity', 'me'],
+    queryFn: () => api.get<ConsultantActivity | null>('/analytics/activity/me'),
+    enabled: user?.role === 'CONSULTANT',
+    staleTime: 5 * 60_000,
+  });
+
   if (!user) {
     return (
       <Screen>
@@ -139,6 +148,37 @@ export default function ProfileScreen() {
             <Muted>Could not reach the server. The stored catalogue is unchanged.</Muted>
           ) : null}
         </Card>
+
+        {user.role === 'CONSULTANT' ? (
+          <Card>
+            <Heading>My activity</Heading>
+            {activity.data ? (
+              <>
+                <Row label="Audits completed" value={String(activity.data.auditsCompleted)} />
+                <Row label="Zones covered" value={String(activity.data.zonesCovered)} />
+                <Row label="Photos captured" value={String(activity.data.photosCaptured)} />
+                <Row
+                  label="Average duration"
+                  value={
+                    activity.data.averageDurationMinutes === null
+                      ? '—'
+                      : `${activity.data.averageDurationMinutes.toFixed(0)} min`
+                  }
+                />
+                <Row
+                  label="Last active"
+                  value={
+                    activity.data.lastActiveAt
+                      ? new Date(activity.data.lastActiveAt).toLocaleString()
+                      : '—'
+                  }
+                />
+              </>
+            ) : (
+              <Muted>{activity.isError ? 'Activity is unavailable offline.' : 'No completed audits yet.'}</Muted>
+            )}
+          </Card>
+        ) : null}
 
         <Link href="/notifications" asChild>
           <Card>

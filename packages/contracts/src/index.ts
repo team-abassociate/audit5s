@@ -16,3 +16,4 @@ export * from './membership';
 export * from './device';
 export * from './audit-log';
 export * from './health';
+export * from './analytics';

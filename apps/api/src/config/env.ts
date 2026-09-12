@@ -108,9 +108,13 @@ const envSchema = z.object({
   CHECKLIST_IMPORT_PREVIEW_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
 
   PGBOSS_SCHEMA: z.string().default('pgboss'),
-  PGBOSS_ARCHIVE_COMPLETED_AFTER_SECONDS: z.coerce.number().int().default(43_200),
-  PGBOSS_DELETE_ARCHIVED_AFTER_DAYS: z.coerce.number().int().default(7),
-  WORKER_QUEUES: z.string().default(''),
+  /**
+   * How long a completed job is kept before pg-boss deletes it (STACK.md §5's
+   * archive-retention policy). One knob, because pg-boss 12 has one: the separate archive
+   * table of earlier versions is gone, so the two settings that named it described a
+   * mechanism that no longer exists.
+   */
+  PGBOSS_JOB_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(7),
 
   SEED_SUPER_ADMIN_FULL_NAME: z.string().optional(),
   SEED_SUPER_ADMIN_PHONE: z.string().optional(),

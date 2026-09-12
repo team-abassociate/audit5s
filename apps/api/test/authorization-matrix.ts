@@ -1129,6 +1129,54 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     expected: { SUPER_ADMIN: { inScope: OK } },
   },
 
+  // ---------------------------------------------------------------- analytics
+  {
+    method: 'GET',
+    path: '/api/v1/analytics/organization/overview',
+    description: 'analytics:organization_dashboard — SUPER_ADMIN only',
+    expected: { SUPER_ADMIN: { inScope: OK } },
+  },
+  ...[
+    '/api/v1/analytics/units/:unitId/overview',
+    '/api/v1/analytics/units/:unitId/trend',
+    '/api/v1/analytics/units/:unitId/sections',
+    '/api/v1/analytics/units/:unitId/zones/ranking',
+    '/api/v1/analytics/units/:unitId/nonconformities/recurrent',
+  ].map((path) => ({
+    method: 'GET' as const,
+    path,
+    description: 'analytics:unit_dashboard — SUPER_ADMIN organization; COORDINATOR own_unit',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'analytics.e2e.test.ts',
+  })),
+  ...[
+    '/api/v1/analytics/corrective-actions/closure',
+    '/api/v1/analytics/activity/consultants',
+    '/api/v1/analytics/activity/zone-leaders',
+  ].map((path) => ({
+    method: 'GET' as const,
+    path,
+    description: 'analytics:unit_dashboard — organization for SUPER_ADMIN, own_unit for COORDINATOR',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+    },
+  })),
+  {
+    method: 'GET',
+    path: '/api/v1/analytics/activity/me',
+    description: 'analytics:own_activity — the actor’s own record',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+
   // ---------------------------------------------------------------- audit log
   {
     method: 'GET',

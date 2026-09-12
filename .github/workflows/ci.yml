@@ -109,6 +109,9 @@ jobs:
 
       - run: pnpm -r test
 
+      - name: Reports browser smoke
+        run: pnpm --filter @audit5s/admin-web smoke:reports
+
       # The authorization matrix and its completeness check: a route with no matrix entry
       # fails here, which is what stops PART 6 from rotting into documentation that no
       # longer matches the code (§12.4, §15.2). Also carries the R-2 pg-boss rollback test.
