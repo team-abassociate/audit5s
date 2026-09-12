@@ -6,8 +6,15 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "target": "ES2023",
-    "lib": ["ES2023"],
-    "strictPropertyInitialization": false
+    "lib": [
+      "ES2023"
+    ],
+    "strictPropertyInitialization": false,
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts"
+  ]
 }

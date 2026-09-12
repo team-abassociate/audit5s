@@ -33,7 +33,7 @@ export abstract class BaseRepository {
    */
   protected scoped(scope: ScopeContext, columns: ScopeColumns, ...filters: Array<SQL | undefined>): SQL {
     const resolver = this.resolvers.get(scope.resolver);
-    const predicate = resolver.predicate(scope.actor, columns);
+    const predicate = resolver.predicate(scope.actor, columns, scope);
     const conditions = [predicate, ...filters.filter((f): f is SQL => f !== undefined)];
     return and(...conditions) as SQL;
   }

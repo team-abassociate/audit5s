@@ -3,9 +3,10 @@ import { Reflector } from '@nestjs/core';
 import { HEADER_DEVICE_ID } from '@audit5s/contracts';
 import type { FastifyRequest } from 'fastify';
 import { AppError } from '../errors';
-import { setActor, setJti } from '../observability/request-context';
+import { getRequestContext, setActor, setJti } from '../observability/request-context';
 import { ActorRepository } from './actor.repository';
 import { ALLOW_PENDING_RESET_KEY, PUBLIC_KEY } from './decorators';
+import { SIGNED_TOKEN_KEY } from './signed-token.guard';
 import { TokenService } from './token.service';
 
 /**
@@ -34,6 +35,17 @@ export class JwtAuthGuard implements CanActivate {
     ]);
     if (isPublic) {
       return true;
+    }
+
+    // A signed-link route has already been authenticated by `SignedTokenGuard`, which runs
+    // before this one and put a real actor in the request context. It is not `@Public()`:
+    // the two guards after this one still run in full.
+    const bySignedToken = this.reflector.getAllAndOverride<boolean>(SIGNED_TOKEN_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (bySignedToken) {
+      return getRequestContext()?.actor !== undefined;
     }
 
     const request = context.switchToHttp().getRequest<FastifyRequest>();

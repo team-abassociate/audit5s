@@ -25,6 +25,10 @@ export const RECIPIENT_ROLES: Record<NotificationEventType, Role[]> = {
   CORRECTIVE_ACTION_REOPENED: [],
   SYNC_FAILURE: ['SUPER_ADMIN'],
   CHECKLIST_PUBLISHED: ['SUPER_ADMIN'],
+  // §10.2's REPORT_GENERATED. The Super Admin who asked for it is the actor and is never
+  // notified of their own act, so this reaches the Unit's Coordinator — the person who has
+  // to act on a report they did not commission.
+  REPORT_GENERATED: ['COORDINATOR'],
 };
 
 /**
@@ -140,5 +144,14 @@ export function renderNotification(event: DomainEventJob): { title: string; body
         title: 'Checklist published',
         body: `${String(data.templateName ?? 'A checklist')} v${String(data.versionNumber ?? '?')} is now live.`,
       };
+    case 'REPORT_GENERATED': {
+      const version = Number(data.version ?? 1);
+      return {
+        title: 'Report ready',
+        body:
+          `${String(data.kindLabel ?? 'A report')}${item ? ` for ${item}` : ''} ` +
+          `version ${version} is ready to download.`,
+      };
+    }
   }
 }

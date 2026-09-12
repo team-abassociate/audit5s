@@ -156,6 +156,15 @@ importers:
       pg-boss:
         specifier: ^12.30.0
         version: 12.30.0
+      playwright-core:
+        specifier: ^1.50.0
+        version: 1.63.0
+      react:
+        specifier: ^19.0.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.3.0(react@19.3.0)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -181,9 +190,18 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.23.1
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.3.0(@types/react@19.3.0)
       '@types/supertest':
         specifier: ^6.0.2
         version: 6.0.3
+      playwright:
+        specifier: ^1.50.0
+        version: 1.63.0
       supertest:
         specifier: ^7.0.0
         version: 7.2.2
@@ -7972,9 +7990,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.86.3': {}
 

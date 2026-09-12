@@ -33,6 +33,26 @@ export interface ScopeContext {
   resolver: ScopeResolverName;
   /** The prose constraint from the matrix cell, for the service layer to enforce (AZ-5). */
   condition?: string;
+  /**
+   * What a validated signed link authorizes (§6.2's `signed_token`, §10.4).
+   *
+   * Present only on the public corrective-action surface, and it is the *whole* of what
+   * that surface may reach: one corrective action, in one Unit. The resolver turns it into
+   * the predicate `corrective_action.id = :id AND unit_id = :unit`, so a leaked link is
+   * still a single-item audience at the database, not merely at the route.
+   *
+   * It lives on the scope rather than on the actor deliberately. The actor is the Zone
+   * Leader the token was issued to — a real person with real permissions elsewhere — and
+   * folding the token's narrowing into their identity would make it look like something
+   * they carry everywhere.
+   */
+  signedToken?: SignedTokenScope;
+}
+
+export interface SignedTokenScope {
+  tokenId: string;
+  correctiveActionId: string;
+  unitId: string;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import type { ScopeResolverName } from '@audit5s/contracts';
-import type { ActorContext } from '@audit5s/domain';
+import type { ActorContext, ScopeContext } from '@audit5s/domain';
 
 /**
  * The columns a resolver may reference. A table hands over whichever it has; a resolver
@@ -17,6 +17,8 @@ export interface ScopeColumns {
   recordUserId?: PgColumn;
   /** The Zone Leader a corrective action is assigned to, for `assigned_actions`. */
   assignedUserId?: PgColumn;
+  /** The corrective action's own primary key, for `signed_token`'s single-item audience. */
+  correctiveActionId?: PgColumn;
 }
 
 /**
@@ -27,7 +29,14 @@ export interface ScopeColumns {
  */
 export interface ScopeResolver {
   readonly name: ScopeResolverName;
-  predicate(actor: ActorContext, columns: ScopeColumns): SQL;
+  /**
+   * `scope` is the third argument rather than the first for one reason: every resolver
+   * written before Phase 7 needs only the actor, and TypeScript's structural typing lets
+   * those two-parameter implementations satisfy this signature unchanged. `signed_token`
+   * is the first resolver whose predicate depends on something that is not a property of
+   * the person — a link they are holding — and it reads it from here.
+   */
+  predicate(actor: ActorContext, columns: ScopeColumns, scope?: ScopeContext): SQL;
 }
 
 /** Matches nothing. Used wherever an actor has no qualifying scope value. */

@@ -13,6 +13,10 @@ export const RATE_LIMITS = {
   otpRequestPerIp: { limit: 20, windowSeconds: 60 * 60 },
   refreshPerUser: { limit: 30, windowSeconds: 60 * 60 },
   globalPerUser: { limit: 600, windowSeconds: 60 },
+  // §10.4, the public corrective-action page: the one surface reachable by anyone holding
+  // a URL. The IP bucket is the one that limits walking the token space.
+  correctiveActionPerToken: { limit: 10, windowSeconds: 60 },
+  correctiveActionPerIp: { limit: 30, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 /** Progressive lockout begins at this many consecutive failures (§12.1). */

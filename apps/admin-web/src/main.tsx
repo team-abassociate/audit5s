@@ -15,6 +15,8 @@ import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
 import { AuditsPage } from '@/features/audits/AuditsPage';
 import { CorrectiveActionsPage } from '@/features/corrective-actions/CorrectiveActionsPage';
+import { PublicCorrectiveActionPage } from '@/features/corrective-actions/PublicCorrectiveActionPage';
+import { ReportsPage } from '@/features/reports/ReportsPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { SyncHealthPage } from '@/features/sync/SyncHealthPage';
 import { ChecklistsPage } from '@/features/checklists/ChecklistsPage';
@@ -60,10 +62,38 @@ function Gate() {
   );
 }
 
-const rootRoute = createRootRoute({ component: Gate });
+/**
+ * The root renders nothing but an outlet, so that **one** route can sit outside the
+ * authentication gate: `/ca/$token`.
+ *
+ * That page is opened by a Zone Leader holding a link from a PDF — somebody who has no
+ * session, and who must not be sent to a login screen. Everything else hangs off the
+ * pathless `gatedRoute` below and passes through `Gate` exactly as it did before.
+ */
+const rootRoute = createRootRoute({ component: () => <Outlet /> });
+
+/**
+ * The signed corrective-action page (§10.4). No session, no app shell, no navigation to
+ * anything else — the link is the whole of the reader's access.
+ */
+const correctiveActionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ca/$token',
+  component: function PublicCorrectiveAction() {
+    const { token } = correctiveActionRoute.useParams();
+    return <PublicCorrectiveActionPage token={token} />;
+  },
+});
+
+/** Everything below here is login-gated, which is what `Gate` enforces. */
+const gatedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'gated',
+  component: Gate,
+});
 
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/',
   beforeLoad: () => {
     throw redirect({ to: '/units' });
@@ -71,70 +101,81 @@ const indexRoute = createRoute({
 });
 
 const unitsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/units',
   component: UnitsPage,
 });
 
 const zonesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/zones',
   component: ZonesPage,
 });
 
 const checklistsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/checklists',
   component: ChecklistsPage,
 });
 
 const auditsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/audits',
   component: AuditsPage,
 });
 
 const correctiveActionsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/corrective-actions',
   component: CorrectiveActionsPage,
 });
 
+const reportsRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/reports',
+  component: ReportsPage,
+});
+
 const notificationsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/notifications',
   component: NotificationsPage,
 });
 
 const syncRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/sync',
   component: SyncHealthPage,
 });
 
 const usersRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/users',
   component: UsersPage,
 });
 
 const auditLogRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => gatedRoute,
   path: '/audit-log',
   component: AuditLogPage,
 });
 
 const routeTree = rootRoute.addChildren([
-  indexRoute,
-  unitsRoute,
-  zonesRoute,
-  checklistsRoute,
-  auditsRoute,
-  correctiveActionsRoute,
-  notificationsRoute,
-  syncRoute,
-  usersRoute,
-  auditLogRoute,
+  // Outside the gate, deliberately and alone.
+  correctiveActionRoute,
+  gatedRoute.addChildren([
+    indexRoute,
+    unitsRoute,
+    zonesRoute,
+    checklistsRoute,
+    auditsRoute,
+    correctiveActionsRoute,
+    reportsRoute,
+    notificationsRoute,
+    syncRoute,
+    usersRoute,
+    auditLogRoute,
+  ]),
 ]);
 
 const router = createRouter({ routeTree });

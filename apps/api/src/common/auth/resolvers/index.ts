@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { ScopeResolverName } from '@audit5s/contracts';
-import type { ActorContext } from '@audit5s/domain';
+import type { ActorContext, ScopeContext } from '@audit5s/domain';
 import {
   MATCH_NOTHING,
   requireColumn,
@@ -104,6 +104,39 @@ export class AssignedActionsScopeResolver implements ScopeResolver {
   }
 }
 
+/**
+ * `signed_token` — the public corrective-action page (§6.2, §10.4).
+ *
+ * §6.2 writes the predicate as
+ *
+ *     corrective_action.id = :token.corrective_action_id
+ *       AND token valid AND NOT revoked AND now() < expires_at
+ *
+ * The three clauses about the token itself are settled before this runs: the guard has
+ * already resolved the link, refused a revoked, expired or spent one with `410`, and put
+ * what survived on the scope. What is left for a **SQL predicate** is the audience, and
+ * that is what this returns — narrowed by Unit as well as by id, so a token whose action
+ * was somehow re-pointed could still not reach another Unit's row.
+ *
+ * A scope with no resolved token matches nothing. That is the fail-closed default the rest
+ * of this file uses for an actor with no qualifying Unit, and it matters more here: this
+ * resolver is the only one whose input does not come from the authenticated identity.
+ */
+@Injectable()
+export class SignedTokenScopeResolver implements ScopeResolver {
+  readonly name: ScopeResolverName = 'signed_token';
+
+  predicate(_actor: ActorContext, columns: ScopeColumns, scope?: ScopeContext): SQL {
+    const token = scope?.signedToken;
+    if (!token) {
+      return MATCH_NOTHING;
+    }
+    const actionId = requireColumn(columns, 'correctiveActionId', this.name);
+    const unitId = requireColumn(columns, 'unitId', this.name);
+    return and(eq(actionId, token.correctiveActionId), eq(unitId, token.unitId)) as SQL;
+  }
+}
+
 export const SCOPE_RESOLVERS = [
   OrganizationScopeResolver,
   OwnUnitScopeResolver,
@@ -111,6 +144,7 @@ export const SCOPE_RESOLVERS = [
   OwnRecordScopeResolver,
   OwnAuditsScopeResolver,
   AssignedActionsScopeResolver,
+  SignedTokenScopeResolver,
 ] as const;
 
 export const SCOPE_RESOLVER_REGISTRY = Symbol('SCOPE_RESOLVER_REGISTRY');
@@ -127,6 +161,7 @@ export class ScopeResolverRegistry {
     ownRecord: OwnRecordScopeResolver,
     ownAudits: OwnAuditsScopeResolver,
     assignedActions: AssignedActionsScopeResolver,
+    signedToken: SignedTokenScopeResolver,
   ) {
     for (const resolver of [
       organization,
@@ -135,6 +170,7 @@ export class ScopeResolverRegistry {
       ownRecord,
       ownAudits,
       assignedActions,
+      signedToken,
     ]) {
       this.byName.set(resolver.name, resolver);
     }
@@ -143,8 +179,8 @@ export class ScopeResolverRegistry {
   get(name: ScopeResolverName): ScopeResolver {
     const resolver = this.byName.get(name);
     if (!resolver) {
-      // `signed_token` arrives with the public corrective-action route in Phase 7. Failing
-      // loudly beats returning a permissive default for a resolver that does not yet exist.
+      // Every name in the vocabulary now has a resolver. Failing loudly rather than
+      // returning a permissive default is still the rule for whatever is added next.
       throw new Error(`No scope resolver registered for '${name}'`);
     }
     return resolver;

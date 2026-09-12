@@ -137,8 +137,48 @@ async function refresh(refreshToken: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * A response that is a **document**, not a payload.
+ *
+ * `POST /reports/preview` returns HTML for template iteration (§8.9). It goes through its
+ * own function rather than `send` because `send` parses JSON, and because the two failure
+ * modes differ: a problem document here still arrives as JSON, so it is parsed only on the
+ * error path.
+ */
+async function sendText(path: string, body: unknown): Promise<string> {
+  const current = loadSession();
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(current ? { authorization: `Bearer ${current.accessToken}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (response.ok) {
+    return response.text();
+  }
+
+  const problem = (await response.json().catch(() => null)) as ProblemDetails | null;
+  if (response.status === 401) {
+    setSession(null);
+    onUnauthenticated?.();
+  }
+  throw new ApiError(
+    problem ?? {
+      type: 'about:blank',
+      title: response.statusText,
+      status: response.status,
+      code: 'INTERNAL_ERROR',
+      requestId: 'unknown',
+    },
+  );
+}
+
 export const api = {
   get: <T>(path: string) => send<T>(path),
+  postText: (path: string, body: unknown) => sendText(path, body),
   post: <T>(path: string, body?: unknown) => send<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body: unknown) => send<T>(path, { method: 'PATCH', body }),
   put: <T>(path: string, body: unknown) => send<T>(path, { method: 'PUT', body }),

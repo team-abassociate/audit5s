@@ -6,8 +6,9 @@ import { notificationChannelSchema } from './enums';
  * Notifications (ARCHITECTURE.md §4.2, §5.9, §8.10).
  *
  * The event types are §4.2's, restricted to those with a notification consumer and a
- * source that exists. `REPORT_GENERATED` joins with the reports module (Phase 7);
- * `EVIDENCE_ATTACHED` and `PERMISSION_CHANGED` have no notification consumer at all.
+ * source that exists. `REPORT_GENERATED` joined in Phase 7, when the reports module gave
+ * it a source; `EVIDENCE_ATTACHED` and `PERMISSION_CHANGED` have no notification consumer
+ * at all.
  */
 export const NOTIFICATION_EVENT_TYPES = [
   'UNIT_ASSIGNED',
@@ -21,6 +22,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   'CORRECTIVE_ACTION_REOPENED',
   'SYNC_FAILURE',
   'CHECKLIST_PUBLISHED',
+  'REPORT_GENERATED',
 ] as const;
 export const notificationEventTypeSchema = z.enum(NOTIFICATION_EVENT_TYPES);
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>;

@@ -46,6 +46,7 @@ const NOT_FOUND = 404;
 const OK = 200;
 const CREATED = 201;
 const NO_CONTENT = 204;
+const GONE = 410;
 
 export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   // ------------------------------------------------------------------ health
@@ -802,6 +803,134 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
     },
     coveredBy: 'corrective-actions.e2e.test.ts',
+  },
+
+  // ---------------------------------------------------------------- reports
+  /*
+   * N5/C4: the official PDF is a Super Admin deliverable, and a Consultant holds **no**
+   * cell for `report:generate` at all — so they are refused 403 by `PermissionGuard`
+   * rather than 404 by a scope. That distinction is the point of the row and is asserted
+   * explicitly in reports.e2e.test.ts.
+   *
+   * Coordinator and Zone Leader read and download their own Unit's reports (`own_unit`)
+   * and can do nothing else here.
+   */
+  {
+    method: 'POST',
+    path: '/api/v1/reports/generate',
+    description: 'report:generate — Super Admin only (N5). 202; the render is a queued job',
+    expected: { SUPER_ADMIN: { inScope: 202, outOfScope: 202 } },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/reports/preview',
+    description: 'report:generate — HTML for template iteration; no snapshot, no PDF, no token',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/reports',
+    description: 'report:read_snapshot — the version history, newest first (§10.5)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/reports/:snapshotId',
+    description: 'report:read_snapshot — metadata and status',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/reports/:snapshotId/payload',
+    description: 'report:read_snapshot — the frozen payload, for the on-screen preview',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/reports/:snapshotId/download-url',
+    description: 'report:download — a short-TTL presigned GET, minted after the scope check',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/reports/:snapshotId/regenerate',
+    description: 'report:generate — RS-1: version + 1; the original is untouched',
+    expected: { SUPER_ADMIN: { inScope: 202, outOfScope: 202 } },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/reports/:snapshotId/tokens',
+    description: 'report_access_token:mint — the minted links with their use counts',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/reports/:snapshotId/tokens/:tokenId/revoke',
+    description: 'report_access_token:revoke — AuditLog: report.token_revoked',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+
+  // -------------------------------------- the public, signed-token surface (§10.4)
+  /*
+   * The role named here is `ZONE_LEADER`, and it is reached by a **link** rather than a
+   * session: `SignedTokenGuard` resolves the token before the rest of the chain and
+   * becomes the Zone Leader it was issued to. `PermissionGuard` and `ScopeGuard` then run
+   * exactly as they do everywhere else — which is why these are not `public: true`, and
+   * why the cells below are the real cells rather than a blanket exemption.
+   *
+   * `outOfScope` is 410, not 404, and it is the same 410 an invalid, revoked or expired
+   * link gets: a link for another Unit's finding is simply a link this surface does not
+   * recognise, and distinguishing the cases would make the surface enumerable (§10.4,
+   * "no enumeration"). A bearer token on these routes is refused the same way.
+   *
+   * `coveredBy` because the generic sweep authenticates with a bearer token, which is
+   * precisely what these routes do not accept. `report-tokens.e2e.test.ts` drives the
+   * whole surface — a valid link, an expired one, a revoked one, one for another Unit.
+   */
+  {
+    method: 'GET',
+    path: '/api/v1/public/corrective-actions/:token',
+    description: 'signed_token — one corrective action, no listing, no siblings (§8.8)',
+    expected: { ZONE_LEADER: { inScope: OK, outOfScope: GONE } },
+    coveredBy: 'report-tokens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/public/corrective-actions/:token/upload-intent',
+    description: 'signed_token — the live-capture after-photo; isLiveCapture must be true',
+    expected: { ZONE_LEADER: { inScope: CREATED, outOfScope: GONE } },
+    coveredBy: 'report-tokens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/public/corrective-actions/:token/submissions',
+    description: 'signed_token — the same domain service as the authenticated route (§8.8)',
+    expected: { ZONE_LEADER: { inScope: CREATED, outOfScope: GONE } },
+    coveredBy: 'report-tokens.e2e.test.ts',
   },
 
   // ----------------------------------------------------------- notifications

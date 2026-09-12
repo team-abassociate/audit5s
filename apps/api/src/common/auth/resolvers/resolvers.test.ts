@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import { units, unitMemberships } from '@audit5s/db';
+import { correctiveActions, units, unitMemberships } from '@audit5s/db';
+import { SCOPE_RESOLVERS as SCOPE_RESOLVERS_NAMES, type ScopeResolverName } from '@audit5s/contracts';
 import type { ActorContext } from '@audit5s/domain';
 import {
   AssignedActionsScopeResolver,
@@ -10,6 +11,7 @@ import {
   OwnRecordScopeResolver,
   OwnUnitScopeResolver,
   ScopeResolverRegistry,
+  SignedTokenScopeResolver,
 } from './index';
 
 /**
@@ -143,18 +145,51 @@ describe('registry', () => {
     new OwnRecordScopeResolver(),
     new OwnAuditsScopeResolver(),
     new AssignedActionsScopeResolver(),
+    new SignedTokenScopeResolver(),
   );
 
-  it('resolves every name PART 6.2 uses in Phase 1', () => {
-    for (const name of ['organization', 'own_unit', 'assigned_units', 'own_record', 'own_audits', 'assigned_actions'] as const) {
+  it('resolves every name PART 6.2 uses', () => {
+    for (const name of SCOPE_RESOLVERS_NAMES) {
       expect(registry.get(name).name).toBe(name);
     }
   });
 
-  it('throws for a resolver that does not exist yet, rather than defaulting', () => {
-    // `signed_token` arrives with the public corrective-action route in Phase 7. A
-    // permissive default here would be a silent authorization hole.
-    expect(() => registry.get('signed_token')).toThrow(/No scope resolver registered/);
-    expect(registry.has('signed_token')).toBe(false);
+  it('throws for a resolver that does not exist, rather than defaulting', () => {
+    // The vocabulary is closed, so this needs a name outside it. A permissive default for
+    // an unknown resolver would be a silent authorization hole.
+    expect(() => registry.get('not_a_resolver' as ScopeResolverName)).toThrow(
+      /No scope resolver registered/,
+    );
+    expect(registry.has('not_a_resolver' as ScopeResolverName)).toBe(false);
+  });
+});
+
+describe('signed_token', () => {
+  const resolver = new SignedTokenScopeResolver();
+  const columns = {
+    correctiveActionId: correctiveActions.id,
+    unitId: correctiveActions.unitId,
+  };
+  const leader = actor({ role: 'ZONE_LEADER', activeUnitId: 'unit-1', unitIds: ['unit-1'] });
+
+  it('narrows to the one action the link names, in its own Unit', () => {
+    const rendered = render(
+      resolver.predicate(leader, columns, {
+        actor: leader,
+        resolver: 'signed_token',
+        signedToken: { tokenId: 'tok-1', correctiveActionId: 'ca-1', unitId: 'unit-1' },
+      }),
+    );
+    expect(rendered).toContain('ca-1');
+    expect(rendered).toContain('unit-1');
+    // AND, never OR: a link is a single-item audience, unlike `assigned_actions` (R-3b).
+    expect(rendered).not.toContain(' or ');
+  });
+
+  it('matches nothing when no token was resolved', () => {
+    const rendered = render(
+      resolver.predicate(leader, columns, { actor: leader, resolver: 'signed_token' }),
+    );
+    expect(rendered.toLowerCase()).toContain('false');
   });
 });

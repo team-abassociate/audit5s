@@ -188,7 +188,8 @@ export async function stopWorld(world: TestWorld | undefined): Promise<void> {
 
 export async function truncateAll(owner: Client): Promise<void> {
   await owner.query(`
-    TRUNCATE notification_delivery, notification, notification_preference,
+    TRUNCATE report_access_token, report_snapshot,
+             notification_delivery, notification, notification_preference,
              corrective_action_submission, corrective_action,
              evidence, sync_conflict, device_sync_record,
              question_response, audit_zone_section_score, audit_zone, audit,

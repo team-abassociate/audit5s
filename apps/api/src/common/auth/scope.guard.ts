@@ -13,6 +13,11 @@ import {
   type PermissionMetadata,
   type ScopeRequirement,
 } from './decorators';
+import {
+  SIGNED_TOKEN_KEY,
+  SIGNED_TOKEN_PROPERTY,
+  type RequestWithSignedToken,
+} from './signed-token.guard';
 
 /** Where the resolved scope is parked for the handler and its repositories. */
 export const SCOPE_CONTEXT_PROPERTY = 'audit5sScope';
@@ -91,6 +96,39 @@ export class ScopeGuard implements CanActivate {
         `Route declares scope '${declared.resolver}' but PART 6 grants '${grant.resolver}' ` +
           `to ${actor.role} for ${requirement.resource}:${requirement.action}`,
       );
+    }
+
+    /*
+     * The signed-link surface takes `signed_token` instead of the matrix's own resolver,
+     * and this is the one place a route's resolver differs from the cell's.
+     *
+     * It is not a widening, and PART 6 is where it comes from rather than an exception to
+     * it: the Zone Leader cells this surface reaches read `assigned_actions` / `own_unit`
+     * **"or via a valid signed token"**, and `signed_token` is strictly the narrower of
+     * the two — one corrective action in one Unit, against a resolver that would otherwise
+     * admit every action of that Unit (R-3b). A link cannot reach further than the person
+     * holding it already could.
+     */
+    const bySignedToken = this.reflector.getAllAndOverride<boolean>(SIGNED_TOKEN_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (bySignedToken) {
+      const token = (request as RequestWithSignedToken)[SIGNED_TOKEN_PROPERTY];
+      if (!token) {
+        throw AppError.internal('Signed-token route reached with no resolved token');
+      }
+      request[SCOPE_CONTEXT_PROPERTY] = {
+        actor,
+        resolver: 'signed_token',
+        condition: grant.condition ?? 'via a valid signed token',
+        signedToken: {
+          tokenId: token.tokenId,
+          correctiveActionId: token.correctiveActionId,
+          unitId: token.unitId,
+        },
+      };
+      return true;
     }
 
     request[SCOPE_CONTEXT_PROPERTY] = {
