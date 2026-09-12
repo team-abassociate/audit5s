@@ -6,5 +6,6 @@ export * from './zones';
 export * from './audits';
 export * from './evidence';
 export * from './corrective-actions';
+export * from './reports';
 export * from './notifications';
 export * from './sync';

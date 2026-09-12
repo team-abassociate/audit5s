@@ -76,6 +76,27 @@ const envSchema = z.object({
    */
   CORRECTIVE_ACTION_DUE_DAYS: z.coerce.number().int().min(0).max(365).default(7),
 
+  /**
+   * Where the signed corrective-action link points (§10.4). The PDF prints
+   * `{WEB_APP_URL}/ca/{token}`, so this value is baked into every report ever generated —
+   * changing it later does not rewrite the documents already issued, which is why it is
+   * one setting rather than a per-report argument.
+   */
+  WEB_APP_URL: z.string().default('http://127.0.0.1:5173'),
+  /** §10.4: "Default 30 days, configurable per report." */
+  REPORT_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  /** A report's presigned download. §12.6 caps it at 300 s regardless. */
+  REPORT_GET_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(300).default(300),
+  /**
+   * STACK.md §5: "120s job timeout, one retry, then a visible dead-letter."
+   */
+  REPORT_RENDER_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(600_000).default(120_000),
+  /**
+   * Where `worker-report` finds its browser. Unset means Playwright's own resolution,
+   * which is what a developer machine wants; the image pins a path.
+   */
+  CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
+
   /** §12.8: a hard cap on the workbook an import will even attempt to read. */
   CHECKLIST_IMPORT_MAX_BYTES: z.coerce
     .number()

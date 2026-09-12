@@ -139,6 +139,15 @@ export class CorrectiveActionsService {
     actionId: string,
     request: SubmitCorrectiveActionRequest,
     via: SubmissionChannel,
+    /**
+     * The signed link this came in on, when there was one (§8.8, Phase 7).
+     *
+     * Recorded on the attempt rather than only in the audit log: "every use recorded … on
+     * the submission row" (§10.4) is what lets a reviewer months later see that an answer
+     * arrived through a link rather than from a signed-in Zone Leader, which is the
+     * difference that matters if the link is ever disputed.
+     */
+    accessTokenId: string | null = null,
   ): Promise<CorrectiveActionSubmission> {
     // AZ-5: this is reachable from `/sync/batch`, whose own permission is `sync:push`, so
     // the service asks the question the route would have.
@@ -196,6 +205,7 @@ export class CorrectiveActionsService {
           explanation: request.option === 'NOT_POSSIBLE' ? request.explanation : null,
           afterEvidenceId: photo?.id ?? null,
           submittedVia: via,
+          accessTokenId,
           ipAddress: context?.ipAddress ?? null,
           userAgent: context?.userAgent ?? null,
         });

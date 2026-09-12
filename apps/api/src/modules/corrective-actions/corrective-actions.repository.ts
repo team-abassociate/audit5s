@@ -8,6 +8,8 @@ import {
   correctiveActions,
   correctiveActionSubmissions,
   evidence,
+  units,
+  users,
   zones,
   type Database,
   type Transaction,
@@ -36,6 +38,10 @@ const scopeColumns = {
   unitId: correctiveActions.unitId,
   ownerUserId: audits.auditorUserId,
   assignedUserId: correctiveActions.assignedZoneLeaderUserId,
+  // Phase 7: `signed_token`'s single-item audience is this column (§6.2). Supplied here
+  // rather than only where the public surface reads, so every query through this
+  // repository narrows the same way when a signed link is the authority.
+  correctiveActionId: correctiveActions.id,
 };
 
 const actionColumns = {
@@ -84,6 +90,8 @@ export interface NewSubmission {
   explanation: string | null;
   afterEvidenceId: string | null;
   submittedVia: SubmissionChannel;
+  /** The signed link the attempt arrived on, when there was one (§10.4). */
+  accessTokenId?: string | null;
   ipAddress: string | null;
   userAgent: string | null;
 }
@@ -135,6 +143,28 @@ export class CorrectiveActionsRepository extends BaseRepository {
       return this.selectActions(tx)
         .where(this.scoped(scope, scopeColumns, ne(correctiveActions.status, 'VERIFIED')))
         .orderBy(asc(correctiveActions.id));
+    });
+  }
+
+  /**
+   * The two names the public page shows that the action row does not carry: the Unit's
+   * name and the auditor's.
+   *
+   * Read under the same scope predicate as everything else — a signed link narrows this to
+   * its own action's Unit, so it cannot be used to read a Unit name by id.
+   */
+  async findPublicContext(scope: ScopeContext, actionId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .select({ unitName: units.name, auditorName: users.fullName })
+        .from(correctiveActions)
+        .innerJoin(audits, eq(audits.id, correctiveActions.auditId))
+        .innerJoin(units, eq(units.id, correctiveActions.unitId))
+        .innerJoin(users, eq(users.id, audits.auditorUserId))
+        .where(and(eq(correctiveActions.id, actionId), this.scoped(scope, scopeColumns)))
+        .limit(1);
+      return row ?? null;
     });
   }
 
@@ -315,6 +345,7 @@ export class CorrectiveActionWork {
       explanation: input.explanation,
       afterEvidenceId: input.afterEvidenceId,
       submittedVia: input.submittedVia,
+      accessTokenId: input.accessTokenId ?? null,
       ipAddress: input.ipAddress,
       userAgent: input.userAgent,
     });

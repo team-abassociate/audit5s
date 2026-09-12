@@ -9,6 +9,7 @@ export * from './checklist';
 export * from './audit';
 export * from './evidence';
 export * from './corrective-action';
+export * from './report';
 export * from './notification';
 export * from './sync';
 export * from './membership';

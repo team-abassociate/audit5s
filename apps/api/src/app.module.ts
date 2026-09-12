@@ -3,6 +3,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditLogModule } from './common/audit-log/audit-log.module';
 import { AuthorizationModule } from './common/auth/authorization.module';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
+import { SignedTokenGuard } from './common/auth/signed-token.guard';
 import { PermissionGuard } from './common/auth/permission.guard';
 import { ScopeGuard } from './common/auth/scope.guard';
 import { ProblemDetailsFilter } from './common/filters/problem.filter';
@@ -19,6 +20,7 @@ import { AuditsModule } from './modules/audits/audits.module';
 import { DevicesModule } from './modules/devices/devices.module';
 import { CorrectiveActionsModule } from './modules/corrective-actions/corrective-actions.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChecklistsModule } from './modules/checklists/checklists.module';
@@ -58,6 +60,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     AuditsModule,
     EvidenceModule,
     CorrectiveActionsModule,
+    ReportsModule,
     NotificationsModule,
     DevicesModule,
     SyncModule,
@@ -68,6 +71,9 @@ import { ZonesModule } from './modules/zones/zones.module';
   ],
   providers: [
     { provide: APP_FILTER, useClass: ProblemDetailsFilter },
+    // Before JwtAuthGuard: it authenticates the one surface whose credential is a
+    // link rather than a bearer token, and leaves the rest of the chain untouched.
+    { provide: APP_GUARD, useClass: SignedTokenGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
     { provide: APP_GUARD, useClass: ScopeGuard },

@@ -13,6 +13,10 @@ import { CorrectiveActionsService } from './corrective-actions.service';
 @Module({
   controllers: [CorrectiveActionsController],
   providers: [CorrectiveActionsService, CorrectiveActionsRepository],
-  exports: [CorrectiveActionsService],
+  // The repository is exported alongside the service for the public corrective-action
+  // surface (Phase 7), which needs two reads the service does not expose — the before
+  // photo's evidence id and the Unit/auditor names the page prints. Both go through the
+  // same scope predicate, so this widens nothing.
+  exports: [CorrectiveActionsService, CorrectiveActionsRepository],
 })
 export class CorrectiveActionsModule {}

@@ -19,6 +19,8 @@ import {
   CORRECTIVE_OPTIONS,
   NOTIFICATION_CHANNELS,
   NOTIFICATION_STATUSES,
+  REPORT_KINDS,
+  REPORT_STATUSES,
 } from '@audit5s/contracts';
 
 /**
@@ -64,3 +66,7 @@ export const correctiveActionStatusEnum = pgEnum(
 export const correctiveOptionEnum = pgEnum('corrective_option', CORRECTIVE_OPTIONS);
 export const notificationChannelEnum = pgEnum('notification_channel', NOTIFICATION_CHANNELS);
 export const notificationStatusEnum = pgEnum('notification_status', NOTIFICATION_STATUSES);
+
+// Phase 7 (0010_reports).
+export const reportKindEnum = pgEnum('report_kind', REPORT_KINDS);
+export const reportStatusEnum = pgEnum('report_status', REPORT_STATUSES);
