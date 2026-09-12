@@ -68,14 +68,10 @@ body {
   padding: 18px 16px 16px;
   border-bottom: 2px solid var(--edge);
 }
-.gb-brand b {
+.gb-brand-logo {
   display: block;
-  font-size: 19px;
-  font-weight: 900;
-  font-stretch: 118%;
-  letter-spacing: -0.01em;
-  line-height: 1;
-  text-transform: uppercase;
+  width: 42px;
+  height: 42px;
 }
 .gb-brand span {
   display: block;
@@ -760,6 +756,16 @@ body {
     border-right: 2px solid var(--edge);
     white-space: nowrap;
     padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .gb-brand-logo {
+    width: 32px;
+    height: 32px;
+  }
+  .gb-brand span {
+    margin-top: 0;
   }
   .gb-nav {
     flex-direction: row;

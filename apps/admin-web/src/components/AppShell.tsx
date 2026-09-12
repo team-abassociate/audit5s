@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="gb-app">
       <aside className="gb-rail">
         <div className="gb-brand">
-          <b>Gemba Board</b>
+          <img className="gb-brand-logo" src="/audit5s-logo.png" alt="audit5s" width="42" height="42" />
           <span>audit5s · admin</span>
         </div>
         <nav className="gb-nav">
