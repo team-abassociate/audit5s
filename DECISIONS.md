@@ -1,4 +1,4 @@
-# Decision record — resolutions R-1 … R-6
+# Decision record — resolutions R-1 … R-13
 
 Companion to [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`STACK.md`](./STACK.md), the
 Stack Decision Record (the engineering handoff).
@@ -15,6 +15,13 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-4 | Mobile local storage encryption | Settled |
 | R-5 | Evidence redaction | Settled — **build before the append-only triggers ship** |
 | R-6 | Source-file reconciliation | Settled |
+| R-7 | What the importer settled against the real workbook | Settled |
+| R-8 | What the audit engine settled | Settled |
+| R-9 | Presigning under the filesystem driver | Settled |
+| R-10 | Evidence append-only after completion | Settled |
+| R-11 | Camera: `expo-camera` | Settled |
+| R-12 | Phase 5: walk-by constraints and the media worker | Settled |
+| R-13 | Phase 6: corrective actions and notifications | Settled |
 
 ---
 
@@ -607,3 +614,113 @@ It sorts in the structure phase **after** `commit`, because E-3 refuses a flag o
 `NEUTRAL` photo and `commit` is where E-1 writes the authoritative classification — and
 before every `complete`, because A-2 and R-10 freeze evidence the moment the audit lands on
 `COMPLETED`.
+
+---
+
+## R-13 — What building corrective actions and notifications settled
+
+Phase 6 had to decide six things the sources leave open or state in two voices. They are
+recorded together because they are one phase's reading of §2.8, §5.7, §5.9 and §7.3.
+
+### (a) "Resolved" means VERIFIED — a submission is not a resolution
+
+§2.8 rolls an audit `→ PARTIALLY_CLOSED` "when some are resolved" and `→ CLOSED` "when
+every action is `VERIFIED` or `NOT_POSSIBLE`-accepted", and §5.7 defines `resolved_at` as
+"`VERIFIED` or accepted `NOT_POSSIBLE`". §7.3's worked case then says the audit rolls to
+`PARTIALLY_CLOSED` on the Monday three submissions arrive — before anybody has reviewed
+them.
+
+**Settled: resolved is VERIFIED**, as the column and both prose statements define it. The
+audit stays `CORRECTIVE_ACTION_OPEN` while attempts await review, becomes
+`PARTIALLY_CLOSED` when at least one action is verified, and `CLOSED` when all are.
+`rollupAuditStatus` in `packages/domain` is the one implementation, and the acceptance
+suite asserts the whole Monday-to-Friday sequence against it.
+
+The worked case's sentence is read as shorthand for the progress it describes rather than
+as a third definition of `resolved_at`. **If the business wants submission alone to move
+the audit**, this is the one line to change — and it is a product decision, not a fix.
+
+The state machine has no `CLOSED → CORRECTIVE_ACTION_OPEN` edge, which a single-action
+audit needs when its only action is reopened. `rollupPath` walks §7.1's edges instead of
+inventing one: `CLOSED → PARTIALLY_CLOSED → CORRECTIVE_ACTION_OPEN`, each asserted.
+
+### (b) Materialisation is part of completing, not a job
+
+§4.2 lists `AUDIT_COMPLETED`'s consumers as "CorrectiveActions (materialize),
+Notifications, Analytics", which reads as three asynchronous handlers. Notifications and
+analytics are; materialisation is not.
+
+It runs **inside the completing transaction**: the status write, one action per
+nonconformity photograph, and the audit's roll onward to `CORRECTIVE_ACTION_OPEN` or
+`CLOSED` commit together, and the event is enqueued on that same transaction (R-2). A
+completed audit whose actions have not been raised yet is not a state the system can be
+observed in — which matters because §7.1 gives `COMPLETED` two outgoing edges and nothing
+that would tell a reader an audit is *between* them.
+
+The asynchronous alternative needs an actor: this schema has no system bypass, so the job
+would have to become somebody to insert rows RLS admits. The completing auditor is already
+that somebody, in a transaction that is already open.
+
+Two consequences worth stating. An audit rarely rests on `COMPLETED`, so
+`isAuditCompleted()` — not `status === 'COMPLETED'` — is what "is it finished" means
+everywhere. And a replayed `complete` is still idempotent: `UNIQUE(evidence_id)` with
+`ON CONFLICT DO NOTHING` raises nothing twice.
+
+### (c) An after-photo is scoped by its action, not by its audit
+
+`CORRECTIVE_AFTER` evidence hangs off an audit that is completed by definition — that is
+what "after" means — so three rules written for audit evidence contradict it: R-10 freezes
+the row before `commit` can confirm it, `evidence:create`'s `own_audits` hides it from the
+Zone Leader who took it, and §5.6's `corrective_action_submission_id` FK points at a row
+that does not exist yet, because the device mints the attempt id when the form opens.
+
+So, in `0009`:
+
+* `evidence.corrective_action_id` is added. It is the only way from an after-photo to the
+  scope that governs it before an attempt exists, and PART 6's own words are the rule it
+  implements — `evidence:create` is `own_audits` "**or `assigned_actions`, for
+  `CORRECTIVE_AFTER` evidence**".
+* `corrective_action_submission_id` carries the client-minted id and takes **no** foreign
+  key; the link is enforced from the other side, by a trigger on the submission insert,
+  which is also where CA-2's live-capture requirement is checked.
+* R-10 reaches an after-photo **once an attempt cites it**, through a `SECURITY DEFINER`
+  predicate so the permissive answer never comes from an RLS policy hiding the row that
+  would have said otherwise. Before that it is the photographer's; after it, it is the
+  record of what was submitted, and it freezes like any other evidence.
+
+### (d) The notification worker becomes each recipient
+
+`worker-general` has no actor of its own, and the rows it must write and read belong to
+people it is not: every Super Admin, a Unit's Coordinator, another user's preferences.
+
+Two mechanisms, both narrow. `app_notification_targets()` is a `SECURITY DEFINER` lookup
+returning ids, roles and two switches for active accounts — no names, no phone numbers, no
+login ids. Then each notification is written **as its recipient**, so `notification`,
+`notification_delivery` and `notification_preference` keep ordinary own-record policies
+rather than an insert policy wide enough for a worker.
+
+Delivery happens after those rows commit, never inside the transaction (STACK.md §5), and
+every attempt is recorded — including the ones that could not be made.
+
+### (e) WhatsApp and SMS are a port, and SKIPPED is an answer
+
+STACK.md §2 keeps both behind an interface "not wired at MVP"; §5.9 specifies a fallback
+between them. Both hold: `MessageChannel` has one unwired implementation, so a delivery on
+either channel is recorded `SKIPPED` with its reason rather than quietly not happening. A
+WhatsApp failure — or an unconfigured provider — writes the SMS fallback as a second
+`notification_delivery` row pointing at the first, so §5.9's "auditable rather than
+invisible" is true before any provider exists. Binding a real BSP is one provider in
+`MessagingModule`.
+
+§5.9's "verified phone" has no column behind it: `user.phone_e164` is required and there is
+no verification flow, so an active account's phone is treated as reachable. A real
+verification step would add the column and one condition here.
+
+### (f) Two columns the schema needed, and one default
+
+`notification.event_id` makes a redelivered job idempotent — pg-boss may deliver twice, and
+a Zone Leader must not be told twice; with the recipient it is unique.
+`notification_delivery.fallback_of_delivery_id` is what makes the fallback in (e) legible.
+`corrective_action.due_at` has no rule anywhere: `CORRECTIVE_ACTION_DUE_DAYS` defaults to
+seven days from completion and `0` disables it. **That seven is a house default, not a
+business requirement** — the first person to state a real deadline policy should change it.

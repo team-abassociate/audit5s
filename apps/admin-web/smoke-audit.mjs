@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 
@@ -19,7 +20,9 @@ const { S_SECTION_ORDER, scoreZone, zoneDisplayLabel } =
 
 const API = 'http://127.0.0.1:3000/api/v1';
 const BASE = 'http://127.0.0.1:4173';
-const shots = '/tmp/claude-0/shots';
+// Overridable so a run on another machine does not need one hard-coded directory.
+const shots = process.env.SMOKE_SCREENSHOT_DIR ?? '/tmp/audit5s-shots';
+mkdirSync(shots, { recursive: true });
 
 const CONSULTANT_LOGIN = 'PR5678';
 const CONSULTANT_PHONE = '+919812345678';
@@ -44,6 +47,8 @@ async function captureEvidence({
   questionResponseId,
   kind,
   classification,
+  deviceId = DEVICE_ID,
+  extra = {},
 }) {
   const bytes = TINY_JPEG;
   const checksum = createHash('sha256').update(bytes).digest('hex');
@@ -64,7 +69,9 @@ async function captureEvidence({
       capturedAt: new Date().toISOString(),
       isLiveCapture: true,
       ...(classification ? { classification } : {}),
+      ...extra,
     },
+    deviceId,
   });
 
   const uploaded = await fetch(intent.uploadUrl, {
@@ -79,6 +86,7 @@ async function captureEvidence({
   await call(`/evidence/${evidenceId}/commit`, {
     method: 'POST',
     token,
+    deviceId,
     body: { checksumSha256: checksum },
   });
 
@@ -93,13 +101,14 @@ const TINY_JPEG = Buffer.from(
   'base64',
 );
 
-async function call(path, { method = 'GET', body, token } = {}) {
+async function call(path, { method = 'GET', body, token, deviceId = DEVICE_ID, headers = {} } = {}) {
   const response = await fetch(`${API}${path}`, {
     method,
     headers: {
       ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
-      'x-device-id': DEVICE_ID,
+      'x-device-id': deviceId,
+      ...headers,
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
@@ -316,7 +325,7 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const page = await browser.newPage({ viewport: { width: 1280, height: 1100 } });
 const completedScoredRow = () =>
-  page.getByRole('row').filter({ hasText: 'External 5S' }).filter({ hasText: 'Completed' }).first();
+  page.getByRole('row').filter({ hasText: 'External 5S' }).filter({ hasText: 'Corrective actions open' }).first();
 const problems = [];
 page.on('console', (message) => {
   if (message.type() === 'error' && !message.text().includes('favicon')) {
@@ -335,7 +344,8 @@ await page.waitForSelector('text=Units', { timeout: 10000 });
 await page.getByRole('link', { name: 'Audits' }).click();
 await page.waitForLoadState('networkidle');
 await page.getByRole('button', { name: 'Show all' }).click();
-await page.waitForSelector('tbody >> text=Completed', { timeout: 10000 });
+// Question 1's nonconformity photo opened an action, so the audit rolled on (§7.1).
+await page.waitForSelector('tbody >> text=Corrective actions open', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/16-audit-board.png` });
 
 step(8, 'open it: S-wise scores, the D6 snapshots, and every response');
@@ -357,13 +367,13 @@ await page.waitForLoadState('networkidle');
 await page.getByRole('button', { name: 'Edit' }).first().click();
 await page.locator('form input').first().fill('Press shop (renamed after the audit)');
 await page.getByRole('button', { name: 'Save' }).click();
-await page.waitForLoadState('networkidle');
-await page.screenshot({ path: `${shots}/18-zone-renamed.png` });
-const renamedVisible = await page
-  .getByText('Press shop (renamed after the audit)')
+// Wait for the renamed **row**, not the form's own input: a save closes the form and
+// refetches the list, and `networkidle` can resolve before the PATCH is even issued.
+await page
+  .getByRole('cell', { name: 'Press shop (renamed after the audit)', exact: false })
   .first()
-  .isVisible();
-if (!renamedVisible) throw new Error('the Zone rename did not take');
+  .waitFor({ timeout: 10000 });
+await page.screenshot({ path: `${shots}/18-zone-renamed.png` });
 
 await page.getByRole('link', { name: 'Audits' }).click();
 await page.waitForLoadState('networkidle');
@@ -448,7 +458,7 @@ await page.getByRole('button', { name: 'Show all' }).click();
 const walkByRow = page
   .getByRole('row')
   .filter({ hasText: 'Walk-by' })
-  .filter({ hasText: 'Completed' })
+  .filter({ hasText: 'Corrective actions open' })
   .first();
 await walkByRow.getByRole('button', { name: 'Open' }).click();
 await page.waitForSelector('text=Evidence gallery', { timeout: 10000 });
@@ -519,6 +529,133 @@ console.log('     the held payload renders verbatim, remark and all');
 // And the device is listed, so a stale one can be chased (§9.6).
 const deviceShown = await page.getByText(DEVICE_ID).first().isVisible();
 if (!deviceShown) throw new Error('the device is not listed on the sync dashboard');
+
+step(12, 'a Zone Leader answers the walk-by’s corrective action with a live after-photo');
+
+const LEADER = {
+  fullName: 'Zoya Qureshi',
+  phone: '+919812340099',
+  password: 'lantern-quartz-48-ZK',
+  deviceId: '01930000-0000-7000-8000-0000000f1e2d',
+};
+const admin = await call('/auth/login', {
+  method: 'POST',
+  body: { loginId: 'RA3210', password: 'meridian-cobalt-33-JD' },
+});
+
+/** Idempotent like `signIn`: the rotated credential first, then create and rotate. */
+async function leaderSignIn() {
+  const users = await call(`/users?role=ZONE_LEADER&unitId=${unit.id}&limit=200`, { token: admin.accessToken });
+  let loginId = users.data.find((user) => user.phoneE164 === LEADER.phone)?.loginId;
+  if (loginId) {
+    try {
+      return await call('/auth/login', {
+        method: 'POST',
+        deviceId: LEADER.deviceId,
+        body: { loginId, password: LEADER.password, deviceId: LEADER.deviceId, platform: 'android' },
+      });
+    } catch {
+      // Created but never rotated; fall through to the bootstrap credential.
+    }
+  } else {
+    const created = await call('/users', {
+      method: 'POST',
+      token: admin.accessToken,
+      body: { fullName: LEADER.fullName, phone: LEADER.phone, role: 'ZONE_LEADER', unitId: unit.id },
+    });
+    loginId = created.loginId;
+  }
+  const bootstrap = await call('/auth/login', {
+    method: 'POST',
+    body: { loginId, password: LEADER.phone },
+  });
+  await call('/auth/change-password', {
+    method: 'POST',
+    token: bootstrap.accessToken,
+    body: { currentPassword: LEADER.phone, newPassword: LEADER.password },
+  });
+  return call('/auth/login', {
+    method: 'POST',
+    deviceId: LEADER.deviceId,
+    body: { loginId, password: LEADER.password, deviceId: LEADER.deviceId, platform: 'android' },
+  });
+}
+
+const leader = await leaderSignIn();
+const leaderCall = (path, options = {}) =>
+  call(path, { ...options, token: leader.accessToken, deviceId: LEADER.deviceId });
+
+// The Unit's Zone has no leader pointer, so the action is assigned to nobody — and any
+// Zone Leader of the Unit may still answer it (R-3b).
+const walkByActions = await leaderCall(`/corrective-actions?auditId=${walkByAuditId}`);
+if (walkByActions.data.length !== 1) {
+  throw new Error(`the walk-by's one nonconformity should open one action, got ${walkByActions.data.length}`);
+}
+const action = walkByActions.data[0];
+
+const attemptId = randomUUID();
+const afterPhotoId = await captureEvidence({
+  token: leader.accessToken,
+  deviceId: LEADER.deviceId,
+  auditId: walkByAuditId,
+  kind: 'CORRECTIVE_AFTER',
+  extra: { correctiveActionId: action.id, correctiveActionSubmissionId: attemptId },
+});
+const submitted = await leaderCall(`/corrective-actions/${action.id}/submissions`, {
+  method: 'POST',
+  headers: { 'idempotency-key': randomUUID() },
+  body: {
+    option: 'COMPLETED',
+    submittedByName: LEADER.fullName,
+    description: 'Pallets moved off the panel and the floor marked',
+    afterEvidenceId: afterPhotoId,
+  },
+});
+if (submitted.id !== attemptId || submitted.attemptNo !== 1) {
+  throw new Error(`the attempt should be ${attemptId} #1, got ${submitted.id} #${submitted.attemptNo}`);
+}
+console.log(`     attempt 1 submitted with after-photo ${afterPhotoId.slice(0, 8)}…`);
+
+step(13, 'the Super Admin reviews it in the queue, verifies it, and is told of it');
+
+await page.getByRole('link', { name: 'Corrective actions' }).click();
+await page.waitForLoadState('networkidle');
+await page.getByRole('row').filter({ hasText: 'Submitted' }).first().click();
+await page.waitForSelector('text=Attempt 1', { timeout: 10000 });
+await page.waitForFunction(() => {
+  const image = globalThis.document.querySelector('img[alt="After photograph"]');
+  return image instanceof globalThis.HTMLImageElement && image.complete && image.naturalWidth > 0;
+});
+await page.screenshot({ path: `${shots}/24-corrective-action.png`, fullPage: true });
+
+await page.getByRole('button', { name: 'Verify' }).click();
+// The button goes when the action is no longer awaiting review. Waiting on the word
+// "Verified" would match the hidden <option> in the status filter, which is always there.
+await page.getByRole('button', { name: 'Verify' }).waitFor({ state: 'detached', timeout: 10000 });
+await page.screenshot({ path: `${shots}/25-corrective-action-verified.png`, fullPage: true });
+
+const closedWalkBy = await call(`/audits/${walkByAuditId}`, { token: admin.accessToken });
+if (closedWalkBy.status !== 'CLOSED') {
+  throw new Error(`verifying the walk-by's only action should close it, not leave it ${closedWalkBy.status}`);
+}
+console.log('     verified in the queue; the walk-by audit is CLOSED');
+
+// The notification is written by worker-general, not by the request: give it a moment.
+let told = false;
+for (let attempt = 0; attempt < 20 && !told; attempt += 1) {
+  const inbox = await call('/notifications?limit=50', { token: admin.accessToken });
+  told = inbox.data.some(
+    (notification) =>
+      notification.eventType === 'CORRECTIVE_ACTION_SUBMITTED' && notification.resourceId === action.id,
+  );
+  if (!told) await new Promise((resolve) => setTimeout(resolve, 500));
+}
+if (!told) throw new Error('worker-general did not notify the Super Admin of the submission');
+
+await page.getByRole('link', { name: /Notifications/ }).click();
+await page.waitForSelector('text=Corrective action submitted', { timeout: 10000 });
+await page.screenshot({ path: `${shots}/26-notifications.png`, fullPage: true });
+console.log('     the submission reached the Super Admin’s notification centre');
 
 await browser.close();
 
