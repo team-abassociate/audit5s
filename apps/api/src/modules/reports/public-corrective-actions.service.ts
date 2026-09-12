@@ -112,13 +112,51 @@ export class PublicCorrectiveActionsService {
     });
   }
 
-  /** The same service the authenticated route calls, with the link recorded on the row. */
+  /**
+   * The same service the authenticated route calls, with the link recorded on the row.
+   *
+   * One thing happens here that does not happen on the authenticated route: the after-photo
+   * is **committed on the way in**.
+   *
+   * §9.4's second phase is an authenticated call, and this page has no session — while
+   * §10.4 is explicit that the link authorizes read-and-submit and grants no other API
+   * access. Adding a fourth public route to carry the commit would widen exactly the
+   * surface that is meant to be narrow, for no gain: the commit's own work — HEAD the
+   * object, verify the size and the checksum, sniff the magic bytes (§12.8) — is server
+   * work, and the server is already here.
+   *
+   * So the two calls become one act: `commit` runs first, and only then does the attempt
+   * exist. It is idempotent (§9.6), so a retried submission after a network failure
+   * commits nothing twice and finds its own attempt rather than making a second.
+   */
   async submit(
     scope: ScopeContext,
     token: ResolvedToken,
     request: SubmitCorrectiveActionRequest,
   ): Promise<CorrectiveActionSubmission> {
+    if (request.option === 'COMPLETED') {
+      await this.commitAfterPhoto(scope, request.afterEvidenceId);
+    }
     return this.actions.submit(scope, token.correctiveActionId, request, 'WEB_TOKEN', token.tokenId);
+  }
+
+  /**
+   * Commits the photograph, unless it is already committed.
+   *
+   * A failure here is deliberately *not* swallowed: if the object is missing or its
+   * checksum does not match, the submission must not proceed to record an attempt citing
+   * a photograph that is not there. The one case that is not a failure is a photograph
+   * already committed — a retry — which `commit` answers with the same body rather than
+   * an error.
+   */
+  private async commitAfterPhoto(scope: ScopeContext, evidenceId: string): Promise<void> {
+    const evidenceScope = scopeFor(scope, 'evidence:create');
+    const photo = await this.evidence.get(evidenceScope, evidenceId);
+    if (photo.syncState === 'SYNCED' && photo.uploadedAt) return;
+
+    await this.evidence.commit(evidenceScope, evidenceId, {
+      checksumSha256: photo.checksumSha256,
+    });
   }
 
   private async presignBeforePhoto(

@@ -26,6 +26,7 @@ const NAV: NavItem[] = [
   { to: '/checklists', label: 'Checklists', resource: 'checklist_template', action: 'read' },
   { to: '/audits', label: 'Audits', resource: 'audit', action: 'read' },
   { to: '/corrective-actions', label: 'Corrective actions', resource: 'corrective_action', action: 'read' },
+  { to: '/reports', label: 'Reports', resource: 'report', action: 'read_snapshot' },
   { to: '/sync', label: 'Sync health', resource: 'sync_conflict', action: 'read' },
   { to: '/users', label: 'Users', resource: 'user', action: 'read' },
   { to: '/audit-log', label: 'Audit log', resource: 'audit_log', action: 'read' },

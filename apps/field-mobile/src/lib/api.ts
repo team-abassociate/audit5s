@@ -128,6 +128,8 @@ async function refresh(refreshToken: string): Promise<boolean> {
 }
 
 export const api = {
+  /** Where this build points. The deep-link route derives the web app's origin from it. */
+  baseUrl: () => BASE_URL,
   get: <T>(path: string) => send<T>(path),
   post: <T>(path: string, body?: unknown) => send<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body: unknown) => send<T>(path, { method: 'PATCH', body }),

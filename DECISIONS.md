@@ -22,6 +22,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-11 | Camera: `expo-camera` | Settled |
 | R-12 | Phase 5: walk-by constraints and the media worker | Settled |
 | R-13 | Phase 6: corrective actions and notifications | Settled |
+| R-14 | Phase 7: what the reporting engine settled | Settled |
 
 ---
 
@@ -724,3 +725,121 @@ a Zone Leader must not be told twice; with the recipient it is unique.
 `corrective_action.due_at` has no rule anywhere: `CORRECTIVE_ACTION_DUE_DAYS` defaults to
 seven days from completion and `0` disables it. **That seven is a house default, not a
 business requirement** — the first person to state a real deadline policy should change it.
+
+---
+
+## R-14 — What building the reporting engine settled
+
+Phase 7 had to decide five things the sources state in an order the schema cannot follow,
+or leave open. They are recorded together because four of the five are consequences of one
+requirement: **the PDF prints a link**.
+
+### (a) Tokens are minted before the render, not after it
+
+§10.2's pipeline sketch ends
+
+```
+→ worker: HTML template + payload → headless Chromium → PDF
+→ upload to S3, compute checksum
+→ mint ReportAccessToken rows
+→ status = READY
+```
+
+That ordering cannot produce the document §10.3-A and HANDOFF.md §4.1 describe. Both
+require a **"View / Submit Corrective Action" button per nonconformity, linking to the
+signed `/ca/{token}` route** — and a link minted after the render cannot appear in it.
+
+So minting happens in the freeze, and the URLs are frozen into the payload. Two properties
+follow, and the second is why this is the better ordering rather than merely the possible
+one:
+
+* the payload stays **self-contained**, which is §10.1's first principle. A renderer that
+  had to go and fetch a link would make the document depend on something outside the
+  snapshot, and §10.5's "a two-year-old snapshot still renders with the layout it was
+  designed for" would stop being true of its *content*;
+* **the same payload renders to the same bytes**, which is what PART 15.7's byte-stability
+  test asserts and what makes "regeneration leaves v1 byte-identical" checkable rather
+  than hoped for.
+
+One ordering detail the schema forced, recorded because the obvious code is wrong:
+`report_access_token.snapshot_id` references the snapshot, so the token rows cannot be
+written before it exists — while the snapshot's payload must already contain the links. The
+minting is therefore two halves on one transaction: `prepareForSnapshot` generates the
+secrets and URLs and writes nothing, then the snapshot is inserted, then `persist` writes
+the rows. A link never outlives a report that rolled back.
+
+A token is **not** minted for an already-verified finding. The right half of its row
+already carries the outcome; a live door on a closed item is not something to hand out.
+
+### (b) Photographs are embedded, not fetched at render time
+
+HANDOFF.md §4.1 says report images are "fetched by the worker through short-TTL presigned
+GETs". The worker does fetch them from object storage — through the `ObjectStorage` port —
+but it does so **before Chromium starts**, and embeds them as `data:` URIs.
+
+Resolving a presigned GET *inside* the page would put the network in the middle of the
+render, and with it: request timing, a provider's latency, and a five-minute TTL that can
+expire between the first image and the fiftieth. Determinism is not a nicety here — it is
+the property the byte-stability test checks and the property RS-1 depends on. The
+requirement's substance is honoured more strongly by embedding: the photograph does not
+travel as a URL at all, and the document does not depend on a live link.
+
+The same reasoning rules out a web font. The stylesheet is system fonts only.
+
+### (c) The commit moves inside the public submission
+
+§9.4's second phase — `POST /evidence/{id}/commit` — is authenticated, and the live
+corrective-action page has no session. §10.4 is explicit that the link "authorizes exactly
+two operations and grants no other API access", and §8.8 gives the public surface three
+routes; a fourth to carry the commit would widen the one surface that is meant to be narrow.
+
+So `POST /public/corrective-actions/{token}/submissions` commits the after-photo on the way
+in. Nothing is skipped — the HEAD, the size, the checksum and §12.8's magic-byte sniff all
+run, because they are server work and the server is already there. It is idempotent (§9.6),
+so a submission retried after a dropped connection commits nothing twice and finds its own
+attempt rather than making a second.
+
+### (d) A signed link narrows; it never widens
+
+`signed_token` is a scope resolver like any other, and the route declares it in place of the
+matrix's own — the only place in the codebase where those differ. It is not an exception to
+PART 6 but a reading of it: the Zone Leader cells this surface reaches say
+`assigned_actions` / `own_unit` **"or via a valid signed token"**, and `signed_token` is
+strictly the narrower of the two. It resolves to one corrective action in one Unit, against
+a resolver that would otherwise admit every action of that Unit (R-3b). **A link cannot
+reach further than the person holding it already could.**
+
+`SignedTokenGuard` runs before `JwtAuthGuard`, which skips a route carrying its metadata.
+The two guards after it run unchanged. These routes are deliberately **not** `@Public()`:
+a public route has no actor and no scope, and these have both.
+
+The actor is the Zone Leader the token was issued to, and that is not a convenience.
+`corrective_action_submission.submitted_by_user_id` is `NOT NULL` and its RLS insert policy
+requires it to be the acting user, so a page with no identity could not write an attempt at
+all. A link bound to nobody — an action whose Zone has no leader — therefore authorizes
+reading the finding and not answering it, and says so: `403` naming the Coordinator as the
+person who can assign one. The alternative, making the column nullable, would have put an
+unattributed row in an append-only table to save a Coordinator one click.
+
+Validating a link is a pre-authentication read, and it reuses the mechanism `/auth/login`
+already has — `app_in_auth_phase()` — rather than inventing a second one. The lookup key is
+a 256-bit secret, exactly as the login lookup is a login ID plus a verifier.
+
+### (e) Two display names need a definer function, and one column did not need to change
+
+A report records who generated it, always a Super Admin (N5) — and the Coordinator and Zone
+Leader who read it cannot see a Super Admin's `user` row. Joining `"user"` for that one
+string hid the whole report from exactly the people it is for: an inner join under RLS
+returns nothing, and the report came back `404`. The public page's auditor name had the same
+fault. Both now go through narrow `SECURITY DEFINER` functions in the shape 0008 established
+for `app_zone_leader_name` — one column, for one row, and only where the caller could
+already reach the report or the audit.
+
+This is worth stating as a rule rather than two fixes: **a display name is not a reason to
+join a table the reader cannot see.** Every future read that prints somebody's name across
+a scope boundary has this shape.
+
+Finally, `expires_at` is fixed at minting by a trigger, along with the hash and the
+audience. §10.4 makes the expiry a property of the link; extending one would change what a
+document already in somebody's hands means. The remedy is to mint another, which costs
+nothing, and the error message says so.

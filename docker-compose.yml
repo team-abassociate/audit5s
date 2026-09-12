@@ -109,6 +109,9 @@ services:
       <<: *api-env
       WORKER_QUEUES: report.render
       REPORT_CONCURRENCY: 1
+      # Alpine's Chromium, baked into the image. See infra/docker/api.Dockerfile for why
+      # it is not Playwright's own download.
+      CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium-browser
     depends_on:
       postgres:
         condition: service_healthy

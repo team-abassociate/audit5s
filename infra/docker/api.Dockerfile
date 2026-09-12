@@ -34,11 +34,24 @@ RUN CI=true pnpm install --frozen-lockfile --prod
 FROM node:22-alpine AS runtime
 
 # argon2 is a native module; libstdc++ is what its prebuilt binary links against.
-RUN apk add --no-cache libstdc++ tini \
+#
+# Chromium is Alpine's own build, not Playwright's download. Playwright ships glibc
+# binaries and this image is musl, so `playwright install` would produce a browser that
+# cannot start — and the failure would appear in `worker-report` at the first render
+# rather than at build time. `playwright-core` drives whatever executable it is pointed at,
+# which is what `CHROMIUM_EXECUTABLE_PATH` below is for.
+#
+# It lands in the shared image because STACK.md §4 is one image and three entrypoints. Only
+# `worker-report` ever launches it, and a binary nothing executes costs disk, not the RAM
+# this box is actually short of.
+RUN apk add --no-cache libstdc++ tini chromium font-noto \
  && addgroup -S app && adduser -S app -G app
 
 WORKDIR /repo
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    # Nothing in this image should ever download a browser at run time.
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 COPY --from=build --chown=app:app /repo/node_modules ./node_modules
 COPY --from=build --chown=app:app /repo/packages ./packages

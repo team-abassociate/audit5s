@@ -49,7 +49,15 @@ function AuthGate() {
       group === 'audit' ||
       group === 'walk-by' ||
       group === 'actions' ||
-      group === 'notifications';
+      group === 'notifications' ||
+      // A signed-in Zone Leader following a link from a PDF lands here.
+      group === 'ca';
+
+    // A corrective-action link is a credential in its own right (§10.4): somebody
+    // following one from a PDF may have no account at all, and bouncing them to a login
+    // screen would strand a response the business is waiting for. The route itself decides
+    // where they go — the app if they are signed in, the web page if they are not.
+    if (group === 'ca') return;
 
     if (status === 'signed-out' && group !== 'login') {
       router.replace('/login');

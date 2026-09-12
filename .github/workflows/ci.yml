@@ -93,6 +93,13 @@ jobs:
             -c "CREATE DATABASE audit5s OWNER audit5s_owner;" \
             -c "CREATE DATABASE audit5s_test OWNER audit5s_owner;"
 
+      # Phase 7's renderer. `chromium-headless-shell` is the build STACK.md §2 pins — the
+      # renderer without the browser UI — and `--with-deps` installs the shared libraries
+      # the GitHub runner does not ship. Only the e2e suite uses it; the unit tests assert
+      # the report *layout* from HTML and need no browser at all.
+      - name: Install chrome-headless-shell
+        run: pnpm --filter @audit5s/api exec playwright install --with-deps chromium-headless-shell
+
       - run: pnpm lint
       - run: pnpm -r build
       - run: pnpm -r typecheck

@@ -29,6 +29,26 @@ const config: ExpoConfig = {
     permissions: ['android.permission.CAMERA', 'android.permission.ACCESS_FINE_LOCATION',
                   'android.permission.ACCESS_COARSE_LOCATION'],
     blockedPermissions: ['android.permission.RECORD_AUDIO'],
+    /*
+     * Corrective-action links open in the app when it is installed (PART 14, Phase 7).
+     *
+     * `autoVerify` makes this an Android App Link rather than a chooser prompt, which
+     * needs `/.well-known/assetlinks.json` served from the same origin — a deployment
+     * step, recorded in the runbook. Until that file is published the link still works:
+     * Android simply shows the chooser, and the web page is the other option, which is
+     * the correct fallback rather than a failure.
+     *
+     * The host comes from the environment for the same reason `apiBaseUrl` does: a
+     * staging build must not claim production's links.
+     */
+    intentFilters: [
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        data: [{ scheme: 'https', host: process.env.WEB_APP_HOST ?? 'app.audit5s.example', pathPrefix: '/ca' }],
+        category: ['BROWSABLE', 'DEFAULT'],
+      },
+    ],
   },
   plugins: [
     'expo-router',

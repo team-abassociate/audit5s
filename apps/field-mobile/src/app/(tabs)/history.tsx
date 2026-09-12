@@ -50,7 +50,7 @@ export default function HistoryScreen() {
             </Muted>
             <View style={styles.action}>
               <Button
-                title={item.status === 'COMPLETED' ? 'Review' : 'Open'}
+                title={isFinished(item.status) ? 'Review' : 'Open'}
                 variant="secondary"
                 onPress={() =>
                   router.push({
@@ -59,6 +59,22 @@ export default function HistoryScreen() {
                   })
                 }
               />
+              {/*
+                N6: a Consultant's read model, not a report. The official PDF is a Super
+                Admin deliverable, and nothing on this device issues one.
+              */}
+              {isFinished(item.status) && item.auditType !== 'WALK_BY' ? (
+                <Button
+                  title="Scores"
+                  variant="secondary"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/audit/summary/[auditId]',
+                      params: { auditId: item.id },
+                    })
+                  }
+                />
+              ) : null}
             </View>
           </Card>
         )}
@@ -74,6 +90,17 @@ export default function HistoryScreen() {
   );
 }
 
+/**
+ * Finished, in the sense §7.1 means it.
+ *
+ * An audit rarely *rests* on `COMPLETED` — materialising its corrective actions rolls it
+ * onward in the same transaction (R-13b) — so `status === 'COMPLETED'` is the wrong
+ * question everywhere, this row included.
+ */
+function isFinished(status: string): boolean {
+  return ['COMPLETED', 'CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED', 'CLOSED'].includes(status);
+}
+
 const LABELS: Record<string, string> = {
   EXTERNAL_5S: 'External 5S audit',
   CROSS_5S: 'Cross audit',
@@ -86,10 +113,13 @@ const STATUS_LABELS: Record<string, string> = {
   IN_PROGRESS: 'In progress',
   PAUSED: 'Paused — resume any time',
   COMPLETED: 'Completed',
+  CORRECTIVE_ACTION_OPEN: 'Completed — actions open',
+  PARTIALLY_CLOSED: 'Completed — partly closed',
+  CLOSED: 'Closed',
   CANCELLED: 'Cancelled',
 };
 
 const styles = StyleSheet.create({
   title: { fontSize: theme.font.lg, fontWeight: '600', color: theme.color.text },
-  action: { marginTop: theme.space.sm },
+  action: { marginTop: theme.space.sm, flexDirection: 'row', gap: theme.space.sm },
 });
