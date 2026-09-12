@@ -1,5 +1,11 @@
-import { useEffect, useId, useState } from 'react';
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  KeyboardEvent,
+  ReactNode,
+  SelectHTMLAttributes,
+} from 'react';
 import { cn } from '@/lib/cn';
 
 /**
@@ -41,10 +47,8 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
  * Type to narrow, or open it and pick — for any list long enough that scrolling it is
  * work: Units, people, templates.
  *
- * A native `<datalist>`, not a JS combobox: the browser does the filtering, the keyboard
- * and the screen-reader announcement, and there is no dependency and no popup to trap
- * focus in. The text is the option's `label`; what leaves here is its `id`, or `''` while
- * what has been typed matches nothing — so a caller checks the id, never the text.
+ * The text is the option's `label`; what leaves here is its `id`, or `''` while what has
+ * been typed matches nothing — so a caller checks the id, never the text.
  */
 export function Combobox({
   value,
@@ -60,32 +64,89 @@ export function Combobox({
   const listId = useId();
   const selectedLabel = options.find((option) => option.id === value)?.label ?? '';
   const [text, setText] = useState(selectedLabel);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const matches = useMemo(() => {
+    const query = text.trim().toLocaleLowerCase();
+    return options
+      .filter((option) => option.label.toLocaleLowerCase().includes(query))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [options, text]);
 
   // The selection can arrive from outside — a default that lands with its query.
   useEffect(() => setText(selectedLabel), [selectedLabel]);
 
+  const choose = (option: (typeof options)[number]) => {
+    setText(option.label);
+    onChange(option.id);
+    setOpen(false);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setOpen(false);
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+      setActive((current) => {
+        const direction = event.key === 'ArrowDown' ? 1 : -1;
+        return Math.max(0, Math.min(matches.length - 1, current + direction));
+      });
+      return;
+    }
+    if (event.key === 'Enter' && open && matches[active]) {
+      event.preventDefault();
+      choose(matches[active]);
+    }
+  };
+
   return (
-    <>
+    <div className="gb-combobox">
       <input
         className={cn('gb-input', className)}
-        list={listId}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-controls={listId}
+        aria-expanded={open}
+        aria-activedescendant={open && matches[active] ? `${listId}-${active}` : undefined}
+        autoComplete="off"
         value={text}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={onKeyDown}
         onChange={(event) => {
           const typed = event.target.value;
           setText(typed);
+          setOpen(true);
+          setActive(0);
           const match = options.find(
-            (option) => option.label.toLowerCase() === typed.trim().toLowerCase(),
+            (option) => option.label.toLocaleLowerCase() === typed.trim().toLocaleLowerCase(),
           );
           onChange(match?.id ?? '');
         }}
         {...props}
       />
-      <datalist id={listId}>
-        {options.map((option) => (
-          <option key={option.id} value={option.label} />
-        ))}
-      </datalist>
-    </>
+      {open && (
+        <ul id={listId} className="gb-combobox-list" role="listbox">
+          {matches.map((option, index) => (
+            <li
+              id={`${listId}-${index}`}
+              key={option.id}
+              className="gb-combobox-option"
+              role="option"
+              aria-selected={index === active}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => choose(option)}
+            >
+              {option.label}
+            </li>
+          ))}
+          {matches.length === 0 && <li className="gb-combobox-empty">No matches</li>}
+        </ul>
+      )}
+    </div>
   );
 }
 

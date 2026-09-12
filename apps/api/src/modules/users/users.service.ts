@@ -14,6 +14,7 @@ import { CONFIG, type AppConfig } from '../../config/env';
 import { AppError } from '../../common/errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { PasswordService } from '../auth/password.service';
+import { AuthRepository } from '../auth/auth.repository';
 import { UsersRepository } from './users.repository';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class UsersService {
     @Inject(CONFIG) private readonly config: AppConfig,
     private readonly repository: UsersRepository,
     private readonly passwords: PasswordService,
+    private readonly auth: AuthRepository,
     private readonly auditLog: AuditLogService,
   ) {}
 
@@ -199,6 +201,8 @@ export class UsersService {
     if (!disabled) {
       throw AppError.notFound('No such user');
     }
+
+    await this.auth.revokeUserAccess(userId);
 
     await this.auditLog.record({
       action: 'user.disabled',

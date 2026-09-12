@@ -13,11 +13,16 @@ export function UnitsPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
 
   const units = useQuery({
     queryKey: ['units'],
-    queryFn: () => api.get<Page<Unit>>('/units'),
+    queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
   });
+  const query = search.trim().toLocaleLowerCase();
+  const list = (units.data?.data ?? []).filter((unit) =>
+    [unit.name, unit.city, unit.state].some((value) => value?.toLocaleLowerCase().includes(query)),
+  );
 
   if (selected) {
     return <UnitDetail unitId={selected} onBack={() => setSelected(null)} />;
@@ -40,6 +45,17 @@ export function UnitsPage() {
 
         {creating && <CreateUnitForm onDone={() => setCreating(false)} />}
 
+        <div className="border-b border-edge-soft bg-board p-4">
+          <Field label="Search units">
+            <Input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Name, city or state…"
+            />
+          </Field>
+        </div>
+
         {units.isLoading && <Spinner />}
         {units.error && <div className="p-4"><ErrorNotice error={units.error} /></div>}
 
@@ -51,48 +67,22 @@ export function UnitsPage() {
                 <Th>City</Th>
                 <Th>Timezone</Th>
                 <Th>Geofence</Th>
-                <Th>Master data</Th>
+                <Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
-              {units.data.data.map((unit) => (
-                <Fragment key={unit.id}>
-                  <tr>
-                    <Td>
-                      {/* The Unit name is the disclosure: its Zones cascade open below it. */}
-                      <button
-                        type="button"
-                        className="flex items-center gap-2 font-medium"
-                        aria-expanded={expanded === unit.id}
-                        onClick={() => setExpanded(expanded === unit.id ? null : unit.id)}
-                      >
-                        <span className="text-ink-3" aria-hidden="true">
-                          {expanded === unit.id ? '▾' : '▸'}
-                        </span>
-                        {unit.name}
-                      </button>
-                    </Td>
-                    <Td>{unit.city ?? '—'}</Td>
-                    <Td>{unit.timezone}</Td>
-                    <Td>{unit.geofenceRadiusM === null ? 'disabled' : `${unit.geofenceRadiusM} m`}</Td>
-                    <Td>
-                      <Button variant="secondary" onClick={() => setSelected(unit.id)}>
-                        Open
-                      </Button>
-                    </Td>
-                  </tr>
-                  {expanded === unit.id && (
-                    <tr>
-                      <td colSpan={5} className="p-0">
-                        <UnitZones unitId={unit.id} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+              {list.map((unit) => (
+                <UnitRow
+                  key={unit.id}
+                  unit={unit}
+                  expanded={expanded === unit.id}
+                  onToggle={() => setExpanded(expanded === unit.id ? null : unit.id)}
+                  onEdit={() => setSelected(unit.id)}
+                />
               ))}
-              {units.data.data.length === 0 && (
+              {list.length === 0 && (
                 <tr>
-                  <Td className="text-ink-3">No Units.</Td>
+                  <Td className="text-ink-3">{query ? 'No matching Units.' : 'No Units.'}</Td>
                 </tr>
               )}
             </tbody>
@@ -100,6 +90,74 @@ export function UnitsPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+function UnitRow({
+  unit,
+  expanded,
+  onToggle,
+  onEdit,
+}: {
+  unit: Unit;
+  expanded: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+}) {
+  const { can } = useSession();
+  const queryClient = useQueryClient();
+  const archive = useMutation({
+    mutationFn: () => api.post<void>(`/units/${unit.id}/archive`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['units'] }),
+  });
+
+  return (
+    <Fragment>
+      <tr>
+        <Td>
+          <button
+            type="button"
+            className="flex items-center gap-2 font-medium"
+            aria-expanded={expanded}
+            onClick={onToggle}
+          >
+            <span className="text-ink-3" aria-hidden="true">
+              {expanded ? '▾' : '▸'}
+            </span>
+            {unit.name}
+          </button>
+        </Td>
+        <Td>{unit.city ?? '—'}</Td>
+        <Td>{unit.timezone}</Td>
+        <Td>{unit.geofenceRadiusM === null ? 'disabled' : `${unit.geofenceRadiusM} m`}</Td>
+        <Td>
+          <div className="flex gap-2">
+            {can('unit', 'update_profile') && (
+              <Button variant="secondary" onClick={onEdit}>
+                Edit
+              </Button>
+            )}
+            {can('unit', 'archive') && (
+              <Button variant="danger" disabled={archive.isPending} onClick={() => archive.mutate()}>
+                Archive
+              </Button>
+            )}
+          </div>
+          {archive.error && (
+            <div className="mt-2">
+              <ErrorNotice error={archive.error} />
+            </div>
+          )}
+        </Td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={5} className="p-0">
+            <UnitZones unitId={unit.id} />
+          </td>
+        </tr>
+      )}
+    </Fragment>
   );
 }
 

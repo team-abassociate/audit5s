@@ -231,6 +231,20 @@ export class AuthRepository {
     });
   }
 
+  /** Disables every credential surface for an administrator-revoked account. */
+  async revokeUserAccess(userId: string): Promise<void> {
+    await withAuthPhase(this.db, async (tx) => {
+      await tx
+        .update(refreshTokens)
+        .set({ revokedAt: sql`now()` })
+        .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+      await tx
+        .update(devices)
+        .set({ revokedAt: sql`now()` })
+        .where(and(eq(devices.userId, userId), isNull(devices.revokedAt)));
+    });
+  }
+
   async denyAccessToken(input: {
     jti: string;
     userId: string;

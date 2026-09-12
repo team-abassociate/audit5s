@@ -11,11 +11,17 @@ import {
 } from './common';
 import { roleSchema, userStatusSchema } from './enums';
 
+/** User accounts store the Indian national number entered by an administrator. */
+const userPhoneSchema = z.union([
+  z.string().trim().regex(/^\d{10}$/, 'Mobile number must contain exactly 10 digits'),
+  phoneE164Schema,
+]);
+
 export const userSchema = z.object({
   id: uuidSchema,
   loginId: loginIdSchema,
   fullName: z.string(),
-  phoneE164: phoneE164Schema,
+  phoneE164: userPhoneSchema,
   email: z.email().nullable(),
   role: roleSchema,
   status: userStatusSchema,
@@ -33,7 +39,7 @@ export const fullNameSchema = z.string().trim().min(1).max(160);
 
 export const createUserRequestSchema = z.object({
   fullName: fullNameSchema,
-  phone: phoneE164Schema,
+  phone: userPhoneSchema,
   email: optional(emailSchema),
   role: roleSchema,
   /**
@@ -66,7 +72,7 @@ export const updateUserRequestSchema = z
   .object({
     fullName: fullNameSchema.optional(),
     email: clearable(emailSchema),
-    phone: optional(phoneE164Schema),
+    phone: optional(userPhoneSchema),
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'No fields to update' });
 export type UpdateUserRequest = z.infer<typeof updateUserRequestSchema>;

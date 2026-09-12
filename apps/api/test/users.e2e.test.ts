@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '@audit5s/contracts';
 import { startWorld, stopWorld, type TestWorld } from './harness';
@@ -166,12 +167,24 @@ describe('disable and password reset', () => {
       token: world.actors.SUPER_ADMIN.accessToken,
       body: {
         fullName: 'Doomed Leader',
-        phone: '+919000000405',
+        phone: '9000000405',
         role: 'ZONE_LEADER',
         unitId: world.unitA,
       },
     });
+    expect(created.status).toBe(201);
+    expect((created.body as { user: { phoneE164: string } }).user.phoneE164).toBe('9000000405');
     const userId = (created.body as { user: { id: string } }).user.id;
+    const deviceId = randomUUID();
+    const session = await world.request('POST', `${base}/auth/login`, {
+      body: {
+        loginId: (created.body as { loginId: string }).loginId,
+        password: '9000000405',
+        deviceId,
+        platform: 'android',
+      },
+    });
+    expect(session.status).toBe(200);
 
     const disabled = await world.request('POST', `${base}/users/${userId}/disable`, {
       token: world.actors.SUPER_ADMIN.accessToken,
@@ -179,10 +192,31 @@ describe('disable and password reset', () => {
     expect(disabled.status).toBe(204);
 
     const login = await world.request('POST', `${base}/auth/login`, {
-      body: { loginId: (created.body as { loginId: string }).loginId, password: '+919000000405' },
+      body: { loginId: (created.body as { loginId: string }).loginId, password: '9000000405' },
     });
     expect(login.status).toBe(401);
     expect((login.body as { code: string }).code).toBe('ACCOUNT_DISABLED');
+
+    const activeSession = await world.request('GET', `${base}/auth/me`, {
+      token: (session.body as { accessToken: string }).accessToken,
+    });
+    expect(activeSession.status).toBe(401);
+
+    const refresh = await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: (session.body as { refreshToken: string }).refreshToken },
+    });
+    expect(refresh.status).toBe(401);
+
+    const devices = await world.request(
+      'GET',
+      `${base}/devices?userId=${userId}&includeRevoked=true`,
+      { token: world.actors.SUPER_ADMIN.accessToken },
+    );
+    expect(
+      (devices.body as { data: Array<{ id: string; revokedAt: string | null }> }).data.find(
+        (device) => device.id === deviceId,
+      )?.revokedAt,
+    ).not.toBeNull();
   });
 
   it('refuses to let an actor disable themselves', async () => {
