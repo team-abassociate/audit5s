@@ -9,6 +9,11 @@ import { notificationChannelSchema } from './enums';
  * source that exists. `REPORT_GENERATED` joined in Phase 7, when the reports module gave
  * it a source; `EVIDENCE_ATTACHED` and `PERMISSION_CHANGED` have no notification consumer
  * at all.
+ *
+ * `DATA_INTEGRITY_ALERT` is not one of §4.2's — it is raised by the nightly sweep rather
+ * than by a domain write, and it is how §16.4's findings reach a Super Admin at all
+ * (`DECISIONS.md` R-17). It is in this list because the fan-out is the transport: the
+ * notification row is both the delivery and the durable record of the finding.
  */
 export const NOTIFICATION_EVENT_TYPES = [
   'UNIT_ASSIGNED',
@@ -23,6 +28,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   'SYNC_FAILURE',
   'CHECKLIST_PUBLISHED',
   'REPORT_GENERATED',
+  'DATA_INTEGRITY_ALERT',
 ] as const;
 export const notificationEventTypeSchema = z.enum(NOTIFICATION_EVENT_TYPES);
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>;

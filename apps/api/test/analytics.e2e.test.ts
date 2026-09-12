@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { UnitSections, UnitTrend, ZoneRankingItem } from '@audit5s/contracts';
-import { AnalyticsRollupWorker } from '../src/modules/analytics/analytics-rollup.worker';
+import { AnalyticsRollupWorker, scheduleKey } from '../src/modules/analytics/analytics-rollup.worker';
+import { QueueService } from '../src/infrastructure/queue/queue.service';
 import { startWorld, stopWorld, type TestWorld } from './harness';
 
 let world: TestWorld;
@@ -83,6 +84,27 @@ describe('Phase 8 analytics', () => {
     });
     expect(activity.status).toBe(200);
     expect(activity.body).toMatchObject({ auditsCompleted: 3, zonesCovered: 1 });
+  });
+
+  /**
+   * `worker-general` calls this before it registers a single handler, so a `schedule` that
+   * throws takes the whole process down and the nightly tick — the rollup *and* §16.4's
+   * data-integrity sweep that rides it — never runs at all. The suites drive `handle`
+   * directly, which is why nothing here had ever exercised the scheduling half; a colon in
+   * the key asserted inside pg-boss the first time the worker was actually booted.
+   */
+  it('registers a nightly schedule per Unit that pg-boss accepts', async () => {
+    const queue = world.app.get(QueueService);
+
+    await expect(world.app.get(AnalyticsRollupWorker).schedule(queue)).resolves.toBeUndefined();
+
+    const { rows } = await world.owner.query(
+      `SELECT name, cron, timezone FROM pgboss.schedule WHERE key = $1`,
+      [scheduleKey(world.unitA)],
+    );
+    expect(rows).toEqual([
+      { name: 'maintenance.sweep', cron: '0 2 * * *', timezone: 'Asia/Kolkata' },
+    ]);
   });
 
   it('is row-identical when the same rollup runs twice', async () => {

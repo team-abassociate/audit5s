@@ -26,6 +26,7 @@ import { EvidenceModule } from './modules/evidence/evidence.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ChecklistsModule } from './modules/checklists/checklists.module';
 import { HealthModule } from './modules/health/health.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { PermissionsModule } from './modules/roles-permissions/permissions.module';
 import { MembershipsModule } from './modules/unit-memberships/memberships.module';
 import { SyncModule } from './modules/sync/sync.module';
@@ -69,6 +70,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     PermissionsModule,
     AuditLogsModule,
     AnalyticsModule,
+    MaintenanceModule,
     HealthModule,
   ],
   providers: [

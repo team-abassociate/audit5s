@@ -1,4 +1,4 @@
-# Decision record — resolutions R-1 … R-16
+# Decision record — resolutions R-1 … R-17
 
 Companion to [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`STACK.md`](./STACK.md), the
 Stack Decision Record (the engineering handoff).
@@ -25,6 +25,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-14 | Phase 7: what the reporting engine settled | Settled |
 | R-15 | Phase 8: weighted analytics, own activity and rollup identity | Settled |
 | R-16 | Phase 9: dead letters, retention, drain and the PDF clock | Settled |
+| R-17 | Phase 9: how a data-integrity finding reaches a Super Admin | Settled |
 
 ---
 
@@ -980,3 +981,108 @@ default `stop_grace_period` is ten seconds, so SIGTERM was followed by SIGKILL w
 a 120-second report render. The grace period is now 180s on all three application services,
 above the 150s drain the application asks for, so the timeout that expires first is the
 application's own.
+
+---
+
+## R-17 — How §16.4's data-integrity findings reach a Super Admin
+
+Phase 9's second slice. §16.4 asks for four nightly checks and says twice that what they
+find is "surfaced to Super Admin", without saying through what. Two candidate transports
+were left open deliberately, because they are not equivalent and the choice is not
+reversible cheaply.
+
+### (a) The notification fan-out, because the notification *is* the record
+
+The alternative was a read endpoint — `GET /ops/integrity`, or similar. It looks like the
+smaller idea and is not, for a reason that only shows up when you ask where the finding
+lives between the sweep and the read:
+
+- A read endpoint has to read something. The sweep runs at 02:00 and the Super Admin looks
+  at 09:00, so the findings must be **stored**, which is a new domain table and therefore
+  migration `0012` — for rows that are pure derived observation and that nothing else joins.
+- PART 6 has no `ops` and no `system` resource. A route needs one, plus a permission, plus
+  a scope rule, plus `role_permission` seed rows, plus authorization-matrix entries and
+  their tests. That is a PART 6 change, and PART 6 is the document the authorization suite
+  is written against.
+- It is a **pull** surface. Nobody opens a page that is empty 364 nights a year. §16.4 says
+  "surfaced", not "queryable", and §16.12 puts every one of these findings in the warning
+  band — a band that only exists because something is pushed into it.
+
+The notification path needs none of that. `notification.event_type` is `text`, and
+migration 0009 says why in a comment on the column: *"a new event type must not need a
+migration."* The fan-out already resolves every Super Admin organisation-wide through
+`app_notification_targets`, already writes each row as its recipient, already dedupes on
+`(event_id, recipient_user_id)`, already has a centre to read it in and a preference grid
+to tune it. The notification row is both the delivery and the durable record, so the
+storage question disappears rather than being answered.
+
+**Cost of the choice, stated plainly:** one new value in `NOTIFICATION_EVENT_TYPES` — a
+`packages/contracts` change — and one row each in `RECIPIENT_ROLES` and
+`renderNotification`. No migration, no route, no permission, no matrix entry.
+
+### (b) One event type, not four
+
+`DATA_INTEGRITY_ALERT` carries all four checks' counts in `data` and names the non-zero
+ones in its body. Four types would put four rows in the centre on a bad night, four rows ×
+three channels into every preference grid, and four near-identical cases in the renderer —
+to distinguish findings that arrive together, from one job, about one Unit, and that a
+Super Admin acts on in one sitting.
+
+It is **in-app only**: not in `WHATSAPP_EVENTS`, because a 02:00 WhatsApp about an orphan
+photograph is how a person learns to mute the channel that also carries §2.5's assignments.
+
+The event is emitted **only when at least one count is non-zero**. A nightly "nothing
+wrong" notification is a nightly notification, and the health of the sweep itself is
+already visible: §16.1's per-job log line covers every run, and a sweep that stops running
+dead-letters (R-16a).
+
+### (c) What the four checks can honestly mean
+
+The server sees its own side of the sync boundary and no more, so two of §16.4's phrasings
+need a definition rather than a query:
+
+- **"Evidence rows with no object after 24 h"** is `sync_state <> 'SYNCED'` — the row is
+  inserted at intent and only `commit` sets `SYNCED` and `uploaded_at`, so the state
+  already means "no object". It is not a `head()` per row against R2; that would be a
+  bucket request per orphan candidate to re-derive what the column records.
+- **"Devices with unsynced data (>48 h)"** cannot be data the server has not received. Its
+  one honest proxy is a device that still **owns** an audit in `IN_PROGRESS` or `PAUSED`
+  and whose `last_sync_at` is older than the threshold: the lock says work is on that
+  phone, and the silence says it is not coming back on its own.
+- **Score reconciliation** compares the stored `raw_score`/`max_score` against a
+  recomputation through `ScoringService.summarise` — the same `packages/domain` path the
+  write used. Integers are compared, never the rounded percentage, so a drift is a drift
+  and not a rounding artefact. It is a sample (the 20 most recently completed per Unit per
+  night), as §16.4 asks.
+- **Stale in-progress audits** is the one that needs nothing: `status IN
+  ('IN_PROGRESS','PAUSED')` and `started_at` older than 7 days.
+
+The thresholds are constants in the worker rather than environment variables. §16.4 fixes
+all four numbers, nothing deployment-specific moves them, and four knobs nobody turns are
+four more rows in `.env.example` to keep true.
+
+### (d) The orphan-**object** sweep is deliberately not built
+
+§16.4 lists it and answers it in the same line: *"objects with no evidence row (should be
+empty by design)"*. The design it refers to is this one, and it holds in both directions:
+the evidence row is inserted **before** the key is presigned, and nothing is ever
+hard-deleted (`STACK.md` §5, R-5 — erasure overwrites the object and keeps the row). So
+there is no path from a committed object to a missing row.
+
+The one leftover the code can actually produce is a thumbnail written by the media worker
+whose row update then failed. Its key is derived deterministically from the original's, so
+the next attempt overwrites it rather than adding a second one; it is bounded, not
+accumulating.
+
+Building the check anyway would mean a `list(prefix)` method on the `ObjectStorage` port,
+an implementation in both drivers, and a nightly `ListObjectsV2` per Unit against R2 — to
+re-verify a guarantee that `BEFORE DELETE` triggers hold and that has its own tests.
+**Build it when either half of the design above stops being true:** a hard-delete path
+appears, or anything other than the API writes into the bucket.
+
+### (e) §16.4's outbox lag alert has no subject
+
+"Outbox dispatcher lag alert" is the last box in §16.4 and there is no outbox to lag:
+R-2 removed `domain_event` and made pg-boss the only enqueue mechanism. The checkbox is
+**not applicable**, not outstanding. The nearest live concern — a queue that has stopped
+being consumed — is §16.12's paging condition, still open and still recorded in R-16(c).
