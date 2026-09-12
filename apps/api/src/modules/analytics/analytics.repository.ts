@@ -9,6 +9,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  lte,
   or,
   sql,
 } from 'drizzle-orm';
@@ -44,6 +45,15 @@ export interface AnalyticsRange {
   from: Date;
   to: Date;
   fromDay: string;
+  /**
+   * The calendar day that contains `to`, and the bound is **inclusive**.
+   *
+   * `metric_daily_*.day` is a Unit-local calendar day, while `to` is an instant — so an
+   * exclusive bound dropped the whole of the newest day even though the instant filters
+   * on the same screen (`/audits`, corrective actions) still counted it. The dashboard
+   * then showed a completed audit in one panel and nothing in the tiles beside it.
+   * Inclusive also matches `fromDay`, which has always been inclusive via `gte`.
+   */
   toDay: string;
 }
 
@@ -79,7 +89,7 @@ export class AnalyticsRepository extends BaseRepository {
             scope,
             { unitId: metricDailyUnits.unitId },
             gte(metricDailyUnits.day, range.fromDay),
-            lt(metricDailyUnits.day, range.toDay),
+            lte(metricDailyUnits.day, range.toDay),
             unitId ? eq(metricDailyUnits.unitId, unitId) : undefined,
           ),
         )
@@ -103,7 +113,7 @@ export class AnalyticsRepository extends BaseRepository {
             { unitId: metricDailyZones.unitId },
             eq(metricDailyZones.unitId, unitId),
             gte(metricDailyZones.day, range.fromDay),
-            lt(metricDailyZones.day, range.toDay),
+            lte(metricDailyZones.day, range.toDay),
           ),
         )
         .orderBy(asc(metricDailyZones.day)),
@@ -121,7 +131,7 @@ export class AnalyticsRepository extends BaseRepository {
             { unitId: metricSectionDaily.unitId },
             eq(metricSectionDaily.unitId, unitId),
             gte(metricSectionDaily.day, range.fromDay),
-            lt(metricSectionDaily.day, range.toDay),
+            lte(metricSectionDaily.day, range.toDay),
           ),
         )
         .orderBy(asc(metricSectionDaily.day), asc(metricSectionDaily.section)),
@@ -131,10 +141,10 @@ export class AnalyticsRepository extends BaseRepository {
   async unitRows(scope: ScopeContext) {
     return this.inScope(scope, (tx) =>
       tx
-        .select({ id: units.id, code: units.code, name: units.name, timezone: units.timezone })
+        .select({ id: units.id, name: units.name, timezone: units.timezone })
         .from(units)
         .where(this.scoped(scope, { unitId: units.id }, isNull(units.archivedAt)))
-        .orderBy(asc(units.code)),
+        .orderBy(asc(units.name)),
     );
   }
 
@@ -264,7 +274,7 @@ export class AnalyticsRepository extends BaseRepository {
           { unitId: metricSectionDaily.unitId },
           eq(metricSectionDaily.unitId, unitId),
           gte(metricSectionDaily.day, range.fromDay),
-          lt(metricSectionDaily.day, range.toDay),
+          lte(metricSectionDaily.day, range.toDay),
         )}
           AND metric_section_daily.max_score > 0
         GROUP BY metric_section_daily.zone_id, metric_section_daily.section
@@ -435,7 +445,10 @@ export class AnalyticsRepository extends BaseRepository {
       const [row] = await tx
         .select({
           devices: sql<number>`count(DISTINCT ${deviceSyncRecords.deviceId})::int`,
-          oldest: sql<Date | null>`min(${deviceSyncRecords.startedAt})`,
+          // A raw `sql` fragment carries no column mapper, and drizzle's pg driver hands
+          // timestamptz through as the wire string. Typed as it actually arrives; the
+          // service normalises it with the same `iso()` every other analytics read uses.
+          oldest: sql<string | null>`min(${deviceSyncRecords.startedAt})`,
         })
         .from(deviceSyncRecords)
         .where(

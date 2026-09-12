@@ -29,8 +29,9 @@ import type {
   UnitTrend,
   ZoneRankingItem,
 } from '@audit5s/contracts';
-import { BRAND_TOKENS, RATING_BANDS, bandFor } from '@audit5s/domain';
-import { Button, Card, CardHeader, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import { bandOf } from '@/lib/bands';
+import { useToken } from '@/lib/tokens';
+import { Button, Card, CardHeader, Combobox, ErrorNotice, Field, Spinner, Table, Td, Th } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 
@@ -41,9 +42,8 @@ const SECTION_LABELS: Record<string, string> = {
   S4_STANDARDIZE: 'Standardize',
   S5_SUSTAIN: 'Sustain',
 };
-const OUTSTANDING = RATING_BANDS[0]!;
-const ON_TRACK = RATING_BANDS[1]!;
-const IMPROVING = RATING_BANDS[2]!;
+/** Score-band tokens, resolved from the document so both themes work (§8). */
+const BAND_TOKEN = { ok: '--ok-band', warn: '--warn-band', crit: '--crit-band', none: '--edge-soft' } as const;
 
 export function AnalyticsPage() {
   const { can } = useSession();
@@ -70,11 +70,12 @@ export function AnalyticsPage() {
           action={
             <div className="w-64">
               <Field label="Unit">
-                <Select value={selectedUnit} onChange={(event) => setUnitId(event.target.value)}>
-                  {(units.data?.data ?? []).map((unit) => (
-                    <option key={unit.id} value={unit.id}>{unit.name} ({unit.code})</option>
-                  ))}
-                </Select>
+                <Combobox
+                  value={selectedUnit}
+                  onChange={setUnitId}
+                  options={(units.data?.data ?? []).map((unit) => ({ id: unit.id, label: unit.name }))}
+                  placeholder="Search Units…"
+                />
               </Field>
             </div>
           }
@@ -90,15 +91,16 @@ export function AnalyticsPage() {
 }
 
 function OrganizationDashboard({ data }: { data: OrganizationOverview }) {
+  const token = useToken();
   const ranking = data.unitRanking.map((unit) => ({
-    unit: `${unit.unitCode} · ${unit.unitName}`,
+    unit: unit.unitName,
     rank: unit.rank ?? 'Suppressed',
     score: unit.score.scorePercentage,
     samples: unit.score.sampleCount,
   }));
   return (
     <section className="space-y-4" aria-labelledby="organization-heading">
-      <h1 id="organization-heading" className="text-lg font-semibold">Organization overview</h1>
+      <div className="gb-head"><h2 id="organization-heading" className="gb-h1">Organization overview</h2></div>
       <Kpis values={[
         ['Completed audits', data.completedCount],
         ['Weighted score', pct(data.score.scorePercentage)],
@@ -110,12 +112,12 @@ function OrganizationDashboard({ data }: { data: OrganizationOverview }) {
       <DatasetCard title="Unit ranking" rows={ranking} filename="unit-ranking.csv">
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={ranking} layout="vertical" margin={{ left: 30 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis type="number" domain={[0, 100]} />
-            <YAxis dataKey="unit" type="category" width={130} />
-            <Tooltip />
+            <CartesianGrid strokeDasharray="3 3" stroke={token('--edge-soft')} />
+            <XAxis type="number" domain={[0, 100]} stroke={token('--ink-3')} />
+            <YAxis dataKey="unit" type="category" width={130} stroke={token('--ink-3')} />
+            <Tooltip contentStyle={TOOLTIP} />
             <Bar dataKey="score" name="Weighted score">
-              {ranking.map((row) => <Cell key={row.unit} fill={bandFor(row.score)?.color ?? BRAND_TOKENS.tableBorder} />)}
+              {ranking.map((row) => <Cell key={row.unit} fill={token(BAND_TOKEN[bandOf(row.score)])} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -125,6 +127,7 @@ function OrganizationDashboard({ data }: { data: OrganizationOverview }) {
 }
 
 function UnitDashboard({ unitId }: { unitId: string }) {
+  const token = useToken();
   const overview = useQuery({ queryKey: ['analytics', unitId, 'overview'], queryFn: () => api.get<UnitOverview>(`/analytics/units/${unitId}/overview`) });
   const trend = useQuery({ queryKey: ['analytics', unitId, 'trend'], queryFn: () => api.get<UnitTrend>(`/analytics/units/${unitId}/trend`) });
   const sections = useQuery({ queryKey: ['analytics', unitId, 'sections'], queryFn: () => api.get<UnitSections>(`/analytics/units/${unitId}/sections`) });
@@ -158,7 +161,7 @@ function UnitDashboard({ unitId }: { unitId: string }) {
 
   return (
     <section className="space-y-4" aria-labelledby="unit-heading">
-      <h1 id="unit-heading" className="text-lg font-semibold">Unit dashboard</h1>
+      <div className="gb-head"><h2 id="unit-heading" className="gb-h1">Unit dashboard</h2></div>
       <Kpis values={[
         ['Completed audits', overview.data.completedCount],
         ['Weighted score', pct(overview.data.score.scorePercentage)],
@@ -172,10 +175,12 @@ function UnitDashboard({ unitId }: { unitId: string }) {
         <DatasetCard title="Unit score trend" rows={trendRows} filename="unit-score-trend.csv">
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={trendRows}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" /><YAxis domain={[0, 100]} /><Tooltip />
-              <ReferenceLine y={90} stroke={OUTSTANDING.color} strokeDasharray="4 4" label={OUTSTANDING.label} />
-              <Line type="monotone" dataKey="score" stroke={ON_TRACK.color} strokeWidth={3} dot={{ r: 4 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={token('--edge-soft')} />
+              <XAxis dataKey="period" stroke={token('--ink-3')} />
+              <YAxis domain={[0, 100]} stroke={token('--ink-3')} />
+              <Tooltip contentStyle={TOOLTIP} />
+              <ReferenceLine y={90} stroke={token('--crit-band')} strokeDasharray="4 4" label="Outstanding 90" />
+              <Line type="monotone" dataKey="score" stroke={token('--ok-band')} strokeWidth={3} dot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         </DatasetCard>
@@ -183,10 +188,13 @@ function UnitDashboard({ unitId }: { unitId: string }) {
         <DatasetCard title="Current vs previous S" rows={radarRows} filename="section-radar.csv">
           <ResponsiveContainer width="100%" height={280}>
             <RadarChart data={radarRows}>
-              <PolarGrid /><PolarAngleAxis dataKey="section" />
-              <Radar name="Current" dataKey="current" stroke={BRAND_TOKENS.maroon} fill={BRAND_TOKENS.maroon} fillOpacity={0.25} />
-              <Radar name="Previous" dataKey="previous" stroke={ON_TRACK.color} fill={ON_TRACK.color} fillOpacity={0.12} />
-              <Legend /><Tooltip />
+              <PolarGrid stroke={token('--edge-soft')} />
+              <PolarAngleAxis dataKey="section" stroke={token('--ink-3')} />
+              {/* Current is the score colour; the previous cycle is neutral ink, not a
+                  second hue — the accent is never a chart fill (non-negotiable 6). */}
+              <Radar name="Current" dataKey="current" stroke={token('--ok-band')} fill={token('--ok-band')} fillOpacity={0.25} />
+              <Radar name="Previous" dataKey="previous" stroke={token('--ink-3')} fill={token('--ink-3')} fillOpacity={0.12} />
+              <Legend /><Tooltip contentStyle={TOOLTIP} />
             </RadarChart>
           </ResponsiveContainer>
         </DatasetCard>
@@ -194,10 +202,12 @@ function UnitDashboard({ unitId }: { unitId: string }) {
         <DatasetCard title="Zone ranking · worst first" rows={zoneRows} filename="zone-ranking.csv">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={zoneRows} layout="vertical" margin={{ left: 30 }}>
-              <CartesianGrid strokeDasharray="3 3" /><XAxis type="number" domain={[0, 100]} />
-              <YAxis dataKey="zone" type="category" width={125} /><Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke={token('--edge-soft')} />
+              <XAxis type="number" domain={[0, 100]} stroke={token('--ink-3')} />
+              <YAxis dataKey="zone" type="category" width={125} stroke={token('--ink-3')} />
+              <Tooltip contentStyle={TOOLTIP} />
               <Bar dataKey="score" name="Weighted score">
-                {zoneRows.map((row) => <Cell key={row.zone} fill={bandFor(row.score)?.color ?? BRAND_TOKENS.tableBorder} />)}
+                {zoneRows.map((row) => <Cell key={row.zone} fill={token(BAND_TOKEN[bandOf(row.score)])} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -206,9 +216,12 @@ function UnitDashboard({ unitId }: { unitId: string }) {
         <DatasetCard title="Corrective-action funnel" rows={funnel} filename="closure-funnel.csv">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={funnel}>
-              <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="stage" /><YAxis allowDecimals={false} /><Tooltip />
+              <CartesianGrid strokeDasharray="3 3" stroke={token('--edge-soft')} />
+              <XAxis dataKey="stage" stroke={token('--ink-3')} />
+              <YAxis allowDecimals={false} stroke={token('--ink-3')} />
+              <Tooltip contentStyle={TOOLTIP} />
               <Bar dataKey="count">
-                {funnel.map((row, index) => <Cell key={row.stage} fill={(RATING_BANDS[Math.min(index + 1, RATING_BANDS.length - 1)] ?? IMPROVING).color} />)}
+                {funnel.map((row) => <Cell key={row.stage} fill={token('--ink-3')} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -217,8 +230,11 @@ function UnitDashboard({ unitId }: { unitId: string }) {
         <DatasetCard title="S trend" rows={sectionTrend} filename="section-trend.csv">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={sectionTrend}>
-              <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="period" /><YAxis domain={[0, 100]} /><Tooltip />
-              <Bar dataKey="score" fill={IMPROVING.color} />
+              <CartesianGrid strokeDasharray="3 3" stroke={token('--edge-soft')} />
+              <XAxis dataKey="period" stroke={token('--ink-3')} />
+              <YAxis domain={[0, 100]} stroke={token('--ink-3')} />
+              <Tooltip contentStyle={TOOLTIP} />
+              <Bar dataKey="score" fill={token('--warn-band')} />
             </BarChart>
           </ResponsiveContainer>
         </DatasetCard>
@@ -229,9 +245,18 @@ function UnitDashboard({ unitId }: { unitId: string }) {
   );
 }
 
+/** A tooltip on the board is a small magnet: tile ground, hard ink edge, no radius. */
+const TOOLTIP = {
+  background: 'var(--tile)',
+  border: '1.5px solid var(--edge)',
+  borderRadius: 0,
+  color: 'var(--ink)',
+  fontSize: 12.5,
+} as const;
+
 function Kpis({ values }: { values: Array<[string, ReactNode]> }) {
-  return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">{values.map(([label, value]) => (
-    <Card key={label} className="p-4"><p className="text-xs text-neutral-500">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></Card>
+  return <div className="gb-kpis">{values.map(([label, value]) => (
+    <div key={label} className="gb-tile gb-kpi"><span className="gb-label">{label}</span><b className="gb-figure">{value}</b></div>
   ))}</div>;
 }
 
@@ -246,7 +271,7 @@ function DatasetCard({ title, rows, filename, children }: { title: string; rows:
         <Button variant="secondary" disabled={rows.length === 0} onClick={() => downloadCsv(filename, rows)}>Export CSV</Button>
       </div>} />
       {table ? <Table><thead><tr>{headers.map((header) => <Th key={header}>{label(header)}</Th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{headers.map((header) => <Td key={header}>{display(row[header])}</Td>)}</tr>)}</tbody></Table> : <div className="p-3">{children}</div>}
-      {rows.length === 0 ? <p className="p-4 text-sm text-neutral-500">No data in this period.</p> : null}
+      {rows.length === 0 ? <p className="p-4 text-sm text-ink-3">No data in this period.</p> : null}
     </Card>
   );
 }

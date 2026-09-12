@@ -103,7 +103,6 @@ export default function UnitsScreen() {
         renderItem={({ item }) => (
           <Link href={{ pathname: '/unit/[unitId]', params: { unitId: item.id } }} asChild>
             <Card>
-              <Text style={styles.code}>{item.code}</Text>
               <Text style={styles.name}>{item.name}</Text>
               <Muted>Tap to see this Unit’s Zones</Muted>
             </Card>
@@ -116,12 +115,6 @@ export default function UnitsScreen() {
 
 const styles = StyleSheet.create({
   centered: { alignItems: 'center', justifyContent: 'center' },
-  code: {
-    fontSize: theme.font.sm,
-    fontWeight: '700',
-    color: theme.color.accent,
-    letterSpacing: 0.5,
-  },
   name: {
     fontSize: theme.font.lg,
     fontWeight: '600',

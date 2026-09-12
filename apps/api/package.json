@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
-    "start:dev": "tsx watch src/main.ts",
+    "start:dev": "tsc -p tsconfig.build.json && { tsc -p tsconfig.build.json --watch --preserveWatchOutput & p=$!; trap 'kill $p' EXIT; node --watch dist/main.js; }",
     "worker:general": "node dist/worker.general.js",
     "worker:report": "node dist/worker.report.js",
     "seed": "pnpm build && node dist/seed.js",

@@ -35,7 +35,7 @@ describe('Phase 1 acceptance', () => {
     // --- 1. Super Admin creates a Unit ---------------------------------------
     const unit = await world.request('POST', url('/units'), {
       token: admin,
-      body: { code: 'PLANT-1', name: 'Nashik Plant 1', city: 'Nashik', state: 'Maharashtra' },
+      body: { name: 'Nashik Plant 1', city: 'Nashik', state: 'Maharashtra' },
     });
     expect(unit.status).toBe(201);
     const unitId = (unit.body as { id: string }).id;
@@ -128,9 +128,9 @@ describe('Phase 1 acceptance', () => {
 
     const visible = await world.request('GET', url('/units'), { token: consultantToken });
     expect(visible.status).toBe(200);
-    const codes = (visible.body as { data: Array<{ code: string }> }).data.map((u) => u.code);
+    const names = (visible.body as { data: Array<{ name: string }> }).data.map((u) => u.name);
     // Exactly their assigned Unit: not Unit A, not Unit B, not every Unit in the org.
-    expect(codes).toEqual(['PLANT-1']);
+    expect(names).toEqual(['Nashik Plant 1']);
 
     // --- 7. A Coordinator renaming their Unit → 403 FIELD_NOT_EDITABLE -------
     const coordinatorLogin = await world.request('POST', url('/auth/login'), {

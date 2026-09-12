@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Button, Card, ErrorNotice, Field, Input } from '@/components/ui';
+import { Button, ErrorNotice, Field, Input } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface LoginForm {
@@ -27,14 +27,15 @@ export function LoginPage() {
   });
 
   return (
-    <main className="flex min-h-full items-center justify-center p-6">
-      <Card className="w-full max-w-sm p-6">
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-brand">audit5s</h1>
-          <p className="mt-1 text-sm text-neutral-500">5S Audit Management</p>
+    <main className="gb-gate">
+      {/* One tile on the dry-erase ground: the same magnet the board is built from. */}
+      <div className="gb-gate-card">
+        <div className="gb-gate-brand" style={{ marginBottom: 22 }}>
+          <b>audit5s</b>
+          <span>5S Audit Management</span>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="gb-stack">
           <Field label="Login ID" hint="Issued when your account was created, e.g. RA3210">
             <Input
               autoFocus
@@ -55,11 +56,11 @@ export function LoginPage() {
 
           <ErrorNotice error={error} />
 
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
+          <Button type="submit" className="gb-btn--block" disabled={isSubmitting}>
             {isSubmitting ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>
-      </Card>
+      </div>
     </main>
   );
 }

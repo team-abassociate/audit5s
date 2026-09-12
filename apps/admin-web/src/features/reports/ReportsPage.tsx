@@ -18,6 +18,7 @@ import {
   Button,
   Card,
   CardHeader,
+  Combobox,
   ErrorNotice,
   Field,
   Select,
@@ -84,13 +85,12 @@ export function ReportsPage() {
           action={
             <div className="w-64">
               <Field label="Unit">
-                <Select value={selectedUnit} onChange={(event) => setUnitId(event.target.value)}>
-                  {(units.data?.data ?? []).map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.name} ({unit.code})
-                    </option>
-                  ))}
-                </Select>
+                <Combobox
+                  value={selectedUnit}
+                  onChange={setUnitId}
+                  options={(units.data?.data ?? []).map((unit) => ({ id: unit.id, label: unit.name }))}
+                  placeholder="Search Units…"
+                />
               </Field>
             </div>
           }
@@ -249,7 +249,7 @@ function GeneratePanel({ unitId }: { unitId: string }) {
         {isSummary ? (
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-neutral-800">
+              <span className="text-sm font-medium text-ink">
                 Zones ({selectedZoneIds.length} of {allZoneIds.length} selected)
               </span>
               <Button
@@ -259,11 +259,11 @@ function GeneratePanel({ unitId }: { unitId: string }) {
                 {allSelected ? 'Clear all' : 'Select all'}
               </Button>
             </div>
-            <div className="max-h-64 overflow-y-auto rounded border border-neutral-200">
+            <div className="max-h-64 overflow-y-auto border border-edge-soft">
               {(zones.data?.data ?? []).map((zone) => (
                 <label
                   key={zone.id}
-                  className="flex items-center gap-2 border-b border-neutral-100 px-3 py-1.5 text-sm last:border-b-0"
+                  className="flex items-center gap-2 border-b border-edge-soft px-3 py-1.5 text-sm last:border-b-0"
                 >
                   <input
                     type="checkbox"
@@ -280,7 +280,7 @@ function GeneratePanel({ unitId }: { unitId: string }) {
                 </label>
               ))}
             </div>
-            <p className="mt-2 text-xs text-neutral-600">
+            <p className="mt-2 text-xs text-ink-2">
               Every figure in the summary is computed over the selected Zones only — it is
               never a slice of a Unit-wide number. Each Zone contributes its most recently
               completed audit.
@@ -289,7 +289,7 @@ function GeneratePanel({ unitId }: { unitId: string }) {
         ) : null}
 
         {generate.error ? <ErrorNotice error={generate.error} /> : null}
-        {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
+        {notice ? <p className="gb-slip">{notice}</p> : null}
 
         <div className="flex gap-2">
           <Button onClick={() => generate.mutate()} disabled={!ready || generate.isPending}>
@@ -361,7 +361,7 @@ function VersionHistory({
   });
 
   if (snapshots.length === 0) {
-    return <p className="px-4 py-6 text-sm text-neutral-600">No reports generated yet.</p>;
+    return <p className="px-4 py-6 text-sm text-ink-2">No reports generated yet.</p>;
   }
 
   return (
@@ -386,7 +386,7 @@ function VersionHistory({
               <Td>
                 v{snapshot.version}
                 {snapshot.supersedesSnapshotId ? (
-                  <span className="ml-1 text-xs text-neutral-500">supersedes earlier</span>
+                  <span className="ml-1 text-xs text-ink-3">supersedes earlier</span>
                 ) : null}
               </Td>
               <Td>{formatDateTime(snapshot.generatedAt)}</Td>
@@ -428,7 +428,7 @@ function StatusBadge({ snapshot }: { snapshot: ReportSnapshot }) {
     return (
       <span className="flex flex-col gap-0.5">
         <Badge tone="bad">Failed</Badge>
-        <span className="text-xs text-neutral-600">{snapshot.failedReason}</span>
+        <span className="text-xs text-ink-2">{snapshot.failedReason}</span>
       </span>
     );
   }
@@ -542,7 +542,7 @@ function TokensPanel({ snapshot, onClose }: { snapshot: ReportSnapshot; onClose:
                   {token.revokedAt ? (
                     <span className="flex flex-col gap-0.5">
                       <Badge tone="bad">Revoked</Badge>
-                      <span className="text-xs text-neutral-600">{token.revokeReason}</span>
+                      <span className="text-xs text-ink-2">{token.revokeReason}</span>
                     </span>
                   ) : token.active ? (
                     <Badge tone="good">Active</Badge>
@@ -554,7 +554,7 @@ function TokensPanel({ snapshot, onClose }: { snapshot: ReportSnapshot; onClose:
                   {token.revokedAt ? null : (
                     <div className="flex gap-1">
                       <input
-                        className="w-40 rounded border border-neutral-300 px-2 py-1 text-sm"
+                        className="w-40 border border-edge px-2 py-1 text-sm"
                         placeholder="Reason"
                         value={reason[token.id] ?? ''}
                         onChange={(event) =>

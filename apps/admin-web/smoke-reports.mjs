@@ -85,7 +85,7 @@ await page.route('**/api/v1/**', async (route) => {
   }
   if (path === '/api/v1/units') {
     return json({
-      data: [{ id: ids.unit, code: 'U-NASHIK', name: 'Nashik Plant' }],
+      data: [{ id: ids.unit, name: 'Nashik Plant' }],
       nextCursor: null,
     });
   }
@@ -133,7 +133,9 @@ try {
     refreshToken: 'smoke-refresh',
   })));
   await page.goto(`${base}/reports`);
-  await page.getByRole('heading', { name: 'Reports' }).waitFor();
+  // The shell's topbar carries the page's h1 (GEMBA-BOARD.md §5) and the section below it
+  // has its own heading, so the level is what makes this unambiguous.
+  await page.getByRole('heading', { name: 'Reports', level: 1 }).waitFor();
   await page.getByRole('cell', { name: 'Initial Zone report' }).waitFor();
   await page.getByRole('button', { name: 'Links' }).click();
   await page.getByRole('heading', { name: 'Links — Initial Zone report v1' }).waitFor();

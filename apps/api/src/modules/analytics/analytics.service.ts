@@ -20,6 +20,7 @@ import type {
 import { S_SECTION_ORDER, sumTotals, type ScopeContext, type ScoreTotals } from '@audit5s/domain';
 import { QueueService } from '../../infrastructure/queue/queue.service';
 import { AppError } from '../../common/errors';
+import { localDay } from './analytics-rollup.worker';
 import { AnalyticsRepository, type AnalyticsRange } from './analytics.repository';
 
 type DailyUnit = Awaited<ReturnType<AnalyticsRepository['dailyUnits']>>[number];
@@ -73,7 +74,7 @@ export class AnalyticsService {
       syncHealth: {
         devicesWithUnsyncedData: sync.devices,
         deadLetterCount: queueHealth.deadLetterCount,
-        oldestPendingAt: sync.oldest?.toISOString() ?? null,
+        oldestPendingAt: iso(sync.oldest),
       },
     };
   }
@@ -83,8 +84,7 @@ export class AnalyticsService {
     unitId: string,
     query: AnalyticsRangeQuery,
   ): Promise<UnitOverview> {
-    await this.assertUnit(scope, unitId);
-    const range = toRange(query);
+    const range = toRange(query, await this.assertUnit(scope, unitId));
     const [rows, activeAuditors, zoneCount, closureRows] = await Promise.all([
       this.repository.dailyUnits(scope, range, unitId),
       this.repository.activeAuditors(scope, range, unitId),
@@ -105,8 +105,7 @@ export class AnalyticsService {
   }
 
   async trend(scope: ScopeContext, unitId: string, query: AnalyticsTrendQuery): Promise<UnitTrend> {
-    await this.assertUnit(scope, unitId);
-    const range = toRange(query);
+    const range = toRange(query, await this.assertUnit(scope, unitId));
     const [rows, history] = await Promise.all([
       this.repository.dailyUnits(scope, range, unitId),
       this.repository.zoneScoreHistory(scope, range, unitId),
@@ -145,8 +144,7 @@ export class AnalyticsService {
     unitId: string,
     query: AnalyticsRangeQuery,
   ): Promise<UnitSections> {
-    await this.assertUnit(scope, unitId);
-    const range = toRange(query);
+    const range = toRange(query, await this.assertUnit(scope, unitId));
     const [rows, latest] = await Promise.all([
       this.repository.dailySections(scope, range, unitId),
       this.repository.latestSections(scope, unitId),
@@ -179,8 +177,7 @@ export class AnalyticsService {
     unitId: string,
     query: AnalyticsRankingQuery,
   ): Promise<ZoneRankingItem[]> {
-    await this.assertUnit(scope, unitId);
-    const range = toRange(query);
+    const range = toRange(query, await this.assertUnit(scope, unitId));
     const [daily, history, weak, open] = await Promise.all([
       this.repository.dailyZones(scope, range, unitId),
       this.repository.zoneScoreHistory(scope, range, unitId),
@@ -234,8 +231,8 @@ export class AnalyticsService {
     unitId: string,
     query: AnalyticsRangeQuery,
   ): Promise<RecurrentNonconformity[]> {
-    await this.assertUnit(scope, unitId);
-    return (await this.repository.recurrent(scope, toRange(query), unitId)).map((row) => ({
+    const range = toRange(query, await this.assertUnit(scope, unitId));
+    return (await this.repository.recurrent(scope, range, unitId)).map((row) => ({
       checklistQuestionId: row.checklist_question_id,
       questionText: row.question_text,
       section: row.section,
@@ -285,17 +282,34 @@ export class AnalyticsService {
     return null;
   }
 
-  private async assertUnit(scope: ScopeContext, unitId: string): Promise<void> {
-    if (!(await this.repository.unitRows(scope)).some((unit) => unit.id === unitId)) {
+  /**
+   * Asserts the Unit is in scope and answers with its timezone — the same read, and the
+   * day window cannot be built without it.
+   */
+  private async assertUnit(scope: ScopeContext, unitId: string): Promise<string> {
+    const unit = (await this.repository.unitRows(scope)).find((row) => row.id === unitId);
+    if (!unit) {
       throw AppError.notFound('Unit not found');
     }
+    return unit.timezone;
   }
 }
 
-export function toRange(query: Pick<AnalyticsRangeQuery, 'from' | 'to'>): AnalyticsRange {
+/**
+ * The instant range, plus the day window the `metric_daily_*` tables are keyed by.
+ *
+ * `timeZone` is the Unit's, for every single-Unit read: the rollup buckets by Unit-local
+ * day, so the day window has to be derived the same way or the newest day drops out. It
+ * defaults to UTC for the organization-wide reads, which span Units that need not share a
+ * timezone; give those a Unit and they would be wrong for every other one.
+ */
+export function toRange(
+  query: Pick<AnalyticsRangeQuery, 'from' | 'to'>,
+  timeZone = 'UTC',
+): AnalyticsRange {
   const to = query.to ? new Date(query.to) : new Date();
   const from = query.from ? new Date(query.from) : new Date(Date.UTC(to.getUTCFullYear() - 1, to.getUTCMonth(), to.getUTCDate()));
-  return { from, to, fromDay: from.toISOString().slice(0, 10), toDay: to.toISOString().slice(0, 10) };
+  return { from, to, fromDay: localDay(from, timeZone), toDay: localDay(to, timeZone) };
 }
 
 function scoreOf(rows: Array<{ rawScore: number; maxScore: number; scoreSampleCount?: number; sampleCount?: number }>): ScoreMetric {
@@ -319,12 +333,11 @@ function overviewTotals(rows: DailyUnit[]) {
 
 function rankUnits(
   rows: DailyUnit[],
-  units: Array<{ id: string; code: string; name: string }>,
+  units: Array<{ id: string; name: string }>,
   minSamples: number,
 ) {
   const items = units.map((unit) => ({
     unitId: unit.id,
-    unitCode: unit.code,
     unitName: unit.name,
     rank: null as number | null,
     score: scoreOf(rows.filter((row) => row.unitId === unit.id)),

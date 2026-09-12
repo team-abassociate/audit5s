@@ -101,7 +101,7 @@ describe('nightly data-integrity checks (§16.4)', () => {
   it('says nothing on a clean Unit', async () => {
     const unitId = randomUUID();
     await world.owner.query(
-      `INSERT INTO unit (id, code, name, timezone) VALUES ($1, 'CLEAN', 'Clean Unit', 'Asia/Kolkata')`,
+      `INSERT INTO unit (id, name, timezone) VALUES ($1, 'Clean Unit', 'Asia/Kolkata')`,
       [unitId],
     );
 

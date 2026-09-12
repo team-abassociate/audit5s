@@ -42,7 +42,6 @@ export function catalogue(): SyncCatalogue {
     units: [
       {
         id: FIXTURE_UNIT,
-        code: 'U-NASHIK',
         name: 'Nashik Plant',
         address: null,
         city: null,

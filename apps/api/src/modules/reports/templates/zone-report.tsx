@@ -61,7 +61,7 @@ export function ZoneReport({
 
       {/* §4.1 item 2: 3 × 3, small grey caps labels over bold values. */}
       <div className="meta-grid">
-        <MetaCell label="Company / Unit" value={`${payload.unit.name} (${payload.unit.code})`} />
+        <MetaCell label="Company / Unit" value={payload.unit.name} />
         <MetaCell label="Department" value={zone.departmentName ?? '—'} />
         <MetaCell label="Zone" value={`Zone ${zone.zoneCode} — ${zone.zoneName}`} />
         <MetaCell label="Audit date" value={formatDate(zone.auditDate)} />

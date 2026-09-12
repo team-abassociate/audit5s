@@ -58,8 +58,7 @@ export const units = pgTable(
   'unit',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    /** Immutable after creation: object-storage keys embed it (§12.5). */
-    code: text('code').notNull(),
+    /** The Unit's only identifier. There is no separate code (§5.2). */
     name: text('name').notNull(),
     address: text('address'),
     city: text('city'),
@@ -81,7 +80,7 @@ export const units = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex('unit_code_key').on(table.code),
+    uniqueIndex('unit_name_key').on(table.name),
     index('unit_archived_at_idx').on(table.archivedAt),
   ],
 );

@@ -42,14 +42,27 @@ export function scheduleKey(unitId: string): string {
   return `analytics.${unitId}`;
 }
 
-export function previousLocalDay(now: Date, timezone: string): string {
+/**
+ * The calendar day an instant falls on **in the Unit's timezone** — the definition of
+ * `metric_daily_*.day`.
+ *
+ * Exported because the reader has to agree with the writer: a range filtered on UTC days
+ * against rows bucketed on local days loses the newest day for as long as the two dates
+ * differ (05:30 every morning for an Asia/Kolkata Unit). One definition, both sides.
+ */
+export function localDay(instant: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(now);
+  }).formatToParts(instant);
   const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)!.value;
-  const local = new Date(Date.UTC(Number(value('year')), Number(value('month')) - 1, Number(value('day')) - 1));
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+export function previousLocalDay(now: Date, timezone: string): string {
+  const [year, month, day] = localDay(now, timezone).split('-').map(Number);
+  const local = new Date(Date.UTC(year!, month! - 1, day! - 1));
   return local.toISOString().slice(0, 10);
 }

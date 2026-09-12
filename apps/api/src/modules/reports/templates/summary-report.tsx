@@ -48,7 +48,7 @@ export function SummaryReport({
       />
 
       <div className="meta-grid">
-        <MetaCell label="Company / Unit" value={`${payload.unit.name} (${payload.unit.code})`} />
+        <MetaCell label="Company / Unit" value={payload.unit.name} />
         <MetaCell label="Audit date" value={dateRangeLabel(payload)} />
         {/* "When the selected zones span several audits or auditors, show a date range and
             a comma-separated auditor list — do not silently pick one" (§4.3 item 2). */}

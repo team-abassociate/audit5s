@@ -172,7 +172,6 @@ function toDetail(row: Row): MembershipDetail {
     updatedAt: row.membership.updatedAt.toISOString(),
     userFullName: row.userFullName,
     userLoginId: row.userLoginId,
-    unitCode: row.unitCode,
     unitName: row.unitName,
   };
 }

@@ -45,6 +45,12 @@ services:
       POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
       POSTGRES_DB: audit5s
+      # postgres:18 defaults PGDATA to /var/lib/postgresql/<major>/docker and refuses to
+      # start when a volume is mounted at the old path. This whole topology names
+      # /var/lib/postgresql/data once more, in infra/pgbackrest/pgbackrest.conf
+      # (`pg1-path`), so the data directory is pinned here rather than moved there — one
+      # path for the database, the backup repository and the restore drill.
+      PGDATA: /var/lib/postgresql/data
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/sql:/docker-entrypoint-initdb.d:ro

@@ -17,7 +17,7 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
     version: 1,
     statements: [
       `CREATE TABLE IF NOT EXISTS unit (
-         id TEXT PRIMARY KEY, code TEXT, name TEXT, latitude REAL, longitude REAL,
+         id TEXT PRIMARY KEY, name TEXT, latitude REAL, longitude REAL,
          geofence_radius_m INTEGER, timezone TEXT, photo_cap_per_zone INTEGER,
          synced_at TEXT
        )`,

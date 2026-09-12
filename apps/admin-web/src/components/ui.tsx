@@ -1,5 +1,15 @@
+import { useEffect, useId, useState } from 'react';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 import { cn } from '@/lib/cn';
+
+/**
+ * The shared controls, built from the Gemba Board primitives
+ * (`docs/design/GEMBA-BOARD.md` §6, tokens in `docs/design/gemba-tokens.css`).
+ *
+ * Every screen composes from this file, so the design system lives here once rather than
+ * in fourteen feature folders. No hex literal, no border radius, no blurred shadow — a
+ * button is a tile you can press, a card is a magnet, status is a chip.
+ */
 
 export function Button({
   className,
@@ -9,12 +19,9 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium',
-        'transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-        variant === 'primary' && 'bg-brand text-white hover:bg-brand/90',
-        variant === 'secondary' &&
-          'border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-50',
-        variant === 'danger' && 'bg-band-needs-support text-white hover:opacity-90',
+        'gb-btn',
+        variant === 'primary' && 'gb-btn--primary',
+        variant === 'danger' && 'gb-btn--danger',
         className,
       )}
       {...props}
@@ -23,29 +30,62 @@ export function Button({
 }
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className={cn(
-        'w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm',
-        'focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none',
-        'disabled:bg-neutral-100 disabled:text-neutral-500',
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <input className={cn('gb-input', className)} {...props} />;
 }
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={cn('gb-input', className)} {...props} />;
+}
+
+/**
+ * Type to narrow, or open it and pick — for any list long enough that scrolling it is
+ * work: Units, people, templates.
+ *
+ * A native `<datalist>`, not a JS combobox: the browser does the filtering, the keyboard
+ * and the screen-reader announcement, and there is no dependency and no popup to trap
+ * focus in. The text is the option's `label`; what leaves here is its `id`, or `''` while
+ * what has been typed matches nothing — so a caller checks the id, never the text.
+ */
+export function Combobox({
+  value,
+  onChange,
+  options,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'list'> & {
+  value: string;
+  onChange: (id: string) => void;
+  options: Array<{ id: string; label: string }>;
+}) {
+  const listId = useId();
+  const selectedLabel = options.find((option) => option.id === value)?.label ?? '';
+  const [text, setText] = useState(selectedLabel);
+
+  // The selection can arrive from outside — a default that lands with its query.
+  useEffect(() => setText(selectedLabel), [selectedLabel]);
+
   return (
-    <select
-      className={cn(
-        'w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm',
-        'focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none',
-        className,
-      )}
-      {...props}
-    />
+    <>
+      <input
+        className={cn('gb-input', className)}
+        list={listId}
+        value={text}
+        onChange={(event) => {
+          const typed = event.target.value;
+          setText(typed);
+          const match = options.find(
+            (option) => option.label.toLowerCase() === typed.trim().toLowerCase(),
+          );
+          onChange(match?.id ?? '');
+        }}
+        {...props}
+      />
+      <datalist id={listId}>
+        {options.map((option) => (
+          <option key={option.id} value={option.label} />
+        ))}
+      </datalist>
+    </>
   );
 }
 
@@ -61,64 +101,58 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-sm font-medium text-neutral-700">{label}</span>
+    <label className="gb-field">
+      <span className="gb-label">{label}</span>
       {children}
-      {hint && !error && <span className="block text-xs text-neutral-500">{hint}</span>}
-      {error && <span className="block text-xs text-band-needs-support">{error}</span>}
+      {hint && !error && <span className="gb-hint">{hint}</span>}
+      {error && <span className="gb-field-error">{error}</span>}
     </label>
   );
 }
 
+/** A magnet on the board: hard 1.5px edge, hard offset shadow, nothing . */
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return (
-    <div className={cn('rounded-lg border border-neutral-200 bg-white shadow-sm', className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn('gb-panel', className)}>{children}</div>;
 }
 
 export function CardHeader({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   return (
-    <div className="flex items-start justify-between border-b border-neutral-200 px-4 py-3">
+    <div className="gb-panel-head">
       <div>
-        <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>
-        {description && <p className="mt-0.5 text-xs text-neutral-500">{description}</p>}
+        <h2 className="gb-h2">{title}</h2>
+        {description && <p>{description}</p>}
       </div>
       {action}
     </div>
   );
 }
 
+/** Tables scroll inside their own container; the page never scrolls sideways (§5). */
 export function Table({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">{children}</table>
+    <div className="gb-tablewrap gb-tablewrap--flush">
+      <table>{children}</table>
     </div>
   );
 }
 
 export function Th({ children }: { children: ReactNode }) {
-  return (
-    <th className="border-b border-neutral-200 px-4 py-2 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-      {children}
-    </th>
-  );
+  return <th>{children}</th>;
 }
 
 export function Td({ children, className }: { children: ReactNode; className?: string }) {
-  return <td className={cn('border-b border-neutral-100 px-4 py-2', className)}>{children}</td>;
+  return <td className={className}>{children}</td>;
 }
 
 export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good' | 'warn' | 'bad'; children: ReactNode }) {
   return (
     <span
       className={cn(
-        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-        tone === 'neutral' && 'bg-neutral-100 text-neutral-700',
-        tone === 'good' && 'bg-band-outstanding/10 text-band-outstanding',
-        tone === 'warn' && 'bg-band-improving/10 text-band-improving',
-        tone === 'bad' && 'bg-band-needs-support/10 text-band-needs-support',
+        'gb-chip',
+        tone === 'neutral' && 'gb-chip--muted',
+        tone === 'good' && 'gb-chip--ok',
+        tone === 'warn' && 'gb-chip--warn',
+        tone === 'bad' && 'gb-chip--crit',
       )}
     >
       {children}
@@ -126,29 +160,35 @@ export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good
   );
 }
 
-/** Renders an API failure, including the field list a FIELD_NOT_EDITABLE carries. */
+/**
+ * Renders an API failure: the server's own sentence, plus the field list a
+ * FIELD_NOT_EDITABLE carries.
+ *
+ * The machine code (`INVALID_CREDENTIALS`) is deliberately not shown. The client branches
+ * on it (§8.1) and it stays in the problem document and the request log, but on screen it
+ * only repeats what the sentence above it already says.
+ */
 export function ErrorNotice({ error }: { error: unknown }) {
   if (!error) return null;
-  const problem = error as { message?: string; code?: string; problem?: { errors?: Array<{ field: string; message: string }> } };
+  const problem = error as { message?: string; problem?: { errors?: Array<{ field: string; message: string }> } };
   const fields = problem.problem?.errors ?? [];
 
   return (
-    <div className="rounded-md border border-band-needs-support/30 bg-band-needs-support/5 px-3 py-2 text-sm text-band-needs-support">
-      <p>{problem.message ?? 'Something went wrong'}</p>
+    <div className="gb-notice" role="alert">
+      <p style={{ margin: 0 }}>{problem.message ?? 'Something went wrong'}</p>
       {fields.length > 0 && (
-        <ul className="mt-1 list-inside list-disc text-xs">
+        <ul style={{ margin: '6px 0 0', paddingLeft: 16, fontSize: 12.5 }}>
           {fields.map((f) => (
             <li key={f.field}>
-              <span className="font-medium">{f.field}</span>: {f.message}
+              <b>{f.field}</b>: {f.message}
             </li>
           ))}
         </ul>
       )}
-      {problem.code && <p className="mt-1 font-mono text-xs opacity-70">{problem.code}</p>}
     </div>
   );
 }
 
 export function Spinner({ label = 'Loading…' }: { label?: string }) {
-  return <p className="px-4 py-6 text-sm text-neutral-500">{label}</p>;
+  return <p className="gb-label" style={{ padding: '18px 2px' }}>{label}</p>;
 }

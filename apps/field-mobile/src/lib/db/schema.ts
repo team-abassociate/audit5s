@@ -22,7 +22,6 @@ import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const units = sqliteTable('unit', {
   id: text('id').primaryKey(),
-  code: text('code').notNull(),
   name: text('name').notNull(),
   latitude: real('latitude'),
   longitude: real('longitude'),

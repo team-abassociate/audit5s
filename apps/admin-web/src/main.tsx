@@ -6,13 +6,14 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  Navigate,
   Outlet,
-  redirect,
 } from '@tanstack/react-router';
 import './styles.css';
 import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
+import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { AnalyticsPage } from '@/features/analytics/AnalyticsPage';
 import { AuditsPage } from '@/features/audits/AuditsPage';
 import { CorrectiveActionsPage } from '@/features/corrective-actions/CorrectiveActionsPage';
@@ -25,7 +26,6 @@ import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { UnitsPage } from '@/features/units/UnitsPage';
 import { UsersPage } from '@/features/users/UsersPage';
-import { ZonesPage } from '@/features/zones/ZonesPage';
 import { SessionProvider, useSession } from '@/lib/session';
 
 const queryClient = new QueryClient({
@@ -93,12 +93,24 @@ const gatedRoute = createRoute({
   component: Gate,
 });
 
+/**
+ * The landing route. The Zone board is the point of the product, so it is the default —
+ * but only for an actor the server has granted the Unit dashboard; anyone else lands on
+ * the Units list rather than on a screen whose every query would be refused.
+ */
 const indexRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: '/units' });
+  component: function Index() {
+    const { can } = useSession();
+    return <Navigate to={can('analytics', 'unit_dashboard') ? '/dashboard' : '/units'} replace />;
   },
+});
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/dashboard',
+  component: DashboardPage,
 });
 
 const unitsRoute = createRoute({
@@ -111,12 +123,6 @@ const analyticsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/analytics',
   component: AnalyticsPage,
-});
-
-const zonesRoute = createRoute({
-  getParentRoute: () => gatedRoute,
-  path: '/zones',
-  component: ZonesPage,
 });
 
 const checklistsRoute = createRoute({
@@ -172,9 +178,9 @@ const routeTree = rootRoute.addChildren([
   correctiveActionRoute,
   gatedRoute.addChildren([
     indexRoute,
+    dashboardRoute,
     analyticsRoute,
     unitsRoute,
-    zonesRoute,
     checklistsRoute,
     auditsRoute,
     correctiveActionsRoute,

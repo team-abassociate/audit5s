@@ -9,7 +9,9 @@ import type {
   Page,
   SectionScorePayload,
 } from '@audit5s/contracts';
-import { RESPONSE_TOKENS, S_SECTION_LABELS, bandFor, zoneDisplayLabel } from '@audit5s/domain';
+import { RESPONSE_TOKENS, S_SECTION_LABELS, zoneDisplayLabel } from '@audit5s/domain';
+import { bandLabel, bandTextClass, responseTextClass } from '@/lib/bands';
+import { cn } from '@/lib/cn';
 import { api } from '@/lib/api';
 import {
   Badge,
@@ -88,38 +90,38 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
                 ? 'N/A'
                 : `${overall.totals.scorePercentage.toFixed(1)}%`
             }
-            color={bandFor(overall?.totals.scorePercentage ?? null)?.color}
+            tone={bandTextClass(overall?.totals.scorePercentage ?? null)}
           />
           <Metric
             label="Rating"
-            value={bandFor(overall?.totals.scorePercentage ?? null)?.label ?? 'N/A'}
-            color={bandFor(overall?.totals.scorePercentage ?? null)?.color}
+            value={bandLabel(overall?.totals.scorePercentage ?? null)}
+            tone={bandTextClass(overall?.totals.scorePercentage ?? null)}
           />
         </div>
       ) : (
-        <p className="p-4 text-sm text-neutral-600">Walk-by audits are observations and are not scored.</p>
+        <p className="p-4 text-sm text-ink-2">Walk-by audits are observations and are not scored.</p>
       )}
 
       <EvidenceGallery auditId={auditId} zones={audit.zones} />
 
       {audit.zones.length === 0 && (
-        <p className="px-4 pb-4 text-sm text-neutral-500">No Zones have been added yet.</p>
+        <p className="px-4 pb-4 text-sm text-ink-3">No Zones have been added yet.</p>
       )}
 
       {audit.zones.map((zone) => {
         const zoneScore = summary.data?.zones.find((candidate) => candidate.auditZoneId === zone.id);
         return (
-          <div key={zone.id} className="border-t border-neutral-200">
+          <div key={zone.id} className="border-t border-edge-soft">
             <div className="flex items-baseline justify-between px-4 py-3">
               <div>
                 {/* The D6 snapshots, never the live Zone: renaming it must not move this. */}
-                <h3 className="text-sm font-semibold text-neutral-900">
+                <h3 className="gb-h2">
                   {zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
                 </h3>
                 {zone.zoneDescriptionSnapshot && (
-                  <p className="text-xs text-neutral-500">{zone.zoneDescriptionSnapshot}</p>
+                  <p className="text-xs text-ink-3">{zone.zoneDescriptionSnapshot}</p>
                 )}
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-ink-3">
                   {zone.checklistTemplateNameSnapshot ?? 'No checklist'}
                   {zone.zoneLeaderNameSnapshot ? ` · Zone Leader: ${zone.zoneLeaderNameSnapshot}` : ''}
                 </p>
@@ -130,7 +132,7 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
             {audit.scored && <SectionTable sections={zoneScore?.sections ?? zone.sections} />}
 
             {zone.zoneRemark && (
-              <p className="px-4 pb-3 text-sm text-neutral-700">
+              <p className="px-4 pb-3 text-sm text-ink-2">
                 <span className="font-semibold">Zone remark: </span>
                 {zone.zoneRemark}
               </p>
@@ -138,7 +140,7 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
 
             {zone.responses.length > 0 && (
               <details className="px-4 pb-4">
-                <summary className="cursor-pointer text-sm text-neutral-600">
+                <summary className="cursor-pointer text-sm text-ink-2">
                   {zone.responses.length} response{zone.responses.length === 1 ? '' : 's'}
                 </summary>
                 <Table>
@@ -155,18 +157,18 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
                     {zone.responses.map((response) => {
                       const token = RESPONSE_TOKENS[response.value]!;
                       return (
-                        <tr key={response.id} className="border-t border-neutral-200">
+                        <tr key={response.id} className="border-t border-edge-soft">
                           <Td>{response.globalOrder}</Td>
-                          <Td className="text-neutral-500">
+                          <Td className="text-ink-3">
                             {S_SECTION_LABELS[response.section]}
                           </Td>
                           <Td>
-                            <span style={{ color: token.color }} className="font-medium">
+                            <span className={cn('font-medium', responseTextClass(response.value))}>
                               {token.label}
                             </span>
                           </Td>
                           <Td>{response.numericScore ?? 'NA'}</Td>
-                          <Td className="text-neutral-600">{response.remark ?? ''}</Td>
+                          <Td className="text-ink-2">{response.remark ?? ''}</Td>
                         </tr>
                       );
                     })}
@@ -179,7 +181,7 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
       })}
 
       {can('audit', 'cancel') && cancellable && (
-        <div className="border-t border-neutral-200 p-4">
+        <div className="border-t border-edge-soft p-4">
           <Field
             label="Cancel this audit"
             hint="Voids it and keeps every row (A-1). There is no delete, for anybody."
@@ -239,11 +241,11 @@ function EvidenceGallery({
   const evidence = gallery.data?.pages.flatMap((page) => page.data) ?? [];
 
   return (
-    <section className="border-t border-neutral-200 p-4">
+    <section className="border-t border-edge-soft p-4">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-neutral-900">Evidence gallery</h3>
-          <p className="text-xs text-neutral-500">Thumbnails load here; originals load only when opened.</p>
+          <h3 className="gb-h2">Evidence gallery</h3>
+          <p className="text-xs text-ink-3">Thumbnails load here; originals load only when opened.</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <Field label="Zone">
@@ -278,7 +280,7 @@ function EvidenceGallery({
       {gallery.isLoading && <Spinner label="Loading evidence…" />}
       {gallery.error && <ErrorNotice error={gallery.error} />}
       {!gallery.isLoading && evidence.length === 0 && (
-        <p className="py-4 text-sm text-neutral-500">No evidence matches these filters.</p>
+        <p className="py-4 text-sm text-ink-3">No evidence matches these filters.</p>
       )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {evidence.map((item) => (
@@ -306,14 +308,14 @@ function EvidenceTile({ evidence, onOpen }: { evidence: Evidence; onOpen: () => 
   return (
     <button
       type="button"
-      className="overflow-hidden rounded-lg border border-neutral-200 bg-white text-left hover:border-brand focus:ring-2 focus:ring-brand focus:outline-none"
+      className="overflow-hidden border border-edge-soft bg-tile text-left hover:border-edge focus:ring-2 focus:ring-accent focus:outline-none"
       aria-label={`Open ${label} evidence`}
       onClick={onOpen}
     >
       {thumbnail.data ? (
-        <img className="aspect-4/3 w-full bg-neutral-100 object-cover" src={thumbnail.data.url} alt={`${label} audit evidence`} />
+        <img className="aspect-4/3 w-full bg-tile-2 object-cover" src={thumbnail.data.url} alt={`${label} audit evidence`} />
       ) : (
-        <div className="aspect-4/3 grid place-items-center bg-neutral-100 text-xs text-neutral-500">
+        <div className="aspect-4/3 grid place-items-center bg-tile-2 text-xs text-ink-3">
           {thumbnail.error ? 'Preview unavailable' : 'Loading preview…'}
         </div>
       )}
@@ -322,9 +324,9 @@ function EvidenceTile({ evidence, onOpen }: { evidence: Evidence; onOpen: () => 
           <Badge tone={evidenceTone(evidence.classification)}>{label}</Badge>
           {evidence.isSummaryFlagged && <Badge tone="warn">Summary photo</Badge>}
         </div>
-        <p className="text-xs text-neutral-500">{evidence.kind.replaceAll('_', ' ').toLowerCase()}</p>
-        {evidence.remark && <p className="line-clamp-2 text-sm text-neutral-700">{evidence.remark}</p>}
-        {!evidence.mediaProcessedAt && <p className="text-xs text-neutral-400">Thumbnail processing</p>}
+        <p className="text-xs text-ink-3">{evidence.kind.replaceAll('_', ' ').toLowerCase()}</p>
+        {evidence.remark && <p className="line-clamp-2 text-sm text-ink-2">{evidence.remark}</p>}
+        {!evidence.mediaProcessedAt && <p className="text-xs text-ink-3">Thumbnail processing</p>}
       </div>
     </button>
   );
@@ -345,12 +347,12 @@ export function EvidenceViewer({
   });
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Full-size evidence" className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4">
-      <div className="max-h-full w-full max-w-5xl overflow-auto rounded-lg bg-white p-4">
+    <div role="dialog" aria-modal="true" aria-label="Full-size evidence" className="fixed inset-0 z-50 grid place-items-center bg-ink/80 p-4">
+      <div className="max-h-full w-full max-w-5xl overflow-auto bg-tile p-4">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-neutral-900">Full-size evidence</h3>
-            {evidence.remark && <p className="text-sm text-neutral-600">{evidence.remark}</p>}
+            <h3 className="font-semibold text-ink">Full-size evidence</h3>
+            {evidence.remark && <p className="text-sm text-ink-2">{evidence.remark}</p>}
           </div>
           <Button variant="secondary" onClick={onClose}>Close viewer</Button>
         </div>
@@ -381,14 +383,13 @@ function SectionTable({ sections }: { sections: SectionScorePayload[] }) {
       </thead>
       <tbody>
         {sections.map((section) => {
-          const band = bandFor(section.pct);
           return (
-            <tr key={section.section} className="border-t border-neutral-200">
+            <tr key={section.section} className="border-t border-edge-soft">
               <Td>{S_SECTION_LABELS[section.section]}</Td>
               <Td>{section.raw}</Td>
               <Td>{section.max}</Td>
               <Td>
-                <span style={band ? { color: band.color } : undefined} className="font-semibold">
+                <span className={cn('font-semibold', bandTextClass(section.pct))}>
                   {section.pct === null ? 'N/A' : `${section.pct.toFixed(1)}%`}
                 </span>
               </Td>
@@ -432,14 +433,14 @@ function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail 
 
   return (
     <form
-      className="space-y-3 border-t border-neutral-200 bg-amber-50 p-4"
+      className="gb-slip space-y-3"
       onSubmit={(event) => {
         event.preventDefault();
         override.mutate();
       }}
     >
-      <h3 className="text-sm font-semibold text-neutral-900">Correct a completed audit</h3>
-      <p className="text-xs text-neutral-600">
+      <h3 className="gb-h2">Correct a completed audit</h3>
+      <p className="text-xs text-ink-2">
         This is the only way a completed audit changes (A-2). Every change is written to the
         audit log with its before and after, and the scores are recomputed.
       </p>
@@ -447,7 +448,7 @@ function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Response">
           <select
-            className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
+            className="w-full border border-edge px-2 py-1.5 text-sm"
             value={responseId}
             onChange={(event) => setResponseId(event.target.value)}
             required
@@ -463,7 +464,7 @@ function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail 
 
         <Field label="Corrected to">
           <select
-            className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm"
+            className="w-full border border-edge px-2 py-1.5 text-sm"
             value={value}
             onChange={(event) => setValue(event.target.value)}
           >
@@ -496,11 +497,11 @@ function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail 
   );
 }
 
-function Metric({ label, value, color }: { label: string; value: string; color?: string }) {
+function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="text-lg font-semibold" style={color ? { color } : undefined}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">{label}</p>
+      <p className={cn('text-lg font-semibold', tone)}>
         {value}
       </p>
     </div>

@@ -62,16 +62,16 @@ export function NotificationsPage() {
           </div>
         )}
         {page.data && page.data.data.length === 0 && (
-          <p className="px-4 py-4 text-sm text-neutral-500">Nothing here.</p>
+          <p className="px-4 py-4 text-sm text-ink-3">Nothing here.</p>
         )}
-        <ul className="divide-y divide-neutral-100">
+        <ul className="divide-y divide-edge-soft">
           {page.data?.data.map((notification) => (
             <li key={notification.id}>
               <button
                 type="button"
                 className={cn(
-                  'w-full px-4 py-3 text-left hover:bg-neutral-50',
-                  !notification.readAt && 'bg-brand/5',
+                  'w-full px-4 py-3 text-left hover:bg-board',
+                  !notification.readAt && 'bg-tile-2',
                 )}
                 onClick={() => !notification.readAt && markRead.mutate(notification.id)}
               >
@@ -79,11 +79,11 @@ export function NotificationsPage() {
                   <span className={cn('text-sm', !notification.readAt && 'font-semibold')}>
                     {notification.title}
                   </span>
-                  <span className="shrink-0 text-xs text-neutral-500">
+                  <span className="shrink-0 text-xs text-ink-3">
                     {new Date(notification.createdAt).toLocaleString()}
                   </span>
                 </div>
-                <p className="text-sm text-neutral-600">{notification.body}</p>
+                <p className="text-sm text-ink-2">{notification.body}</p>
               </button>
             </li>
           ))}

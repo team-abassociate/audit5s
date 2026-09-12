@@ -27,3 +27,4 @@ pgdata/
 .data/
 
 .DS_Store
+apps/admin-web/.vite/

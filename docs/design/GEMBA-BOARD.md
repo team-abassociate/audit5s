@@ -124,15 +124,15 @@ generic toast and never a claim the system did not make.
 
 ## 7. Theme switch
 
-Three states: **System** (no attribute — this is the default), **Light** (`data-theme="light"`),
-**Dark** (`data-theme="dark"`). The token file already handles all three; the control just
-stamps the attribute and remembers the choice.
+Two states: **Light** (`data-theme="light"` — the whiteboard, and the default) and **Dark**
+(`data-theme="dark"`). The OS preference is not a third state: the attribute is always
+stamped, before the first paint, so the token file's `prefers-color-scheme` block is a
+fallback for a document that never reaches the user, not a mode anyone can select.
 
 ```js
-const modes = ["system", "light", "dark"];
+const modes = ["light", "dark"];
 function applyTheme(m) {
-  if (m === "system") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme", m);
+  document.documentElement.setAttribute("data-theme", m);
   try { localStorage.setItem("gemba-theme", m); } catch {}
 }
 ```
@@ -242,7 +242,7 @@ Paste this as the definition of done for any UI task:
 - [ ] Zero `border-radius`, zero blurred `box-shadow`
 - [ ] Only Archivo + DM Mono; display figures are Archivo 900, mono only for small data
 - [ ] Headings carry `font-stretch: 110–112%` and uppercase
-- [ ] Renders correctly in all three theme states (system light, system dark, both explicit stamps)
+- [ ] Renders correctly in both theme states (`data-theme="light"` and `data-theme="dark"`)
 - [ ] Status reads without colour (band, rail, chip, or hatch present)
 - [ ] At most one yellow slip, and only for something actionable
 - [ ] `N/A` hatched and excluded from averages; not-started is a dashed tile, not a zero

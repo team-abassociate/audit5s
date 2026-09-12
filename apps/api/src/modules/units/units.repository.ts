@@ -37,7 +37,6 @@ export class UnitsRepository extends BaseRepository {
       const [row] = await tx
         .insert(units)
         .values({
-          code: request.code,
           name: request.name,
           address: request.address ?? null,
           city: request.city ?? null,

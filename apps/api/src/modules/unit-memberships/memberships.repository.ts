@@ -101,7 +101,6 @@ export class MembershipsRepository extends BaseRepository {
           membership: unitMemberships,
           userFullName: users.fullName,
           userLoginId: users.loginId,
-          unitCode: units.code,
           unitName: units.name,
         })
         .from(unitMemberships)

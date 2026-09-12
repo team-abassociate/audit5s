@@ -193,7 +193,6 @@ export class ReportsRepository extends BaseRepository {
       .select({
         id: units.id,
         name: units.name,
-        code: units.code,
         address: units.address,
         city: units.city,
         state: units.state,

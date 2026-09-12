@@ -51,7 +51,7 @@ export function CorrectiveActionsPage() {
           }
           action={waiting > 0 ? <Badge tone="warn">{waiting} awaiting review</Badge> : undefined}
         />
-        <div className="flex flex-wrap items-end gap-3 border-b border-neutral-200 px-4 py-3">
+        <div className="flex flex-wrap items-end gap-3 border-b border-edge-soft px-4 py-3">
           <div className="w-56">
             <Field label="Status">
               <Select value={status} onChange={(event) => setStatus(event.target.value as CorrectiveActionStatus | '')}>
@@ -64,7 +64,7 @@ export function CorrectiveActionsPage() {
               </Select>
             </Field>
           </div>
-          <label className="flex items-center gap-2 pb-2 text-sm text-neutral-700">
+          <label className="flex items-center gap-2 pb-2 text-sm text-ink-2">
             <input type="checkbox" checked={overdue} onChange={(event) => setOverdue(event.target.checked)} />
             Overdue only
           </label>
@@ -77,7 +77,7 @@ export function CorrectiveActionsPage() {
           </div>
         )}
         {actions.data && actions.data.data.length === 0 && (
-          <p className="px-4 py-4 text-sm text-neutral-500">No corrective actions match.</p>
+          <p className="px-4 py-4 text-sm text-ink-3">No corrective actions match.</p>
         )}
         {actions.data && actions.data.data.length > 0 && (
           <Table>
@@ -94,25 +94,25 @@ export function CorrectiveActionsPage() {
               {actions.data.data.map((action) => (
                 <tr
                   key={action.id}
-                  className="cursor-pointer hover:bg-neutral-50"
+                  className="cursor-pointer hover:bg-board"
                   onClick={() => setSelected(action.id)}
                 >
                   <Td>
                     <span className="font-medium">
                       Zone {action.zoneCode} — {action.zoneName}
                     </span>
-                    <div className="text-xs text-neutral-500">{itemLabel(action)}</div>
+                    <div className="text-xs text-ink-3">{itemLabel(action)}</div>
                   </Td>
                   <Td>
                     <StatusBadge status={action.status} />
                     {action.reopenCount > 0 && (
-                      <span className="ml-1 text-xs text-neutral-500">reopened ×{action.reopenCount}</span>
+                      <span className="ml-1 text-xs text-ink-3">reopened ×{action.reopenCount}</span>
                     )}
                   </Td>
                   <Td>{action.assignedZoneLeaderName ?? '—'}</Td>
                   <Td>
                     {action.dueAt ? (
-                      <span className={isOverdue(action.status, action.dueAt, Date.now()) ? 'text-band-needs-support' : ''}>
+                      <span className={isOverdue(action.status, action.dueAt, Date.now()) ? 'text-crit' : ''}>
                         {new Date(action.dueAt).toLocaleDateString()}
                       </span>
                     ) : (
@@ -180,10 +180,10 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
       />
       <div className="grid gap-4 p-4 md:grid-cols-[16rem_1fr]">
         <div className="space-y-2">
-          <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">The finding</p>
+          <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">The finding</p>
           <Photo evidenceId={action.evidenceId} remark={action.findingRemark} alt="Nonconformity photograph" />
-          {action.findingRemark && <p className="text-sm text-neutral-700">{action.findingRemark}</p>}
-          <dl className="grid grid-cols-2 gap-1 text-xs text-neutral-600">
+          {action.findingRemark && <p className="text-sm text-ink-2">{action.findingRemark}</p>}
+          <dl className="grid grid-cols-2 gap-1 text-xs text-ink-2">
             <dt>Status</dt>
             <dd>
               <StatusBadge status={action.status} />
@@ -199,18 +199,18 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
         </div>
 
         <div className="space-y-3">
-          <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+          <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">
             Submissions ({action.submissions.length})
           </p>
           {action.submissions.length === 0 && (
-            <p className="text-sm text-neutral-500">Nothing submitted yet.</p>
+            <p className="text-sm text-ink-3">Nothing submitted yet.</p>
           )}
           {action.submissions.map((attempt) => (
             <Attempt key={attempt.id} attempt={attempt} />
           ))}
 
           {(reviewable || reopenable) && (
-            <div className="space-y-2 rounded-md border border-neutral-200 p-3">
+            <div className="space-y-2 border border-edge-soft p-3">
               <Field
                 label={reviewable ? 'Comment, or the reason for reopening' : 'Reason for reopening'}
                 hint="Reopening needs a reason; the Zone Leader sees it."
@@ -242,25 +242,25 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
 
 function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
   return (
-    <div className="rounded-md border border-neutral-200 p-3">
+    <div className="border border-edge-soft p-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium">Attempt {attempt.attemptNo}</span>
         <Badge tone={attempt.option === 'COMPLETED' ? 'good' : 'warn'}>
           {attempt.option === 'COMPLETED' ? 'Completed' : 'Not possible'}
         </Badge>
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-ink-3">
           {attempt.submittedByName} · {new Date(attempt.createdAt).toLocaleString()} ·{' '}
           {attempt.submittedVia.replace('_', ' ').toLowerCase()}
         </span>
       </div>
       <div className="mt-2 grid gap-3 md:grid-cols-[10rem_1fr]">
         {attempt.afterEvidenceId && <Photo evidenceId={attempt.afterEvidenceId} alt="After photograph" />}
-        <p className="text-sm whitespace-pre-line text-neutral-700">
+        <p className="text-sm whitespace-pre-line text-ink-2">
           {attempt.option === 'COMPLETED' ? attempt.description : attempt.explanation}
         </p>
       </div>
       {attempt.reviewOutcome && (
-        <p className="mt-2 text-xs text-neutral-600">
+        <p className="mt-2 text-xs text-ink-2">
           <Badge tone={attempt.reviewOutcome === 'VERIFIED' ? 'good' : 'bad'}>
             {attempt.reviewOutcome === 'VERIFIED' ? 'Verified' : 'Reopened'}
           </Badge>{' '}
@@ -318,14 +318,14 @@ function Photo({ evidenceId, remark = null, alt }: { evidenceId: string; remark?
     <>
       <button
         type="button"
-        className="block w-full overflow-hidden rounded-md border border-neutral-200 hover:border-brand"
+        className="block w-full overflow-hidden border border-edge-soft hover:border-edge"
         aria-label={`Open ${alt.toLowerCase()}`}
         onClick={() => setOpen(true)}
       >
         {thumbnail.data ? (
           <img className="aspect-4/3 w-full object-cover" src={thumbnail.data.url} alt={alt} />
         ) : (
-          <div className="grid aspect-4/3 place-items-center bg-neutral-100 text-xs text-neutral-500">
+          <div className="grid aspect-4/3 place-items-center bg-tile-2 text-xs text-ink-3">
             {thumbnail.error ? 'Preview unavailable' : 'Loading…'}
           </div>
         )}

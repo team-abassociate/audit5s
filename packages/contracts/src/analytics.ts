@@ -53,7 +53,6 @@ export type ZoneRankingItem = z.infer<typeof zoneRankingItemSchema>;
 
 export const unitRankingItemSchema = z.object({
   unitId: uuidSchema,
-  unitCode: z.string(),
   unitName: z.string(),
   rank: z.number().int().positive().nullable(),
   score: scoreMetricSchema,

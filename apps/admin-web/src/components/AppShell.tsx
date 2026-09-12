@@ -1,10 +1,9 @@
-import type { ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { NotificationPage } from '@audit5s/contracts';
 import { api } from '@/lib/api';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { cn } from '@/lib/cn';
-import { Button } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface NavItem {
@@ -13,6 +12,8 @@ interface NavItem {
   /** The permission that makes this item visible, from the server-resolved scope. */
   resource: string;
   action: string;
+  /** Rail section (§5): 1 daily work, 2 setup, 3 records. A rule is drawn between them. */
+  group: 1 | 2 | 3;
 }
 
 /**
@@ -21,83 +22,141 @@ interface NavItem {
  * request regardless.
  */
 const NAV: NavItem[] = [
-  { to: '/analytics', label: 'Analytics', resource: 'analytics', action: 'unit_dashboard' },
-  { to: '/units', label: 'Units', resource: 'unit', action: 'read' },
-  { to: '/zones', label: 'Zones', resource: 'zone', action: 'read' },
-  { to: '/checklists', label: 'Checklists', resource: 'checklist_template', action: 'read' },
-  { to: '/audits', label: 'Audits', resource: 'audit', action: 'read' },
-  { to: '/corrective-actions', label: 'Corrective actions', resource: 'corrective_action', action: 'read' },
-  { to: '/reports', label: 'Reports', resource: 'report', action: 'read_snapshot' },
-  { to: '/sync', label: 'Sync health', resource: 'sync_conflict', action: 'read' },
-  { to: '/users', label: 'Users', resource: 'user', action: 'read' },
-  { to: '/audit-log', label: 'Audit log', resource: 'audit_log', action: 'read' },
+  { to: '/dashboard', label: 'Unit board', resource: 'analytics', action: 'unit_dashboard', group: 1 },
+  { to: '/audits', label: 'Audits', resource: 'audit', action: 'read', group: 1 },
+  { to: '/corrective-actions', label: 'Corrective actions', resource: 'corrective_action', action: 'read', group: 1 },
+  { to: '/notifications', label: 'Notifications', resource: 'notification', action: 'read', group: 1 },
+  { to: '/units', label: 'Units & zones', resource: 'unit', action: 'read', group: 2 },
+  { to: '/checklists', label: 'Checklists', resource: 'checklist_template', action: 'read', group: 2 },
+  { to: '/users', label: 'Users & roles', resource: 'user', action: 'read', group: 2 },
+  { to: '/analytics', label: 'Analytics', resource: 'analytics', action: 'unit_dashboard', group: 3 },
+  { to: '/reports', label: 'Reports', resource: 'report', action: 'read_snapshot', group: 3 },
+  { to: '/sync', label: 'Sync health', resource: 'sync_conflict', action: 'read', group: 3 },
+  { to: '/audit-log', label: 'Activity log', resource: 'audit_log', action: 'read', group: 3 },
 ];
 
+const TOPBAR_SLOT_ID = 'gb-topbar-tools';
+
+/**
+ * The shell of GEMBA-BOARD.md §5: a fixed 216px rail (a horizontal strip below 860px) and
+ * a sticky topbar carrying the page title, the page's own scope selectors, the theme
+ * switch and the identity chip.
+ */
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, scope, signOut, can } = useSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const items = NAV.filter((item) => can(item.resource, item.action));
+  const title = items.find((item) => pathname.startsWith(item.to))?.label ?? 'audit5s';
 
   return (
-    <div className="min-h-full">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-6">
-            <Link to="/units" className="text-sm font-semibold text-brand">
-              audit5s
-            </Link>
-            <nav className="flex gap-1">
-              {NAV.filter((item) => can(item.resource, item.action)).map((item) => (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={cn(
-                    'rounded-md px-3 py-1.5 text-sm',
-                    pathname.startsWith(item.to)
-                      ? 'bg-brand/10 font-medium text-brand'
-                      : 'text-neutral-600 hover:bg-neutral-100',
-                  )}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
+    <div className="gb-app">
+      <aside className="gb-rail">
+        <div className="gb-brand">
+          <b>Gemba Board</b>
+          <span>audit5s · admin</span>
+        </div>
+        <nav className="gb-nav">
+          {items.map((item, i) => (
+            <Fragment key={item.to}>
+              {i > 0 && items[i - 1]!.group !== item.group ? <hr /> : null}
+              <Link to={item.to} activeProps={{ 'aria-current': 'page' }}>
+                {item.label}
+                {item.to === '/notifications' ? <UnreadCount /> : null}
+              </Link>
+            </Fragment>
+          ))}
+        </nav>
+        <div className="gb-railfoot">
+          <b>{scope?.organizationWide ? 'Organization-wide' : `${scope?.unitIds.length ?? 0} Unit scope`}</b>
+          {scope?.role.replace(/_/g, ' ').toLowerCase()}
+        </div>
+      </aside>
 
-          <div className="flex items-center gap-3 text-sm">
-            <NotificationBell />
-            <div className="text-right">
-              <p className="font-medium text-neutral-800">{user?.fullName}</p>
-              <p className="text-xs text-neutral-500">
-                {scope?.role.replace(/_/g, ' ').toLowerCase()} · {user?.loginId}
-              </p>
+      <main className="gb-main">
+        <div className="gb-top">
+          <h1 className="gb-h1">{title}</h1>
+          <div className="gb-tools">
+            {/* Pages put their scope selectors here with <TopbarTools> (§5). */}
+            <div id={TOPBAR_SLOT_ID} className="gb-tools" />
+            <ThemeSwitch />
+            <div className="gb-who">
+              <div className="gb-av" aria-hidden="true">{initials(user?.fullName)}</div>
+              <div>
+                <b>{user?.fullName}</b>
+                <span>{user?.loginId}</span>
+              </div>
             </div>
-            <Button variant="secondary" onClick={() => void signOut()}>
+            <button className="gb-btn" type="button" onClick={() => void signOut()}>
               Sign out
-            </Button>
+            </button>
           </div>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+        <div className="gb-page">{children}</div>
+      </main>
     </div>
   );
 }
 
+/**
+ * Renders its children into the topbar. A portal rather than a prop because the selectors
+ * belong to the page that owns the queries they filter, and the topbar belongs to the shell.
+ */
+export function TopbarTools({ children }: { children: ReactNode }) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setSlot(document.getElementById(TOPBAR_SLOT_ID)), []);
+  return slot ? createPortal(children, slot) : null;
+}
+
+/** Two states, remembered per browser (§7). Light — the whiteboard — is the default. */
+const MODES = ['light', 'dark'] as const;
+const GLYPH = { light: '○', dark: '●' } as const;
+
+function ThemeSwitch() {
+  const [mode, setMode] = useState<(typeof MODES)[number]>(() => {
+    try {
+      const stored = localStorage.getItem('gemba-theme');
+      return MODES.find((m) => m === stored) ?? 'light';
+    } catch {
+      return 'light';
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', mode);
+    try {
+      localStorage.setItem('gemba-theme', mode);
+    } catch {
+      // A browser that refuses storage still gets the theme, just not the memory of it.
+    }
+  }, [mode]);
+
+  return (
+    <button
+      className="gb-btn"
+      type="button"
+      aria-live="polite"
+      title={`Theme: ${mode} — click to change`}
+      onClick={() => setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]!)}
+    >
+      <span className="gb-data" style={{ marginRight: 6 }}>{GLYPH[mode]}</span>
+      {mode[0]!.toUpperCase() + mode.slice(1)}
+    </button>
+  );
+}
+
 /** The unread count, polled: notifications are written by a worker, not by this session. */
-function NotificationBell() {
+function UnreadCount() {
   const unread = useQuery({
     queryKey: ['notifications', 'badge'],
     queryFn: () => api.get<NotificationPage>('/notifications?limit=1&unread=true'),
     refetchInterval: 60_000,
   });
   const count = unread.data?.unreadCount ?? 0;
+  return count > 0 ? <i aria-label={`${count} unread`}>{count}</i> : null;
+}
 
-  return (
-    <Link to="/notifications" className="relative rounded-md px-2 py-1.5 text-neutral-600 hover:bg-neutral-100">
-      Notifications
-      {count > 0 && (
-        <span className="ml-1 rounded-full bg-brand px-1.5 py-0.5 text-xs font-medium text-white">{count}</span>
-      )}
-    </Link>
-  );
+function initials(name: string | undefined): string {
+  if (!name) return '··';
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts.at(-1)?.[0] ?? '')).toUpperCase();
 }

@@ -119,7 +119,7 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
 
       {step === 'upload' && (
         <div className="space-y-3 p-4">
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-ink-2">
             One sheet per department. A sheet is read as a checklist only when cell A1 reads
             <span className="font-mono"> 5S AUDIT CHECK SHEET – …</span>; anything else is skipped.
           </p>
@@ -157,7 +157,7 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
 
       {step === 'committed' && (
         <div className="space-y-3 p-4">
-          <p className="text-sm font-medium text-neutral-800">
+          <p className="text-sm font-medium text-ink">
             Imported and published. Devices pick the new version up on their next catalogue sync.
           </p>
           <Button onClick={onFinished}>Done</Button>
@@ -177,16 +177,16 @@ function Steps({ current }: { current: Step }) {
   const index = steps.findIndex((step) => step.key === current);
 
   return (
-    <ol className="flex gap-4 border-b border-neutral-200 px-4 py-2 text-xs">
+    <ol className="flex gap-4 border-b border-edge-soft px-4 py-2 text-xs">
       {steps.map((step, position) => (
         <li
           key={step.key}
           className={
             position === index
-              ? 'font-semibold text-brand'
+              ? 'font-semibold text-ink'
               : position < index
-                ? 'text-neutral-500'
-                : 'text-neutral-300'
+                ? 'text-ink-3'
+                : 'text-ink-3'
           }
         >
           {step.label}
@@ -221,13 +221,13 @@ function PreviewStep({
         <Badge tone={preview.job.warningCount > 0 ? 'warn' : 'neutral'}>
           {preview.job.warningCount} warning{preview.job.warningCount === 1 ? '' : 's'}
         </Badge>
-        <span className="text-neutral-500">
+        <span className="text-ink-3">
           {preview.job.sheetCount} checklist sheet{preview.job.sheetCount === 1 ? '' : 's'} ·{' '}
           {preview.job.parsedRowCount} rows read
         </span>
         {preview.job.errorReportObjectKey && (
           <a
-            className="text-brand underline"
+            className="text-ink underline"
             href="#"
             onClick={(event) => {
               event.preventDefault();
@@ -240,7 +240,7 @@ function PreviewStep({
       </div>
 
       {preview.skippedSheets.length > 0 && (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-ink-3">
           Skipped: {preview.skippedSheets.map((sheet) => sheet.name).join(', ')} — not checklists.
         </p>
       )}
@@ -275,7 +275,7 @@ function PreviewStep({
                   <Td>
                     {sheet.templateCode}
                     {sheet.templateId === null && (
-                      <span className="ml-2 text-xs text-neutral-500">new</span>
+                      <span className="ml-2 text-xs text-ink-3">new</span>
                     )}
                   </Td>
                   <Td>{sheet.questionCount}</Td>
@@ -283,7 +283,7 @@ function PreviewStep({
                     {diff ? (
                       <button
                         type="button"
-                        className="text-brand underline"
+                        className="text-ink underline"
                         onClick={() => setOpenSheet(openSheet === sheet.id ? null : sheet.id)}
                       >
                         {diff.currentVersionNumber === null
@@ -300,7 +300,7 @@ function PreviewStep({
                 </tr>
                 {openSheet === sheet.id && diff && (
                   <tr>
-                    <td colSpan={6} className="bg-neutral-50 p-0">
+                    <td colSpan={6} className="bg-board p-0">
                       <SideBySideDiff diff={diff} />
                     </td>
                   </tr>
@@ -317,7 +317,7 @@ function PreviewStep({
             ? 'Committing…'
             : `Commit and publish ${selected.size} checklist${selected.size === 1 ? '' : 's'}`}
         </Button>
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-ink-3">
           {committable.length === 0
             ? 'Nothing to import — every sheet either has errors or matches the published checklist.'
             : 'Nothing has been written yet.'}
@@ -333,7 +333,7 @@ function SheetVerdict({ sheet }: { sheet: ChecklistImportSheet }) {
       <div className="space-y-1">
         <Badge tone="bad">Cannot import</Badge>
         {sheet.messages.map((message) => (
-          <p key={message} className="text-xs text-neutral-600">
+          <p key={message} className="text-xs text-ink-2">
             {message}
           </p>
         ))}
@@ -348,7 +348,7 @@ function SheetVerdict({ sheet }: { sheet: ChecklistImportSheet }) {
       <div className="space-y-1">
         <Badge tone="warn">Review</Badge>
         {sheet.messages.map((message) => (
-          <p key={message} className="text-xs text-neutral-600">
+          <p key={message} className="text-xs text-ink-2">
             {message}
           </p>
         ))}
@@ -372,14 +372,14 @@ function SideBySideDiff({ diff }: { diff: ChecklistSheetDiff }) {
   return (
     <div className="space-y-2 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-ink-3">
           {diff.currentVersionNumber === null
             ? 'No published version yet — every question is new.'
             : `Against published version ${diff.currentVersionNumber}.`}
         </p>
         <button
           type="button"
-          className="text-xs text-brand underline"
+          className="text-xs text-ink underline"
           onClick={() => setShowUnchanged((open) => !open)}
         >
           {showUnchanged ? 'Hide unchanged' : `Show all ${diff.entries.length}`}
@@ -398,27 +398,27 @@ function SideBySideDiff({ diff }: { diff: ChecklistSheetDiff }) {
         <tbody>
           {entries.map((entry) => (
             <tr key={`${entry.section}-${entry.orderInSection}`}>
-              <Td className="whitespace-nowrap text-xs text-neutral-500">
+              <Td className="whitespace-nowrap text-xs text-ink-3">
                 {S_SECTION_LABELS[entry.section]}
               </Td>
               <Td>{entry.orderInSection}</Td>
               <Td
                 className={
                   entry.change === 'CHANGED' || entry.change === 'REMOVED'
-                    ? 'bg-band-needs-support/5'
+                    ? 'bg-tile-2'
                     : undefined
                 }
               >
-                {entry.currentText ?? <span className="text-neutral-400">—</span>}
+                {entry.currentText ?? <span className="text-ink-3">—</span>}
               </Td>
               <Td
                 className={
                   entry.change === 'CHANGED' || entry.change === 'ADDED'
-                    ? 'bg-band-outstanding/5'
+                    ? 'bg-tile-2'
                     : undefined
                 }
               >
-                {entry.incomingText ?? <span className="text-neutral-400">—</span>}
+                {entry.incomingText ?? <span className="text-ink-3">—</span>}
               </Td>
             </tr>
           ))}

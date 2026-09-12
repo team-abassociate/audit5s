@@ -44,7 +44,6 @@ export type ListMembershipsQuery = z.infer<typeof listMembershipsQuerySchema>;
 export const membershipDetailSchema = unitMembershipSchema.extend({
   userFullName: z.string(),
   userLoginId: z.string(),
-  unitCode: z.string(),
   unitName: z.string(),
 });
 export type MembershipDetail = z.infer<typeof membershipDetailSchema>;

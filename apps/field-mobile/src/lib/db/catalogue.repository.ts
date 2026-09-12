@@ -46,7 +46,6 @@ export async function replaceCatalogue(
     await database.insert(units).values(
       catalogue.units.map((unit) => ({
         id: unit.id,
-        code: unit.code,
         name: unit.name,
         latitude: unit.latitude,
         longitude: unit.longitude,
@@ -157,7 +156,7 @@ export async function setSyncMeta(
 
 /** Every cached Unit. Renders with the radio off (§2.3 step 3). */
 export function listLocalUnits(database: LocalDatabase) {
-  return database.select().from(units).orderBy(asc(units.code));
+  return database.select().from(units).orderBy(asc(units.name));
 }
 
 export function getLocalUnit(database: LocalDatabase, unitId: string) {

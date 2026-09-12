@@ -57,11 +57,9 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Button variant="secondary" onClick={onBack}>
-          ← Units
+          ← Units & zones
         </Button>
-        <h1 className="text-lg font-semibold">
-          {unit.data.name} <span className="font-mono text-sm text-neutral-500">{unit.data.code}</span>
-        </h1>
+        <h1 className="gb-h1">{unit.data.name}</h1>
       </div>
 
       <Card>
@@ -79,10 +77,6 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
             update.mutate({ ...values, version: unit.data!.version }),
           )}
         >
-          <Field label="Code" hint="Immutable for everyone" error={fieldErrors.code}>
-            <Input disabled defaultValue={unit.data.code} />
-          </Field>
-
           <Field
             label="Name"
             hint={isCoordinator ? 'Super Admin only (U-1)' : undefined}
@@ -172,7 +166,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
       />
 
       {can('unit_membership', 'create') && (
-        <div className="flex items-end gap-2 border-b border-neutral-200 bg-neutral-50 p-4">
+        <div className="flex items-end gap-2 border-b border-edge-soft bg-board p-4">
           <div className="flex-1">
             <Field
               label="Assign a user to this Unit"
@@ -225,7 +219,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
                     {m.role.replace(/_/g, ' ').toLowerCase()}
                   </Badge>
                 </Td>
-                <Td className="text-xs text-neutral-500">
+                <Td className="text-xs text-ink-3">
                   {new Date(m.validFrom).toLocaleDateString()}
                 </Td>
                 <Td>
@@ -239,7 +233,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
             ))}
             {memberships.data.data.length === 0 && (
               <tr>
-                <Td className="text-neutral-500">Nobody is assigned to this Unit.</Td>
+                <Td className="text-ink-3">Nobody is assigned to this Unit.</Td>
               </tr>
             )}
           </tbody>

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { ROLES, type CreateUserRequest, type CreateUserResponse, type Page, type Unit, type User } from '@audit5s/contracts';
 import { api } from '@/lib/api';
-import { Badge, Button, Card, CardHeader, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Combobox, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 export function UsersPage() {
@@ -101,7 +101,7 @@ function UserRow({ user }: { user: User }) {
           {user.mustResetPassword && <Badge tone="warn">reset pending</Badge>}
         </div>
       </Td>
-      <Td className="text-xs text-neutral-500">
+      <Td className="text-xs text-ink-3">
         {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'never'}
       </Td>
       <Td>
@@ -131,18 +131,18 @@ function UserRow({ user }: { user: User }) {
 function BootstrapNotice({ issued, onDismiss }: { issued: CreateUserResponse; onDismiss: () => void }) {
   const expires = new Date(issued.bootstrapExpiresAt);
   return (
-    <Card className="border-band-on-track/40 bg-band-on-track/5 p-4">
+    <Card className="p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1 text-sm">
-          <p className="font-medium text-neutral-900">
+          <p className="font-medium text-ink">
             {issued.user.fullName} can now sign in as{' '}
             <span className="font-mono">{issued.loginId}</span>
           </p>
-          <p className="text-neutral-600">
+          <p className="text-ink-2">
             Their temporary password is their own registered phone number. They must change
             it on first sign-in, and it stops working {expires.toLocaleString()}.
           </p>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-ink-3">
             No password is shown here or sent by message — that is deliberate.
           </p>
         </div>
@@ -159,7 +159,7 @@ function CreateUserForm({ onCreated }: { onCreated: (response: CreateUserRespons
   const queryClient = useQueryClient();
   const isCoordinator = scope?.role === 'COORDINATOR';
 
-  const { register, handleSubmit, reset } = useForm<CreateUserRequest>({
+  const { register, handleSubmit, reset, control } = useForm<CreateUserRequest>({
     defaultValues: { role: isCoordinator ? 'ZONE_LEADER' : 'CONSULTANT' },
   });
 
@@ -184,7 +184,7 @@ function CreateUserForm({ onCreated }: { onCreated: (response: CreateUserRespons
 
   return (
     <form
-      className="grid gap-3 border-b border-neutral-200 bg-neutral-50 p-4 sm:grid-cols-2"
+      className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2"
       onSubmit={handleSubmit((values) => create.mutate(values))}
     >
       <Field label="Full name" hint="The login ID is derived from this and the phone number">
@@ -211,14 +211,18 @@ function CreateUserForm({ onCreated }: { onCreated: (response: CreateUserRespons
 
       {!isCoordinator && (
         <Field label="Unit" hint="Required for every role except Super Admin">
-          <Select {...register('unitId')}>
-            <option value="">Select a Unit…</option>
-            {(units.data?.data ?? []).map((unit) => (
-              <option key={unit.id} value={unit.id}>
-                {unit.code} — {unit.name}
-              </option>
-            ))}
-          </Select>
+          <Controller
+            control={control}
+            name="unitId"
+            render={({ field }) => (
+              <Combobox
+                value={field.value ?? ''}
+                onChange={field.onChange}
+                options={(units.data?.data ?? []).map((unit) => ({ id: unit.id, label: unit.name }))}
+                placeholder="Search Units…"
+              />
+            )}
+          />
         </Field>
       )}
 

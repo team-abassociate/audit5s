@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
   UNIT_COORDINATOR_EDITABLE_FIELDS,
-  UNIT_IMMUTABLE_FIELDS,
   type CreateUnitRequest,
   type ListUnitsQuery,
   type Page,
@@ -29,12 +28,12 @@ export class UnitsService {
         resourceType: 'unit',
         resourceId: created.id,
         unitId: created.id,
-        after: { code: created.code, name: created.name },
+        after: { name: created.name },
       });
       return toUnit(created);
     } catch (error) {
-      if (isUniqueViolation(error, 'unit_code_key')) {
-        throw AppError.conflict('DUPLICATE_CODE', `Unit code '${request.code}' is already in use`);
+      if (isUniqueViolation(error, 'unit_name_key')) {
+        throw AppError.conflict('DUPLICATE_NAME', `A Unit named '${request.name}' already exists`);
       }
       throw error;
     }
@@ -60,21 +59,13 @@ export class UnitsService {
   /**
    * Invariant U-1, enforced at the field level.
    *
-   * A Coordinator sending `name` or `code` gets `403 FIELD_NOT_EDITABLE` **listing the
-   * offending fields**, rather than a silent drop. The check happens here, in the update
-   * resolver, not merely in the UI — the §6.4 worked example is exactly this case.
+   * A Coordinator sending `name` gets `403 FIELD_NOT_EDITABLE` **listing the offending
+   * field**, rather than a silent drop. The check happens here, in the update resolver,
+   * not merely in the UI — the §6.4 worked example is exactly this case.
    */
   async update(scope: ScopeContext, unitId: string, request: UpdateUnitRequest): Promise<Unit> {
     const { version, ...fields } = request;
     const supplied = Object.keys(fields);
-
-    // `code` is immutable for everyone: object-storage keys embed it (§12.5).
-    const immutable = supplied.filter((field) =>
-      (UNIT_IMMUTABLE_FIELDS as readonly string[]).includes(field),
-    );
-    if (immutable.length > 0) {
-      throw AppError.fieldNotEditable(immutable);
-    }
 
     if (scope.actor.role === 'COORDINATOR') {
       const rejected = supplied.filter(
@@ -157,7 +148,6 @@ function pickAudited(row: UnitRow) {
 export function toUnit(row: UnitRow): Unit {
   return {
     id: row.id,
-    code: row.code,
     name: row.name,
     address: row.address,
     city: row.city,

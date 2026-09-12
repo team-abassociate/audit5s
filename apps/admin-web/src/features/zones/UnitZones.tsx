@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import type {
   ChecklistTemplate,
   CreateZoneRequest,
   Page,
-  Unit,
   User,
   Zone,
 } from '@audit5s/contracts';
@@ -14,8 +13,6 @@ import { ApiError, api } from '@/lib/api';
 import {
   Badge,
   Button,
-  Card,
-  CardHeader,
   ErrorNotice,
   Field,
   Input,
@@ -28,115 +25,81 @@ import {
 import { useSession } from '@/lib/session';
 
 /**
- * The Coordinator's Zone master data.
+ * A Unit's Zones, cascaded open under its row on Units & zones.
  *
- * A Coordinator has exactly one Unit (invariant M-1), so the Unit picker only appears for
- * a Super Admin. Everything on this page is scope-filtered by the server: the list is
- * whatever `GET /units/{id}/zones` returns, never a client-side filter over a wider set.
+ * There is no Unit picker and no client-side filter: the list is whatever
+ * `GET /units/{id}/zones` returns for the Unit whose row is open, scope-filtered by the
+ * server. A Coordinator has exactly one Unit (invariant M-1), so they only ever see one.
  */
-export function ZonesPage() {
-  const { scope, can } = useSession();
-  const [unitId, setUnitId] = useState<string | null>(null);
+export function UnitZones({ unitId }: { unitId: string }) {
+  const { can } = useSession();
   const [creating, setCreating] = useState(false);
-
-  const units = useQuery({
-    queryKey: ['units'],
-    queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
-  });
-
-  useEffect(() => {
-    if (!unitId && units.data?.data[0]) {
-      setUnitId(units.data.data[0].id);
-    }
-  }, [unitId, units.data]);
 
   const zones = useQuery({
     queryKey: ['zones', unitId],
     queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?active=false&limit=200`),
-    enabled: Boolean(unitId),
   });
 
-  if (units.isLoading) return <Spinner />;
-  if (units.error) return <ErrorNotice error={units.error} />;
-
-  const unit = units.data?.data.find((candidate) => candidate.id === unitId) ?? null;
+  const list = [...(zones.data?.data ?? [])].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
+  );
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader
-          title="Zones"
-          description={
-            scope?.role === 'COORDINATOR'
-              ? 'The Zones of your Unit. Auditors choose from these when they start an audit.'
-              : 'Zones, per Unit.'
-          }
-          action={
-            can('zone', 'create') && unitId ? (
-              <Button onClick={() => setCreating((open) => !open)}>
-                {creating ? 'Cancel' : 'New Zone'}
-              </Button>
-            ) : null
-          }
+    <div className="border-t border-edge-soft bg-board">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <span className="gb-label">
+          Zones{zones.data ? ` · ${list.length}` : ''}
+        </span>
+        {can('zone', 'create') && (
+          <Button variant="secondary" onClick={() => setCreating((open) => !open)}>
+            {creating ? 'Cancel' : 'New Zone'}
+          </Button>
+        )}
+      </div>
+
+      {creating && (
+        <CreateZoneForm
+          unitId={unitId}
+          existing={zones.data?.data ?? []}
+          onCreated={() => setCreating(false)}
         />
+      )}
 
-        {units.data && units.data.data.length > 1 && (
-          <div className="border-b border-neutral-200 px-4 py-3">
-            <Field label="Unit">
-              <Select value={unitId ?? ''} onChange={(event) => setUnitId(event.target.value)}>
-                {units.data.data.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.code} — {candidate.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-        )}
+      {zones.isLoading && <Spinner />}
+      {zones.error && (
+        <div className="p-4">
+          <ErrorNotice error={zones.error} />
+        </div>
+      )}
 
-        {creating && unitId && (
-          <CreateZoneForm
-            unitId={unitId}
-            existing={zones.data?.data ?? []}
-            onCreated={() => setCreating(false)}
-          />
-        )}
+      {zones.data && list.length === 0 && (
+        <p className="px-4 pb-4 text-sm text-ink-3">
+          No Zones in this Unit yet.{' '}
+          {can('zone', 'create')
+            ? 'Create the first one — auditors choose from these when they start an audit.'
+            : 'A Coordinator creates them.'}
+        </p>
+      )}
 
-        {zones.isLoading && <Spinner />}
-        {zones.error && (
-          <div className="p-4">
-            <ErrorNotice error={zones.error} />
-          </div>
-        )}
-
-        {zones.data && zones.data.data.length === 0 && (
-          <p className="px-4 py-6 text-sm text-neutral-500">
-            No Zones yet. {unit ? `Create the first one for ${unit.name}.` : ''}
-          </p>
-        )}
-
-        {zones.data && zones.data.data.length > 0 && (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Zone</Th>
-                <Th>Description</Th>
-                <Th>Zone Leader</Th>
-                <Th>Default checklist</Th>
-                <Th>Status</Th>
-                <Th>Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...zones.data.data]
-                .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code))
-                .map((zone) => (
-                  <ZoneRow key={zone.id} zone={zone} unitId={unitId!} />
-                ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
+      {list.length > 0 && (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Zone</Th>
+              <Th>Description</Th>
+              <Th>Zone Leader</Th>
+              <Th>Default checklist</Th>
+              <Th>Status</Th>
+              <Th>Actions</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((zone) => (
+              <ZoneRow key={zone.id} zone={zone} unitId={unitId} />
+            ))}
+          </tbody>
+        </Table>
+      )}
     </div>
   );
 }
@@ -165,8 +128,8 @@ function ZoneRow({ zone, unitId }: { zone: Zone; unitId: string }) {
         <Td>
           <span className="font-medium">{zoneDisplayLabel(zone.code, zone.name)}</span>
         </Td>
-        <Td className="max-w-xs truncate text-neutral-600">{zone.description ?? '—'}</Td>
-        <Td>{zone.zoneLeaderName ?? <span className="text-neutral-400">Unassigned</span>}</Td>
+        <Td className="max-w-xs truncate text-ink-2">{zone.description ?? '—'}</Td>
+        <Td>{zone.zoneLeaderName ?? <span className="text-ink-3">Unassigned</span>}</Td>
         <Td>{template?.name ?? '—'}</Td>
         <Td>
           {zone.archivedAt ? <Badge tone="neutral">Archived</Badge> : <Badge tone="good">Active</Badge>}
@@ -197,7 +160,7 @@ function ZoneRow({ zone, unitId }: { zone: Zone; unitId: string }) {
       </tr>
       {editing && (
         <tr>
-          <td colSpan={6} className="bg-neutral-50 p-0">
+          <td colSpan={6} className="bg-board p-0">
             <EditZoneForm zone={zone} unitId={unitId} onDone={() => setEditing(false)} />
           </td>
         </tr>
@@ -261,7 +224,7 @@ function CreateZoneForm({
 
   return (
     <form
-      className="grid gap-3 border-b border-neutral-200 bg-neutral-50 p-4 sm:grid-cols-2"
+      className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2"
       onSubmit={handleSubmit((body) => create.mutate(body))}
     >
       <Field label="Zone" error={fieldErrors.code} hint="Zone 1 to Zone 100">

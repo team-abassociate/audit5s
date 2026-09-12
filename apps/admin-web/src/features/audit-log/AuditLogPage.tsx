@@ -53,31 +53,31 @@ export function AuditLogPage() {
           <tbody>
             {entries.data.data.map((entry) => (
               <tr key={entry.id} className="align-top">
-                <Td className="text-xs whitespace-nowrap text-neutral-500">
+                <Td className="text-xs whitespace-nowrap text-ink-3">
                   {new Date(entry.occurredAt).toLocaleString()}
                 </Td>
                 <Td>
                   <div className="text-sm">{entry.actorLabel}</div>
                   {entry.ipAddress && (
-                    <div className="font-mono text-xs text-neutral-400">{entry.ipAddress}</div>
+                    <div className="font-mono text-xs text-ink-3">{entry.ipAddress}</div>
                   )}
                 </Td>
                 <Td className="font-mono text-xs">{entry.action}</Td>
-                <Td className="font-mono text-xs text-neutral-500">
+                <Td className="font-mono text-xs text-ink-3">
                   {entry.resourceType}
                   {entry.resourceId ? `/${entry.resourceId.slice(0, 8)}…` : ''}
                 </Td>
                 <Td>
                   <Diff before={entry.before} after={entry.after} />
                 </Td>
-                <Td className="font-mono text-xs text-neutral-400">
+                <Td className="font-mono text-xs text-ink-3">
                   {entry.requestId.slice(0, 8)}…
                 </Td>
               </tr>
             ))}
             {entries.data.data.length === 0 && (
               <tr>
-                <Td className="text-neutral-500">Nothing logged yet.</Td>
+                <Td className="text-ink-3">Nothing logged yet.</Td>
               </tr>
             )}
           </tbody>
@@ -89,19 +89,19 @@ export function AuditLogPage() {
 
 /** Sensitive fields are already redacted server-side; this only renders what arrived. */
 function Diff({ before, after }: { before: unknown; after: unknown }) {
-  if (!before && !after) return <span className="text-xs text-neutral-400">—</span>;
+  if (!before && !after) return <span className="text-xs text-ink-3">—</span>;
 
   return (
     <details className="text-xs">
-      <summary className="cursor-pointer text-neutral-500">view</summary>
+      <summary className="cursor-pointer text-ink-3">view</summary>
       <div className="mt-1 space-y-1">
         {before ? (
-          <pre className="overflow-x-auto rounded bg-neutral-50 p-2 text-[11px]">
+          <pre className="overflow-x-auto bg-board p-2 text-[11px]">
             − {JSON.stringify(before, null, 2)}
           </pre>
         ) : null}
         {after ? (
-          <pre className="overflow-x-auto rounded bg-neutral-50 p-2 text-[11px]">
+          <pre className="overflow-x-auto bg-board p-2 text-[11px]">
             + {JSON.stringify(after, null, 2)}
           </pre>
         ) : null}

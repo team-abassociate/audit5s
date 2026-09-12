@@ -76,7 +76,7 @@ export async function seedFixtures(owner: Client): Promise<void> {
     [IDS.superAdmin, IDS.coordinatorA, IDS.consultant, IDS.zoneLeaderA],
   );
   await owner.query(
-    `INSERT INTO unit (id, code, name) VALUES ($1,'U-A','Unit A'), ($2,'U-B','Unit B')`,
+    `INSERT INTO unit (id, name) VALUES ($1,'Unit A'), ($2,'Unit B')`,
     [IDS.unitA, IDS.unitB],
   );
   await owner.query(

@@ -12,7 +12,6 @@ import {
 
 export const unitSchema = z.object({
   id: uuidSchema,
-  code: z.string(),
   name: z.string(),
   address: z.string().nullable(),
   city: z.string().nullable(),
@@ -35,14 +34,11 @@ export const unitSchema = z.object({
 });
 export type Unit = z.infer<typeof unitSchema>;
 
-export const unitCodeSchema = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .min(2)
-  .max(32)
-  .regex(/^[A-Z0-9][A-Z0-9_-]*$/, 'Unit code may contain letters, digits, hyphen and underscore');
-
+/**
+ * A Unit is identified by its name and nothing else. There was a `code` here — a short
+ * immutable handle a Super Admin had to invent at creation — and it is gone: the name is
+ * what anyone types, reads and searches for, so it carries the uniqueness instead.
+ */
 export const unitNameSchema = z.string().trim().min(1).max(200);
 
 /** IANA zone (A11). Validated against the runtime's own tz database, not a regex. */
@@ -64,9 +60,9 @@ export const timezoneSchema = z
   );
 
 /**
- * The Coordinator-editable subset (invariant U-1, ARCHITECTURE.md §5.2). `name` and `code`
- * are absent by construction: a Coordinator sending either gets `403 FIELD_NOT_EDITABLE`
- * naming the offending fields, enforced in the update resolver rather than only in the UI.
+ * The Coordinator-editable subset (invariant U-1, ARCHITECTURE.md §5.2). `name` is absent
+ * by construction: a Coordinator sending it gets `403 FIELD_NOT_EDITABLE` naming the
+ * offending field, enforced in the update resolver rather than only in the UI.
  */
 export const UNIT_COORDINATOR_EDITABLE_FIELDS = [
   'address',
@@ -87,11 +83,7 @@ export const UNIT_COORDINATOR_EDITABLE_FIELDS = [
 /** Writable by SUPER_ADMIN only. */
 export const UNIT_SUPER_ADMIN_ONLY_FIELDS = ['name'] as const;
 
-/** Immutable after creation, for anyone: changing it would rewrite object-storage keys. */
-export const UNIT_IMMUTABLE_FIELDS = ['code'] as const;
-
 export const createUnitRequestSchema = z.object({
-  code: unitCodeSchema,
   name: unitNameSchema,
   address: optional(z.string().trim().max(400)),
   city: optional(z.string().trim().max(120)),
@@ -135,8 +127,6 @@ export const updateUnitRequestSchema = z
   .object({
     ...coordinatorEditableShape,
     name: unitNameSchema.optional(),
-    /** Present so the immutability rule produces a clear error rather than silence. */
-    code: unitCodeSchema.optional(),
     /** Optimistic concurrency (ARCHITECTURE.md §5). */
     version: z.number().int().positive().optional(),
   })

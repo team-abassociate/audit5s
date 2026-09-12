@@ -235,35 +235,35 @@ describe('row-level security', () => {
   });
 
   it('shows a COORDINATOR only their own Unit', async () => {
-    const codes = await asActor(app, IDS.coordinatorA, 'COORDINATOR', async () => {
-      const { rows } = await app.query('SELECT code FROM unit ORDER BY code');
-      return rows.map((r: { code: string }) => r.code);
+    const names = await asActor(app, IDS.coordinatorA, 'COORDINATOR', async () => {
+      const { rows } = await app.query('SELECT name FROM unit ORDER BY name');
+      return rows.map((r: { name: string }) => r.name);
     });
-    expect(codes).toEqual(['U-A']);
+    expect(names).toEqual(['Unit A']);
   });
 
   it('shows a ZONE_LEADER only their own Unit', async () => {
-    const codes = await asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', async () => {
-      const { rows } = await app.query('SELECT code FROM unit ORDER BY code');
-      return rows.map((r: { code: string }) => r.code);
+    const names = await asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', async () => {
+      const { rows } = await app.query('SELECT name FROM unit ORDER BY name');
+      return rows.map((r: { name: string }) => r.name);
     });
-    expect(codes).toEqual(['U-A']);
+    expect(names).toEqual(['Unit A']);
   });
 
   it('shows a CONSULTANT every assigned Unit', async () => {
-    const codes = await asActor(app, IDS.consultant, 'CONSULTANT', async () => {
-      const { rows } = await app.query('SELECT code FROM unit ORDER BY code');
-      return rows.map((r: { code: string }) => r.code);
+    const names = await asActor(app, IDS.consultant, 'CONSULTANT', async () => {
+      const { rows } = await app.query('SELECT name FROM unit ORDER BY name');
+      return rows.map((r: { name: string }) => r.name);
     });
-    expect(codes).toEqual(['U-A', 'U-B']);
+    expect(names).toEqual(['Unit A', 'Unit B']);
   });
 
   it('shows a SUPER_ADMIN the whole organization', async () => {
-    const codes = await asActor(app, IDS.superAdmin, 'SUPER_ADMIN', async () => {
-      const { rows } = await app.query('SELECT code FROM unit ORDER BY code');
-      return rows.map((r: { code: string }) => r.code);
+    const names = await asActor(app, IDS.superAdmin, 'SUPER_ADMIN', async () => {
+      const { rows } = await app.query('SELECT name FROM unit ORDER BY name');
+      return rows.map((r: { name: string }) => r.name);
     });
-    expect(codes).toEqual(['U-A', 'U-B']);
+    expect(names).toEqual(['Unit A', 'Unit B']);
   });
 
   it('hides a revoked Consultant’s Unit the moment the membership is revoked', async () => {
@@ -272,12 +272,12 @@ describe('row-level security', () => {
        WHERE user_id = $1 AND unit_id = $2`,
       [IDS.consultant, IDS.unitB],
     );
-    const codes = await asActor(app, IDS.consultant, 'CONSULTANT', async () => {
-      const { rows } = await app.query('SELECT code FROM unit ORDER BY code');
-      return rows.map((r: { code: string }) => r.code);
+    const names = await asActor(app, IDS.consultant, 'CONSULTANT', async () => {
+      const { rows } = await app.query('SELECT name FROM unit ORDER BY name');
+      return rows.map((r: { name: string }) => r.name);
     });
     // Immediately, not at token expiry — which is why scope is never carried in the JWT.
-    expect(codes).toEqual(['U-A']);
+    expect(names).toEqual(['Unit A']);
   });
 
   it('restricts the audit log to a SUPER_ADMIN', async () => {
@@ -337,10 +337,10 @@ describe('uniqueness rules', () => {
     ).resolves.toBeDefined();
   });
 
-  it('enforces a unique Unit code', async () => {
-    await expect(
-      owner.query(`INSERT INTO unit (code, name) VALUES ('U-A','Duplicate')`),
-    ).rejects.toThrow(/unit_code_key/);
+  it('enforces a unique Unit name — the Unit has no other identifier', async () => {
+    await expect(owner.query(`INSERT INTO unit (name) VALUES ('Unit A')`)).rejects.toThrow(
+      /unit_name_key/,
+    );
   });
 
   it('treats email uniqueness case-insensitively', async () => {

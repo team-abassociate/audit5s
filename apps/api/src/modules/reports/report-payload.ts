@@ -94,7 +94,6 @@ export function freezePayload(input: FreezeInput): ReportPayload {
     unit: {
       id: input.unit.id,
       name: input.unit.name,
-      code: input.unit.code,
       address: joinAddress(input.unit),
     },
     audit: single

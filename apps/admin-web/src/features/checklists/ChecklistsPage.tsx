@@ -65,7 +65,7 @@ export function ChecklistsPage() {
         )}
 
         {templates.data && templates.data.data.length === 0 && (
-          <p className="px-4 py-6 text-sm text-neutral-500">
+          <p className="px-4 py-6 text-sm text-ink-3">
             No checklists yet.
             {can('checklist_import', 'upload')
               ? ' Import the department workbook to create them.'
@@ -91,7 +91,7 @@ export function ChecklistsPage() {
                     <Td>
                       <button
                         type="button"
-                        className="font-medium text-brand underline"
+                        className="font-medium text-ink underline"
                         onClick={() =>
                           setOpenTemplate(openTemplate === template.id ? null : template.id)
                         }
@@ -116,7 +116,7 @@ export function ChecklistsPage() {
                   </tr>
                   {openTemplate === template.id && (
                     <tr>
-                      <td colSpan={5} className="bg-neutral-50 p-0">
+                      <td colSpan={5} className="bg-board p-0">
                         <TemplateDetail template={template} />
                       </td>
                     </tr>
@@ -162,7 +162,7 @@ function TemplateDetail({ template }: { template: ChecklistTemplate }) {
   return (
     <div className="space-y-4 p-4">
       <div>
-        <h3 className="text-sm font-semibold">Versions</h3>
+        <h3 className="gb-h2">Versions</h3>
         {versions.isLoading && <Spinner />}
         {versions.data && (
           <Table>
@@ -245,23 +245,23 @@ function QuestionList({ versionId }: { versionId: string }) {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold">
+      <h3 className="gb-h2">
         Questions — v{detail.data.versionNumber}
-        <span className="ml-2 text-xs font-normal text-neutral-500">
+        <span className="ml-2 text-xs font-normal text-ink-3">
           published versions never change (CV-1)
         </span>
       </h3>
       {S_SECTION_ORDER.map((section) => (
         <div key={section}>
-          <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+          <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">
             {S_SECTION_LABELS[section]}
           </p>
           <ol className="mt-1 space-y-0.5">
             {detail.data!.questions
               .filter((question) => question.section === section)
               .map((question) => (
-                <li key={question.id} className="text-sm text-neutral-700">
-                  <span className="mr-2 font-mono text-xs text-neutral-400">
+                <li key={question.id} className="text-sm text-ink-2">
+                  <span className="mr-2 font-mono text-xs text-ink-3">
                     {question.globalOrder}
                   </span>
                   {question.text}

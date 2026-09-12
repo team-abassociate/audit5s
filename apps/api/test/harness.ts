@@ -150,8 +150,8 @@ export async function startWorld(): Promise<TestWorld> {
 
   const world = { app, owner, request, upload } as Partial<TestWorld> as TestWorld;
 
-  const unitA = await insertUnit(owner, 'U-A', 'Unit A');
-  const unitB = await insertUnit(owner, 'U-B', 'Unit B');
+  const unitA = await insertUnit(owner, 'Unit A');
+  const unitB = await insertUnit(owner, 'Unit B');
   world.unitA = unitA;
   world.unitB = unitB;
   world.zoneA = await insertZone(owner, unitA, 'Z-01', 'Press');
@@ -216,11 +216,8 @@ async function insertZone(
   return rows[0].id as string;
 }
 
-async function insertUnit(owner: Client, code: string, name: string): Promise<string> {
-  const { rows } = await owner.query(
-    `INSERT INTO unit (code, name) VALUES ($1, $2) RETURNING id`,
-    [code, name],
-  );
+async function insertUnit(owner: Client, name: string): Promise<string> {
+  const { rows } = await owner.query(`INSERT INTO unit (name) VALUES ($1) RETURNING id`, [name]);
   return rows[0].id as string;
 }
 

@@ -197,7 +197,6 @@ export const reportPayloadSchema = z.object({
   unit: z.object({
     id: uuidSchema,
     name: z.string(),
-    code: z.string(),
     address: z.string().nullable(),
   }),
   /** Audit-level metadata. Null on a summary spanning several audits. */

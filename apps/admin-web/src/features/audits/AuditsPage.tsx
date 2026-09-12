@@ -9,13 +9,15 @@ import type {
   Unit,
   User,
 } from '@audit5s/contracts';
-import { bandFor } from '@audit5s/domain';
+import { bandTextClass } from '@/lib/bands';
+import { cn } from '@/lib/cn';
 import { ApiError, api } from '@/lib/api';
 import {
   Badge,
   Button,
   Card,
   CardHeader,
+  Combobox,
   ErrorNotice,
   Field,
   Input,
@@ -91,7 +93,7 @@ export function AuditsPage() {
         )}
 
         {audits.data && audits.data.data.length === 0 && (
-          <p className="px-4 py-6 text-sm text-neutral-500">
+          <p className="px-4 py-6 text-sm text-ink-3">
             {showActiveOnly ? 'No audits are running right now.' : 'No audits yet.'}
           </p>
         )}
@@ -111,7 +113,7 @@ export function AuditsPage() {
             </thead>
             <tbody>
               {audits.data.data.map((audit) => (
-                <tr key={audit.id} className="border-t border-neutral-200">
+                <tr key={audit.id} className="border-t border-edge-soft">
                   <Td>{audit.unitName}</Td>
                   <Td>{AUDIT_TYPE_LABELS[audit.auditType]}</Td>
                   <Td>{audit.auditorName}</Td>
@@ -124,7 +126,7 @@ export function AuditsPage() {
                   <Td>
                     <ScoreCell audit={audit} />
                   </Td>
-                  <Td className="text-neutral-500">
+                  <Td className="text-ink-3">
                     {new Date(audit.updatedAt).toLocaleString()}
                   </Td>
                   <Td>
@@ -216,17 +218,16 @@ function LocationFlag({ audit }: { audit: Audit }) {
 
 function ScoreCell({ audit }: { audit: Audit }) {
   if (!audit.scored) {
-    return <span className="text-neutral-500">Not scored</span>;
+    return <span className="text-ink-3">Not scored</span>;
   }
   if (audit.status !== 'COMPLETED' && audit.totals.maxScore === 0) {
-    return <span className="text-neutral-400">—</span>;
+    return <span className="text-ink-3">—</span>;
   }
   const percentage = audit.totals.scorePercentage;
-  const band = bandFor(percentage);
   return (
-    <span style={band ? { color: band.color } : undefined} className="font-semibold">
+    <span className={cn('font-semibold', bandTextClass(percentage))}>
       {percentage === null ? 'N/A' : `${percentage.toFixed(1)}%`}
-      <span className="ml-2 font-normal text-neutral-500">
+      <span className="ml-2 font-normal text-ink-3">
         {audit.totals.rawScore} / {audit.totals.maxScore}
       </span>
     </span>
@@ -245,7 +246,7 @@ function AssignmentRow({ assignment }: { assignment: AuditAssignment }) {
   });
 
   return (
-    <tr className="border-t border-neutral-200">
+    <tr className="border-t border-edge-soft">
       <Td>{assignment.unitName}</Td>
       <Td>{assignment.auditorName}</Td>
       <Td>{AUDIT_TYPE_LABELS[assignment.auditType]}</Td>
@@ -320,7 +321,7 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <form
-      className="space-y-3 border-b border-neutral-200 p-4"
+      className="space-y-3 border-b border-edge-soft p-4"
       onSubmit={(event) => {
         event.preventDefault();
         create.mutate();
@@ -328,14 +329,13 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Unit">
-          <Select value={unitId} onChange={(event) => setUnitId(event.target.value)} required>
-            <option value="">Choose a Unit…</option>
-            {(units.data?.data ?? []).map((unit) => (
-              <option key={unit.id} value={unit.id}>
-                {unit.code} — {unit.name}
-              </option>
-            ))}
-          </Select>
+          <Combobox
+            value={unitId}
+            onChange={setUnitId}
+            options={(units.data?.data ?? []).map((unit) => ({ id: unit.id, label: unit.name }))}
+            placeholder="Search Units…"
+            required
+          />
         </Field>
 
         <Field

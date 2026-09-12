@@ -19,25 +19,25 @@ describe('creation', () => {
   it('creates a Unit and defaults the timezone to Asia/Kolkata (A11)', async () => {
     const response = await world.request('POST', `${base}/units`, {
       token: world.actors.SUPER_ADMIN.accessToken,
-      body: { code: 'U-SURAT', name: 'Surat Plant' },
+      body: { name: 'Surat Plant' },
     });
     expect(response.status).toBe(201);
     expect((response.body as { timezone: string }).timezone).toBe('Asia/Kolkata');
   });
 
-  it('refuses a duplicate code with a usable error code', async () => {
+  it('refuses a duplicate name with a usable error code', async () => {
     const response = await world.request('POST', `${base}/units`, {
       token: world.actors.SUPER_ADMIN.accessToken,
-      body: { code: 'U-SURAT', name: 'Another Surat' },
+      body: { name: 'Surat Plant' },
     });
     expect(response.status).toBe(409);
-    expect((response.body as { code: string }).code).toBe('DUPLICATE_CODE');
+    expect((response.body as { code: string }).code).toBe('DUPLICATE_NAME');
   });
 
   it('rejects a timezone that is not in the IANA database', async () => {
     const response = await world.request('POST', `${base}/units`, {
       token: world.actors.SUPER_ADMIN.accessToken,
-      body: { code: 'U-BAD-TZ', name: 'Bad', timezone: 'Mars/Olympus' },
+      body: { name: 'Bad', timezone: 'Mars/Olympus' },
     });
     expect(response.status).toBe(422);
   });
@@ -86,14 +86,6 @@ describe('invariant U-1 — a Coordinator may not rename their Unit', () => {
     expect((response.body as { name: string }).name).toBe('Unit A Renamed');
   });
 
-  it('refuses a code change from anyone — object-storage keys embed it', async () => {
-    const response = await world.request('PATCH', `${base}/units/${world.unitA}`, {
-      token: world.actors.SUPER_ADMIN.accessToken,
-      body: { code: 'U-RENAMED' },
-    });
-    expect(response.status).toBe(403);
-    expect((response.body as { code: string }).code).toBe('FIELD_NOT_EDITABLE');
-  });
 });
 
 describe('optimistic concurrency', () => {
@@ -122,7 +114,7 @@ describe('archive', () => {
   it('archives a Unit and drops it from the default listing', async () => {
     const created = await world.request('POST', `${base}/units`, {
       token: world.actors.SUPER_ADMIN.accessToken,
-      body: { code: 'U-TEMP', name: 'Temporary' },
+      body: { name: 'Temporary' },
     });
     const unitId = (created.body as { id: string }).id;
 
@@ -134,14 +126,14 @@ describe('archive', () => {
     const listed = await world.request('GET', `${base}/units`, {
       token: world.actors.SUPER_ADMIN.accessToken,
     });
-    const codes = (listed.body as { data: Array<{ code: string }> }).data.map((u) => u.code);
-    expect(codes).not.toContain('U-TEMP');
+    const names = (listed.body as { data: Array<{ name: string }> }).data.map((u) => u.name);
+    expect(names).not.toContain('Temporary');
 
     // Archived, never deleted: it stays visible when asked for explicitly.
     const withArchived = await world.request('GET', `${base}/units?includeArchived=true`, {
       token: world.actors.SUPER_ADMIN.accessToken,
     });
-    const all = (withArchived.body as { data: Array<{ code: string }> }).data.map((u) => u.code);
-    expect(all).toContain('U-TEMP');
+    const all = (withArchived.body as { data: Array<{ name: string }> }).data.map((u) => u.name);
+    expect(all).toContain('Temporary');
   });
 });

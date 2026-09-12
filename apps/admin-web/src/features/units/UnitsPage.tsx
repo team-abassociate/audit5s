@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import type { CreateUnitRequest, Page, Unit } from '@audit5s/contracts';
 import { api } from '@/lib/api';
 import { Button, Card, CardHeader, ErrorNotice, Field, Input, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { UnitZones } from '@/features/zones/UnitZones';
 import { UnitDetail } from './UnitDetail';
 
 export function UnitsPage() {
   const { can } = useSession();
   const [selected, setSelected] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const units = useQuery({
@@ -25,8 +27,8 @@ export function UnitsPage() {
     <div className="space-y-4">
       <Card>
         <CardHeader
-          title="Units"
-          description="Every Unit you may see. A Consultant sees only their assigned Units."
+          title="Units & zones"
+          description="Every Unit you may see, its Zones one click down. A Consultant sees only their assigned Units."
           action={
             can('unit', 'create') ? (
               <Button onClick={() => setCreating((open) => !open)}>
@@ -45,30 +47,52 @@ export function UnitsPage() {
           <Table>
             <thead>
               <tr>
-                <Th>Code</Th>
                 <Th>Name</Th>
                 <Th>City</Th>
                 <Th>Timezone</Th>
                 <Th>Geofence</Th>
+                <Th>Master data</Th>
               </tr>
             </thead>
             <tbody>
               {units.data.data.map((unit) => (
-                <tr
-                  key={unit.id}
-                  className="cursor-pointer hover:bg-neutral-50"
-                  onClick={() => setSelected(unit.id)}
-                >
-                  <Td className="font-mono text-xs">{unit.code}</Td>
-                  <Td className="font-medium">{unit.name}</Td>
-                  <Td>{unit.city ?? '—'}</Td>
-                  <Td>{unit.timezone}</Td>
-                  <Td>{unit.geofenceRadiusM === null ? 'disabled' : `${unit.geofenceRadiusM} m`}</Td>
-                </tr>
+                <Fragment key={unit.id}>
+                  <tr>
+                    <Td>
+                      {/* The Unit name is the disclosure: its Zones cascade open below it. */}
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 font-medium"
+                        aria-expanded={expanded === unit.id}
+                        onClick={() => setExpanded(expanded === unit.id ? null : unit.id)}
+                      >
+                        <span className="text-ink-3" aria-hidden="true">
+                          {expanded === unit.id ? '▾' : '▸'}
+                        </span>
+                        {unit.name}
+                      </button>
+                    </Td>
+                    <Td>{unit.city ?? '—'}</Td>
+                    <Td>{unit.timezone}</Td>
+                    <Td>{unit.geofenceRadiusM === null ? 'disabled' : `${unit.geofenceRadiusM} m`}</Td>
+                    <Td>
+                      <Button variant="secondary" onClick={() => setSelected(unit.id)}>
+                        Open
+                      </Button>
+                    </Td>
+                  </tr>
+                  {expanded === unit.id && (
+                    <tr>
+                      <td colSpan={5} className="p-0">
+                        <UnitZones unitId={unit.id} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
               {units.data.data.length === 0 && (
                 <tr>
-                  <Td className="text-neutral-500">No Units.</Td>
+                  <Td className="text-ink-3">No Units.</Td>
                 </tr>
               )}
             </tbody>
@@ -94,13 +118,10 @@ function CreateUnitForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form
-      className="grid gap-3 border-b border-neutral-200 bg-neutral-50 p-4 sm:grid-cols-2"
+      className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2"
       onSubmit={handleSubmit((values) => create.mutate(values))}
     >
-      <Field label="Code" hint="Immutable after creation — object-storage keys embed it">
-        <Input placeholder="U-NASHIK" className="uppercase" {...register('code', { required: true })} />
-      </Field>
-      <Field label="Name">
+      <Field label="Name" hint="The Unit's only identifier — it must be unique">
         <Input placeholder="Nashik Plant" {...register('name', { required: true })} />
       </Field>
       <Field label="City">

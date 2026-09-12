@@ -71,7 +71,7 @@ export function SyncHealthPage() {
         )}
 
         {conflicts.data && conflicts.data.data.length === 0 && (
-          <p className="px-4 pb-4 text-sm text-neutral-500">
+          <p className="px-4 pb-4 text-sm text-ink-3">
             {showResolved
               ? 'Nothing has been resolved yet.'
               : 'Nothing is waiting. Every item every device has pushed was applied.'}
@@ -122,7 +122,7 @@ export function SyncHealthPage() {
       </Card>
 
       {unresolved > 0 && (
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-ink-3">
           {unresolved} item{unresolved === 1 ? '' : 's'} waiting. Nothing here has been lost —
           each one is stored complete and can be applied or set aside.
         </p>
@@ -154,20 +154,20 @@ function ConflictRow({
 
   return (
     <>
-      <tr className="cursor-pointer hover:bg-neutral-50" onClick={onToggle}>
+      <tr className="cursor-pointer hover:bg-board" onClick={onToggle}>
         <Td className="whitespace-nowrap">
           {new Date(conflict.createdAt).toLocaleString()}
         </Td>
         <Td>
           <span className="font-medium">{conflict.entityType.replace(/_/g, ' ')}</span>
-          <div className="font-mono text-xs text-neutral-500">{conflict.entityId}</div>
+          <div className="font-mono text-xs text-ink-3">{conflict.entityId}</div>
         </Td>
         <Td>
           <Badge tone={REASON_TONE[conflict.reason] ?? 'warn'}>{REASON_LABEL[conflict.reason]}</Badge>
         </Td>
         <Td>
           {conflict.userName ?? conflict.userId}
-          <div className="font-mono text-xs text-neutral-500">
+          <div className="font-mono text-xs text-ink-3">
             {conflict.deviceId ?? 'device unknown'}
           </div>
         </Td>
@@ -177,32 +177,32 @@ function ConflictRow({
               {conflict.resolution === 'APPLY' ? 'Applied' : 'Set aside'}
             </Badge>
           ) : (
-            <span className="text-xs text-brand">{expanded ? 'Hide' : 'Review'}</span>
+            <span className="text-xs text-ink">{expanded ? 'Hide' : 'Review'}</span>
           )}
         </Td>
       </tr>
 
       {expanded && (
         <tr>
-          <td colSpan={5} className="bg-neutral-50 px-4 py-4">
+          <td colSpan={5} className="bg-board px-4 py-4">
             <div className="space-y-4">
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
                   What the device sent
                 </h4>
                 {/* Verbatim. A Super Admin deciding whether to apply a held answer needs
                     the answer and the auditor's own words, not a summary of them. */}
-                <pre className="mt-1 overflow-x-auto rounded-md border border-neutral-200 bg-white p-3 text-xs">
+                <pre className="mt-1 overflow-x-auto border border-edge-soft bg-tile p-3 text-xs">
                   {JSON.stringify(conflict.incomingPayload, null, 2)}
                 </pre>
               </div>
 
               {conflict.existingPayload && (
                 <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
                     What is on the server
                   </h4>
-                  <pre className="mt-1 overflow-x-auto rounded-md border border-neutral-200 bg-white p-3 text-xs">
+                  <pre className="mt-1 overflow-x-auto border border-edge-soft bg-tile p-3 text-xs">
                     {JSON.stringify(conflict.existingPayload, null, 2)}
                   </pre>
                 </div>
@@ -237,7 +237,7 @@ function ConflictRow({
                     </Button>
                   </div>
 
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-ink-3">
                     Setting aside keeps the payload — it records that you decided not to act
                     on it, not that it should be deleted. Applying it writes an audit-log
                     entry with the before and after.
@@ -263,7 +263,7 @@ function DeviceTable({ devices }: { devices: Device[] }) {
   });
 
   if (devices.length === 0) {
-    return <p className="px-4 pb-4 text-sm text-neutral-500">No devices have registered yet.</p>;
+    return <p className="px-4 pb-4 text-sm text-ink-3">No devices have registered yet.</p>;
   }
 
   return (
@@ -288,7 +288,7 @@ function DeviceTable({ devices }: { devices: Device[] }) {
             <tr key={device.id}>
               <Td>
                 <span className="font-medium">{device.model ?? device.platform}</span>
-                <div className="font-mono text-xs text-neutral-500">{device.id}</div>
+                <div className="font-mono text-xs text-ink-3">{device.id}</div>
               </Td>
               <Td>{device.lastSeenAt ? relative(device.lastSeenAt) : 'never'}</Td>
               <Td>

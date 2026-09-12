@@ -1,18 +1,36 @@
 @import 'tailwindcss';
 
 /*
- * Brand tokens mirror packages/domain/src/rating-scale.ts, which is the single definition
- * (R-6c). They are surfaced as CSS variables here so Tailwind utilities can reach them;
- * nothing in this app hard-codes a hex value of its own.
+ * The Gemba Board token file (docs/design/GEMBA-BOARD.md §8) is *imported*, not copied:
+ * it is the single definition of every colour, edge, shadow and type role in the product,
+ * and a second copy would be a second definition. Nothing below re-declares a value it
+ * already carries, and no rule in this app states a colour of its own.
+ */
+@import '../../../docs/design/gemba-tokens.css';
+
+/*
+ * The Gemba Board tokens, reachable from Tailwind (GEMBA-BOARD.md §8).
+ *
+ * The report's brand palette (R-6c) lived here too, as `--color-brand*` and
+ * `--color-band-*`. It is gone: those seven hex literals were the app's second palette,
+ * and the screen now draws only from the token file above. `packages/domain` remains the
+ * single definition for the **printed** report, which is where that palette belongs.
  */
 @theme {
-  --color-brand: #5c1816;
-  --color-brand-accent: #f46a00;
-  --color-brand-border: #e8d7d1;
-  --color-band-outstanding: #1b7f4b;
-  --color-band-on-track: #2a7097;
-  --color-band-improving: #be7d0f;
-  --color-band-needs-support: #b3261e;
+  --color-board: var(--board);
+  --color-tile: var(--tile);
+  --color-tile-2: var(--tile-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-edge: var(--edge);
+  --color-edge-soft: var(--edge-soft);
+  --color-ok: var(--ok-band);
+  --color-warn: var(--warn-band);
+  --color-crit: var(--crit-band);
+  --shadow-tile: 3px 3px 0 var(--hard);
+  --shadow-tile-hover: 5px 5px 0 var(--hard);
+  --radius-*: initial; /* non-negotiable 1: nothing in this system is rounded */
 }
 
 html,
@@ -22,5 +40,936 @@ body,
 }
 
 body {
-  @apply bg-neutral-50 text-neutral-900 antialiased;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   SHELL — GEMBA-BOARD.md §5: fixed 216px rail + fluid main, sticky topbar.
+   ========================================================================== */
+.gb-app {
+  display: grid;
+  grid-template-columns: 216px 1fr;
+  min-height: 100vh;
+}
+.gb-main {
+  min-width: 0;
+}
+
+.gb-rail {
+  border-right: 2px solid var(--edge);
+  background: var(--tile-2);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.gb-brand {
+  padding: 18px 16px 16px;
+  border-bottom: 2px solid var(--edge);
+}
+.gb-brand b {
+  display: block;
+  font-size: 19px;
+  font-weight: 900;
+  font-stretch: 118%;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.gb-brand span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+.gb-nav {
+  padding: 10px 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.gb-nav a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  text-decoration: none;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 500;
+  border: 1.5px solid transparent;
+}
+.gb-nav a:hover {
+  background: var(--tile);
+  border-color: var(--edge-soft);
+  color: var(--ink);
+}
+.gb-nav a[aria-current='page'] {
+  background: var(--tile);
+  border-color: var(--edge);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 2px 2px 0 var(--hard);
+}
+.gb-nav i {
+  font-style: normal;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ink-3);
+  background: var(--board);
+  border: 1px solid var(--edge-soft);
+  padding: 0 5px;
+  line-height: 16px;
+}
+.gb-nav hr {
+  border: 0;
+  border-top: 1px solid var(--edge-soft);
+  margin: 10px 0;
+}
+.gb-nav a[aria-current='page'] i {
+  background: var(--crit-band);
+  color: var(--board);
+  border-color: var(--crit-band);
+}
+.gb-railfoot {
+  margin-top: auto;
+  padding: 12px 14px;
+  border-top: 1px solid var(--edge-soft);
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.gb-railfoot b {
+  display: block;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.gb-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 28px;
+  border-bottom: 2px solid var(--edge);
+  background: var(--tile-2);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.gb-top h1 {
+  font-size: 16px;
+  font-weight: 800;
+  font-stretch: 112%;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+.gb-tools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  /* Grows instead of floating right, so a page's selectors sit beside the title. */
+  flex: 1;
+}
+.gb-sel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.gb-sel select,
+.gb-sel .gb-sel-input {
+  width: auto;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--tile);
+  color: var(--ink);
+  border: 1.5px solid var(--edge);
+  padding: 5px 9px;
+}
+.gb-pill {
+  /* The last thing before the shell's own controls: everything after it is right-aligned. */
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+  border: 1.5px solid var(--edge-soft);
+  background: var(--tile);
+  padding: 5px 10px;
+}
+.gb-pill i {
+  width: 8px;
+  height: 8px;
+  background: var(--ok-band);
+  display: block;
+}
+.gb-pill i.gb-pill--stale {
+  background: var(--warn-band);
+}
+.gb-who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+}
+.gb-who b {
+  font-weight: 700;
+}
+.gb-who span {
+  color: var(--ink-3);
+  display: block;
+  font-size: 11px;
+}
+.gb-av {
+  width: 32px;
+  height: 32px;
+  background: var(--ink);
+  color: var(--board);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  flex: none;
+}
+
+.gb-page {
+  padding: 22px 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 1520px;
+}
+.gb-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid var(--edge);
+  padding-bottom: 8px;
+}
+.gb-head p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.gb-badge {
+  border: 1.5px solid var(--edge);
+  background: var(--tile);
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+.gb-foot {
+  padding: 0 28px 36px;
+  font-size: 12px;
+  color: var(--ink-3);
+  max-width: 80ch;
+}
+
+/* ==========================================================================
+   BOARD — KPI magnets, zone tiles, detail panel (GEMBA-BOARD.md §6).
+   ========================================================================== */
+.gb-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 14px;
+}
+.gb-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gb-kpi .gb-figure {
+  font-size: 33px;
+}
+.gb-kpi small {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.gb-kpi .gb-band {
+  margin-top: 10px;
+}
+
+.gb-split {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 22px;
+  align-items: start;
+}
+.gb-board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.gb-zone {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  padding: 11px 12px 12px;
+}
+.gb-zone .gb-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+}
+.gb-zone .gb-figure {
+  font-size: 29px;
+}
+.gb-zone .gb-delta {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.gb-zone .gb-meta {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin-top: 5px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.gb-zone .gb-meta em {
+  font-style: normal;
+  color: var(--crit);
+  font-weight: 700;
+}
+.gb-zone .gb-band {
+  margin-top: 9px;
+}
+.gb-ok .gb-figure {
+  color: var(--ok);
+}
+.gb-warn .gb-figure {
+  color: var(--warn);
+}
+.gb-crit .gb-figure {
+  color: var(--crit);
+}
+.gb-pending .gb-figure {
+  color: var(--ink-3);
+}
+
+.gb-detail {
+  position: sticky;
+  top: 86px;
+  background: var(--tile);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+}
+.gb-detail-head {
+  padding: 13px 15px;
+  border-bottom: 2px solid var(--edge);
+}
+.gb-detail-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.gb-detail-body {
+  padding: 14px 15px 16px;
+}
+.gb-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 10px;
+}
+.gb-srow {
+  display: grid;
+  grid-template-columns: 74px 1fr 46px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+.gb-srow u {
+  text-decoration: none;
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 11.5px;
+}
+.gb-track {
+  height: 12px;
+  background: var(--tile-2);
+  border: 1px solid var(--edge-soft);
+}
+.gb-track i {
+  display: block;
+  height: 100%;
+  background: var(--edge-soft);
+}
+.gb-ok .gb-track i {
+  background: var(--ok-band);
+}
+.gb-warn .gb-track i {
+  background: var(--warn-band);
+}
+.gb-crit .gb-track i {
+  background: var(--crit-band);
+}
+.gb-srow b {
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.gb-srow.gb-none b {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.gb-ticks {
+  display: grid;
+  grid-template-columns: 74px 1fr 46px;
+  gap: 10px;
+  margin-top: 4px;
+}
+.gb-ticks div:nth-child(2) {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-data);
+  font-size: 9.5px;
+  color: var(--ink-3);
+}
+.gb-findings {
+  margin-top: 16px;
+  border-top: 1px solid var(--edge-soft);
+  padding-top: 12px;
+}
+.gb-findings ul {
+  margin: 8px 0 0;
+  padding: 0;
+}
+.gb-findings li {
+  list-style: none;
+  display: flex;
+  gap: 9px;
+  padding: 7px 0;
+  border-bottom: 1px dotted var(--edge-soft);
+  font-size: 12.5px;
+  align-items: flex-start;
+}
+.gb-findings li i {
+  width: 4px;
+  align-self: stretch;
+  background: var(--warn-band);
+  flex: none;
+}
+.gb-findings li.gb-crit i {
+  background: var(--crit-band);
+}
+.gb-findings li span {
+  margin-left: auto;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.gb-aside {
+  font-size: 12px;
+  color: var(--ink-2);
+  margin: 12px 0 0;
+  border-left: 2px solid var(--edge-soft);
+  padding-left: 9px;
+}
+
+/* ==========================================================================
+   TABLES, MATRIX, TREND, PRESSURE
+   ========================================================================== */
+.gb-tablewrap,
+.gb-matrix {
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--tile);
+  overflow-x: auto;
+}
+.gb-tablewrap table,
+.gb-matrix table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 720px;
+}
+.gb-matrix table {
+  min-width: 660px;
+}
+.gb-tablewrap th,
+.gb-matrix th {
+  text-align: left;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--edge);
+  background: var(--tile-2);
+  white-space: nowrap;
+}
+.gb-tablewrap td,
+.gb-matrix td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--edge-soft);
+  font-size: 13px;
+  vertical-align: middle;
+}
+.gb-tablewrap tbody tr:last-child td,
+.gb-matrix tbody tr:last-child td {
+  border-bottom: 0;
+}
+.gb-tablewrap tbody tr:hover td {
+  background: var(--tile-2);
+}
+.gb-tablewrap td.gb-data,
+.gb-matrix td.gb-data {
+  white-space: nowrap;
+}
+.gb-matrix th.gb-c,
+.gb-matrix td.gb-c {
+  text-align: center;
+  border-left: 1px solid var(--edge-soft);
+}
+.gb-matrix td.gb-c.gb-ok {
+  background: color-mix(in srgb, var(--ok-band) 20%, var(--tile));
+  color: var(--ok);
+}
+.gb-matrix td.gb-c.gb-warn {
+  background: color-mix(in srgb, var(--warn-band) 22%, var(--tile));
+  color: var(--warn);
+}
+.gb-matrix td.gb-c.gb-crit {
+  background: color-mix(in srgb, var(--crit-band) 22%, var(--tile));
+  color: var(--crit);
+}
+.gb-matrix td.gb-c.gb-none {
+  color: var(--ink-3);
+}
+.gb-matrix td.gb-avg {
+  text-align: center;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+  border-left: 2px solid var(--edge);
+  font-variant-numeric: tabular-nums;
+}
+
+.gb-tablewrap--flush {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.gb-tablewrap--flush table {
+  min-width: 640px;
+}
+
+.gb-trend {
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--tile);
+  padding: 14px 16px 8px;
+}
+.gb-trend svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-width: 100%;
+}
+.gb-legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin-bottom: 10px;
+}
+.gb-legend span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.gb-legend i {
+  width: 16px;
+  height: 3px;
+  display: block;
+  background: var(--ok-band);
+}
+.gb-legend i.gb-target {
+  background: repeating-linear-gradient(90deg, var(--crit-band) 0 5px, transparent 5px 9px);
+}
+.gb-grid-line {
+  stroke: var(--edge-soft);
+  stroke-width: 1;
+}
+.gb-target-line {
+  stroke: var(--crit-band);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+.gb-area {
+  fill: var(--ok-band);
+  opacity: 0.12;
+}
+.gb-line {
+  fill: none;
+  stroke: var(--ok-band);
+  stroke-width: 2.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.gb-dot {
+  fill: var(--tile);
+  stroke: var(--ok-band);
+  stroke-width: 3;
+}
+.gb-axis {
+  fill: var(--ink-3);
+  font-size: 10px;
+  font-family: var(--font-data);
+}
+.gb-now {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.gb-press {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  align-items: start;
+}
+.gb-card {
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--tile);
+  padding: 14px 16px 16px;
+}
+.gb-card > p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.gb-stats3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--edge);
+  border: 1.5px solid var(--edge);
+  margin-top: 13px;
+}
+.gb-stats3 div {
+  background: var(--tile-2);
+  padding: 10px 12px;
+}
+.gb-stats3 .gb-figure {
+  display: block;
+  font-size: 27px;
+}
+.gb-share {
+  margin-top: 13px;
+}
+.gb-share .gb-srow {
+  grid-template-columns: 128px 1fr 26px;
+  font-size: 12.5px;
+  padding: 4px 0;
+}
+.gb-share .gb-srow b {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-align: left;
+  font-size: 12.5px;
+}
+.gb-share .gb-srow span {
+  font-family: var(--font-data);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.gb-share .gb-track {
+  height: 11px;
+}
+.gb-completion {
+  margin-top: 18px;
+  border-top: 1px solid var(--edge-soft);
+  padding-top: 13px;
+}
+.gb-prog {
+  height: 15px;
+  border: 1.5px solid var(--edge);
+  background: var(--tile-2);
+  margin-top: 9px;
+}
+.gb-prog i {
+  display: block;
+  height: 100%;
+  background: var(--ok-band);
+}
+.gb-progmeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin-top: 6px;
+  font-family: var(--font-data);
+}
+
+/* ==========================================================================
+   RESPONSIVE — §5: rail becomes a scrolling strip below 860px, 16px gutters.
+   ========================================================================== */
+@media (max-width: 1180px) {
+  .gb-split {
+    grid-template-columns: 1fr;
+  }
+  .gb-detail {
+    position: static;
+  }
+}
+@media (max-width: 980px) {
+  .gb-press {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 860px) {
+  .gb-app {
+    grid-template-columns: 1fr;
+  }
+  .gb-rail {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 2px solid var(--edge);
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+  }
+  .gb-brand {
+    border-bottom: 0;
+    border-right: 2px solid var(--edge);
+    white-space: nowrap;
+    padding: 12px 14px;
+  }
+  .gb-nav {
+    flex-direction: row;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .gb-nav a {
+    white-space: nowrap;
+  }
+  .gb-nav hr {
+    display: none;
+  }
+  .gb-railfoot {
+    display: none;
+  }
+  .gb-board {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .gb-top,
+  .gb-page,
+  .gb-foot {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+@media (max-width: 440px) {
+  .gb-board,
+  .gb-stats3 {
+    grid-template-columns: 1fr;
+  }
+  .gb-kpis {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ==========================================================================
+   SHARED PRIMITIVES — what `components/ui.tsx` renders, so every screen in
+   the app is built from the same four objects as the board (GEMBA-BOARD.md §6).
+   ========================================================================== */
+.gb-panel {
+  background: var(--tile);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+}
+.gb-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 2px solid var(--edge);
+}
+.gb-panel-head p {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.gb-input {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  background: var(--tile-2);
+  color: var(--ink);
+  border: 1.5px solid var(--edge);
+  padding: 7px 9px;
+}
+.gb-input::placeholder {
+  color: var(--ink-3);
+}
+.gb-input:disabled {
+  background: var(--tile);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.gb-field {
+  display: block;
+}
+.gb-field > .gb-label {
+  display: block;
+  margin-bottom: 4px;
+}
+.gb-hint {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+/* An error reads as a rail as well as a colour (non-negotiable 8). */
+.gb-field-error {
+  display: block;
+  font-size: 12.5px;
+  color: var(--crit);
+  border-left: 3px solid var(--crit-band);
+  padding-left: 7px;
+  margin-top: 5px;
+}
+.gb-notice {
+  background: var(--tile-2);
+  border: 1.5px solid var(--edge);
+  border-left: 4px solid var(--crit-band);
+  padding: 9px 12px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.gb-btn {
+  border: 1.5px solid var(--edge);
+  background: var(--tile);
+  color: var(--ink);
+  padding: 6px 11px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 2px 2px 0 var(--hard);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: box-shadow 143ms ease-out, transform 143ms ease-out;
+}
+.gb-btn:hover {
+  box-shadow: 3px 3px 0 var(--hard);
+}
+.gb-btn:active {
+  box-shadow: 0 0 0 var(--hard);
+  transform: translate(2px, 2px);
+}
+.gb-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.gb-btn--primary {
+  background: var(--ink);
+  color: var(--board);
+  border-color: var(--edge);
+}
+.gb-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: 0 0 0 var(--hard);
+}
+/* Destructive is an outline, never a red fill: red is a score band (non-negotiable 6). */
+.gb-btn--danger {
+  color: var(--crit);
+  border-color: var(--crit);
+}
+.gb-btn--block {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+
+/* The signed-out screens: one tile on the board, centred. */
+.gb-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 22px 16px;
+}
+.gb-gate-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--tile);
+  border: 2px solid var(--edge);
+  box-shadow: 6px 6px 0 var(--hard);
+  padding: 20px 22px 22px;
+}
+.gb-gate-card--wide {
+  max-width: 520px;
+}
+.gb-gate-brand b {
+  display: block;
+  font-size: 24px;
+  font-weight: 900;
+  font-stretch: 118%;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.gb-gate-brand span {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.gb-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Band text colours, so no component ever states one (GEMBA-BOARD.md §3). */
+.gb-text-ok {
+  color: var(--ok);
+}
+.gb-text-warn {
+  color: var(--warn);
+}
+.gb-text-crit {
+  color: var(--crit);
+}
+.gb-text-none {
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
 }

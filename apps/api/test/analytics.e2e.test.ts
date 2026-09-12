@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { UnitSections, UnitTrend, ZoneRankingItem } from '@audit5s/contracts';
+import type {
+  OrganizationOverview,
+  UnitSections,
+  UnitTrend,
+  ZoneRankingItem,
+} from '@audit5s/contracts';
 import { AnalyticsRollupWorker, scheduleKey } from '../src/modules/analytics/analytics-rollup.worker';
 import { QueueService } from '../src/infrastructure/queue/queue.service';
-import { startWorld, stopWorld, type TestWorld } from './harness';
+import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 
 let world: TestWorld;
 let superAdmin: string;
@@ -51,6 +56,39 @@ describe('Phase 8 analytics', () => {
       score: { scorePercentage: 60, sampleCount: 2 },
       auditCount: 3,
     });
+  });
+
+  /**
+   * `metric_daily_*.day` is a Unit-local calendar day and `to` is an instant, so an
+   * exclusive day bound dropped the newest day entirely: a dashboard showed the audit in
+   * `/audits` and nothing in the tiles beside it. `to` includes the day it names.
+   */
+  it('includes the day `to` names, which is where the newest rollup lives', async () => {
+    const through = `?from=2026-01-01T00:00:00.000Z&to=2026-02-02T00:00:00.000Z`;
+    const trend = await world.request('GET', `${base}/units/${world.unitA}/trend${through}`, {
+      token: coordinator,
+    });
+    expect(trend.status).toBe(200);
+    const february = (trend.body as UnitTrend).points.find((point) => point.period === '2026-02');
+    // 2026-02-01 carries two completed audits and 2026-02-02 the third.
+    expect(february).toMatchObject({ auditCount: 3, sampleCount: 2 });
+  });
+
+  /**
+   * The rollup buckets by Unit-local day; the reader used to bucket the range by UTC day.
+   * For an Asia/Kolkata Unit the two disagree until 05:30 every morning, which silently
+   * dropped the freshest rollup — the one the night shift is reading.
+   */
+  it('derives the day window in the Unit timezone, not UTC', async () => {
+    // 2026-02-01T19:00Z is 00:30 on 2026-02-02 in Asia/Kolkata — inside the 02-02 bucket,
+    // while the UTC date is still 02-01.
+    const query = '?from=2026-01-01T00:00:00.000Z&to=2026-02-01T19:00:00.000Z';
+    const response = await world.request('GET', `${base}/units/${world.unitA}/overview${query}`, {
+      token: coordinator,
+    });
+    expect(response.status).toBe(200);
+    // Three audits across 02-01 and 02-02. A UTC day window ends at 02-01 and sees two.
+    expect((response.body as { auditCount: number }).auditCount).toBe(3);
   });
 
   it('keeps fully-NA sections null and out of averages', async () => {
@@ -122,6 +160,28 @@ describe('Phase 8 analytics', () => {
     expect((await world.request('GET', `${base}/organization/overview`, { token: coordinator })).status).toBe(403);
     expect((await world.request('GET', `${base}/units/${world.unitB}/overview`, { token: coordinator })).status).toBe(404);
     expect((await world.request('GET', `${base}/activity/me`, { token: world.actors.CONSULTANT.accessToken })).status).toBe(200);
+  });
+
+  /**
+   * The dashboard reported `oldestPendingAt` from a raw `min(started_at)`, which arrives
+   * as the wire string rather than a Date — so the read threw a 500 the moment a real
+   * unfinished sync existed, and only then. The fixture is that unfinished sync.
+   */
+  it('reports the oldest unfinished sync as an ISO instant', async () => {
+    const deviceId = '01930000-0000-7000-8000-00000000a5c1';
+    await loginFromDevice(world, world.actors.CONSULTANT, deviceId);
+    await world.owner.query(
+      `INSERT INTO device_sync_record (device_id, user_id, batch_id, started_at, status)
+       VALUES ($1, $2, $3, now() - interval '2 hours', 'IN_PROGRESS')`,
+      [deviceId, world.actors.CONSULTANT.userId, randomUUID()],
+    );
+
+    const response = await world.request('GET', `${base}/organization/overview`, { token: superAdmin });
+    expect(response.status).toBe(200);
+    const { syncHealth } = response.body as OrganizationOverview;
+    expect(syncHealth.devicesWithUnsyncedData).toBe(1);
+    expect(syncHealth.oldestPendingAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+    expect(Date.parse(syncHealth.oldestPendingAt!)).toBeLessThan(Date.now());
   });
 
   it('keeps dashboard p95 below 500 ms on two years of rollups', async () => {

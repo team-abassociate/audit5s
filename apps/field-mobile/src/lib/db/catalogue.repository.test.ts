@@ -46,7 +46,6 @@ function catalogue(overrides: Partial<SyncCatalogue> = {}): SyncCatalogue {
     units: [
       {
         id: UNIT_A,
-        code: 'U-NASHIK',
         name: 'Nashik Plant',
         address: null,
         city: null,
@@ -176,7 +175,7 @@ describe('catalogue sync', () => {
 
     const units = await listLocalUnits(database);
     expect(units).toHaveLength(1);
-    expect(units[0]).toMatchObject({ code: 'U-NASHIK', timezone: 'Asia/Kolkata' });
+    expect(units[0]).toMatchObject({ name: 'Nashik Plant', timezone: 'Asia/Kolkata' });
 
     const version = await getLocalChecklistVersion(
       database,

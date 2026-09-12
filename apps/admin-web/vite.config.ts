@@ -11,6 +11,11 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
-  server: { port: 5173 },
+  /*
+   * `strictPort` on purpose: CORS_ORIGINS names http://localhost:5173 exactly, so a
+   * silent fallback to 5174 produces an app whose every request is refused by the
+   * browser with "Failed to fetch". Better to fail here, loudly, than there.
+   */
+  server: { port: 5173, strictPort: true },
   build: { outDir: 'dist', sourcemap: true },
 });

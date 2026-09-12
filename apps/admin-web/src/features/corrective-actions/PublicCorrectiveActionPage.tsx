@@ -80,14 +80,14 @@ export function PublicCorrectiveActionPage({ token }: { token: string }) {
   }, [token]);
 
   if (state.status === 'loading') {
-    return <Shell><p className="text-neutral-600">Loading…</p></Shell>;
+    return <Shell><p className="text-ink-2">Loading…</p></Shell>;
   }
 
   if (state.status === 'gone') {
     return (
       <Shell>
-        <h1 className="text-lg font-semibold text-neutral-900">This link is no longer valid</h1>
-        <p className="mt-2 text-sm text-neutral-700">
+        <h1 className="gb-h1">This link is no longer valid</h1>
+        <p className="mt-2 text-sm text-ink-2">
           It may have expired, or it may have been replaced. Ask the auditor or your
           Super Admin for a new corrective-action link — nothing you have done has been lost.
         </p>
@@ -98,8 +98,8 @@ export function PublicCorrectiveActionPage({ token }: { token: string }) {
   if (state.status === 'error' || !state.item) {
     return (
       <Shell>
-        <h1 className="text-lg font-semibold text-neutral-900">Something went wrong</h1>
-        <p className="mt-2 text-sm text-neutral-700">{state.message}</p>
+        <h1 className="gb-h1">Something went wrong</h1>
+        <p className="mt-2 text-sm text-ink-2">{state.message}</p>
       </Shell>
     );
   }
@@ -107,9 +107,9 @@ export function PublicCorrectiveActionPage({ token }: { token: string }) {
   if (state.status === 'done') {
     return (
       <Shell>
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
-          <h1 className="text-lg font-semibold text-emerald-900">Thank you — that is submitted</h1>
-          <p className="mt-2 text-sm text-emerald-800">
+        <div className="gb-panel p-4">
+          <h1 className="gb-h1">Thank you — that is submitted</h1>
+          <p className="mt-2 text-sm text-ink-2">
             Your response has been recorded and sent for review. You may close this page.
           </p>
         </div>
@@ -128,7 +128,7 @@ export function PublicCorrectiveActionPage({ token }: { token: string }) {
           onGone={() => setState({ status: 'gone' })}
         />
       ) : (
-        <p className="rounded-md border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
+        <p className="border border-edge-soft bg-board p-4 text-sm text-ink-2">
           This item has been verified and is closed. Nothing further is needed.
         </p>
       )}
@@ -149,14 +149,14 @@ function Shell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-neutral-100">
-      <header className="bg-brand px-4 py-4 text-white">
+    <div className="min-h-screen bg-tile-2">
+      <header className="bg-ink px-4 py-4 text-board">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-accent text-sm font-bold">
+          <span className="flex h-9 w-9 items-center justify-center bg-ink text-sm font-bold">
             5S
           </span>
           <div>
-            <div className="text-base font-semibold">Corrective action</div>
+            <div className="gb-h2">Corrective action</div>
             <div className="text-xs opacity-90">AB Associates — Operations Consulting</div>
           </div>
         </div>
@@ -168,8 +168,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Finding({ item }: { item: PublicCorrectiveAction }) {
   return (
-    <section className="rounded-md border border-neutral-200 bg-white p-4">
-      <h1 className="text-base font-semibold text-neutral-900">
+    <section className="border border-edge-soft bg-tile p-4">
+      <h1 className="gb-h1">
         {item.questionGlobalOrder ? `Q${item.questionGlobalOrder}. ` : ''}
         {item.questionText ?? 'Walk-by observation'}
       </h1>
@@ -183,7 +183,7 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
       </dl>
 
       {item.findingRemark ? (
-        <p className="mt-3 border-l-4 border-brand-accent bg-neutral-50 p-3 text-sm text-neutral-800">
+        <p className="mt-3 border-l-4 border-edge bg-board p-3 text-sm text-ink">
           {item.findingRemark}
         </p>
       ) : null}
@@ -193,19 +193,19 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
           <img
             src={item.beforePhotoUrl}
             alt="The finding as it was recorded"
-            className="w-full rounded border border-neutral-200"
+            className="w-full border border-edge-soft"
             referrerPolicy="no-referrer"
           />
-          <figcaption className="mt-1 text-xs text-neutral-600">What the auditor saw</figcaption>
+          <figcaption className="mt-1 text-xs text-ink-2">What the auditor saw</figcaption>
         </figure>
       ) : (
-        <p className="mt-3 rounded border border-dashed border-neutral-300 p-4 text-center text-sm text-neutral-500">
+        <p className="mt-3 border border-dashed border-edge p-4 text-center text-sm text-ink-3">
           Photo not available
         </p>
       )}
 
       {item.alreadySubmitted ? (
-        <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="gb-slip mt-3">
           A response was already submitted on {formatDate(item.alreadySubmitted.submittedAt)}. You
           may submit again if it was reopened.
         </p>
@@ -217,8 +217,8 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-neutral-500">{label}</dt>
-      <dd className="font-medium text-neutral-900">{value}</dd>
+      <dt className="text-xs uppercase tracking-wide text-ink-3">{label}</dt>
+      <dd className="font-medium text-ink">{value}</dd>
     </div>
   );
 }
@@ -314,8 +314,8 @@ function SubmitForm({
   }
 
   return (
-    <section className="rounded-md border border-neutral-200 bg-white p-4">
-      <h2 className="text-base font-semibold text-neutral-900">Your response</h2>
+    <section className="border border-edge-soft bg-tile p-4">
+      <h2 className="text-base font-semibold text-ink">Your response</h2>
 
       <div className="mt-3 flex gap-2">
         <OptionTab active={option === 'COMPLETED'} onClick={() => setOption('COMPLETED')}>
@@ -330,7 +330,7 @@ function SubmitForm({
         <div className="mt-4 space-y-3">
           <Labelled label="Your name">
             <input
-              className="w-full rounded border border-neutral-300 px-3 py-2 text-base"
+              className="gb-input"
               value={name}
               onChange={(event) => setName(event.target.value)}
               autoComplete="name"
@@ -343,7 +343,7 @@ function SubmitForm({
 
           <Labelled label="What was done">
             <textarea
-              className="w-full rounded border border-neutral-300 px-3 py-2 text-base"
+              className="gb-input"
               rows={3}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
@@ -354,14 +354,14 @@ function SubmitForm({
         <div className="mt-4">
           <Labelled label="Why is this not possible?">
             <textarea
-              className="w-full rounded border border-neutral-300 px-3 py-2 text-base"
+              className="gb-input"
               rows={4}
               value={explanation}
               onChange={(event) => setExplanation(event.target.value)}
               placeholder="e.g. Requires vendor approval; PO raised 12 Sep."
             />
           </Labelled>
-          <p className="mt-2 text-xs text-neutral-600">
+          <p className="mt-2 text-xs text-ink-2">
             This is reviewed like any other response. Being unable to act is a valid answer;
             leaving the item unanswered is not.
           </p>
@@ -369,13 +369,13 @@ function SubmitForm({
       )}
 
       {error ? (
-        <p className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <p className="gb-notice mt-3">
           {error}
         </p>
       ) : null}
 
       <button
-        className="mt-4 w-full rounded-md bg-brand px-4 py-3 text-base font-semibold text-white disabled:opacity-50"
+        className="mt-4 w-full bg-ink px-4 py-3 text-base font-semibold text-board disabled:opacity-50"
         onClick={submit}
         disabled={busy}
       >
@@ -473,12 +473,12 @@ function LiveCapture({
         <img
           src={preview}
           alt="The work you photographed"
-          className="w-full rounded border border-neutral-200"
+          className="w-full border border-edge-soft"
           referrerPolicy="no-referrer"
         />
         <button
           type="button"
-          className="w-full rounded border border-neutral-300 px-3 py-2 text-sm"
+          className="w-full border border-edge px-3 py-2 text-sm"
           onClick={start}
         >
           Retake
@@ -493,12 +493,12 @@ function LiveCapture({
         ref={videoRef}
         playsInline
         muted
-        className={live ? 'w-full rounded border border-neutral-200 bg-black' : 'hidden'}
+        className={live ? 'w-full border border-edge bg-ink' : 'hidden'}
       />
       {live ? (
         <button
           type="button"
-          className="w-full rounded-md bg-brand-accent px-4 py-3 text-base font-semibold text-white"
+          className="w-full bg-ink px-4 py-3 text-base font-semibold text-board"
           onClick={capture}
         >
           Take the photograph
@@ -506,14 +506,14 @@ function LiveCapture({
       ) : (
         <button
           type="button"
-          className="w-full rounded border border-neutral-300 px-3 py-3 text-sm"
+          className="w-full border border-edge px-3 py-3 text-sm"
           onClick={start}
         >
           Open the camera
         </button>
       )}
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <p className="text-xs text-neutral-600">
+      {error ? <p className="gb-field-error">{error}</p> : null}
+      <p className="text-xs text-ink-2">
         The photograph is taken here, now. There is no option to attach an existing file.
       </p>
     </div>
@@ -596,10 +596,10 @@ function OptionTab({
       type="button"
       onClick={onClick}
       className={
-        'flex-1 rounded-md border px-3 py-2 text-sm font-medium ' +
+        'flex-1 border px-3 py-2 text-sm font-medium ' +
         (active
-          ? 'border-brand bg-brand text-white'
-          : 'border-neutral-300 bg-white text-neutral-700')
+          ? 'border-edge bg-ink text-board'
+          : 'border-edge bg-tile text-ink-2')
       }
     >
       {children}
@@ -610,7 +610,7 @@ function OptionTab({
 function Labelled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-neutral-800">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-ink">{label}</span>
       {children}
     </label>
   );

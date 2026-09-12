@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { PASSWORD_MIN_LENGTH } from '@audit5s/contracts';
 import { api } from '@/lib/api';
-import { Button, Card, ErrorNotice, Field, Input } from '@/components/ui';
+import { Button, ErrorNotice, Field, Input } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface ResetForm {
@@ -43,15 +43,15 @@ export function ForcedResetPage() {
   });
 
   return (
-    <main className="flex min-h-full items-center justify-center p-6">
-      <Card className="w-full max-w-md p-6">
-        <h1 className="text-lg font-semibold text-neutral-900">Choose a password</h1>
-        <p className="mt-1 text-sm text-neutral-600">
+    <main className="gb-gate">
+      <div className="gb-gate-card gb-gate-card--wide">
+        <h1 className="gb-h1">Choose a password</h1>
+        <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--ink-2)' }}>
           {user?.fullName}, your account still uses the temporary credential it was created
           with. Set a password of your own before continuing.
         </p>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <form onSubmit={onSubmit} className="gb-stack" style={{ marginTop: 22 }}>
           <Field label="Current password" hint="The temporary credential you signed in with">
             <Input
               type="password"
@@ -91,16 +91,17 @@ export function ForcedResetPage() {
 
           <ErrorNotice error={error} />
 
-          <div className="flex gap-2">
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving…' : 'Set password'}
-            </Button>
+          {/* Secondary then primary, right-aligned, as every action row in the system. */}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <Button type="button" variant="secondary" onClick={() => void signOut()}>
               Sign out
             </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving…' : 'Set password'}
+            </Button>
           </div>
         </form>
-      </Card>
+      </div>
     </main>
   );
 }

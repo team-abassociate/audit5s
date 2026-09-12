@@ -763,8 +763,7 @@ Indexes: `UNIQUE(login_id)`; `UNIQUE(phone_e164) WHERE archived_at IS NULL`;
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | `uuid` PK | |
-| `code` | `text` | **UNIQUE** — immutable after creation |
-| `name` | `text` | Editable by Super Admin only |
+| `name` | `text` | **UNIQUE** — the Unit's only identifier. Editable by Super Admin only |
 | `address`, `city`, `state`, `country`, `postal_code` | `text` NULL | Coordinator-editable |
 | `contact_name`, `contact_phone`, `contact_email` | `text` NULL | Coordinator-editable |
 | `latitude` | `numeric(9,6)` NULL | |
@@ -775,10 +774,15 @@ Indexes: `UNIQUE(login_id)`; `UNIQUE(phone_e164) WHERE archived_at IS NULL`;
 | `version` | `integer` | |
 | `archived_at` | `timestamptz` NULL | |
 
-Indexes: `UNIQUE(code)`; `(archived_at)`.
+Indexes: `UNIQUE(name)`; `(archived_at)`.
 
-> **Invariant U-1.** `unit.name` and `unit.code` are not writable by a Coordinator. Enforced
-> at the field level in the update DTO resolver, not merely in the UI.
+There is no `code`. It was a second identifier a Super Admin had to invent at creation and
+could never change, justified here by object-storage keys "embedding" it — they never did:
+every key in `packages/domain/src/evidence.ts` is built from `unit_id`. Dropped in migration
+`0012`; the name carries the uniqueness, and a duplicate answers `409 DUPLICATE_NAME`.
+
+> **Invariant U-1.** `unit.name` is not writable by a Coordinator. Enforced at the field
+> level in the update DTO resolver, not merely in the UI.
 
 ### `unit_membership` — the scope table
 
@@ -1718,7 +1722,7 @@ Cell = the scope resolver that applies. `—` = denied.
 | --- | --- | --- | --- | --- | --- |
 | Unit | create | `organization` | — | — | — |
 | Unit | read | `organization` | `assigned_units` | `own_unit` | `own_unit` |
-| Unit | update (name, code) | `organization` | — | **—** (U-1) | — |
+| Unit | update (name) | `organization` | — | **—** (U-1) | — |
 | Unit | update (address, contact, geofence, timezone) | `organization` | — | `own_unit` | — |
 | Unit | archive | `organization` | — | — | — |
 | UnitMembership | create (assign) | `organization` | — | — | — |

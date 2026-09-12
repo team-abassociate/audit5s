@@ -53,7 +53,11 @@ await page.getByRole('button', { name: 'Set password' }).click();
 step(5, 'the application appears, with role-aware navigation');
 await page.waitForSelector('text=Units', { timeout: 10000 });
 await page.waitForLoadState('networkidle');
-await page.screenshot({ path: `${shots}/03-units-empty.png` });
+// A Super Admin lands on the Zone board; the Units list is one click away.
+await page.screenshot({ path: `${shots}/03-zone-board.png` });
+await page.getByRole('link', { name: 'Units' }).click();
+await page.waitForLoadState('networkidle');
+await page.screenshot({ path: `${shots}/03b-units-empty.png` });
 
 step(6, 'create a Unit');
 await page.getByRole('button', { name: 'New Unit' }).click();

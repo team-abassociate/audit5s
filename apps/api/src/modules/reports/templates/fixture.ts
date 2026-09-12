@@ -183,7 +183,7 @@ export function fixtureZonePayload(overrides: Partial<ReportPayload> = {}): Repo
     version: 1,
     generatedAt: '2026-03-08T10:00:00.000Z',
     generatedByName: 'S. Rao',
-    unit: { id: 'unit-1', name: 'Pune Works', code: 'PNQ', address: 'Chakan, Pune, Maharashtra' },
+    unit: { id: 'unit-1', name: 'Pune Works', address: 'Chakan, Pune, Maharashtra' },
     audit: {
       id: 'audit-1',
       auditType: 'EXTERNAL_5S',
