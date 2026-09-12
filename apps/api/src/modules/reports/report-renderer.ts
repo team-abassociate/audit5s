@@ -26,7 +26,8 @@ export interface RenderedReport {
  *      request timing, and a webfont on whether a CDN answered (DECISIONS.md R-14).
  *   2. **No clock.** `generatedAt` is frozen in the payload; the template never calls
  *      `new Date()`, and Chromium's own header/footer — which would print today's date —
- *      is switched off in favour of the CSS footer.
+ *      is switched off in favour of the CSS footer. The last clock is Skia's own, in the
+ *      PDF metadata, and `freezePdfDates` below replaces it with the same frozen instant.
  *   3. **No animation.** `prefers-reduced-motion` is forced, so nothing is captured
  *      mid-transition.
  *   4. **One browser, pinned.** Concurrency 1, the version pinned by the lockfile.
@@ -50,11 +51,11 @@ export class ReportRenderer implements OnModuleDestroy {
     this.browser = null;
   }
 
-  /** The whole pipeline: fetch images, build HTML, print, checksum. */
+  /** The whole pipeline: fetch images, build HTML, print, freeze the dates, checksum. */
   async render(payload: ReportPayload): Promise<RenderedReport> {
     const images = await this.fetchImages(payload);
     const html = renderReportHtml(payload, (key) => images.get(key) ?? null);
-    const pdf = await this.printToPdf(html);
+    const pdf = freezePdfDates(await this.printToPdf(html), payload.generatedAt);
 
     return {
       pdf,
@@ -185,6 +186,37 @@ export class ReportRenderer implements OnModuleDestroy {
 function countPages(pdf: Buffer): number | null {
   const matches = pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g);
   return matches ? matches.length : null;
+}
+
+/**
+ * Skia stamps the wall clock into `/CreationDate` and `/ModDate`, to the second.
+ *
+ * That is the one source of nondeterminism the render pipeline could not switch off, and
+ * it is invisible almost all of the time: two renders inside the same second agree, so
+ * PART 15.7's byte-stability test passed roughly three runs in four and failed the fourth
+ * with no other explanation. It is a real defect and not a flaky test — "the same payload
+ * renders to the same bytes" (R-14) was simply not true across a second boundary.
+ *
+ * The replacement is written in place and is exactly as long as what it replaces, so every
+ * byte offset in the cross-reference table stays valid: rewriting the dates to a different
+ * width would corrupt the document. `generatedAt` is the payload's own frozen instant, so
+ * the metadata now says what the printed footer says.
+ */
+export function freezePdfDates(pdf: Buffer, generatedAt: string): Buffer {
+  const frozen = pdfDate(generatedAt);
+  const text = pdf.toString('latin1');
+  // `D:YYYYMMDDHHMMSS+HH'mm'` — the fixed-width form Skia writes.
+  const rewritten = text.replace(
+    /\/(CreationDate|ModDate) \(D:\d{14}[+-]\d{2}'\d{2}'\)/g,
+    (_match, field: string) => `/${field} (${frozen})`,
+  );
+  return Buffer.from(rewritten, 'latin1');
+}
+
+/** An ISO instant as a PDF date string, always UTC and always the same 23 characters. */
+function pdfDate(iso: string): string {
+  const digits = new Date(iso).toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  return `D:${digits}+00'00'`;
 }
 
 function contentTypeOf(key: string): string {

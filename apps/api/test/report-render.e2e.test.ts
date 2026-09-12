@@ -123,6 +123,22 @@ describe('the renderer is deterministic (PART 15.7)', () => {
     expect(html).toContain('data:image/jpeg;base64,');
   }, 180_000);
 
+  it("stamps the payload's frozen instant into the PDF metadata, not the wall clock", async () => {
+    // The one clock the render pipeline could not switch off: Skia writes /CreationDate
+    // and /ModDate itself, to the second. It made the byte-stability test above fail about
+    // one run in four — whenever two renders straddled a second boundary — which read as
+    // flakiness and was a real breach of R-14's "the same payload renders to the same
+    // bytes". Asserted separately so a regression names the cause instead of looking random.
+    const payload = fixtureZonePayload();
+    const { pdf } = await renderer.render(payload);
+    const text = pdf.toString('latin1');
+    const frozen = `D:${new Date(payload.generatedAt).toISOString().replace(/[-:T]/g, '').slice(0, 14)}+00'00'`;
+
+    const dates = [...text.matchAll(/\/(?:CreationDate|ModDate) \(([^)]+)\)/g)].map((m) => m[1]);
+    expect(dates.length, 'Skia writes both dates; if it stops, this guard is stale').toBe(2);
+    expect(new Set(dates)).toEqual(new Set([frozen]));
+  }, 180_000);
+
   it('embeds each distinct object once, however many times the payload names it', async () => {
     const html = await renderer.renderHtml(fixtureZonePayload());
     const digest = createHash('sha256').update(ONE_PIXEL_JPEG).digest('hex');

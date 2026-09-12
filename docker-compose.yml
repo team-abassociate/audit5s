@@ -32,6 +32,7 @@ x-api-env: &api-env
   CHECKLIST_IMPORT_MAX_BYTES: ${CHECKLIST_IMPORT_MAX_BYTES:-10485760}
   CHECKLIST_IMPORT_PREVIEW_TTL_HOURS: ${CHECKLIST_IMPORT_PREVIEW_TTL_HOURS:-24}
   PGBOSS_SCHEMA: ${PGBOSS_SCHEMA:-pgboss}
+  PGBOSS_JOB_RETENTION_DAYS: ${PGBOSS_JOB_RETENTION_DAYS:-7}
   SENTRY_DSN: ${SENTRY_DSN:-}
 
 services:
@@ -69,6 +70,10 @@ services:
     image: *api-image
     restart: unless-stopped
     mem_limit: 768m
+    # Above QueueService's 150s drain timeout, so SIGTERM is answered by the application
+    # finishing its work rather than by the kernel. Docker's default is 10s, which would
+    # SIGKILL a report render every time.
+    stop_grace_period: 180s
     command: ['node', 'dist/main.js']
     environment:
       <<: *api-env
@@ -85,14 +90,18 @@ services:
       retries: 3
       start_period: 20s
 
+  # Which queues each worker handles is decided by its entrypoint, not by configuration:
+  # `worker.general.ts` and `worker.report.ts` register their own handlers. The
+  # `WORKER_QUEUES` variable that used to sit here was read by nothing and had drifted —
+  # it named three of worker-general's five queues.
   worker-general:
     image: *api-image
     restart: unless-stopped
+    stop_grace_period: 180s
     mem_limit: 768m
     command: ['node', 'dist/worker.general.js']
     environment:
       <<: *api-env
-      WORKER_QUEUES: checklist.import,notification.send,maintenance.sweep
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,6 +109,7 @@ services:
   worker-report:
     image: *api-image
     restart: unless-stopped
+    stop_grace_period: 180s
     # Playwright with chrome-headless-shell. Concurrency 1 — this is the memory ceiling
     # of the whole box, and two concurrent renders is how it gets breached.
     mem_limit: 1536m
@@ -107,7 +117,6 @@ services:
     command: ['node', 'dist/worker.report.js']
     environment:
       <<: *api-env
-      WORKER_QUEUES: report.render
       REPORT_CONCURRENCY: 1
       # Alpine's Chromium, baked into the image. See infra/docker/api.Dockerfile for why
       # it is not Playwright's own download.

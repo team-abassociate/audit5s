@@ -1,4 +1,4 @@
-# Decision record — resolutions R-1 … R-15
+# Decision record — resolutions R-1 … R-16
 
 Companion to [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`STACK.md`](./STACK.md), the
 Stack Decision Record (the engineering handoff).
@@ -24,6 +24,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-13 | Phase 6: corrective actions and notifications | Settled |
 | R-14 | Phase 7: what the reporting engine settled | Settled |
 | R-15 | Phase 8: weighted analytics, own activity and rollup identity | Settled |
+| R-16 | Phase 9: dead letters, retention, drain and the PDF clock | Settled |
 
 ---
 
@@ -903,3 +904,79 @@ calendar day with idempotent upserts. Derived-table writes run under the narrow 
 Super-Admin database context already admitted by their RLS policies; every source read
 still carries the Unit predicate. No rollup row is authoritative, and rerunning a day does
 not change an already-identical row.
+
+---
+
+## R-16 — What hardening the queue settled
+
+Phase 9's first slice. Four findings, recorded together because three of them are one
+mistake: a policy that was written down, believed, and never actually in force.
+
+### (a) A failed job needs somewhere to go, and it had nowhere
+
+`STACK.md` §5 asks for "one retry, then a visible dead-letter" for the report worker, and
+two workers carry comments saying a failed job "dead-letters where a human can see it".
+None of that was true: `createQueue` was called with no options, so no queue had a dead
+letter, and a job that exhausted its retries stopped at pg-boss's `failed` state and was
+deleted with the rest of the queue's history. The payload that could not be processed was
+gone by the time anyone asked what had happened.
+
+Every queue now has a `<queue>.dlq` companion, and the retry policy is set **on the queue**
+rather than at each `send`. That distinction is the point: queue options are inherited by
+every job, so a job enqueued by code that passed no options is still retried and still
+dead-lettered. Before this, only two call sites set anything, which left the media pipeline
+and the nightly rollup on pg-boss's bare defaults — two immediate retries, no dead letter.
+
+`create_queue` is `ON CONFLICT DO NOTHING`, so a policy change is applied with
+`updateQueue` after it. Without that second call the new policy would reach a fresh
+database and no deployed one, which is the only case that matters after the first boot.
+
+### (b) The retention policy named a mechanism pg-boss no longer has
+
+`STACK.md` §5: "Set a pg-boss archive-retention policy on day one, or completed jobs become
+the largest table in the database." It was set — with `archiveCompletedAfterSeconds` and
+`deleteAfterDays`, which are pg-boss 9 constructor options. Version 12 has no archive stage
+and no such options; retention is a queue option, `deleteAfterSeconds`. The two settings
+were silently ignored, and a `as unknown as ConstructorParameters<…>` cast is what stopped
+the compiler from saying so.
+
+The two environment variables are replaced by one, `PGBOSS_JOB_RETENTION_DAYS`, applied
+where pg-boss reads it. **A cast that exists to make configuration compile is a bug report
+in waiting**; this one hid a rule the handoff calls out by name.
+
+### (c) `/health` reports `degraded`, and reads the count live
+
+§16.12 puts dead-lettered jobs in the warning band, not the paging one, and `/health` is
+the only surface BetterStack polls. So the check answers **200 with `degraded`**: the API
+is serving every request correctly, and paging on lost background work would train the
+on-call to ignore the page. `error` stays for a dependency the API cannot reach.
+
+The count is a query, not `getQueues()`. Those are pg-boss's *cached* per-queue counters,
+refreshed by its monitor every sixty seconds — so a health check reading them is zero for
+the first minute of every incident. The Super Admin dashboard's `deadLetterCount` had the
+same fault, from the same call, and now shares the live read.
+
+The paging half of §16.12 — "queue stalled >15 min" — is **not** built. It needs the age of
+the oldest ready job, which neither cached counters nor the health surface currently carry.
+
+### (d) The PDF clock: a real defect wearing a flaky test's clothes
+
+PART 15.7's byte-stability test failed roughly one run in four, on a clean tree, with no
+other explanation. The cause is not the test. Skia stamps the wall clock into the PDF's
+`/CreationDate` and `/ModDate`, to the second, so two renders inside one second agree and
+two that straddle a boundary do not. R-14's "the same payload renders to the same bytes"
+was simply false, and the renderer's own "no clock" comment named three clocks it had
+switched off and missed the fourth.
+
+`freezePdfDates` rewrites both fields to the payload's frozen `generatedAt`, in place and
+at exactly the same width so every cross-reference offset stays valid. A separate test
+asserts the metadata specifically, so a regression names the cause instead of reappearing
+as intermittent failure.
+
+### (e) Draining is now allowed to finish
+
+pg-boss's `stop` already waited for in-flight handlers; `docker compose` did not. Its
+default `stop_grace_period` is ten seconds, so SIGTERM was followed by SIGKILL well inside
+a 120-second report render. The grace period is now 180s on all three application services,
+above the 150s drain the application asks for, so the timeout that expires first is the
+application's own.

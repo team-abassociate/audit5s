@@ -49,13 +49,16 @@ export class AnalyticsService {
     query: AnalyticsRangeQuery,
   ): Promise<OrganizationOverview> {
     const range = toRange(query);
-    const [rows, units, activeAuditors, closureRows, sync, failedJobs] = await Promise.all([
+    const [rows, units, activeAuditors, closureRows, sync, queueHealth] = await Promise.all([
       this.repository.dailyUnits(scope, range),
       this.repository.unitRows(scope),
       this.repository.activeAuditors(scope, range),
       this.repository.closure(scope, range),
       this.repository.syncHealth(scope),
-      this.queue.failedCount(),
+      // The live dead-letter depth. It was pg-boss's cached `failed_count`, which the
+      // monitor refreshes once a minute — so the dashboard's own `deadLetterCount` read
+      // zero for the first minute of every incident.
+      this.queue.queueHealth(),
     ]);
     const closure = aggregateClosure(closureRows);
     const latestOpen = latestPer(rows, (row) => row.unitId).reduce((sum, row) => sum + row.openNc, 0);
@@ -69,7 +72,7 @@ export class AnalyticsService {
       unitRanking: rankUnits(rows, units, query.minSamples),
       syncHealth: {
         devicesWithUnsyncedData: sync.devices,
-        deadLetterCount: failedJobs,
+        deadLetterCount: queueHealth.deadLetterCount,
         oldestPendingAt: sync.oldest?.toISOString() ?? null,
       },
     };
