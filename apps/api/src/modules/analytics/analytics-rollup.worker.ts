@@ -18,7 +18,11 @@ export class AnalyticsRollupWorker {
         QUEUES.maintenanceSweep,
         '0 2 * * *',
         { unitId: unit.id, timezone: unit.timezone } satisfies AnalyticsRollupJob,
-        { key: `analytics:${unit.id}`, tz: unit.timezone, singletonKey: `analytics:${unit.id}` },
+        // Periods, not colons. pg-boss validates a schedule key against /^[\w.\-/]+$/ and
+        // asserts on anything else — a colon here threw before `worker-general` had
+        // registered a single handler, so the nightly rollup and the §16.4 sweep that
+        // rides the same tick were both scheduled by code that could not run.
+        { key: scheduleKey(unit.id), tz: unit.timezone, singletonKey: scheduleKey(unit.id) },
       );
     }
   }
@@ -31,6 +35,11 @@ export class AnalyticsRollupWorker {
       previousLocalDay(now, data.timezone),
     );
   }
+}
+
+/** One stable identity per Unit, in the character set pg-boss accepts for a key. */
+export function scheduleKey(unitId: string): string {
+  return `analytics.${unitId}`;
 }
 
 export function previousLocalDay(now: Date, timezone: string): string {

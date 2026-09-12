@@ -147,11 +147,41 @@ says "surfaced", not "queryable", and nobody opens a page that is empty 364 nigh
 | Reporting | `DATA_INTEGRITY_ALERT` — one event per Unit per night, **only when a count is non-zero**, in-app only, Super Admin only. The body names just the findings that fired; the counts also survive in `notification.data` |
 | Logging | The counts go to the Super Admin; the **identifiers** go to the log — stale audit ids, device ids with their last sync, and each drifted audit's stored-vs-recomputed pair. A notification saying "1 audit open for more than a week" is not actionable on its own |
 | Refactor | `SYSTEM_SCOPE` moved from `analytics-rollup.worker.ts` to `common/auth/system-scope.ts`. Two jobs now need it and a second copy is the one that would drift into reading more than it should |
+| Fix | **`worker-general` could not start.** See below |
 
 **Nothing in this slice writes to a domain table or repairs anything.** A sweep that
 silently fixed an orphan would be a delete by another name, and an audit whose score the
 night shift rewrote is exactly the change §16.4 exists to notice. A test asserts the
 drifted score is still drifted after the sweep has seen it.
+
+## What booting the worker found — a Phase 8 bug, not a Phase 9 one
+
+`worker-general` **crashed on startup**, on every environment, from Phase 8 onwards:
+
+```
+AssertionError: Key can only contain alphanumeric characters, underscores,
+hyphens, periods, or forward slashes
+  at PgBoss.schedule … at AnalyticsRollupWorker.schedule
+```
+
+`AnalyticsRollupWorker.schedule` built its pg-boss schedule key as `analytics:${unit.id}`.
+pg-boss 12 validates a schedule key against `/^[\w.\-/]+$/` and asserts on anything else, so
+the colon threw — **before the process had registered a single handler**. The nightly rollup
+never ran, and neither would this slice's sweep, which rides the same tick.
+
+Nothing caught it because every suite drives `handle()` directly and none had ever called
+`schedule()`; the failure only appears when `worker.general.ts` is actually booted. It was
+found by doing exactly that, against a local Postgres, while writing the run instructions —
+not by a test.
+
+The key is now `analytics.${unitId}` through one `scheduleKey()` helper, and
+`analytics.e2e.test.ts` gains a test that calls `schedule()` against real pg-boss and asserts
+the row lands in `pgboss.schedule`. It fails with the old key — verified by reverting it.
+
+**The lesson is slice 1's, again, in a new costume:** a scheduled job that is scheduled by
+code that throws is a job that was written down and never in force. Worth a habit for the
+next agent: *boot the entrypoints*, not only the suites. `worker.report.js` and `main.js`
+both start clean; `worker-general` was the one nobody had run.
 
 ## What was deliberately not built, and when to build it
 
@@ -187,6 +217,8 @@ predicate looks like a plausible number rather than an error:
    in `data`, and an `IN_APP` delivery row and no other.
 4. A clean Unit raises no notification at all.
 
+`analytics.e2e.test.ts` adds one: the scheduling path above.
+
 `notification-policy.test.ts` adds three: only the non-zero findings are named (singular and
 plural both), the drift line reports the sample it was drawn from, and the alert is Super
 Admin only with no external channel.
@@ -194,7 +226,7 @@ Admin only with no external channel.
 Final totals, all green (`pnpm lint`, `pnpm -r build`, `pnpm -r typecheck`):
 
 - Domain: **283** · Database: **137** · Mobile: **56** · API unit: **74** · Unit total: **550**
-- API e2e: **611** across 30 files
+- API e2e: **612** across 30 files (611 for this slice + 1 for the scheduling regression)
 - Browser: **1** reports + public corrective-action smoke, including camera capture
 
 PART 15.7's byte-stability test passed in every run of this slice, including two full e2e
@@ -223,6 +255,23 @@ so the decision can be made in one reading:
 
 **Recommendation: do not add it now.** Revisit when either a second API replica is deployed
 or connection count becomes a measured problem. It is not on the go-live gates.
+
+## Running it locally — two things `.env.example` does not say
+
+Both found by doing it, and both worth fixing in a follow-up:
+
+1. **Nothing loads `.env`.** There is no `dotenv` anywhere in the repo; `.env` is read only
+   by `docker compose` for variable substitution. Running the API, a worker, `pnpm
+   db:migrate` or `pnpm seed` directly on the host needs the variables exported —
+   `set -a; . ./.env; set +a` — or every one of them fails on config validation. The
+   `.env.example` header says "Copy to .env for local development", which is true only if
+   you also source it.
+2. **`.env.example` as shipped cannot boot the API.** It carries
+   `OBJECT_STORAGE_SIGNING_SECRET=` empty, and the schema requires ≥16 characters *when
+   set*. An empty string is set. The comment above it says "Unset means a fresh key per
+   process", which is the intent — so the fix is either to delete the line from the example
+   or to treat an empty string as absent in `config/env.ts`. Same shape of bug as R-16(b):
+   a setting that documents one behaviour and implements another.
 
 ## The rest of Phase 9, in the order it is worth doing
 
