@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { QuestionResponse, UpsertQuestionResponseRequest } from '@audit5s/contracts';
-import { assertTransition, numericScoreFor, type ScopeContext } from '@audit5s/domain';
+import { assertTransition, isAuditCompleted, numericScoreFor, type ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { asAppError } from '../audit-assignments/assignments.service';
 import { AuditsRepository } from '../audits/audits.repository';
@@ -41,7 +41,7 @@ export class ResponsesService {
       throw AppError.notFound('No such audit Zone');
     }
 
-    if (['COMPLETED', 'CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED', 'CLOSED'].includes(zone.auditStatus)) {
+    if (isAuditCompleted(zone.auditStatus)) {
       // PART 6's condition on `question_response:upsert`, and A-2's application half.
       throw AppError.conflict(
         'AUDIT_ALREADY_COMPLETED',

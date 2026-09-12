@@ -51,6 +51,16 @@
 > it (R-3a), and `evidence` carries `redacted_at` / `redacted_by_user_id` / `redaction_reason`
 > with a matching carve-out in its append-only trigger (R-5).
 >
+> **Phase 6 implementation (2026-09-12).** Corrective actions materialise on the completing
+> transaction, one per nonconformity photograph, and the audit rolls along §7.1's edges;
+> submissions are append-only and answerable offline through the outbox; notifications fan
+> out from pg-boss events in `worker-general`, with WhatsApp and SMS behind an unwired port
+> whose deliveries are recorded `SKIPPED`. Migration `0009` adds the five Phase 6 tables;
+> `0010` is next. Six decisions are recorded as `DECISIONS.md` **R-13** — including the one
+> ambiguity worth a second look: **"resolved" means VERIFIED**, so an audit stays
+> `CORRECTIVE_ACTION_OPEN` while attempts await review, which is how §2.8 and §5.7 define
+> it and *not* how §7.3's worked case reads.
+>
 > **Phase 5 implementation (2026-09-11).** Walk-by capture now runs end to end through the
 > mobile SQLite outbox, including offline evidence patches, preview/delete, re-judgement and
 > summary flags. The admin audit detail has the cursor-paged evidence gallery and on-demand
@@ -1074,7 +1084,8 @@ retried sync can only ever update the same row** · `(audit_id)` ·
 | `audit_id` | `uuid` FK→`audit.id` | Always present |
 | `audit_zone_id` | `uuid` FK→`audit_zone.id` NULL | Null only for the audit-level selfie |
 | `question_response_id` | `uuid` FK→`question_response.id` NULL | **Present for `QUESTION_EVIDENCE`** (C8); null for walk-by and selfie |
-| `corrective_action_submission_id` | `uuid` FK NULL | For `CORRECTIVE_AFTER` |
+| `corrective_action_id` | `uuid` FK→`corrective_action.id` NULL | For `CORRECTIVE_AFTER` (R-13): the action whose scope governs the photo, and the only route to it before an attempt exists |
+| `corrective_action_submission_id` | `uuid` NULL | For `CORRECTIVE_AFTER`. The device mints it when the form opens, so it carries **no** FK; the submission's own trigger enforces the link (R-13) |
 | `object_key` | `text` | S3 key. **UNIQUE** |
 | `thumbnail_object_key` | `text` NULL | Produced by the media worker |
 | `content_type`, `byte_size`, `width`, `height` | | |
@@ -1247,9 +1258,9 @@ Indexes: `UNIQUE(token_hash)` · `(corrective_action_id)` · `(expires_at)` ·
 
 ### `notification` / `notification_delivery` / `notification_preference`
 
-| `notification` | `id uuid PK` · `recipient_user_id uuid FK` · `event_type text` · `title text` · `body text` · `data jsonb` · `unit_id uuid FK NULL` · `resource_type text` · `resource_id uuid` · `read_at timestamptz NULL` · `created_at` |
+| `notification` | `id uuid PK` · `event_id uuid` (with the recipient, unique — a redelivered job tells nobody twice, R-13) · `recipient_user_id uuid FK` · `event_type text` · `title text` · `body text` · `data jsonb` · `unit_id uuid FK NULL` · `resource_type text` · `resource_id uuid` · `read_at timestamptz NULL` · `created_at` |
 | --- | --- |
-| `notification_delivery` | `id uuid PK` · `notification_id uuid FK` · `channel notification_channel` · `status notification_status` · `provider_message_id text NULL` · `attempt_count int` · `last_error text NULL` · `sent_at` · `delivered_at` |
+| `notification_delivery` | `id uuid PK` · `notification_id uuid FK` · `channel notification_channel` · `fallback_of_delivery_id uuid FK NULL` (the WhatsApp delivery an SMS fell back from, R-13) · `status notification_status` · `provider_message_id text NULL` · `attempt_count int` · `last_error text NULL` · `sent_at` · `delivered_at` |
 | `notification_preference` | `id uuid PK` · `user_id uuid FK` · `event_type text` · `channel notification_channel` · `enabled boolean`; `UNIQUE(user_id, event_type, channel)` |
 
 Indexes: `(recipient_user_id, read_at, created_at DESC)` — the notification centre query ·
@@ -2191,7 +2202,7 @@ so a bad spreadsheet can never leave half a checklist behind.
 | --- | --- | --- | --- |
 | GET | `/corrective-actions` | scope | `?unitId=&zoneId=&status=&assignedTo=&auditId=&overdue=true` |
 | GET | `/corrective-actions/{id}` | scope | Includes the full submission history |
-| POST | `/corrective-actions/{id}/submissions` | ZL (`own_unit`) | **Idempotency-Key required.** Option A `{ option:"COMPLETED", submittedByName, description, afterEvidenceId }` · Option B `{ option:"NOT_POSSIBLE", explanation }` → `201`; state → `ACTION_SUBMITTED`/`NOT_POSSIBLE`; event to Super Admin. Touches exactly one action (7.3). |
+| POST | `/corrective-actions/{id}/submissions` | ZL (`own_unit`) | **Idempotency-Key required.** Option A `{ option:"COMPLETED", submittedByName, description, afterEvidenceId }` · Option B `{ option:"NOT_POSSIBLE", explanation }` → `201`; state → `ACTION_SUBMITTED`/`NOT_POSSIBLE`; event to Super Admin. Touches exactly one action (7.3). A device sends the attempt's own `id` instead, minted when the form opened, so a replayed sync item finds its attempt rather than making `attempt_no + 1` (R-13). |
 | POST | `/corrective-actions/{id}/verify` | SA | `{ comment? }` → `VERIFIED`; may roll the audit to `CLOSED` |
 | POST | `/corrective-actions/{id}/reopen` | SA | `{ reason }` (required) → `REOPENED`, `reopen_count++` |
 | POST | `/corrective-actions/{id}/reassign` | SA, COO | `{ zoneLeaderUserId }` |
@@ -2406,7 +2417,9 @@ after audit/zone completion (high priority) · manual **Sync Now** · background
 (`expo-background-task`, ~15-minute OS-governed cadence).
 
 **Ordering.** Items are topologically sorted so a parent always precedes its children:
-`audit → audit_zone → question_response → evidence(metadata) → evidence(commit)`. The server
+`audit → audit_zone → question_response → evidence(metadata) → evidence(commit)`. Phase 6
+appends `corrective_action_submission(submit)`, after the commit of the after-photo an
+Option A cites (R-13). The server
 additionally validates parent existence and returns `RETRY_AFTER_PARENT` rather than failing
 the whole batch, so a device with a partially-torn queue self-heals.
 

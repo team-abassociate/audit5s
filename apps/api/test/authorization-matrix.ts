@@ -744,6 +744,125 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'evidence.e2e.test.ts',
   },
 
+  // ------------------------------------------------------- corrective actions
+  {
+    method: 'GET',
+    path: '/api/v1/corrective-actions',
+    description:
+      'corrective_action:read — the queue; a Consultant sees what their own audits raised, ' +
+      'a Coordinator and a Zone Leader their Unit’s',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/corrective-actions/:correctiveActionId',
+    description: 'corrective_action:read — one action with its whole submission history (§8.8)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'corrective-actions.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/corrective-actions/:correctiveActionId/submissions',
+    description:
+      'corrective_action:submit — Option A or B, one action, Idempotency-Key required. A ' +
+      'Zone Leader of the Unit, assigned or not (R-3b)',
+    expected: { ZONE_LEADER: { inScope: CREATED, outOfScope: NOT_FOUND } },
+    coveredBy: 'corrective-actions.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/corrective-actions/:correctiveActionId/verify',
+    description: 'corrective_action:verify — Super Admin only; may close the audit',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'corrective-actions.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/corrective-actions/:correctiveActionId/reopen',
+    description: 'corrective_action:reopen — Super Admin only, reason required, attempts kept',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'corrective-actions.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/corrective-actions/:correctiveActionId/reassign',
+    description: 'corrective_action:reassign — a Super Admin, or the Coordinator of the Unit',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'corrective-actions.e2e.test.ts',
+  },
+
+  // ----------------------------------------------------------- notifications
+  {
+    method: 'GET',
+    path: '/api/v1/notifications',
+    description: 'notification:read — the caller’s own centre, with the unread count',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/notifications/read-all',
+    description: 'notification:mark_read — the caller’s own, idempotent',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/notifications/:notificationId/read',
+    description: 'notification:mark_read — someone else’s notification reads as absent',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'notifications.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/notification-preferences',
+    description: 'notification_preference:update — the caller’s own grid, defaults filled in',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/notification-preferences',
+    description: 'notification_preference:update — IN_APP stays on whatever is sent (§5.9)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+    coveredBy: 'notifications.e2e.test.ts',
+  },
+
   // ------------------------------------------------- the signed storage route (R-9)
   {
     method: 'PUT',

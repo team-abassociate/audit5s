@@ -212,7 +212,8 @@ describe('Phase 5 acceptance', () => {
 
     const detailResponse = await call('GET', `${base}/audits/${auditId}`);
     const detail = detailResponse.body as AuditDetail;
-    expect(detail.status).toBe('COMPLETED');
+    // A walk-by nonconformity opens a corrective action (§2.7), so the audit rolls on.
+    expect(detail.status).toBe('CORRECTIVE_ACTION_OPEN');
     expect(detail.scored).toBe(false);
     expect(detail.zones).toHaveLength(3);
     expect(detail.zones.every((zone) => zone.status === 'COMPLETED')).toBe(true);

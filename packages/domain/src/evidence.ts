@@ -93,11 +93,21 @@ export function evidenceObjectKey(input: {
   auditZoneId?: string | null;
   evidenceId: string;
   extension?: string;
+  /** `CORRECTIVE_AFTER` only: §5.6's `corrective/{unit}/{action}/{submission}/{id}`. */
+  correctiveActionId?: string | null;
+  correctiveActionSubmissionId?: string | null;
 }): string {
   const extension = input.extension ?? 'jpg';
 
   if (input.kind === 'AUDITOR_SELFIE') {
     return `selfie/${input.unitId}/${input.auditId}/${input.evidenceId}.${extension}`;
+  }
+
+  if (input.kind === 'CORRECTIVE_AFTER') {
+    return (
+      `corrective/${input.unitId}/${input.correctiveActionId ?? 'unlinked'}/` +
+      `${input.correctiveActionSubmissionId ?? 'unlinked'}/${input.evidenceId}.${extension}`
+    );
   }
 
   // A walk-by or question photo always belongs to a Zone; the fallback keeps the key

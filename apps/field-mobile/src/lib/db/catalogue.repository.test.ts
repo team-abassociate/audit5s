@@ -41,6 +41,7 @@ const UNIT_B = '22222222-2222-4222-8222-222222222222';
 function catalogue(overrides: Partial<SyncCatalogue> = {}): SyncCatalogue {
   return {
     serverTime: '2026-09-10T10:00:00.000Z',
+    correctiveActions: [],
     catalogueVersion: 'v1',
     units: [
       {
@@ -236,6 +237,7 @@ describe('catalogue sync', () => {
       checklistTemplates: [],
       checklistVersions: [],
       assignments: [],
+      correctiveActions: [],
     });
 
     expect(await listLocalUnits(database)).toHaveLength(1);

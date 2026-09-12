@@ -18,7 +18,7 @@ build order — is the Stack Decision Record in **[STACK.md](./STACK.md)**. It s
 `ARCHITECTURE.md` PART 3.1.
 
 Points where the blueprint and `STACK.md` disagreed or were silent are
-settled in **[DECISIONS.md](./DECISIONS.md)** (R-1 … R-12). The precedence rule is:
+settled in **[DECISIONS.md](./DECISIONS.md)** (R-1 … R-13). The precedence rule is:
 **`STACK.md` wins on any technology name, `ARCHITECTURE.md` wins on any behaviour.** The complete
 list of superseded technology choices is at the top of `ARCHITECTURE.md`.
 
@@ -27,7 +27,8 @@ list of superseded technology choices is at the top of `ARCHITECTURE.md`.
 **Implementation in progress — see [HANDOFF.md](./HANDOFF.md).** Read it before starting: it
 reconciles the blueprint with the real source files in
 [`docs/requirements/`](./docs/requirements/) and defines the phase-by-phase work order.
-[`HANDOFF-PHASE5.md`](./HANDOFF-PHASE5.md) carries the current state of the phase in flight.
+[`HANDOFF-PHASE5.md`](./HANDOFF-PHASE5.md) is the historical Phase 5 backend handoff; its
+"web/mobile not started" status is superseded by the table below.
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -37,6 +38,8 @@ reconciles the blueprint with the real source files in
 | 3 | Audit engine and scoring | Done |
 | 4 | Mobile camera, selfie, GPS and the synchronization engine | Done |
 | 5 | Walk-by audit and evidence management | Done |
+| 6 | Corrective actions and notifications | Done |
+| 7 | PDF/reporting engine and live reports | Next |
 
 ## Layout
 
@@ -74,13 +77,15 @@ the second one runs in the world the first leaves behind:
 
 ```sh
 node apps/admin-web/smoke.mjs         # Super Admin: Units, users, Zones, the import wizard
-node apps/admin-web/smoke-audit.mjs   # a device runs a real audit; the board renders it
+node apps/admin-web/smoke-audit.mjs   # a device audits; the board, the queue and the centre render it
 ```
 
 `smoke.mjs` signs in with the bootstrap credential and rotates it, so it needs a database
 `pnpm seed` has only just touched. The admin bundle reads `VITE_API_BASE_URL` at build time;
 if the API is not same-origin with the preview server, build it with that variable set and
 list the preview origin in `CORS_ORIGINS`.
+Screenshots go to `SMOKE_SCREENSHOT_DIR` (default `/tmp/audit5s-shots`), and
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` selects a Chromium when the bundled one is absent.
 
 They exist because some failures are only visible in a browser: the CORS method allow-list
 that silently refused every `PATCH` and `PUT` cross-origin was found by the second one and

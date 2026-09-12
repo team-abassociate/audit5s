@@ -15,6 +15,10 @@ import {
   SYNC_STATES,
   EVIDENCE_KINDS,
   EVIDENCE_CLASSIFICATIONS,
+  CORRECTIVE_ACTION_STATUSES,
+  CORRECTIVE_OPTIONS,
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_STATUSES,
 } from '@audit5s/contracts';
 
 /**
@@ -51,3 +55,12 @@ export const evidenceClassificationEnum = pgEnum(
   'evidence_classification',
   EVIDENCE_CLASSIFICATIONS,
 );
+
+// Phase 6 (0009_corrective_actions_and_notifications).
+export const correctiveActionStatusEnum = pgEnum(
+  'corrective_action_status',
+  CORRECTIVE_ACTION_STATUSES,
+);
+export const correctiveOptionEnum = pgEnum('corrective_option', CORRECTIVE_OPTIONS);
+export const notificationChannelEnum = pgEnum('notification_channel', NOTIFICATION_CHANNELS);
+export const notificationStatusEnum = pgEnum('notification_status', NOTIFICATION_STATUSES);

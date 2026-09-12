@@ -70,6 +70,11 @@ const envSchema = z.object({
    * releases it so a lost phone does not strand the work on it.
    */
   DEVICE_RELEASE_GRACE_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  /**
+   * `corrective_action.due_at`, counted from the audit's completion. §5.7 leaves the value
+   * open; seven days is a house default, not a requirement, and 0 means "no due date".
+   */
+  CORRECTIVE_ACTION_DUE_DAYS: z.coerce.number().int().min(0).max(365).default(7),
 
   /** §12.8: a hard cap on the workbook an import will even attempt to read. */
   CHECKLIST_IMPORT_MAX_BYTES: z.coerce

@@ -1,8 +1,11 @@
+import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 
 const BASE = 'http://127.0.0.1:4173';
-const shots = '/tmp/claude-0/shots';
+// Overridable so a run on another machine does not need one hard-coded directory.
+const shots = process.env.SMOKE_SCREENSHOT_DIR ?? '/tmp/audit5s-shots';
+mkdirSync(shots, { recursive: true });
 const workbook = fileURLToPath(
   new URL('../../docs/requirements/5S_lean_audit_data_1.xlsx', import.meta.url),
 );

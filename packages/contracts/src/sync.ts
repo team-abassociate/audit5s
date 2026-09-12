@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { auditAssignmentSchema } from './audit';
 import { checklistTemplateSchema, checklistVersionDetailSchema } from './checklist';
 import { booleanQuery, isoDateTimeSchema, paginationQuerySchema, uuidSchema } from './common';
+import { correctiveActionSchema } from './corrective-action';
 import { unitSchema } from './unit';
 import { zoneSchema } from './zone';
 
@@ -33,6 +34,12 @@ export const syncCatalogueSchema = z.object({
    * `UNIT_ACCESS_REVOKED` case has to make the assignment *disappear* from the tab.
    */
   assignments: z.array(auditAssignmentSchema),
+  /**
+   * §8.11's "open corrective actions": for a Zone Leader, every action of their Unit not
+   * yet VERIFIED — the actionable ones and those awaiting review. Empty for a Consultant,
+   * who reads actions but never answers one.
+   */
+  correctiveActions: z.array(correctiveActionSchema),
 });
 export type SyncCatalogue = z.infer<typeof syncCatalogueSchema>;
 
@@ -66,6 +73,8 @@ export const SYNC_ENTITY_TYPES = [
   'audit_zone',
   'question_response',
   'evidence',
+  // After `evidence`: Option A cites an after-photo, whose commit must land first.
+  'corrective_action_submission',
 ] as const;
 export const syncEntityTypeSchema = z.enum(SYNC_ENTITY_TYPES);
 export type SyncEntityType = z.infer<typeof syncEntityTypeSchema>;
@@ -90,6 +99,8 @@ export const SYNC_OPERATIONS = [
   'delete',
   'commit',
   'patch',
+  /** A corrective-action submission (§9.2's trigger list). Inserts one attempt, never two. */
+  'submit',
 ] as const;
 export const syncOperationSchema = z.enum(SYNC_OPERATIONS);
 export type SyncOperation = z.infer<typeof syncOperationSchema>;

@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import {
   audits,
   auditZones,
+  correctiveActions,
   evidence,
   questionResponses,
   units,
@@ -42,6 +43,7 @@ const evidenceColumns = {
   auditId: evidence.auditId,
   auditZoneId: evidence.auditZoneId,
   questionResponseId: evidence.questionResponseId,
+  correctiveActionId: evidence.correctiveActionId,
   correctiveActionSubmissionId: evidence.correctiveActionSubmissionId,
   objectKey: evidence.objectKey,
   thumbnailObjectKey: evidence.thumbnailObjectKey,
@@ -81,6 +83,8 @@ export interface CreateEvidenceInput {
   auditId: string;
   auditZoneId: string | null;
   questionResponseId: string | null;
+  correctiveActionId?: string | null;
+  correctiveActionSubmissionId?: string | null;
   objectKey: string;
   contentType: string;
   byteSize: number;
@@ -124,6 +128,8 @@ export class EvidenceRepository extends BaseRepository {
           auditId: input.auditId,
           auditZoneId: input.auditZoneId,
           questionResponseId: input.questionResponseId,
+          correctiveActionId: input.correctiveActionId ?? null,
+          correctiveActionSubmissionId: input.correctiveActionSubmissionId ?? null,
           objectKey: input.objectKey,
           contentType: input.contentType,
           byteSize: input.byteSize,
@@ -150,6 +156,28 @@ export class EvidenceRepository extends BaseRepository {
     });
   }
 
+  /**
+   * The scope predicate, with PART 6's one extension on `evidence:create`.
+   *
+   * A Zone Leader holds `own_audits` there "or assigned_actions, for CORRECTIVE_AFTER
+   * evidence": the after-photo of an action they may answer, on an audit somebody else
+   * conducted. Without the second half their own photograph would be invisible to its
+   * `commit` and to the media worker that thumbnails it (R-13).
+   */
+  private writablePredicate(scope: ScopeContext): SQL {
+    const base = this.scoped(scope, evidenceScopeColumns);
+    if (scope.resolver !== 'own_audits' || scope.actor.role !== 'ZONE_LEADER') {
+      return base;
+    }
+    const answerable = this.scoped(
+      { ...scope, resolver: 'assigned_actions' },
+      { assignedUserId: correctiveActions.assignedZoneLeaderUserId, unitId: correctiveActions.unitId },
+    );
+    return sql`(${base} OR (${evidence.kind} = 'CORRECTIVE_AFTER' AND EXISTS (
+      SELECT 1 FROM ${correctiveActions}
+      WHERE ${correctiveActions.id} = ${evidence.correctiveActionId} AND ${answerable})))`;
+  }
+
   async findById(scope: ScopeContext, evidenceId: string) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
@@ -157,7 +185,7 @@ export class EvidenceRepository extends BaseRepository {
         .select(evidenceColumns)
         .from(evidence)
         .innerJoin(audits, eq(audits.id, evidence.auditId))
-        .where(and(eq(evidence.id, evidenceId), this.scoped(scope, evidenceScopeColumns)))
+        .where(and(eq(evidence.id, evidenceId), this.writablePredicate(scope)))
         .limit(1);
       return row ?? null;
     });
@@ -184,6 +212,8 @@ export class EvidenceRepository extends BaseRepository {
           contentType: evidence.contentType,
           byteSize: evidence.byteSize,
           checksumSha256: evidence.checksumSha256,
+          kind: evidence.kind,
+          correctiveActionId: evidence.correctiveActionId,
           syncState: evidence.syncState,
           auditorUserId: audits.auditorUserId,
         })
@@ -336,7 +366,7 @@ export class EvidenceRepository extends BaseRepository {
         })
         .from(evidence)
         .innerJoin(audits, eq(audits.id, evidence.auditId))
-        .where(and(eq(evidence.id, evidenceId), this.scoped(scope, evidenceScopeColumns)))
+        .where(and(eq(evidence.id, evidenceId), this.writablePredicate(scope)))
         .limit(1);
       return row ?? null;
     });

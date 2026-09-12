@@ -188,7 +188,9 @@ export async function stopWorld(world: TestWorld | undefined): Promise<void> {
 
 export async function truncateAll(owner: Client): Promise<void> {
   await owner.query(`
-    TRUNCATE evidence, sync_conflict, device_sync_record,
+    TRUNCATE notification_delivery, notification, notification_preference,
+             corrective_action_submission, corrective_action,
+             evidence, sync_conflict, device_sync_record,
              question_response, audit_zone_section_score, audit_zone, audit,
              audit_assignment,
              checklist_import_row, checklist_import_sheet, checklist_import_job,
@@ -356,10 +358,14 @@ export async function captureEvidence(
     token: string;
     evidenceId: string;
     auditId: string;
-    kind?: 'AUDITOR_SELFIE' | 'QUESTION_EVIDENCE' | 'WALK_BY_PHOTO';
+    kind?: 'AUDITOR_SELFIE' | 'QUESTION_EVIDENCE' | 'WALK_BY_PHOTO' | 'CORRECTIVE_AFTER';
     auditZoneId?: string;
     questionResponseId?: string;
     classification?: 'GOOD' | 'NONCONFORMITY' | 'NEUTRAL';
+    /** `CORRECTIVE_AFTER` only: the action, and the attempt the photo is taken for. */
+    correctiveActionId?: string;
+    correctiveActionSubmissionId?: string;
+    isLiveCapture?: boolean;
     deviceId?: string;
     bytes?: Buffer;
     /** Skips the commit, leaving the row SYNCING — §9.4's `orphan_metadata` case. */
@@ -382,11 +388,15 @@ export async function captureEvidence(
       ...(options.auditZoneId ? { auditZoneId: options.auditZoneId } : {}),
       ...(options.questionResponseId ? { questionResponseId: options.questionResponseId } : {}),
       ...(options.classification ? { classification: options.classification } : {}),
+      ...(options.correctiveActionId ? { correctiveActionId: options.correctiveActionId } : {}),
+      ...(options.correctiveActionSubmissionId
+        ? { correctiveActionSubmissionId: options.correctiveActionSubmissionId }
+        : {}),
       contentType: 'image/jpeg',
       byteSize: bytes.byteLength,
       checksumSha256: checksum,
       capturedAt: new Date().toISOString(),
-      isLiveCapture: true,
+      isLiveCapture: options.isLiveCapture ?? true,
     },
   });
 

@@ -186,6 +186,29 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
       `ALTER TABLE outbox ADD COLUMN batch_id TEXT`,
     ],
   },
+  {
+    /*
+     * Phase 6: the open corrective actions of the catalogue, and this device's attempts at
+     * them that the server has not yet confirmed. Additive and idempotent, as every step is.
+     */
+    version: 4,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS corrective_action (
+         id TEXT PRIMARY KEY, unit_id TEXT NOT NULL, audit_id TEXT NOT NULL,
+         zone_id TEXT NOT NULL, zone_code TEXT NOT NULL, zone_name TEXT NOT NULL,
+         status TEXT NOT NULL, section TEXT, question_global_order INTEGER,
+         question_text TEXT, finding_remark TEXT, before_evidence_id TEXT NOT NULL,
+         assigned_zone_leader_user_id TEXT, due_at TEXT,
+         reopen_count INTEGER NOT NULL DEFAULT 0
+       )`,
+      `CREATE TABLE IF NOT EXISTS corrective_submission (
+         id TEXT PRIMARY KEY, corrective_action_id TEXT NOT NULL, option TEXT NOT NULL,
+         target_status TEXT NOT NULL, after_evidence_id TEXT, created_at TEXT NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_corrective_submission_action
+         ON corrective_submission (corrective_action_id)`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

@@ -14,6 +14,7 @@ import {
   patchEvidenceRequestSchema,
   pauseAuditRequestSchema,
   resumeAuditRequestSchema,
+  submitCorrectiveActionRequestSchema,
   uploadIntentRequestSchema,
   upsertAuditZoneRequestSchema,
   upsertQuestionResponseRequestSchema,
@@ -23,6 +24,7 @@ import { AppError } from '../../common/errors';
 import { CONFIG, type AppConfig } from '../../config/env';
 import { AuditsService } from '../audits/audits.service';
 import { AuditZonesService } from '../audit-zones/audit-zones.service';
+import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
 import { EvidenceService } from '../evidence/evidence.service';
 import { ResponsesService } from '../question-responses/responses.service';
 import { SyncRepository } from './sync.repository';
@@ -68,6 +70,7 @@ export class SyncBatchService {
     private readonly zones: AuditZonesService,
     private readonly responses: ResponsesService,
     private readonly evidence: EvidenceService,
+    private readonly correctiveActions: CorrectiveActionsService,
     private readonly events: SyncEventsService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
@@ -382,6 +385,15 @@ export class SyncBatchService {
         return null;
       }
 
+      case 'corrective_action_submission:submit': {
+        // One attempt on one action (§7.3). The entity id is the submission id the device
+        // minted, so a replay finds its own attempt instead of making attempt + 1.
+        const body = submitCorrectiveActionRequestSchema.parse({ ...item.payload, id: item.entityId });
+        const actionId = this.requireString(item.payload, 'correctiveActionId');
+        await this.correctiveActions.submit(scope, actionId, body, 'MOBILE');
+        return null;
+      }
+
       default:
         throw AppError.validation(
           `No sync handler for ${item.entityType}:${item.operation}`,
@@ -443,6 +455,14 @@ export class SyncBatchService {
       // the same row for the same reason, and a device whose queue is torn between the
       // two must be asked to come back rather than have the flag quarantined.
       parents.push(['evidence', item.entityId]);
+    }
+    if (item.entityType === 'corrective_action_submission') {
+      // Option A cites an after-photo that rides the media queue. Until its commit has
+      // landed the submission waits, rather than failing for a photo still uploading.
+      const photo = this.optionalString(item.payload, 'afterEvidenceId');
+      if (photo && !(await this.repository.evidenceCommitted(scope, photo))) {
+        return `evidence:${photo}`;
+      }
     }
     if (
       (item.entityType === 'audit' && item.operation !== 'upsert') ||

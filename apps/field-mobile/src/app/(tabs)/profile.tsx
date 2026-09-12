@@ -1,6 +1,7 @@
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'expo-router';
 import { Button, Card, Heading, Muted, Screen } from '../../components/ui';
 import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
 import { useLocalDatabase } from '../../lib/db/provider';
@@ -138,6 +139,12 @@ export default function ProfileScreen() {
             <Muted>Could not reach the server. The stored catalogue is unchanged.</Muted>
           ) : null}
         </Card>
+
+        <Link href="/notifications" asChild>
+          <Card>
+            <Row label="Notifications" value="Open" />
+          </Card>
+        </Link>
 
         <Card>
           <Muted>

@@ -35,6 +35,9 @@ export interface CaptureEvidenceInput {
   kind: EvidenceKind;
   auditZoneId?: string | null;
   questionResponseId?: string | null;
+  /** `CORRECTIVE_AFTER` only: the action and the attempt the photograph is for (R-13). */
+  correctiveActionId?: string | null;
+  correctiveActionSubmissionId?: string | null;
   /** The downscaled, EXIF-stripped file this device wrote. */
   localFileUri: string;
   byteSize: number;
@@ -130,6 +133,10 @@ export async function captureLocalEvidence(
       auditId: input.auditId,
       ...(input.auditZoneId ? { auditZoneId: input.auditZoneId } : {}),
       ...(input.questionResponseId ? { questionResponseId: input.questionResponseId } : {}),
+      ...(input.correctiveActionId ? { correctiveActionId: input.correctiveActionId } : {}),
+      ...(input.correctiveActionSubmissionId
+        ? { correctiveActionSubmissionId: input.correctiveActionSubmissionId }
+        : {}),
       contentType: input.contentType ?? 'image/jpeg',
       byteSize: input.byteSize,
       checksumSha256: input.checksumSha256,

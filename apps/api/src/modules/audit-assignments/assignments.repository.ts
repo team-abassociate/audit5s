@@ -1,6 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
-import { auditAssignments, unitMemberships, units, users, type Database } from '@audit5s/db';
+import {
+  auditAssignments,
+  unitMemberships,
+  units,
+  users,
+  type Database,
+  type Transaction,
+} from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type {
   CreateAuditAssignmentRequest,
@@ -56,6 +63,7 @@ export class AssignmentsRepository extends BaseRepository {
   async create(
     scope: ScopeContext,
     request: CreateAuditAssignmentRequest,
+    afterWrite?: (tx: Transaction, id: string) => Promise<void>,
   ): Promise<string> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
@@ -71,6 +79,7 @@ export class AssignmentsRepository extends BaseRepository {
           createdByUserId: scope.actor.userId,
         })
         .returning({ id: auditAssignments.id });
+      await afterWrite?.(tx as Transaction, row!.id);
       return row!.id;
     });
   }

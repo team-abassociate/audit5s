@@ -47,7 +47,9 @@ function AuthGate() {
       group === 'unit' ||
       group === 'checklist' ||
       group === 'audit' ||
-      group === 'walk-by';
+      group === 'walk-by' ||
+      group === 'actions' ||
+      group === 'notifications';
 
     if (status === 'signed-out' && group !== 'login') {
       router.replace('/login');

@@ -11,6 +11,7 @@ import { AppError } from '../../common/errors';
 import { AssignmentsService } from '../audit-assignments/assignments.service';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
+import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { UsersRepository } from '../users/users.repository';
 import { AuthRepository } from '../auth/auth.repository';
 import { MembershipsRepository } from './memberships.repository';
@@ -23,6 +24,7 @@ export class MembershipsService {
     private readonly auth: AuthRepository,
     private readonly assignments: AssignmentsService,
     private readonly auditLog: AuditLogService,
+    private readonly events: DomainEvents,
   ) {}
 
   async assign(
@@ -48,11 +50,20 @@ export class MembershipsService {
     }
 
     try {
-      const created = await this.repository.create(scope, {
-        userId: user.id,
-        unitId,
-        role: user.role as Role,
-      });
+      const created = await this.repository.create(
+        scope,
+        { userId: user.id, unitId, role: user.role as Role },
+        (tx) =>
+          this.events.emit(tx, {
+            type: 'UNIT_ASSIGNED',
+            actorUserId: scope.actor.userId,
+            unitId,
+            resourceType: 'unit_membership',
+            resourceId: null,
+            userIds: [user.id],
+            data: { role: user.role },
+          }),
+      );
 
       await this.auditLog.record({
         action: user.role === 'CONSULTANT' ? 'consultant.assigned' : 'coordinator.assigned',
@@ -100,7 +111,17 @@ export class MembershipsService {
       throw AppError.notFound('No such membership');
     }
 
-    const revoked = await this.repository.revoke(scope, membershipId);
+    const revoked = await this.repository.revoke(scope, membershipId, (tx) =>
+      this.events.emit(tx, {
+        type: 'UNIT_ACCESS_REVOKED',
+        actorUserId: scope.actor.userId,
+        unitId: membership.unitId,
+        resourceType: 'unit_membership',
+        resourceId: membershipId,
+        userIds: [membership.userId],
+        data: { role: membership.role },
+      }),
+    );
     if (!revoked) {
       throw AppError.conflict('CONFLICT', 'This membership is not active');
     }

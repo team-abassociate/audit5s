@@ -330,7 +330,14 @@ function EvidenceTile({ evidence, onOpen }: { evidence: Evidence; onOpen: () => 
   );
 }
 
-function EvidenceViewer({ evidence, onClose }: { evidence: Evidence; onClose: () => void }) {
+/** The full-size original, fetched on demand (PART 16). Shared with the corrective-action queue. */
+export function EvidenceViewer({
+  evidence,
+  onClose,
+}: {
+  evidence: Pick<Evidence, 'id' | 'remark'>;
+  onClose: () => void;
+}) {
   const original = useQuery({
     queryKey: ['evidence-view-url', evidence.id, 'original'],
     queryFn: () => api.get<EvidenceViewUrl>(`/evidence/${evidence.id}/view-url?variant=original`),

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
+import { DomainEvents } from '../../infrastructure/queue/domain-events';
 
 /**
  * `SYNC_FAILURE` (§7.4).
@@ -7,10 +7,8 @@ import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
  * > Emits SYNC_FAILURE. Row and file are retained on the device; logout is blocked while
  * > any item is not SYNCED.
  *
- * The event is enqueued on pg-boss, and the work it triggers — resolving who to tell, and
- * telling them — happens in `worker-general` under an identity re-read from the database
- * (R-2, and the rule the `ChecklistImportWorker` established: identity travels, authority
- * does not).
+ * Who is told — the auditor, and every Super Admin (§4.2) — is the notifications worker's
+ * decision, made in `worker-general`, like every other event's.
  *
  * It is deliberately *not* enqueued inside the batch's own transaction. There is no single
  * domain transaction to join: a batch is a hundred independent writes, each committed on
@@ -22,7 +20,7 @@ import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 export class SyncEventsService {
   private readonly logger = new Logger('sync.events');
 
-  constructor(private readonly queue: QueueService) {}
+  constructor(private readonly events: DomainEvents) {}
 
   async raiseSyncFailure(input: {
     userId: string;
@@ -32,13 +30,19 @@ export class SyncEventsService {
     rejectedCount: number;
   }): Promise<void> {
     try {
-      await this.queue.send(QUEUES.syncFailure, {
-        // Identity, never authority: the worker re-reads the role and the grant.
-        userId: input.userId,
-        deviceId: input.deviceId,
-        batchId: input.batchId,
-        conflictCount: input.conflictCount,
-        rejectedCount: input.rejectedCount,
+      await this.events.emitCommitted({
+        type: 'SYNC_FAILURE',
+        // The auditor is the subject here, not the cause: they are told, not skipped.
+        actorUserId: null,
+        unitId: null,
+        resourceType: 'device',
+        resourceId: input.deviceId,
+        userIds: [input.userId],
+        data: {
+          batchId: input.batchId,
+          conflictCount: input.conflictCount,
+          rejectedCount: input.rejectedCount,
+        },
       });
     } catch (error) {
       // A failure to *report* a failure must not fail the batch: the quarantine rows are

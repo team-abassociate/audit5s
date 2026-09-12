@@ -185,7 +185,7 @@ export const outbox = sqliteTable('outbox', {
  *
  * `delete` and `commit` join in Phase 4 with evidence: a photo removed before completion
  * is a soft delete the server has to hear about, and `commit` is the second half of §9.4's
- * two-phase media flow. `submit` joins with corrective actions in Phase 6.
+ * two-phase media flow. `submit` is a corrective-action attempt (Phase 6).
  */
 export const OUTBOX_OPERATIONS = [
   'upsert',
@@ -195,6 +195,7 @@ export const OUTBOX_OPERATIONS = [
   'resume',
   'delete',
   'commit',
+  'submit',
 ] as const;
 export type OutboxOperation = (typeof OUTBOX_OPERATIONS)[number];
 
@@ -241,4 +242,44 @@ export const localEvidence = sqliteTable('evidence', {
   clientUpdatedAt: text('client_updated_at').notNull(),
   syncState: text('sync_state').notNull().default('LOCAL_ONLY'),
   uploadAttempts: integer('upload_attempts').notNull().default(0),
+});
+
+// ---------------------------------------------------------------- corrective actions
+
+/**
+ * The Zone Leader's open actions, from the catalogue (§8.11) — reference data, replaced
+ * wholesale on each sync like the Units and Zones above, so a verified action disappears
+ * rather than lingering because no delta mentioned it.
+ */
+export const localCorrectiveActions = sqliteTable('corrective_action', {
+  id: text('id').primaryKey(),
+  unitId: text('unit_id').notNull(),
+  auditId: text('audit_id').notNull(),
+  zoneId: text('zone_id').notNull(),
+  zoneCode: text('zone_code').notNull(),
+  zoneName: text('zone_name').notNull(),
+  status: text('status').notNull(),
+  section: text('section'),
+  questionGlobalOrder: integer('question_global_order'),
+  questionText: text('question_text'),
+  findingRemark: text('finding_remark'),
+  beforeEvidenceId: text('before_evidence_id').notNull(),
+  assignedZoneLeaderUserId: text('assigned_zone_leader_user_id'),
+  dueAt: text('due_at'),
+  reopenCount: integer('reopen_count').notNull().default(0),
+});
+
+/**
+ * An attempt this device has made and the server has not yet confirmed (§9.1's locally
+ * authored half). It keeps an answered action answered on screen when a catalogue refresh
+ * lands before the push, and it is deleted once the server accepts it (R-4).
+ */
+export const localCorrectiveSubmissions = sqliteTable('corrective_submission', {
+  id: text('id').primaryKey(),
+  correctiveActionId: text('corrective_action_id').notNull(),
+  option: text('option').notNull(),
+  /** ACTION_SUBMITTED or NOT_POSSIBLE — what the action becomes when this lands. */
+  targetStatus: text('target_status').notNull(),
+  afterEvidenceId: text('after_evidence_id'),
+  createdAt: text('created_at').notNull(),
 });

@@ -113,6 +113,19 @@ describe('the object-key convention (§5.6)', () => {
     ).toBe('evidence/unit-1/audit-1/az-1/ev-2.png');
   });
 
+  it('puts an after-photo under corrective/{unit}/{action}/{submission} (§5.6)', () => {
+    expect(
+      evidenceObjectKey({
+        kind: 'CORRECTIVE_AFTER',
+        unitId: 'unit-1',
+        auditId: 'audit-1',
+        evidenceId: 'ev-3',
+        correctiveActionId: 'ca-1',
+        correctiveActionSubmissionId: 'sub-1',
+      }),
+    ).toBe('corrective/unit-1/ca-1/sub-1/ev-3.jpg');
+  });
+
   it('starts every key with the Unit after its prefix, so a per-Unit export is a prefix scan', () => {
     const key = evidenceObjectKey({
       kind: 'WALK_BY_PHOTO',

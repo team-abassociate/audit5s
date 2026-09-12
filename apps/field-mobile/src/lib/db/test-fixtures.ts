@@ -37,6 +37,7 @@ export function catalogue(): SyncCatalogue {
 
   return {
     serverTime: '2026-09-10T10:00:00.000Z',
+    correctiveActions: [],
     catalogueVersion: 'v1',
     units: [
       {

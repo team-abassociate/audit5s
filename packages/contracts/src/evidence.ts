@@ -41,6 +41,8 @@ export const evidenceSchema = z.object({
   /** Null only for the audit-level selfie. */
   auditZoneId: uuidSchema.nullable(),
   questionResponseId: uuidSchema.nullable(),
+  /** `CORRECTIVE_AFTER` only: the action this after-photo answers (DECISIONS.md R-13). */
+  correctiveActionId: uuidSchema.nullable(),
   correctiveActionSubmissionId: uuidSchema.nullable(),
   objectKey: z.string(),
   thumbnailObjectKey: z.string().nullable(),
@@ -102,6 +104,13 @@ export const uploadIntentRequestSchema = z.object({
   auditId: uuidSchema,
   auditZoneId: uuidSchema.optional(),
   questionResponseId: uuidSchema.optional(),
+  /**
+   * `CORRECTIVE_AFTER` only, and both required there. The submission id is minted by the
+   * device when the Option A form opens — before the photograph, and possibly days before
+   * the submission reaches the server — because §5.6's object key embeds it.
+   */
+  correctiveActionId: uuidSchema.optional(),
+  correctiveActionSubmissionId: uuidSchema.optional(),
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
   /** §12.8's hard cap is 15 MB, enforced here and again in the presigned policy. */
   byteSize: z

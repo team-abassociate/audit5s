@@ -303,6 +303,11 @@ export class AuditsRepository extends BaseRepository {
       locationSuspicious: boolean;
       clientUpdatedAt: Date;
     }>,
+    /**
+     * Runs on the same transaction, after the row moved — the domain event and, on
+     * completion, the corrective actions (R-2). Skipped when nothing was updated.
+     */
+    afterWrite?: (tx: Transaction) => Promise<void>,
   ): Promise<string | null> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
@@ -311,6 +316,9 @@ export class AuditsRepository extends BaseRepository {
         .set({ ...patch, version: sql`${audits.version} + 1` })
         .where(and(eq(audits.id, auditId), this.scoped(scope, auditScopeColumns)))
         .returning({ id: audits.id });
+      if (row && afterWrite) {
+        await afterWrite(tx as Transaction);
+      }
       return row?.id ?? null;
     });
   }

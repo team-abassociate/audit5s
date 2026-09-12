@@ -345,6 +345,14 @@ export class SyncRepository extends BaseRepository {
     return this.exists(scope, sql`SELECT 1 FROM evidence WHERE id = ${evidenceId}::uuid`);
   }
 
+  /** Whether the object behind this evidence row has been confirmed (§9.4). */
+  async evidenceCommitted(scope: ScopeContext, evidenceId: string): Promise<boolean> {
+    return this.exists(
+      scope,
+      sql`SELECT 1 FROM evidence WHERE id = ${evidenceId}::uuid AND sync_state = 'SYNCED'`,
+    );
+  }
+
   private async exists(scope: ScopeContext, query: SQL): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CorrectiveActionsModule } from '../corrective-actions/corrective-actions.module';
 import {
   AuditEvidenceController,
   AuditZoneEvidenceController,
@@ -20,6 +21,7 @@ import { MediaWorker } from './media.worker';
  * merely carries the class so the two entrypoints share one image.
  */
 @Module({
+  imports: [CorrectiveActionsModule],
   controllers: [EvidenceController, AuditZoneEvidenceController, AuditEvidenceController],
   providers: [EvidenceService, EvidenceRepository, MediaWorker],
   exports: [EvidenceService, EvidenceRepository, MediaWorker],
