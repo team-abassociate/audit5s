@@ -114,9 +114,24 @@ export class ReportsRepository extends BaseRepository {
   /**
    * The next version for a target, and the row it supersedes.
    *
-   * Read inside the caller's transaction so the answer and the insert that uses it are
-   * one act. The `UNIQUE(audit_zone_id, kind, version)` index is what makes that safe
-   * under a real race: the loser gets a unique violation, not a second v2.
+   * **The version sequence belongs to the target, not to the kind.** §10.5's chain is
+   * explicit about it:
+   *
+   *     audit_zone X
+   *      ├── ReportSnapshot v1  INITIAL_ZONE         [immutable]
+   *      ├── ReportSnapshot v2  AFTER_EVIDENCE_ZONE  supersedes v1
+   *      └── ReportSnapshot v3  AFTER_EVIDENCE_ZONE  supersedes v2
+   *
+   * An after-evidence report of a Zone is **v2 of that Zone's report**, not v1 of a
+   * separate after-evidence series — which is what an external body reading "version 2"
+   * expects, and what makes `supersedes_snapshot_id` a chain rather than two chains that
+   * happen to share a Zone. §5.8's `UNIQUE(audit_zone_id, kind, version)` still holds; it
+   * is simply wider than the sequence needs.
+   *
+   * Read inside the caller's transaction so the answer and the insert that uses it are one
+   * act. That unique index is what makes it safe under a real race: two Super Admins
+   * pressing Generate at the same moment produce one v2 and one 409, not two rows both
+   * calling themselves v2.
    */
   async nextVersion(
     tx: Transaction,
@@ -126,12 +141,13 @@ export class ReportsRepository extends BaseRepository {
       .select({ id: reportSnapshots.id, version: reportSnapshots.version })
       .from(reportSnapshots)
       .where(
-        and(
-          eq(reportSnapshots.kind, target.kind),
-          target.auditZoneId
-            ? eq(reportSnapshots.auditZoneId, target.auditZoneId)
-            : and(eq(reportSnapshots.unitId, target.unitId), isNull(reportSnapshots.auditZoneId)),
-        ),
+        target.auditZoneId
+          ? eq(reportSnapshots.auditZoneId, target.auditZoneId)
+          : and(
+              eq(reportSnapshots.unitId, target.unitId),
+              eq(reportSnapshots.kind, target.kind),
+              isNull(reportSnapshots.auditZoneId),
+            ),
       )
       .orderBy(desc(reportSnapshots.version))
       .limit(1);

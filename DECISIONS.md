@@ -839,6 +839,32 @@ This is worth stating as a rule rather than two fixes: **a display name is not a
 join a table the reader cannot see.** Every future read that prints somebody's name across
 a scope boundary has this shape.
 
+### (f) A version belongs to the Zone, not to the kind
+
+§5.8 indexes `UNIQUE(audit_zone_id, kind, version)`, which reads as a version sequence per
+kind. §10.5's chain is explicit that it is not:
+
+```
+audit_zone X
+ ├── ReportSnapshot v1  INITIAL_ZONE         [immutable]
+ ├── ReportSnapshot v2  AFTER_EVIDENCE_ZONE  supersedes v1
+ └── ReportSnapshot v3  AFTER_EVIDENCE_ZONE  supersedes v2
+```
+
+An after-evidence report of a Zone is **v2 of that Zone's report**, not v1 of a separate
+after-evidence series. Behaviour wins (R-1), and it is the reading the phase's own
+acceptance criterion requires — "regenerates an After-Evidence report as version 2" — and
+the one an external certification body reading "version 2" expects. It is also what makes
+`supersedes_snapshot_id` a single chain rather than two that happen to share a Zone.
+
+The index stands as §5.8 writes it; it is simply wider than the sequence needs.
+
+This also settles what `regenerate` means. It re-issues **the same kind** of document as
+the next version — "generate this again, now that something has changed". Producing an
+after-evidence report is a different act and goes through `generate` with that kind, which
+lands on the same chain. A `regenerate` that inferred a new kind from the audit's state
+would make one button mean two things.
+
 Finally, `expires_at` is fixed at minting by a trigger, along with the hash and the
 audience. §10.4 makes the expiry a property of the link; extending one would change what a
 document already in somebody's hands means. The remedy is to mint another, which costs
