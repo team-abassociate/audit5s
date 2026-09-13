@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { zoneDisplayLabel } from '@audit5s/domain';
-import { Button, Card, EmptyState, Muted, Screen } from '../../components/ui';
+import { ActionBar, Button, Card, EmptyState, Muted, Screen, SectionHead } from '../../components/ui';
 import { createLocalAudit } from '../../lib/db/audit.repository';
 import {
   getLocalUnit,
@@ -136,6 +136,8 @@ export default function UnitZonesScreen() {
     );
   }
 
+  const zoneCount = zones.data?.length ?? 0;
+
   return (
     <Screen>
       <Stack.Screen options={{ title, headerBackTitle: 'Units' }} />
@@ -143,73 +145,71 @@ export default function UnitZonesScreen() {
       <FlatList
         data={zones.data ?? []}
         keyExtractor={(zone) => zone.id}
-        contentContainerStyle={(zones.data ?? []).length > 0 ? styles.listContent : undefined}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          zoneCount > 0 ? (
+            <SectionHead
+              title="Zones"
+              description={`${zoneCount} active Zone${zoneCount === 1 ? '' : 's'}, stored on this device.`}
+            />
+          ) : null
+        }
         ListEmptyComponent={
           <EmptyState
             title="No Zones"
             detail="This Unit has no active Zones yet. The Coordinator creates them in the admin app."
           />
         }
-        ListFooterComponent={
-          (versions.data ?? []).length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Checklists on this device</Text>
-              {(versions.data ?? []).map((version) => (
-                <Link
-                  key={version.id}
-                  href={{ pathname: '/checklist/[versionId]', params: { versionId: version.id } }}
-                  asChild
-                >
-                  <Card>
-                    <Text style={styles.name}>{version.templateName}</Text>
-                    <Muted>
-                      v{version.versionNumber} · {version.totalQuestions} questions
-                    </Muted>
-                  </Card>
-                </Link>
-              ))}
-            </View>
-          ) : null
-        }
         renderItem={({ item }) => (
+          // The web board's zone tile without a figure: the device holds no score for a
+          // Zone, and an empty band would claim one.
           <Card>
             <Text style={styles.name}>{zoneDisplayLabel(item.code, item.name)}</Text>
             {item.description ? <Muted>{item.description}</Muted> : null}
-            <Muted>
-              {item.zoneLeaderName ? `Zone Leader: ${item.zoneLeaderName}` : 'No Zone Leader'}
-            </Muted>
+            <Text style={styles.meta}>
+              {item.zoneLeaderName ? `Leader ${item.zoneLeaderName}` : 'No Zone Leader'}
+            </Text>
           </Card>
         )}
       />
 
-      {(zones.data ?? []).length > 0 ? (
-        <View style={styles.start}>
+      {zoneCount > 0 ? (
+        <ActionBar>
           <Button
+            testID="start-audit"
             title={scope?.role === 'ZONE_LEADER' ? 'Start cross audit' : 'Start 5S audit'}
             busy={startAudit.isPending}
             onPress={() =>
               startAudit.mutate(scope?.role === 'ZONE_LEADER' ? 'CROSS_5S' : 'EXTERNAL_5S')
             }
           />
+          {/* The secondary audit types share one row, so the primary stays in thumb reach
+              without the bar swallowing the list. R-18: a Super Admin may start every type. */}
           {scope?.role === 'CONSULTANT' || scope?.role === 'SUPER_ADMIN' ? (
-            <Button
-              title="Start walk-by"
-              variant="secondary"
-              busy={startAudit.isPending}
-              onPress={() => startAudit.mutate('WALK_BY')}
-            />
+            <View style={styles.secondary}>
+              <View style={styles.secondaryItem}>
+                <Button
+                  title="Start walk-by"
+                  variant="secondary"
+                  busy={startAudit.isPending}
+                  onPress={() => startAudit.mutate('WALK_BY')}
+                />
+              </View>
+              {scope?.role === 'SUPER_ADMIN' ? (
+                <View style={styles.secondaryItem}>
+                  <Button
+                    title="Cross audit"
+                    accessibilityLabel="Start cross audit"
+                    variant="secondary"
+                    busy={startAudit.isPending}
+                    onPress={() => startAudit.mutate('CROSS_5S')}
+                  />
+                </View>
+              ) : null}
+            </View>
           ) : null}
-          {/* R-18: a Super Admin may start every audit type. */}
-          {scope?.role === 'SUPER_ADMIN' ? (
-            <Button
-              title="Start cross audit"
-              variant="secondary"
-              busy={startAudit.isPending}
-              onPress={() => startAudit.mutate('CROSS_5S')}
-            />
-          ) : null}
-          <Muted>Live selfie required · work is saved on this device</Muted>
-        </View>
+          <Muted>A live selfie starts the audit. Work is saved on this device.</Muted>
+        </ActionBar>
       ) : null}
     </Screen>
   );
@@ -217,15 +217,14 @@ export default function UnitZonesScreen() {
 
 const useStyles = createThemedStyles((theme) => ({
   listContent: { paddingBottom: theme.space.md },
-  start: { gap: theme.space.sm, paddingTop: theme.space.sm, borderTopWidth: 2, borderTopColor: theme.color.edge },
-  name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
-  section: { marginTop: theme.space.lg },
-  sectionTitle: {
+  name: {
     fontFamily: theme.family.bold,
-    fontSize: theme.font.label,
-    color: theme.color.ink3,
+    fontSize: theme.font.panel,
+    color: theme.color.ink,
     textTransform: 'uppercase',
-    letterSpacing: 1.4,
-    marginBottom: theme.space.sm,
+    marginBottom: 2,
   },
+  meta: { fontFamily: theme.family.regular, fontSize: 11.5, color: theme.color.ink2, marginTop: 5 },
+  secondary: { flexDirection: 'row', gap: theme.space.sm },
+  secondaryItem: { flex: 1 },
 }));

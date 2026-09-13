@@ -2,22 +2,29 @@ import { Alert, ScrollView, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
-import { Button, Card, Heading, Muted, Screen } from '../../components/ui';
+import type { ConsultantActivity } from '@audit5s/contracts';
+import {
+  Avatar,
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  Data,
+  ErrorBanner,
+  LedgerRow,
+  Muted,
+  Screen,
+  StatGrid,
+} from '../../components/ui';
+import { api } from '../../lib/api';
 import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
 import { useLocalDatabase } from '../../lib/db/provider';
+import { formatDateTime } from '../../lib/format';
+import { ROLE_LABELS } from '../../lib/labels';
 import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
 import { checkLogoutGate } from '../../lib/sync/status';
 import { createThemedStyles } from '../../lib/theme';
-import type { ConsultantActivity } from '@audit5s/contracts';
-import { api } from '../../lib/api';
-
-const ROLE_LABELS: Record<string, string> = {
-  SUPER_ADMIN: 'Super Admin',
-  CONSULTANT: 'Consultant',
-  COORDINATOR: 'Coordinator',
-  ZONE_LEADER: 'Zone Leader',
-};
 
 export default function ProfileScreen() {
   const styles = useStyles();
@@ -103,77 +110,90 @@ export default function ProfileScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
+        {/* The web topbar's identity chip: initials on ink, name, login ID. */}
         <Card>
-          <Heading>{user.fullName}</Heading>
-          <Muted>{ROLE_LABELS[user.role] ?? user.role}</Muted>
+          <View style={styles.who}>
+            <Avatar name={user.fullName} />
+            <View style={styles.whoText}>
+              <Text style={styles.name}>{user.fullName}</Text>
+              <Data>{user.loginId}</Data>
+              <View style={styles.role}>
+                <Chip>{ROLE_LABELS[user.role]}</Chip>
+              </View>
+            </View>
+          </View>
         </Card>
 
         <Card>
-          <Row label="Login ID" value={user.loginId} />
-          <Row label="Phone" value={user.phoneE164} />
-          <Row label="Email" value={user.email ?? '—'} />
-          <Row
+          <CardHeader title="Account" />
+          <View style={styles.rows} />
+          <LedgerRow label="Phone" value={user.phoneE164} />
+          <LedgerRow label="Email" value={user.email ?? '—'} />
+          <LedgerRow
             label="Units"
-            value={
-              scope?.organizationWide
-                ? 'All Units'
-                : String(scope?.unitIds.length ?? 0)
-            }
+            value={scope?.organizationWide ? 'All Units' : String(scope?.unitIds.length ?? 0)}
           />
-          <Row
+          <LedgerRow
             label="Last sign-in"
-            value={user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '—'}
+            value={user.lastLoginAt ? formatDateTime(user.lastLoginAt) : '—'}
+            last
           />
         </Card>
 
         <Card>
-          <Row
-            label="Catalogue"
-            value={
-              lastSync.data ? new Date(lastSync.data).toLocaleString() : 'Never synced'
-            }
+          <CardHeader
+            title="Catalogue"
+            description="Units, Zones and checklists are stored on this device and read without a network."
           />
-          <Muted>
-            Units, Zones and checklists are stored on this device and read without a
-            network.
-          </Muted>
-          <View style={styles.syncButton}>
+          <View style={styles.rows} />
+          <LedgerRow
+            label="Last synced"
+            value={lastSync.data ? formatDateTime(lastSync.data) : 'Never'}
+            last
+          />
+          <View style={styles.cardAction}>
+            <ErrorBanner
+              message={sync.error ? 'Could not reach the server. The stored catalogue is unchanged.' : null}
+            />
             <Button
-              title="Sync now"
+              title="Sync catalogue"
               variant="secondary"
               busy={sync.isPending}
               onPress={() => sync.mutate()}
             />
           </View>
-          {sync.error ? (
-            <Muted>Could not reach the server. The stored catalogue is unchanged.</Muted>
-          ) : null}
         </Card>
 
         {user.role === 'CONSULTANT' ? (
           <Card>
-            <Heading>My activity</Heading>
+            <CardHeader
+              title="My activity"
+              description="Completed audits, Zones covered and photographs captured."
+            />
             {activity.data ? (
               <>
-                <Row label="Audits completed" value={String(activity.data.auditsCompleted)} />
-                <Row label="Zones covered" value={String(activity.data.zonesCovered)} />
-                <Row label="Photos captured" value={String(activity.data.photosCaptured)} />
-                <Row
-                  label="Average duration"
-                  value={
-                    activity.data.averageDurationMinutes === null
-                      ? '—'
-                      : `${activity.data.averageDurationMinutes.toFixed(0)} min`
-                  }
+                <StatGrid
+                  items={[
+                    { label: 'Audits', value: String(activity.data.auditsCompleted) },
+                    { label: 'Zones', value: String(activity.data.zonesCovered) },
+                    { label: 'Photos', value: String(activity.data.photosCaptured) },
+                  ]}
                 />
-                <Row
-                  label="Last active"
-                  value={
-                    activity.data.lastActiveAt
-                      ? new Date(activity.data.lastActiveAt).toLocaleString()
-                      : '—'
-                  }
-                />
+                <View style={styles.cardAction}>
+                  <LedgerRow
+                    label="Average duration"
+                    value={
+                      activity.data.averageDurationMinutes === null
+                        ? '—'
+                        : `${activity.data.averageDurationMinutes.toFixed(0)} min`
+                    }
+                  />
+                  <LedgerRow
+                    label="Last active"
+                    value={activity.data.lastActiveAt ? formatDateTime(activity.data.lastActiveAt) : '—'}
+                    last
+                  />
+                </View>
               </>
             ) : (
               <Muted>{activity.isError ? 'Activity is unavailable offline.' : 'No completed audits yet.'}</Muted>
@@ -182,47 +202,40 @@ export default function ProfileScreen() {
         ) : null}
 
         <Link href="/notifications" asChild>
-          <Card>
-            <Row label="Notifications" value="Open" />
+          <Card accessibilityRole="button">
+            <View style={styles.linkRow}>
+              <Text style={styles.name}>Notifications</Text>
+              <Muted>Open</Muted>
+            </View>
           </Card>
         </Link>
 
-        <Card>
-          <Muted>
-            App version {Constants.expoConfig?.version ?? 'dev'}
-          </Muted>
-        </Card>
-
-        <Button
-          title="Sign out"
-          variant="secondary"
-          onPress={() => void attemptSignOut()}
-        />
+        <Button title="Sign out" variant="secondary" onPress={() => void attemptSignOut()} />
+        <Text style={styles.version}>App version {Constants.expoConfig?.version ?? 'dev'}</Text>
       </ScrollView>
     </Screen>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  const styles = useStyles();
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
-    </View>
-  );
-}
-
 const useStyles = createThemedStyles((theme) => ({
-  content: { gap: theme.space.sm, paddingBottom: theme.space.xl },
-  syncButton: { marginTop: theme.space.sm },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: theme.space.sm,
-    gap: theme.space.md,
+  content: { paddingBottom: theme.space.xl },
+  who: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  role: { marginTop: 6 },
+  rows: { marginTop: -10 },
+  whoText: { flex: 1, gap: 2 },
+  name: {
+    fontFamily: theme.family.bold,
+    fontSize: theme.font.panel,
+    color: theme.color.ink,
+    textTransform: 'uppercase',
   },
-  rowLabel: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink3, textTransform: 'uppercase', letterSpacing: 1.1 },
-  rowValue: { fontFamily: theme.family.mono, fontSize: theme.font.sm, color: theme.color.ink, flexShrink: 1, textAlign: 'right' },
+  cardAction: { marginTop: theme.space.md },
+  linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  version: {
+    fontFamily: theme.family.mono,
+    fontSize: 11.5,
+    color: theme.color.ink3,
+    textAlign: 'center',
+    marginTop: theme.space.lg,
+  },
 }));

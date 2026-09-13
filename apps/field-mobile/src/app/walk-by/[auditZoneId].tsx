@@ -5,7 +5,6 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,7 +12,19 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { EvidenceClassification } from '@audit5s/contracts';
 import { zoneDisplayLabel } from '@audit5s/domain';
 import { CameraCapture } from '../../components/camera-capture';
-import { Button, Card, ErrorBanner, Muted, Screen } from '../../components/ui';
+import {
+  ActionBar,
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  ErrorBanner,
+  Field,
+  Label,
+  Muted,
+  Screen,
+  SectionHead,
+} from '../../components/ui';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import {
@@ -30,7 +41,7 @@ import {
   zoneHasLocalEvidence,
 } from '../../lib/db/evidence.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { createThemedStyles, useTheme, type GembaTheme } from '../../lib/theme';
+import { bandInk, createThemedStyles, useTheme, type Band } from '../../lib/theme';
 
 const CLASSIFICATIONS: EvidenceClassification[] = ['GOOD', 'NONCONFORMITY', 'NEUTRAL'];
 
@@ -122,11 +133,12 @@ export default function WalkByScreen() {
 
   const editable = zone.data.status !== 'COMPLETED';
   const title = zoneDisplayLabel(zone.data.zoneCodeSnapshot, zone.data.zoneNameSnapshot);
+  const count = photos.data?.length ?? 0;
 
   return (
     <Screen>
       <Stack.Screen options={{ title }} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
           {zone.data.zoneDescriptionSnapshot ? <Text style={styles.body}>{zone.data.zoneDescriptionSnapshot}</Text> : null}
           <Muted>
@@ -137,40 +149,56 @@ export default function WalkByScreen() {
         </Card>
 
         {editable ? (
-          <Card style={styles.captureCard}>
-            <Text style={styles.heading}>Classify the next photograph</Text>
-            <ClassificationChoices value={classification} onChange={setClassification} />
-            <Button title={photos.data?.length ? 'Take another photo' : 'Open camera'} onPress={() => setCameraOpen(true)} />
-            <Muted>Live camera only. Photos may include people and are retained as audit records.</Muted>
+          <Card>
+            <CardHeader
+              title="Classify the next photograph"
+              description="Live camera only. Photos may include people and are retained as audit records."
+            />
+            <View style={styles.stack}>
+              <ClassificationChoices value={classification} onChange={setClassification} />
+              <Button title={count ? 'Take another photo' : 'Open camera'} onPress={() => setCameraOpen(true)} />
+            </View>
           </Card>
         ) : null}
 
-        <Text style={styles.heading}>Evidence preview</Text>
-        {(photos.data ?? []).length === 0 ? <Muted>No photographs yet. At least one is required.</Muted> : null}
+        <SectionHead
+          title="Evidence"
+          description={
+            count === 0
+              ? 'No photographs yet. At least one is required.'
+              : `${count} photograph${count === 1 ? '' : 's'} in this Zone.`
+          }
+        />
         {(photos.data ?? []).map((photo) => (
           <PhotoCard key={photo.id} photo={photo} editable={editable} />
         ))}
 
         {editable ? (
           <Card>
-            <Text style={styles.fieldLabel}>Zone remark (optional)</Text>
-            <TextInput
+            <Field
+              label="Zone remark (optional)"
               multiline
-              style={styles.input}
               value={zoneRemark}
               onChangeText={setZoneRemark}
               placeholder="Overall observation for this Zone"
-              placeholderTextColor={theme.color.ink2}
+              containerStyle={styles.lastField}
             />
           </Card>
         ) : zone.data.zoneRemark ? (
-          <Card><Text style={styles.body}>{zone.data.zoneRemark}</Text></Card>
+          <Card>
+            <Label>Zone remark</Label>
+            <Text style={styles.body}>{zone.data.zoneRemark}</Text>
+          </Card>
         ) : null}
 
         <ErrorBanner message={finish.error instanceof Error ? finish.error.message : null} />
-        {editable ? <Button title="Save Zone" busy={finish.isPending} onPress={() => finish.mutate()} /> : null}
         <Muted>Saved on this device. Sync uses the same outbox as every other audit.</Muted>
       </ScrollView>
+      {editable ? (
+        <ActionBar>
+          <Button title="Save Zone" busy={finish.isPending} onPress={() => finish.mutate()} />
+        </ActionBar>
+      ) : null}
     </Screen>
   );
 }
@@ -179,7 +207,6 @@ type Photo = Awaited<ReturnType<typeof listLocalEvidenceForZone>>[number];
 
 function PhotoCard({ photo, editable }: { photo: Photo; editable: boolean }) {
   const styles = useStyles();
-  const theme = useTheme();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const [remark, setRemark] = useState(photo.remark ?? '');
@@ -219,33 +246,37 @@ function PhotoCard({ photo, editable }: { photo: Photo; editable: boolean }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
   });
 
+  const label = classificationLabel(photo.classification as EvidenceClassification);
+
   return (
-    <Card style={styles.photoCard}>
+    <Card>
       {photo.localFileUri ? (
-        <Image source={{ uri: photo.localFileUri }} style={styles.photo} resizeMode="cover" />
+        <Image
+          source={{ uri: photo.localFileUri }}
+          style={styles.photo}
+          resizeMode="cover"
+          accessibilityLabel={`${label} photograph`}
+        />
       ) : (
-        <View style={[styles.photo, styles.missing]}><Muted>Preview no longer stored locally</Muted></View>
+        <View style={styles.placeholder}><Muted>Preview no longer stored locally</Muted></View>
       )}
       <View style={styles.photoHeader}>
-        <Text style={[styles.classification, { color: classificationColor(photo.classification, theme) }]}>
-          {classificationLabel(photo.classification as EvidenceClassification)}
-        </Text>
-        {photo.isSummaryFlagged === 1 ? <Text style={styles.flagged}>Summary photo</Text> : null}
+        <Chip tone={classificationTone(photo.classification)}>{label}</Chip>
+        {photo.isSummaryFlagged === 1 ? <Chip>Summary photo</Chip> : null}
       </View>
 
       {editable ? (
-        <>
+        <View style={styles.stack}>
           <ClassificationChoices
             value={photo.classification as EvidenceClassification}
             onChange={(value) => patch.mutate({ classification: value })}
           />
-          <TextInput
+          <Field
+            label="Photo remark (optional)"
             multiline
-            style={styles.input}
             value={remark}
             onChangeText={setRemark}
-            placeholder="Photo remark (optional)"
-            placeholderTextColor={theme.color.ink2}
+            containerStyle={styles.lastField}
           />
           <Button title="Save remark" variant="secondary" busy={patch.isPending} onPress={() => patch.mutate({ remark: remark.trim() || null })} />
           <Button
@@ -254,8 +285,8 @@ function PhotoCard({ photo, editable }: { photo: Photo; editable: boolean }) {
             busy={flag.isPending}
             onPress={() => flag.mutate()}
           />
-          <Button title="Delete photo" variant="secondary" busy={remove.isPending} onPress={() => remove.mutate()} />
-        </>
+          <Button title="Delete photo" variant="danger" busy={remove.isPending} onPress={() => remove.mutate()} />
+        </View>
       ) : photo.remark ? <Muted>{photo.remark}</Muted> : null}
       <ErrorBanner message={error} />
     </Card>
@@ -272,20 +303,28 @@ function ClassificationChoices({
   const styles = useStyles();
   const theme = useTheme();
   return (
-    <View style={styles.choices}>
-      {CLASSIFICATIONS.map((classification) => (
-        <Pressable
-          key={classification}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: value === classification }}
-          onPress={() => onChange(classification)}
-          style={[styles.choice, value === classification && styles.choiceSelected]}
-        >
-          <Text style={{ color: classificationColor(classification, theme), fontFamily: theme.family.medium }}>
-            {classificationLabel(classification)}
-          </Text>
-        </Pressable>
-      ))}
+    <View style={styles.choices} accessibilityRole="radiogroup">
+      {CLASSIFICATIONS.map((classification) => {
+        const tone = classificationTone(classification);
+        return (
+          <Pressable
+            key={classification}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: value === classification }}
+            onPress={() => onChange(classification)}
+            style={[styles.choice, value === classification && styles.choiceSelected]}
+          >
+            <Text
+              style={[
+                styles.choiceText,
+                { color: tone === 'muted' ? theme.color.ink2 : bandInk(tone, theme.color) },
+              ]}
+            >
+              {classificationLabel(classification)}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -294,25 +333,47 @@ function classificationLabel(value: EvidenceClassification): string {
   return value === 'NONCONFORMITY' ? 'Nonconformity' : value === 'GOOD' ? 'Good' : 'Neutral';
 }
 
-function classificationColor(value: string, theme: GembaTheme): string {
-  return value === 'GOOD' ? theme.color.ok : value === 'NONCONFORMITY' ? theme.color.crit : theme.color.ink2;
+function classificationTone(value: string): Band | 'muted' {
+  return value === 'GOOD' ? 'ok' : value === 'NONCONFORMITY' ? 'crit' : 'muted';
 }
 
 const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
-  content: { gap: theme.space.sm, paddingBottom: theme.space.xl },
-  heading: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
-  body: { fontFamily: theme.family.regular, color: theme.color.ink, fontSize: theme.font.base },
-  captureCard: { gap: theme.space.sm },
+  content: { gap: theme.space.sm, paddingBottom: theme.space.lg },
+  body: { fontFamily: theme.family.regular, color: theme.color.ink, fontSize: theme.font.base, lineHeight: 22 },
+  stack: { gap: theme.space.sm },
+  lastField: { marginBottom: 0 },
   choices: { flexDirection: 'row', gap: theme.space.xs },
-  choice: { flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: theme.color.edge, padding: theme.space.sm },
+  choice: {
+    flex: 1,
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: theme.color.edge,
+    backgroundColor: theme.color.tile,
+    padding: theme.space.sm,
+  },
+  // Selection is the one place the accent belongs (GEMBA-BOARD.md non-negotiable 6).
   choiceSelected: { borderColor: theme.color.accent, borderLeftWidth: 6, backgroundColor: theme.color.accentSoft },
-  photoCard: { gap: theme.space.sm },
-  photo: { width: '100%', aspectRatio: 4 / 3, backgroundColor: theme.color.tile2, borderWidth: 1, borderColor: theme.color.edge },
-  missing: { alignItems: 'center', justifyContent: 'center' },
-  photoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  classification: { fontFamily: theme.family.bold, textTransform: 'uppercase' },
-  flagged: { color: theme.color.accent, fontFamily: theme.family.bold, fontSize: theme.font.label, textTransform: 'uppercase', borderWidth: 1.5, borderColor: theme.color.accent, paddingHorizontal: 7, paddingVertical: 2 },
-  fieldLabel: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink3, marginBottom: theme.space.xs, textTransform: 'uppercase', letterSpacing: 1.1 },
-  input: { minHeight: 72, borderWidth: 1.5, borderColor: theme.color.edge, padding: theme.space.md, fontFamily: theme.family.regular, color: theme.color.ink, backgroundColor: theme.color.tile2, textAlignVertical: 'top' },
+  choiceText: { fontFamily: theme.family.medium, fontSize: theme.font.sm },
+  photo: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: theme.color.tile2,
+    borderWidth: 1,
+    borderColor: theme.color.edge,
+    marginBottom: theme.space.sm,
+  },
+  placeholder: {
+    height: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.color.tile2,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.color.edge,
+    marginBottom: theme.space.sm,
+  },
+  photoHeader: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm, marginBottom: theme.space.sm },
 }));

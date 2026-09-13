@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "prebuild": "expo prebuild --platform android --clean",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "e2e": "maestro test .maestro"
   },
   "dependencies": {
     "@audit5s/contracts": "workspace:*",

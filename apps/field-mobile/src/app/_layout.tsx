@@ -18,6 +18,7 @@ import { LocalDatabaseProvider } from '../lib/db/provider';
 import { SessionProvider, useSession } from '../lib/session';
 import { SyncProvider } from '../lib/sync/provider';
 import { SyncStatusBar } from '../components/sync-status-bar';
+import { HeaderTitle } from '../components/ui';
 import { useTheme } from '../lib/theme';
 
 const queryClient = new QueryClient({
@@ -43,7 +44,8 @@ const queryClient = new QueryClient({
 function AuthGate() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { status } = useSession();
+  const { status, scope } = useSession();
+  const isSuperAdmin = scope?.role === 'SUPER_ADMIN';
   const segments = useSegments();
   const router = useRouter();
 
@@ -51,17 +53,17 @@ function AuthGate() {
     if (status === 'loading') return;
 
     const group = segments[0];
-    // Screens pushed on top of a tab — a Unit's Zones, a checklist — are part of the
+    // Screens pushed on top of a tab — a Unit's Zones, an audit — are part of the
     // signed-in app, so a redirect back to the tab root would make every drill-down
     // bounce straight home.
     const insideApp =
       group === '(tabs)' ||
       group === 'unit' ||
-      group === 'checklist' ||
       group === 'audit' ||
       group === 'walk-by' ||
       group === 'actions' ||
       group === 'notifications' ||
+      group === 'manage' ||
       // A signed-in Zone Leader following a link from a PDF lands here.
       group === 'ca';
 
@@ -76,9 +78,12 @@ function AuthGate() {
     } else if (status === 'must-reset' && group !== 'reset-password') {
       router.replace('/reset-password');
     } else if (status === 'ready' && !insideApp) {
-      router.replace('/');
+      router.replace(isSuperAdmin ? '/overview' : '/');
+    } else if (status === 'ready' && isSuperAdmin && group === '(tabs)' && segments.length === 1) {
+      // The field Units tab is the app's root route; a Super Admin's home is Overview.
+      router.replace('/overview');
     }
-  }, [status, segments, router]);
+  }, [status, segments, router, isSuperAdmin]);
 
   if (status === 'loading') {
     return (
@@ -102,8 +107,12 @@ function AuthGate() {
           screenOptions={{
             headerStyle: { backgroundColor: theme.color.tile2 },
             headerTintColor: theme.color.ink,
-            headerTitleStyle: { fontFamily: theme.family.bold },
+            headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
             headerShadowVisible: false,
+            // The sync bar above already clears the status bar. The native Android header
+            // reads the window inset itself, ignoring the zeroed context above, so without
+            // this every pushed screen carried a second status-bar-high band over its title.
+            unstable_nativeProps: { headerConfig: { disableTopInsetApplication: signedIn } },
             contentStyle: { backgroundColor: theme.color.board },
           }}
         >

@@ -1,11 +1,34 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, FlatList, Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { ResponseValue, SSection } from '@audit5s/contracts';
-import { S_SECTION_LABELS, TOTAL_QUESTIONS, bandFor } from '@audit5s/domain';
-import { Button, Card, Muted, Screen } from '../../components/ui';
+import {
+  RESPONSE_TOKENS,
+  S_SECTION_LABELS,
+  S_SECTION_SHORT_LABELS,
+  TOTAL_QUESTIONS,
+  bandFor,
+} from '@audit5s/domain';
+import {
+  ActionBar,
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  ErrorBanner,
+  Field,
+  Figure,
+  HeaderAction,
+  Label,
+  Muted,
+  Screen,
+  SectionHead,
+  SectionRows,
+  StatusBand,
+} from '../../components/ui';
 import { CameraCapture } from '../../components/camera-capture';
+import { ResponseChips } from '../../components/response-chips';
 import {
   captureLocalEvidence,
   listLocalEvidenceForZone,
@@ -14,7 +37,6 @@ import {
 } from '../../lib/db/evidence.repository';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
-import { ResponseChips } from '../../components/response-chips';
 import {
   completeLocalZone,
   getLocalAuditZone,
@@ -25,19 +47,28 @@ import {
   scoreLocalZone,
 } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { createThemedStyles, ratingColor, useTheme } from '../../lib/theme';
+import { formatPct } from '../../lib/format';
+import { useSync } from '../../lib/sync/provider';
+import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
+
+/** Ten questions to a page: with a five-by-ten checklist, a page is one S. */
+const PAGE_SIZE = 10;
+/** An answer reaches the server this long after the last tap, so a page of taps is one push. */
+const SYNC_DEBOUNCE_MS = 1_500;
+
+type Row = Awaited<ReturnType<typeof listQuestionsWithAnswers>>[number];
 
 /**
- * The questionnaire: 5 sections × 10, one question on screen at a time.
+ * The questionnaire: ten scrollable questions a page, Previous and Next, and Submit on the
+ * last page.
  *
- * **Nothing here awaits the network.** Every handler writes to SQLite and returns; the
- * screen advances on the commit, not on a response. That is not an optimisation — §9.1
- * makes the local store the source of truth while an audit is in progress, and an auditor
- * standing in a press shop with no signal has to be able to finish.
+ * **Nothing here awaits the network.** Every tap writes to SQLite first — the answer shows
+ * as chosen at once — and a sync follows a moment after the last tap. §9.1 makes the local
+ * store the source of truth while an audit is in progress, so an auditor standing in a press
+ * shop with no signal still finishes; the answers go out when the radio comes back.
  *
- * The score in the footer is `scoreZone` from `@audit5s/domain`, the same function the
- * server runs on the way in (D5). What the auditor sees offline is what the report will
- * say, which is the Phase 3 acceptance row.
+ * The score on the last page is `scoreZone` from `@audit5s/domain`, the same function the
+ * server runs on the way in (D5), and it says it is the device's figure.
  */
 export default function QuestionnaireScreen() {
   const styles = useStyles();
@@ -46,12 +77,14 @@ export default function QuestionnaireScreen() {
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const { sync } = useSync();
+  const list = useRef<FlatList<Row>>(null);
 
-  const [index, setIndex] = useState(0);
-  const [remarkDraft, setRemarkDraft] = useState('');
+  const [page, setPage] = useState(0);
+  const [picked, setPicked] = useState<Record<string, ResponseValue>>({});
   const [zoneRemarkDraft, setZoneRemarkDraft] = useState('');
-  const [showingSummary, setShowingSummary] = useState(false);
-  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraFor, setCameraFor] = useState<Row | null>(null);
+  const [showMissing, setShowMissing] = useState(false);
 
   const zone = useQuery({
     queryKey: ['local', 'audit-zone', auditZoneId],
@@ -70,60 +103,61 @@ export default function QuestionnaireScreen() {
     queryFn: () => scoreLocalZone(database, auditZoneId),
   });
 
-  // Resume where the auditor stopped (§9.8). Entirely local: no round trip, so this works
-  // three days later in a plant with no signal.
-  useEffect(() => {
-    const rows = questions.data;
-    const cursor = zone.data?.resumeQuestionId;
-    if (!rows || !cursor) return;
-    const position = rows.findIndex((row) => row.questionId === cursor);
-    if (position >= 0) setIndex(position);
-  }, [questions.data, zone.data?.resumeQuestionId]);
-
-  const rows = questions.data ?? [];
-  const current = rows[index];
-
   const photos = useQuery({
     queryKey: ['local', 'zone-evidence', auditZoneId],
     queryFn: () => listLocalEvidenceForZone(database, auditZoneId),
   });
 
+  // Resume on the page holding the cursor question (§9.8) — once, on open, so a save that
+  // moves the cursor never flips the page under the auditor's thumb.
+  const resumed = useRef(false);
   useEffect(() => {
-    setRemarkDraft(current?.remark ?? '');
-  }, [current?.questionId, current?.remark]);
+    const rows = questions.data;
+    if (resumed.current || !rows) return;
+    resumed.current = true;
+    const cursor = zone.data?.resumeQuestionId;
+    const position = cursor ? rows.findIndex((row) => row.questionId === cursor) : -1;
+    if (position >= 0) setPage(Math.floor(position / PAGE_SIZE));
+  }, [questions.data, zone.data?.resumeQuestionId]);
 
   useEffect(() => {
     setZoneRemarkDraft(zone.data?.zoneRemark ?? '');
   }, [zone.data?.zoneRemark]);
 
-  const answeredCount = useMemo(
-    () => rows.filter((row) => row.value !== null).length,
-    [rows],
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleSync = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => void sync(), SYNC_DEBOUNCE_MS);
+  }, [sync]);
+  useEffect(
+    () => () => {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+    },
+    [],
   );
 
   const save = useMutation({
-    mutationFn: async (input: { value: ResponseValue; remark: string | null }) => {
-      if (!current) return;
-      // SQLite commits before this resolves; the UI is free the moment it does.
+    mutationFn: async (input: { row: Row; value: ResponseValue; remark: string | null }) => {
+      // SQLite commits before this resolves.
       const responseId = await saveLocalResponse(database, {
         auditZoneId,
         auditId: zone.data!.auditId,
-        checklistQuestionId: current.questionId,
-        section: current.section as SSection,
-        globalOrder: current.globalOrder,
+        checklistQuestionId: input.row.questionId,
+        section: input.row.section as SSection,
+        globalOrder: input.row.globalOrder,
         value: input.value,
         remark: input.remark,
       });
 
       // E-2, on the device: a photograph already attached to this question is re-filed to
       // match the answer as it now stands. The server does this authoritatively inside its
-      // own transaction; doing it here means the badge under the question is right
-      // *before* the sync, and an auditor who marks a question down never sees a green
-      // tick that contradicts them.
+      // own transaction; doing it here means the count under the question is right *before*
+      // the sync.
       await reclassifyLocalEvidence(database, responseId, input.value);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
+      scheduleSync();
     },
   });
 
@@ -134,28 +168,29 @@ export default function QuestionnaireScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
+      // Completion is a high-priority sync trigger (§9.3).
+      void sync();
       router.back();
     },
   });
 
   /**
-   * A photograph for the question on screen (§9.4).
-   *
-   * The classification is derived from the answer as it stands — `classifyEvidence` again,
-   * the same function the server runs — so the tick or the warning appears the instant the
-   * shutter closes, offline, and matches what the report will print.
+   * A photograph for one question (§9.4), classified from the answer as it stands — the
+   * same `classifyEvidence` the server runs — so it matches what the report will print.
    */
   const capture = useMutation({
     mutationFn: async (image: ProcessedImage) => {
-      const responseId = await responseIdFor(database, auditZoneId, current!.questionId);
+      const row = cameraFor!;
+      const responseId = await responseIdFor(database, auditZoneId, row.questionId);
       const location = await readLocation();
+      const value = picked[row.questionId] ?? (row.value as ResponseValue | null);
 
       await captureLocalEvidence(database, {
         auditId: zone.data!.auditId,
         auditZoneId,
         kind: 'QUESTION_EVIDENCE',
         ...(responseId ? { questionResponseId: responseId } : {}),
-        scoreAtCapture: (current!.value as ResponseValue | null) ?? null,
+        scoreAtCapture: value ?? null,
         localFileUri: image.uri,
         byteSize: image.byteSize,
         width: image.width,
@@ -175,17 +210,40 @@ export default function QuestionnaireScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
-      setCameraOpen(false);
+      setCameraFor(null);
+      scheduleSync();
     },
   });
 
-  const abort = useMutation({
+  // N7: pausing saves and never discards, and it never waits.
+  const pause = useMutation({
     mutationFn: () => pauseLocalAudit(database, zone.data!.auditId, 'Aborted by auditor'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       router.back();
     },
   });
+
+  const goTo = useCallback((next: number) => {
+    setPage(next);
+    list.current?.scrollToOffset({ offset: 0, animated: false });
+  }, []);
+
+  // The hardware back button pages back through the questions and never discards (§5).
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (cameraFor) {
+        setCameraFor(null);
+        return true;
+      }
+      if (page > 0) {
+        goTo(page - 1);
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [cameraFor, page, goTo]);
 
   if (zone.isLoading || questions.isLoading) {
     return (
@@ -204,168 +262,276 @@ export default function QuestionnaireScreen() {
   }
 
   const title = `${zone.data.zoneCodeSnapshot} — ${zone.data.zoneNameSnapshot}`;
+  const rows = questions.data ?? [];
 
-  if (showingSummary) {
+  if (rows.length === 0) {
     return (
       <Screen>
         <Stack.Screen options={{ title }} />
-        <ScrollView contentContainerStyle={styles.summary}>
-          <Text style={styles.sectionTitle}>Finish Zone</Text>
-          <ScoreCard breakdown={score.data} answered={answeredCount} />
-
-          <Card>
-            <Text style={styles.label}>Overall remark (optional)</Text>
-            <TextInput
-              style={styles.remarkInput}
-              multiline
-              placeholder="Anything the report should carry about this Zone"
-              placeholderTextColor={theme.color.ink2}
-              value={zoneRemarkDraft}
-              onChangeText={setZoneRemarkDraft}
-            />
-          </Card>
-
-          {answeredCount < rows.length ? (
-            <Muted>
-              {rows.length - answeredCount} of {rows.length} questions are still unanswered.
-              Every question needs an answer before the Zone can be finished.
-            </Muted>
-          ) : null}
-
-          <Button
-            title="Finish Zone"
-            busy={finish.isPending}
-            onPress={() => finish.mutate()}
-          />
-          <Button title="Back to questions" variant="secondary" onPress={() => setShowingSummary(false)} />
-        </ScrollView>
-      </Screen>
-    );
-  }
-
-  if (!current) {
-    return (
-      <Screen>
         <Muted>This Zone has no checklist pinned to it.</Muted>
       </Screen>
     );
   }
 
-  if (cameraOpen) {
+  if (cameraFor) {
     return (
       <CameraCapture
-        prompt={`Photograph for question ${current.globalOrder}`}
+        prompt={`Photograph for question ${cameraFor.globalOrder}`}
         onCaptured={async (image) => {
           await capture.mutateAsync(image);
         }}
-        onCancel={() => setCameraOpen(false)}
+        onCancel={() => setCameraFor(null)}
       />
     );
   }
 
-  const photosHere = (photos.data ?? []).filter(
-    (photo) => photo.questionResponseId !== null && photo.scoreAtCapture !== undefined,
-  );
+  const valueOf = (row: Row) => picked[row.questionId] ?? (row.value as ResponseValue | null);
+  const pageCount = Math.ceil(rows.length / PAGE_SIZE);
+  const lastPage = page >= pageCount - 1;
+  const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const answered = rows.filter((row) => valueOf(row) !== null).length;
+  const pageAnswered = pageRows.filter((row) => valueOf(row) !== null).length;
+  const unanswered = rows.length - answered;
+  const section = pageRows[0]?.section as SSection | undefined;
+  const photoCount = (row: Row) =>
+    row.responseId
+      ? (photos.data ?? []).filter((photo) => photo.questionResponseId === row.responseId).length
+      : 0;
+
+  const submit = () => {
+    const firstMissing = rows.findIndex((row) => valueOf(row) === null);
+    if (firstMissing >= 0) {
+      setShowMissing(true);
+      goTo(Math.floor(firstMissing / PAGE_SIZE));
+      return;
+    }
+    finish.mutate();
+  };
 
   return (
     <Screen>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{
+          title,
+          headerRight: () => (
+            <HeaderAction
+              title="Pause"
+              accessibilityLabel="Pause the audit. Your answers stay saved on this device."
+              onPress={() => pause.mutate()}
+            />
+          ),
+        }}
+      />
 
-      <View style={styles.progressRow}>
-        <Text style={styles.progressText}>
-          {current.globalOrder} of {rows.length || TOTAL_QUESTIONS}
-        </Text>
-        <Text style={styles.sectionLabel}>{S_SECTION_LABELS[current.section as SSection]}</Text>
-      </View>
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${(answeredCount / (rows.length || 1)) * 100}%` }]} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.body}>
-        <Card>
-          <Text style={styles.question}>{current.text}</Text>
-          {current.guidance ? <Muted>{current.guidance}</Muted> : null}
-        </Card>
-
-        <ResponseChips
-          value={(current.value as ResponseValue | null) ?? null}
-          allowsNa={current.allowsNa === 1}
-          onChange={(value) => {
-            save.mutate({ value, remark: remarkDraft.trim() || null });
-            // Advance immediately. The write has committed by the time the mutation
-            // resolves, and waiting for it would make the questionnaire feel networked.
-            if (index < rows.length - 1) setIndex(index + 1);
-          }}
-        />
-
-        <Card>
-          <Text style={styles.label}>Evidence</Text>
-          <Muted>
-            {photosHere.length === 0
-              ? 'No photographs for this Zone yet.'
-              : `${photosHere.length} photograph${photosHere.length === 1 ? '' : 's'} in this Zone.`}
-          </Muted>
-          <Button
-            title="Take a photograph"
-            variant="secondary"
-            onPress={() => setCameraOpen(true)}
-          />
-        </Card>
-
-        <Card>
-          <Text style={styles.label}>Remark (optional)</Text>
-          <TextInput
-            style={styles.remarkInput}
-            multiline
-            placeholder="What you saw, in your words"
-            placeholderTextColor={theme.color.ink2}
-            value={remarkDraft}
-            onChangeText={setRemarkDraft}
-            onBlur={() => {
-              if (current.value) {
-                save.mutate({
-                  value: current.value as ResponseValue,
-                  remark: remarkDraft.trim() || null,
-                });
-              }
+      <FlatList
+        ref={list}
+        data={pageRows}
+        keyExtractor={(row) => row.questionId}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          <View>
+            <SectionHead
+              title={section ? S_SECTION_LABELS[section] : 'Questions'}
+              description={`Questions ${page * PAGE_SIZE + 1}–${page * PAGE_SIZE + pageRows.length} of ${rows.length || TOTAL_QUESTIONS}`}
+            />
+            <View
+              style={styles.progressRow}
+              accessible
+              accessibilityRole="progressbar"
+              accessibilityLabel={`${pageAnswered} of ${pageRows.length} answered on this page`}
+              accessibilityValue={{ min: 0, max: pageRows.length, now: pageAnswered }}
+            >
+              <Text style={styles.progressLabel}>
+                {section ? S_SECTION_SHORT_LABELS[section] : ''} progress
+              </Text>
+              {/* Answering progress is not a score, so it is ink, never a band colour. */}
+              <View style={styles.progressTrack}>
+                <View
+                  style={[styles.progressFill, { width: `${(pageAnswered / pageRows.length) * 100}%` }]}
+                />
+              </View>
+              <Text style={styles.progressCount}>
+                {pageAnswered}/{pageRows.length}
+              </Text>
+            </View>
+            <MarkingScheme />
+            {showMissing && unanswered > 0 ? (
+              <ErrorBanner
+                message={`${unanswered} question${unanswered === 1 ? '' : 's'} still need${unanswered === 1 ? 's' : ''} an answer. ${unanswered === 1 ? 'It is' : 'They are'} marked in red.`}
+              />
+            ) : null}
+          </View>
+        }
+        renderItem={({ item }) => (
+          <QuestionCard
+            row={item}
+            value={valueOf(item)}
+            photos={photoCount(item)}
+            missing={showMissing && valueOf(item) === null}
+            onAnswer={(value, remark) => {
+              setPicked((current) => ({ ...current, [item.questionId]: value }));
+              save.mutate({ row: item, value, remark });
             }}
+            onRemark={(remark) => {
+              const value = valueOf(item);
+              if (value) save.mutate({ row: item, value, remark });
+            }}
+            onPhoto={() => setCameraFor(item)}
           />
-        </Card>
+        )}
+        ListFooterComponent={
+          lastPage ? (
+            <View style={styles.footer}>
+              <ScoreCard breakdown={score.data} answered={answered} />
+              <Card>
+                <Field
+                  label="Overall remark (optional)"
+                  multiline
+                  placeholder="Anything the report should carry about this Zone"
+                  value={zoneRemarkDraft}
+                  onChangeText={setZoneRemarkDraft}
+                  containerStyle={styles.lastField}
+                />
+              </Card>
+              <ErrorBanner message={finish.error instanceof Error ? finish.error.message : null} />
+            </View>
+          ) : (
+            <Muted>Answers save on this device as you tap, and sync as soon as there is a connection.</Muted>
+          )
+        }
+      />
 
-        <ScoreCard breakdown={score.data} answered={answeredCount} />
-      </ScrollView>
-
-      <View style={styles.footer}>
+      <ActionBar>
         <View style={styles.navRow}>
           <View style={styles.navButton}>
             <Button
               title="Previous"
               variant="secondary"
-              onPress={() => setIndex(Math.max(0, index - 1))}
+              disabled={page === 0}
+              onPress={() => goTo(page - 1)}
             />
           </View>
           <View style={styles.navButton}>
-            <Button
-              title={index >= rows.length - 1 ? 'Review' : 'Next'}
-              onPress={() =>
-                index >= rows.length - 1 ? setShowingSummary(true) : setIndex(index + 1)
-              }
-            />
+            {lastPage ? (
+              <Button title="Submit" busy={finish.isPending} onPress={submit} testID="submit-zone" />
+            ) : (
+              <Button title="Next" onPress={() => goTo(page + 1)} testID="next-page" />
+            )}
           </View>
         </View>
-        {/* N7: abort saves and pauses. It never discards, and it never waits. */}
-        <Button title="Abort — save and pause" variant="secondary" onPress={() => abort.mutate()} />
-        <Muted>Saved on this device. Syncing happens when there is a connection.</Muted>
-      </View>
+      </ActionBar>
     </Screen>
+  );
+}
+
+/** The four answers, said once at the top of every page instead of under every question. */
+function MarkingScheme() {
+  const styles = useStyles();
+  return (
+    <View style={styles.scheme}>
+      <Label>Marking scheme</Label>
+      <View style={styles.schemeGrid}>
+        {(['SCORE_2', 'SCORE_1', 'SCORE_0', 'NA'] as ResponseValue[]).map((value) => {
+          const token = RESPONSE_TOKENS[value]!;
+          return (
+            <View key={value} style={styles.schemeItem}>
+              <Text style={styles.schemeMark}>{token.marks === null ? 'NA' : token.marks}</Text>
+              <Text style={styles.schemeText}>{token.label}</Text>
+            </View>
+          );
+        })}
+      </View>
+      <Text style={styles.schemeNote}>
+        Every question is compulsory. Use NA only when the checkpoint does not apply here.
+      </Text>
+    </View>
+  );
+}
+
+function QuestionCard({
+  row,
+  value,
+  photos,
+  missing,
+  onAnswer,
+  onRemark,
+  onPhoto,
+}: {
+  row: Row;
+  value: ResponseValue | null;
+  photos: number;
+  missing: boolean;
+  onAnswer: (value: ResponseValue, remark: string | null) => void;
+  onRemark: (remark: string | null) => void;
+  onPhoto: () => void;
+}) {
+  const styles = useStyles();
+  const [remark, setRemark] = useState(row.remark ?? '');
+  const [remarkOpen, setRemarkOpen] = useState(Boolean(row.remark));
+
+  useEffect(() => setRemark(row.remark ?? ''), [row.remark]);
+
+  return (
+    <Card rail={missing ? 'crit' : undefined}>
+      <View style={styles.questionHead}>
+        <Text style={styles.questionNumber}>Q{row.globalOrder}</Text>
+        <Text style={styles.question}>{row.text}</Text>
+      </View>
+      {row.guidance ? <Muted>{row.guidance}</Muted> : null}
+
+      <View style={styles.responses}>
+        <Label>Response / marks</Label>
+        <ResponseChips
+          value={value}
+          allowsNa={row.allowsNa === 1}
+          onChange={(next) => onAnswer(next, remark.trim() || null)}
+        />
+        {missing ? <Text style={styles.missing}>Answer required</Text> : null}
+      </View>
+
+      <View style={styles.questionFoot}>
+        <Text style={styles.photoCount}>
+          {photos} photo{photos === 1 ? '' : 's'}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setRemarkOpen((open) => !open)}
+          style={styles.remarkToggle}
+        >
+          <Text style={styles.remarkToggleText}>
+            {remarkOpen ? 'Hide remark' : remark ? 'Edit remark' : 'Add remark'}
+          </Text>
+        </Pressable>
+        <Button
+          title="Take photo"
+          variant="secondary"
+          accessibilityLabel={`Take a photograph for question ${row.globalOrder}`}
+          onPress={onPhoto}
+        />
+      </View>
+
+      {remarkOpen ? (
+        <Field
+          label="Remark"
+          multiline
+          placeholder="What you saw, in your words"
+          value={remark}
+          onChangeText={setRemark}
+          onBlur={() => onRemark(remark.trim() || null)}
+          containerStyle={styles.remark}
+        />
+      ) : null}
+    </Card>
   );
 }
 
 /**
  * The live score, from the shared domain function.
  *
- * `null` renders `N/A` rather than `0%` (D4): a Zone whose answered questions are all NA
- * has no percentage, and showing zero would tell the auditor they had failed.
+ * It is the device's figure, so it says so (AGENTS.md: the device is not authoritative about
+ * scores). `null` renders `N/A` rather than `0%` (D4): a Zone whose answered questions are
+ * all NA has no percentage, and showing zero would tell the auditor they had failed.
  */
 function ScoreCard({
   breakdown,
@@ -375,63 +541,154 @@ function ScoreCard({
   answered: number;
 }) {
   const styles = useStyles();
-  const theme = useTheme();
   if (!breakdown) return null;
-  const percentage = breakdown.totals.scorePercentage;
-  const band = bandFor(percentage);
+  const { totals } = breakdown;
+  const band = bandOf(totals.scorePercentage);
 
   return (
     <Card>
-      <Text style={styles.label}>Score so far</Text>
-      <Text style={[styles.score, band ? { color: ratingColor(band.token, theme.color) } : styles.naScore]}>
-        {percentage === null ? 'N/A' : `${percentage.toFixed(1)}%`}
-      </Text>
-      <Muted>
-        {breakdown.totals.rawScore} / {breakdown.totals.maxScore} marks · {answered} answered ·{' '}
-        {breakdown.totals.naQuestions} NA
-        {band ? ` · ${band.label}` : ''}
-      </Muted>
+      <CardHeader
+        title="Score so far"
+        description="Worked out on this device as a guide. The server recomputes it when the audit syncs."
+        action={band === 'none' ? null : <Chip tone={band}>{bandFor(totals.scorePercentage)?.label}</Chip>}
+      />
+      <View style={styles.scoreRow}>
+        <Figure band={band}>{formatPct(totals.scorePercentage)}</Figure>
+        <Text style={styles.scoreMeta}>
+          {totals.rawScore}/{totals.maxScore} marks{'\n'}
+          {answered} answered, {totals.naQuestions} NA
+        </Text>
+      </View>
+      <StatusBand band={band} />
+      <View style={styles.rows}>
+        <SectionRows
+          marks
+          rows={breakdown.sections.map((section) => ({
+            section: section.section,
+            pct: section.scorePercentage,
+            raw: section.rawScore,
+            max: section.maxScore,
+          }))}
+        />
+      </View>
     </Card>
   );
 }
 
 const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
-  body: { gap: theme.space.sm, paddingBottom: theme.space.lg },
-  summary: { gap: theme.space.md, paddingBottom: theme.space.xl },
-  progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: theme.space.xs },
-  progressText: { fontFamily: theme.family.monoMedium, fontSize: theme.font.sm, color: theme.color.ink },
-  sectionLabel: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink3, textTransform: 'uppercase', letterSpacing: 1.1 },
-  progressTrack: {
-    height: 6,
-    backgroundColor: theme.color.edgeSoft,
-    marginBottom: theme.space.md,
-    overflow: 'hidden',
-  },
-  progressFill: { height: 6, backgroundColor: theme.color.accent },
-  question: { fontFamily: theme.family.medium, fontSize: theme.font.panel, lineHeight: 24, color: theme.color.ink },
-  label: {
+  list: { paddingBottom: theme.space.lg },
+  footer: { marginTop: theme.space.sm },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: theme.space.md },
+  progressLabel: {
     fontFamily: theme.family.medium,
-    fontSize: theme.font.label,
-    color: theme.color.ink3,
-    marginBottom: theme.space.xs,
+    fontSize: 11,
+    color: theme.color.ink2,
     textTransform: 'uppercase',
-    letterSpacing: 1.4,
+    letterSpacing: 0.8,
   },
-  remarkInput: {
+  progressTrack: {
+    flex: 1,
+    height: 12,
     borderWidth: 1.5,
     borderColor: theme.color.edge,
-    padding: theme.space.sm,
-    minHeight: 64,
-    fontFamily: theme.family.regular,
-    color: theme.color.ink,
     backgroundColor: theme.color.tile2,
-    textAlignVertical: 'top',
   },
-  score: { fontFamily: theme.family.black, fontSize: theme.font.figure, letterSpacing: -1.1, color: theme.color.ink },
-  naScore: { color: theme.color.ink3, backgroundColor: theme.color.tile2 },
-  sectionTitle: { fontFamily: theme.family.bold, fontSize: theme.font.heading, color: theme.color.ink, textTransform: 'uppercase', letterSpacing: 0.38 },
-  footer: { gap: theme.space.sm, paddingTop: theme.space.sm },
+  progressFill: { height: '100%', backgroundColor: theme.color.ink },
+  progressCount: {
+    fontFamily: theme.family.monoMedium,
+    fontSize: 12.5,
+    color: theme.color.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  scheme: {
+    backgroundColor: theme.color.tile2,
+    borderWidth: 1.5,
+    borderColor: theme.color.edge,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: theme.space.md,
+  },
+  schemeGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 6 },
+  schemeItem: { width: '50%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8 },
+  schemeMark: {
+    width: 24,
+    fontFamily: theme.family.black,
+    fontSize: 15,
+    color: theme.color.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  schemeText: { flex: 1, fontFamily: theme.family.regular, fontSize: 12.5, color: theme.color.ink2 },
+  schemeNote: {
+    fontFamily: theme.family.regular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: theme.color.ink2,
+    marginTop: 8,
+  },
+  questionHead: { flexDirection: 'row', gap: 10, marginBottom: 4 },
+  questionNumber: {
+    fontFamily: theme.family.monoMedium,
+    fontSize: 13,
+    lineHeight: 23,
+    color: theme.color.ink3,
+    fontVariant: ['tabular-nums'],
+  },
+  question: {
+    flex: 1,
+    fontFamily: theme.family.medium,
+    fontSize: theme.font.panel,
+    lineHeight: 23,
+    color: theme.color.ink,
+  },
+  responses: { marginTop: theme.space.md },
+  missing: {
+    fontFamily: theme.family.medium,
+    fontSize: 12.5,
+    color: theme.color.crit,
+    marginTop: 6,
+  },
+  questionFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.sm,
+    marginTop: theme.space.md,
+    paddingTop: theme.space.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.color.edgeSoft,
+  },
+  photoCount: {
+    flex: 1,
+    fontFamily: theme.family.mono,
+    fontSize: 12,
+    color: theme.color.ink2,
+    fontVariant: ['tabular-nums'],
+  },
+  remarkToggle: { minHeight: 48, justifyContent: 'center', paddingHorizontal: theme.space.sm },
+  remarkToggleText: {
+    fontFamily: theme.family.medium,
+    fontSize: theme.font.sm,
+    color: theme.color.ink,
+    textDecorationLine: 'underline',
+  },
+  remark: { marginTop: theme.space.md, marginBottom: 0 },
+  lastField: { marginBottom: 0 },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: theme.space.md,
+    marginBottom: 10,
+  },
+  scoreMeta: {
+    fontFamily: theme.family.mono,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.color.ink2,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
+  rows: { marginTop: theme.space.md },
   navRow: { flexDirection: 'row', gap: theme.space.sm },
   navButton: { flex: 1 },
 }));

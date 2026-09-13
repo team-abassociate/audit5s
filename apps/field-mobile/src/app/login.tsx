@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
-import { Button, ErrorBanner, Field, Heading, Muted, Screen } from '../components/ui';
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { Button, ErrorBanner, Field, GateCard, Screen } from '../components/ui';
 import { ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
 import { createThemedStyles } from '../lib/theme';
 
+/** One tile on the dry-erase ground — the admin web's gate card, at phone width. */
 export default function LoginScreen() {
   const styles = useStyles();
   const { signIn } = useSession();
@@ -35,46 +36,43 @@ export default function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Screen bare>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.brand}>
-            <Text style={styles.brandMark}>5S</Text>
-            <Heading>Field audit</Heading>
-            <Muted>Sign in with the login ID your administrator gave you.</Muted>
-          </View>
+          <GateCard>
+            <Field
+              testID="login-id"
+              label="Login ID"
+              hint="Issued when your account was created, e.g. RA3210"
+              value={loginId}
+              onChangeText={setLoginId}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              autoComplete="username"
+              placeholder="RA3210"
+              textContentType="username"
+              returnKeyType="next"
+            />
 
-          <ErrorBanner message={error} />
+            <Field
+              testID="password"
+              label="Password"
+              hint="First time? Your password is your phone number, and you will be asked to change it straight away."
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="current-password"
+              textContentType="password"
+              returnKeyType="go"
+              onSubmitEditing={submit}
+            />
 
-          <Field
-            label="Login ID"
-            value={loginId}
-            onChangeText={setLoginId}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            placeholder="RA3210"
-            textContentType="username"
-            returnKeyType="next"
-          />
+            <ErrorBanner message={error} />
 
-          <Field
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            textContentType="password"
-            returnKeyType="go"
-            onSubmitEditing={submit}
-          />
-
-          <Button title="Sign in" onPress={submit} busy={busy} />
-
-          <Muted>
-            Signing in for the first time? Your password is your phone number, and you will be
-            asked to change it straight away.
-          </Muted>
+            <Button testID="sign-in" title="Sign in" onPress={submit} busy={busy} />
+          </GateCard>
         </ScrollView>
       </Screen>
     </KeyboardAvoidingView>
@@ -82,15 +80,6 @@ export default function LoginScreen() {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  content: { flexGrow: 1, justifyContent: 'center', gap: theme.space.sm },
-  brand: { alignItems: 'center', marginBottom: theme.space.xl, gap: theme.space.xs },
-  brandMark: {
-    backgroundColor: theme.color.ink,
-    color: theme.color.board,
-    fontFamily: theme.family.black,
-    fontSize: theme.font.figure,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.sm,
-    marginBottom: theme.space.sm,
-  },
+  flex: { flex: 1 },
+  content: { flexGrow: 1, justifyContent: 'center', paddingVertical: theme.space.xl },
 }));

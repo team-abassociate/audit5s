@@ -4,10 +4,11 @@ import { RESPONSE_TOKENS } from '@audit5s/domain';
 import { createThemedStyles, useTheme } from '../lib/theme';
 
 /**
- * The four response chips (§4.1's response labels, from `packages/domain`).
+ * The response row: 2 · 1 · 0 · NA, one tap each, as a radio group.
  *
- * Labels and colours come from `RESPONSE_TOKENS`, the same table the report renders from
- * (R-6c), so the chip an auditor taps and the words printed on the PDF cannot drift.
+ * Marks only on the face — the page's marking scheme says what each means, and the full
+ * label (§4.1, from `RESPONSE_TOKENS`, the same table the report prints) is the accessible
+ * name. Selected is a filled tile, unselected an outline: shape as well as colour.
  *
  * `NA` is hidden when the question forbids it: a question with `allows_na = false` has no
  * "not applicable" answer, and offering one only to refuse it later is the kind of small
@@ -27,31 +28,27 @@ export function ResponseChips({
   const styles = useStyles();
   const theme = useTheme();
   return (
-    <View style={styles.row}>
+    <View style={styles.row} accessibilityRole="radiogroup">
       {ORDER.filter((option) => option !== 'NA' || allowsNa).map((option) => {
         const token = RESPONSE_TOKENS[option]!;
         const selected = value === option;
         const color = responseColor(option, theme);
+        const marks = token.marks === null ? 'NA' : String(token.marks);
         return (
           <Pressable
             key={option}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            accessibilityLabel={token.label}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected }}
+            accessibilityLabel={`${marks}, ${token.label}`}
             onPress={() => onChange(option)}
             style={({ pressed }) => [
               styles.chip,
               { borderColor: color },
-              selected && { backgroundColor: color, borderLeftWidth: 6 },
+              selected && { backgroundColor: color },
               pressed && styles.pressed,
             ]}
           >
-            <Text style={[styles.marks, { color: selected ? theme.color.board : color }]}>
-              {token.marks === null ? 'NA' : token.marks}
-            </Text>
-            <Text style={[styles.label, { color: selected ? theme.color.board : color }]}>
-              {token.label}
-            </Text>
+            <Text style={[styles.marks, { color: selected ? theme.color.board : color }]}>{marks}</Text>
           </Pressable>
         );
       })}
@@ -63,23 +60,20 @@ function responseColor(option: ResponseValue, theme: ReturnType<typeof useTheme>
   if (option === 'SCORE_2') return theme.color.ok;
   if (option === 'SCORE_1') return theme.color.warn;
   if (option === 'SCORE_0') return theme.color.crit;
-  return theme.color.ink3;
+  return theme.color.ink2;
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  row: { flexDirection: 'row', gap: theme.space.sm, flexWrap: 'wrap' },
+  row: { flexDirection: 'row', gap: theme.space.sm },
   chip: {
-    flexGrow: 1,
-    flexBasis: '45%',
+    flex: 1,
+    // Gloves on, in sunlight: bigger than the 48dp floor.
+    minHeight: 52,
     borderWidth: 1.5,
-    paddingVertical: theme.space.sm + 2,
-    paddingHorizontal: theme.space.sm,
     alignItems: 'center',
-    // 48pt is the smallest comfortable target with gloves on, which is how this is used.
-    minHeight: 56,
     justifyContent: 'center',
+    backgroundColor: theme.color.tile,
   },
-  pressed: { opacity: 0.75 },
-  marks: { fontFamily: theme.family.black, fontSize: theme.font.heading },
-  label: { fontFamily: theme.family.medium, fontSize: theme.font.sm, textAlign: 'center' },
+  pressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
+  marks: { fontFamily: theme.family.black, fontSize: 20, fontVariant: ['tabular-nums'] },
 }));

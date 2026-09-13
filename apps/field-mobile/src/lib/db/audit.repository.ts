@@ -533,6 +533,8 @@ export async function listQuestionsWithAnswers(
       allowsNa: checklistQuestions.allowsNa,
       value: localQuestionResponses.value,
       remark: localQuestionResponses.remark,
+      // Aliased: both tables call their key `id`, and rows come back keyed by column name.
+      responseId: sql<string | null>`${localQuestionResponses.id}`.as('response_id'),
     })
     .from(checklistQuestions)
     .leftJoin(

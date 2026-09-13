@@ -1,13 +1,17 @@
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { readSyncStatus, type SyncDot } from '../lib/sync/status';
 import { useLocalDatabase } from '../lib/db/provider';
+import { useSession } from '../lib/session';
 import { useSync } from '../lib/sync/provider';
 import { createThemedStyles, useTheme } from '../lib/theme';
+import { Avatar, Button } from './ui';
 
 /**
- * The persistent status affordance of §9.9, on every field screen.
+ * The persistent bar of §9.9, on every field screen: who is signed in on the left (a tap
+ * opens the profile), and on the right the sync status above a compact Sync now.
  *
  * §9.9 ends with the rule this component exists to keep:
  *
@@ -23,8 +27,10 @@ export function SyncStatusBar() {
   const styles = useStyles();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
+  const { user } = useSession();
   const { sync, online } = useSync();
 
   const status = useQuery({
@@ -44,29 +50,54 @@ export function SyncStatusBar() {
   // Keep the status-bar inset until the first read: the navigator below has had its top inset zeroed.
   if (!data) return <View style={{ paddingTop: insets.top, backgroundColor: theme.color.tile2 }} />;
 
+  const label = describe(data);
+  // §9.9's offline banner, in the words it prescribes: the work is not at risk.
+  const detail = !online
+    ? 'Offline — your work is saved on this device'
+    : data.lastSuccessfulPushAt
+      ? `Last synced ${relative(data.lastSuccessfulPushAt)}`
+      : null;
+  const syncing = syncNow.isPending || data.syncing;
+
   return (
-    <View style={[styles.bar, { paddingTop: insets.top + theme.space.sm }]}>
-      <View style={[styles.dot, { backgroundColor: dotColour(data.dot, theme) }]} />
-
-      <View style={styles.text}>
-        <Text style={styles.label}>{describe(data)}</Text>
-        {!online && (
-          // §9.9's offline banner, in the words it prescribes: the work is not at risk.
-          <Text style={styles.detail}>Offline — your work is saved on this device</Text>
-        )}
-        {online && data.lastSuccessfulPushAt && (
-          <Text style={styles.detail}>Last synced {relative(data.lastSuccessfulPushAt)}</Text>
-        )}
-      </View>
-
+    <View style={[styles.bar, { paddingTop: insets.top + 2 }]}>
       <Pressable
         accessibilityRole="button"
-        onPress={() => syncNow.mutate()}
-        disabled={syncNow.isPending || data.syncing || !online}
-        style={[styles.action, (syncNow.isPending || !online) && styles.actionDisabled]}
+        accessibilityLabel={`Your profile, ${user?.fullName ?? ''}`}
+        hitSlop={6}
+        onPress={() => router.push('/profile')}
+        style={({ pressed }) => pressed && styles.pressed}
       >
-        <Text style={styles.actionLabel}>{syncNow.isPending ? 'Syncing…' : 'Sync now'}</Text>
+        <Avatar name={user?.fullName} size={32} />
       </Pressable>
+
+      <View style={styles.side}>
+        <View
+          style={styles.status}
+          accessible
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={detail ? `${label}. ${detail}` : label}
+        >
+          <View style={[styles.dot, { backgroundColor: dotColour(data.dot, theme) }]} />
+          <Text style={styles.label} numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+        <View style={styles.actionRow}>
+          {detail ? (
+            <Text style={styles.detail} numberOfLines={2} importantForAccessibility="no">
+              {detail}
+            </Text>
+          ) : null}
+          {/* Tappable offline too: "offline" is the last attempt's result, and a retry is how it ends. */}
+          <Button
+            compact
+            title={syncing ? 'Syncing…' : 'Sync now'}
+            disabled={syncing}
+            onPress={() => syncNow.mutate()}
+          />
+        </View>
+      </View>
     </View>
   );
 }
@@ -112,26 +143,25 @@ const useStyles = createThemedStyles((theme) => ({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    gap: 12,
+    paddingHorizontal: theme.space.md,
+    paddingBottom: 6,
     backgroundColor: theme.color.tile2,
     borderBottomWidth: 2,
     borderBottomColor: theme.color.edge,
   },
-  dot: { width: 10, height: 10 },
-  text: { flex: 1 },
-  label: { fontFamily: theme.family.medium, fontSize: theme.font.sm, color: theme.color.ink },
-  detail: { fontFamily: theme.family.regular, fontSize: theme.font.label, color: theme.color.ink2, marginTop: 1 },
-  action: {
-    minHeight: 48,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.ink,
+  pressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
+  side: { flex: 1, alignItems: 'flex-end', gap: 2 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: '100%' },
+  dot: { width: 9, height: 9 },
+  label: { flexShrink: 1, fontFamily: theme.family.medium, fontSize: 12.5, lineHeight: 16, color: theme.color.ink },
+  actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 },
+  detail: {
+    flexShrink: 1,
+    fontFamily: theme.family.regular,
+    fontSize: 11,
+    lineHeight: 13,
+    color: theme.color.ink2,
+    textAlign: 'right',
   },
-  actionDisabled: { opacity: 0.45 },
-  actionLabel: { color: theme.color.board, fontFamily: theme.family.medium, fontSize: 12 },
 }));

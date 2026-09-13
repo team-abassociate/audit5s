@@ -5,7 +5,18 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { CorrectiveOption, EvidenceViewUrl, SSection } from '@audit5s/contracts';
 import { awaitsResponse, sectionLabel } from '@audit5s/domain';
 import { CameraCapture } from '../../components/camera-capture';
-import { Button, Card, ErrorBanner, Field, Heading, Label, Muted, Screen } from '../../components/ui';
+import {
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  Data,
+  ErrorBanner,
+  Field,
+  Label,
+  Muted,
+  Screen,
+} from '../../components/ui';
 import { api } from '../../lib/api';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
@@ -17,6 +28,7 @@ import {
   submitLocalCorrectiveAction,
 } from '../../lib/db/corrective-action.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
+import { formatDate } from '../../lib/format';
 import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
 import { createThemedStyles, useTheme } from '../../lib/theme';
@@ -125,46 +137,63 @@ export default function CorrectiveActionScreen() {
   const open = awaitsResponse(item.effectiveStatus) && !item.pendingSubmissionId;
   const ready =
     option === 'COMPLETED' ? Boolean(photo) && name.trim().length > 0 && text.trim().length > 0 : text.trim().length > 0;
+  const facts = [
+    item.dueAt ? `Due ${formatDate(item.dueAt)}` : null,
+    item.reopenCount > 0 ? `Reopened ×${item.reopenCount}` : null,
+  ].filter(Boolean);
 
   return (
     <Screen>
       <Stack.Screen options={{ title: `Zone ${item.zoneCode}` }} />
-      <ScrollView contentContainerStyle={styles.content}>
-        <Card>
-          <Heading>
-            Zone {item.zoneCode} — {item.zoneName}
-          </Heading>
-          <Muted>
-            {item.questionGlobalOrder
-              ? `${item.section ? `${sectionLabel(item.section as SSection)} · ` : ''}Q${item.questionGlobalOrder}: ${item.questionText ?? ''}`
-              : 'Walk-by observation'}
-          </Muted>
-          {item.findingRemark && <Text style={styles.remark}>{item.findingRemark}</Text>}
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Card rail={open ? 'warn' : 'none'}>
+          <CardHeader
+            title={`Zone ${item.zoneCode} — ${item.zoneName}`}
+            description={
+              item.questionGlobalOrder
+                ? `${item.section ? `${sectionLabel(item.section as SSection)} · ` : ''}Q${item.questionGlobalOrder}: ${item.questionText ?? ''}`
+                : 'Walk-by observation'
+            }
+            action={<Chip tone={open ? 'warn' : 'muted'}>{statusLabel(item)}</Chip>}
+          />
+          {item.findingRemark ? (
+            <View style={styles.block}>
+              <Label>Finding</Label>
+              <Text style={styles.remark}>{item.findingRemark}</Text>
+            </View>
+          ) : null}
+          <Label>Before</Label>
           {before.data ? (
             <Image source={{ uri: before.data.url }} style={styles.photo} accessibilityLabel="Before photograph" />
           ) : (
-            <Muted>{before.isLoading ? 'Loading the photograph…' : 'The photograph is shown when online.'}</Muted>
+            <View style={styles.placeholder}>
+              <Muted>{before.isLoading ? 'Loading the photograph…' : 'The photograph is shown when online.'}</Muted>
+            </View>
           )}
-          <Muted>
-            {statusLabel(item)}
-            {item.dueAt ? ` · due ${new Date(item.dueAt).toLocaleDateString()}` : ''}
-            {item.reopenCount > 0 ? ` · reopened ×${item.reopenCount}` : ''}
-          </Muted>
+          {facts.length > 0 ? <Data>{facts.join(', ')}</Data> : null}
         </Card>
 
         {open ? (
           <Card>
+            <CardHeader
+              title="Your response"
+              description="Saved on this device first, then sent when there is signal."
+            />
             <View style={styles.choice}>
-              <Button
-                title="Completed"
-                variant={option === 'COMPLETED' ? 'primary' : 'secondary'}
-                onPress={() => setOption('COMPLETED')}
-              />
-              <Button
-                title="Not possible"
-                variant={option === 'NOT_POSSIBLE' ? 'primary' : 'secondary'}
-                onPress={() => setOption('NOT_POSSIBLE')}
-              />
+              <View style={styles.choiceItem}>
+                <Button
+                  title="Completed"
+                  variant={option === 'COMPLETED' ? 'primary' : 'secondary'}
+                  onPress={() => setOption('COMPLETED')}
+                />
+              </View>
+              <View style={styles.choiceItem}>
+                <Button
+                  title="Not possible"
+                  variant={option === 'NOT_POSSIBLE' ? 'primary' : 'secondary'}
+                  onPress={() => setOption('NOT_POSSIBLE')}
+                />
+              </View>
             </View>
 
             {option === 'COMPLETED' ? (
@@ -174,13 +203,17 @@ export default function CorrectiveActionScreen() {
                 {photo ? (
                   <Image source={{ uri: photo.uri }} style={styles.photo} accessibilityLabel="After photograph" />
                 ) : (
-                  <Muted>A live photograph of the corrected condition is required.</Muted>
+                  <View style={styles.placeholder}>
+                    <Muted>A live photograph of the corrected condition is required.</Muted>
+                  </View>
                 )}
-                <Button
-                  title={photo ? 'Retake photograph' : 'Take photograph'}
-                  variant="secondary"
-                  onPress={() => setCameraOpen(true)}
-                />
+                <View style={styles.block}>
+                  <Button
+                    title={photo ? 'Retake photograph' : 'Take photograph'}
+                    variant="secondary"
+                    onPress={() => setCameraOpen(true)}
+                  />
+                </View>
                 <Field label="What was done" value={text} onChangeText={setText} multiline />
               </>
             ) : (
@@ -188,18 +221,16 @@ export default function CorrectiveActionScreen() {
             )}
 
             <ErrorBanner message={submit.error?.message ?? capture.error?.message ?? null} />
-            <Button
-              title="Submit"
-              busy={submit.isPending}
-              onPress={() => ready && submit.mutate()}
-            />
-            {!ready && (
-              <Muted>
-                {option === 'COMPLETED'
-                  ? 'Add your name, a photograph and a description to submit.'
-                  : 'Explain why the fix is not possible to submit.'}
-              </Muted>
-            )}
+            <Button title="Submit" busy={submit.isPending} disabled={!ready} onPress={() => submit.mutate()} />
+            {!ready ? (
+              <View style={styles.hint}>
+                <Muted>
+                  {option === 'COMPLETED'
+                    ? 'Add your name, a photograph and a description to submit.'
+                    : 'Explain why the fix is not possible to submit.'}
+                </Muted>
+              </View>
+            ) : null}
           </Card>
         ) : (
           <Card>
@@ -217,8 +248,29 @@ export default function CorrectiveActionScreen() {
 
 const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
-  content: { gap: theme.space.sm, paddingBottom: theme.space.xl },
-  remark: { fontFamily: theme.family.regular, fontSize: theme.font.base, color: theme.color.ink, marginTop: theme.space.xs },
-  photo: { width: '100%', aspectRatio: 4 / 3, marginVertical: theme.space.sm, borderWidth: 1, borderColor: theme.color.edge },
-  choice: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.sm },
+  content: { paddingBottom: theme.space.xl },
+  block: { marginBottom: theme.space.md },
+  remark: { fontFamily: theme.family.regular, fontSize: theme.font.base, lineHeight: 22, color: theme.color.ink },
+  photo: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    marginBottom: theme.space.sm,
+    borderWidth: 1,
+    borderColor: theme.color.edge,
+    backgroundColor: theme.color.tile2,
+  },
+  placeholder: {
+    height: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.space.md,
+    marginBottom: theme.space.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.color.edge,
+    backgroundColor: theme.color.tile2,
+  },
+  choice: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.md },
+  choiceItem: { flex: 1 },
+  hint: { marginTop: theme.space.sm },
 }));

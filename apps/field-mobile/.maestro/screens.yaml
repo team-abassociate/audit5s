@@ -1,0 +1,34 @@
+# Design review walkthrough of the signed-in read-only screens: a Unit's Zones and the
+# notification centre. It starts nothing and writes nothing. Run after tabs.yaml.
+#
+#   maestro test .maestro/screens.yaml
+appId: in.abassociate.audit5s
+env:
+  METRO_URL: http://10.0.2.2:8081
+---
+- launchApp
+- openLink: audit5s://expo-development-client/?url=${METRO_URL}
+- extendedWaitUntil:
+    visible: "Sync now"
+    timeout: 60000
+# Tabs go back to Units, the first route.
+- runFlow:
+    when:
+      notVisible: "Unit A"
+    commands:
+      - back
+- tapOn: "Unit A"
+- waitForAnimationToEnd
+- takeScreenshot: unit-zones
+- scroll
+- waitForAnimationToEnd
+- takeScreenshot: unit-zones-scrolled
+- back
+- tapOn: "Profile"
+- scrollUntilVisible:
+    element: "Notifications"
+    direction: DOWN
+- tapOn: "Notifications"
+- waitForAnimationToEnd
+- takeScreenshot: notifications
+- back

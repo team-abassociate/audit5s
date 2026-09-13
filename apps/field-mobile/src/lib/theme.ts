@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Platform, StyleSheet, useColorScheme, type ViewStyle } from 'react-native';
 import { gemba, gembaFonts } from './gemba';
-export { ratingColor } from './gemba';
+export { bandFill, bandInk, bandOf, type Band } from './gemba';
 
 const shared = {
   space: { xs: 4, sm: 8, md: 14, lg: 22, xl: 28 },

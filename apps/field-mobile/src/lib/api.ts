@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
-import { HEADER_DEVICE_ID, type ProblemDetails } from '@audit5s/contracts';
+import { randomUUID } from 'expo-crypto';
+import { HEADER_DEVICE_ID, HEADER_IDEMPOTENCY_KEY, type ProblemDetails } from '@audit5s/contracts';
 import { clearSession, getDeviceId, loadSession, saveSession, type StoredSession } from './secure-storage';
 
 const BASE_URL =
@@ -47,6 +48,8 @@ interface RequestOptions {
   body?: unknown;
   /** Skips refresh-and-retry; used by the refresh call itself so it cannot recurse. */
   raw?: boolean;
+  /** Minted once per write and reused by the token-refresh retry, so a replay is one change. */
+  idempotencyKey?: string;
 }
 
 async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -58,6 +61,10 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
   };
 
   if (options.body !== undefined) headers['content-type'] = 'application/json';
+  if (options.method && options.method !== 'GET') {
+    options.idempotencyKey ??= randomUUID();
+    headers[HEADER_IDEMPOTENCY_KEY] = options.idempotencyKey;
+  }
   if (session) headers.authorization = `Bearer ${session.accessToken}`;
 
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -133,4 +140,17 @@ export const api = {
   get: <T>(path: string) => send<T>(path),
   post: <T>(path: string, body?: unknown) => send<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body: unknown) => send<T>(path, { method: 'PATCH', body }),
+  delete: <T>(path: string) => send<T>(path, { method: 'DELETE' }),
 };
+
+/** The words to show for a failed request: the server's sentence and its field messages. */
+export function problemMessage(error: unknown): string | null {
+  if (!error) return null;
+  if (error instanceof ApiError) {
+    const fields = error.problem.errors ?? [];
+    return fields.length > 0
+      ? `${error.message}: ${fields.map((field) => field.message).join('; ')}`
+      : error.message;
+  }
+  return 'Could not reach the server. Check the connection and try again.';
+}

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { PASSWORD_MIN_LENGTH } from '@audit5s/contracts';
 import { PASSWORD_REJECTION_MESSAGES, checkPassword } from '@audit5s/domain';
-import { Button, ErrorBanner, Field, Heading, Muted, Screen } from '../components/ui';
+import { Button, ErrorBanner, Field, GateCard, Heading, Muted, Screen } from '../components/ui';
 import { ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
 import { createThemedStyles } from '../lib/theme';
@@ -65,47 +65,53 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Screen bare>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Heading>Choose a password</Heading>
-          <Muted>
-            Your phone number was a temporary credential only. Pick a password of at least{' '}
-            {PASSWORD_MIN_LENGTH} characters that is not your name or phone number.
-          </Muted>
+          <GateCard>
+            <View style={styles.intro}>
+              <Heading>Choose a password</Heading>
+              <Muted>
+                Your phone number was a temporary credential only. Pick a password of at least{' '}
+                {PASSWORD_MIN_LENGTH} characters that is not your name or phone number.
+              </Muted>
+            </View>
 
-          <ErrorBanner message={error} />
+            <Field
+              label="Current password"
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              placeholder="Your phone number"
+            />
 
-          <Field
-            label="Current password"
-            value={currentPassword}
-            onChangeText={setCurrentPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            placeholder="Your phone number"
-          />
+            <Field
+              label="New password"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              error={localMessage}
+            />
 
-          <Field
-            label="New password"
-            value={newPassword}
-            onChangeText={setNewPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            error={localMessage}
-          />
+            <Field
+              label="Confirm new password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              error={mismatch}
+              onSubmitEditing={submit}
+            />
 
-          <Field
-            label="Confirm new password"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            error={mismatch}
-            onSubmitEditing={submit}
-          />
+            <ErrorBanner message={error} />
 
-          <Button title="Set password" onPress={submit} busy={busy} />
-          <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
+            <View style={styles.actions}>
+              <Button title="Set password" onPress={submit} busy={busy} />
+              <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
+            </View>
+          </GateCard>
         </ScrollView>
       </Screen>
     </KeyboardAvoidingView>
@@ -113,5 +119,8 @@ export default function ResetPasswordScreen() {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  content: { flexGrow: 1, justifyContent: 'center', gap: theme.space.sm },
+  flex: { flex: 1 },
+  content: { flexGrow: 1, justifyContent: 'center', paddingVertical: theme.space.xl },
+  intro: { gap: theme.space.xs, marginBottom: theme.space.lg },
+  actions: { gap: theme.space.sm },
 }));

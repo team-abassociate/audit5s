@@ -1,9 +1,23 @@
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { zoneDisplayLabel } from '@audit5s/domain';
-import { Button, Card, EmptyState, Muted, Screen } from '../../../components/ui';
+import {
+  ActionBar,
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  EmptyState,
+  Field,
+  Label,
+  Muted,
+  Screen,
+  SectionHead,
+  Slip,
+  SlipText,
+} from '../../../components/ui';
 import {
   addLocalZone,
   completeLocalAudit,
@@ -141,24 +155,38 @@ export default function AuditZonesScreen() {
     ).values(),
   );
 
+  const finished = zonesInAudit.filter((zone) => zone.status === 'COMPLETED').length;
+  const canFinish = allComplete && audit.data?.status !== 'COMPLETED';
+  const canAbort = audit.data?.status === 'IN_PROGRESS';
+
   return (
     <Screen>
-      <Stack.Screen options={{ title: 'Audit' }} />
-
-      {paused && cursor.data?.auditZoneId ? (
-        <Card style={styles.resumeBanner}>
-          <Text style={styles.resumeText}>
-            {walkBy
-              ? 'Paused — your photographs and remarks are saved on this device'
-              : `Paused — ${cursor.data.answered} question${cursor.data.answered === 1 ? '' : 's'} answered in this Zone`}
-          </Text>
-          <Button title="Resume" busy={resume.isPending} onPress={() => resume.mutate()} />
-        </Card>
-      ) : null}
+      <Stack.Screen options={{ title: walkBy ? 'Walk-by' : 'Audit' }} />
 
       <FlatList
         data={zonesInAudit}
         keyExtractor={(zone) => zone.id}
+        ListHeaderComponent={
+          <>
+            {/* The one slip on this screen: a paused audit is waiting for the auditor. */}
+            {paused && cursor.data?.auditZoneId ? (
+              <Slip title="Paused">
+                <SlipText>
+                  {walkBy
+                    ? 'Your photographs and remarks are saved on this device.'
+                    : `${cursor.data.answered} question${cursor.data.answered === 1 ? '' : 's'} answered in this Zone. Resume where you stopped.`}
+                </SlipText>
+                <View style={styles.slipAction}>
+                  <Button title="Resume" busy={resume.isPending} onPress={() => resume.mutate()} />
+                </View>
+              </Slip>
+            ) : null}
+            <SectionHead
+              title="Zones in this audit"
+              description={zonesInAudit.length > 0 ? `${finished} of ${zonesInAudit.length} finished` : null}
+            />
+          </>
+        }
         ListEmptyComponent={
           <EmptyState
             title="No Zones yet"
@@ -167,114 +195,104 @@ export default function AuditZonesScreen() {
         }
         renderItem={({ item }) => (
           <Card>
-            <Text style={styles.name}>
-              {zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot)}
-            </Text>
-            <Muted>
-              {item.status === 'COMPLETED' ? 'Finished' : item.status === 'DRAFT' ? 'Not started' : 'In progress'}
-            </Muted>
-            <View style={styles.action}>
-              <Button
-                title={item.status === 'COMPLETED' ? 'Review' : 'Open'}
-                variant="secondary"
-                onPress={() =>
-                  router.push({
-                    pathname: walkBy ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
-                    params: { auditZoneId: item.id },
-                  })
-                }
-              />
-            </View>
+            <CardHeader
+              title={zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot)}
+              action={
+                <Chip tone={item.status === 'COMPLETED' ? 'ok' : item.status === 'DRAFT' ? 'muted' : 'warn'}>
+                  {item.status === 'COMPLETED' ? 'Finished' : item.status === 'DRAFT' ? 'Not started' : 'In progress'}
+                </Chip>
+              }
+            />
+            <Button
+              title={item.status === 'COMPLETED' ? 'Review' : 'Open'}
+              variant="secondary"
+              onPress={() =>
+                router.push({
+                  pathname: walkBy ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
+                  params: { auditZoneId: item.id },
+                })
+              }
+            />
           </Card>
         )}
         ListFooterComponent={
           <View style={styles.footer}>
             {remaining.length > 0 && canAddZone ? (
               <>
-                <Text style={styles.sectionTitle}>Add next Zone</Text>
+                <SectionHead
+                  title="Add next Zone"
+                  description={walkBy ? 'Choose where the walk-by goes next.' : 'Each Zone is its own questionnaire.'}
+                />
                 {remaining.map((zone) => (
                   <Card key={zone.id}>
-                    <Text style={styles.name}>{zoneDisplayLabel(zone.code, zone.name)}</Text>
-                    {zone.description ? <Muted>{zone.description}</Muted> : null}
-                    <View style={styles.action}>
-                      <Button
-                        title="Start this Zone"
-                        busy={addZone.isPending}
-                        onPress={() =>
-                          walkBy
-                            ? setWalkBySetup({
-                                zoneId: zone.id,
-                                description: zone.description ?? '',
-                                leaderId: zone.zoneLeaderId,
-                              })
-                            : addZone.mutate({ zoneId: zone.id })
-                        }
-                      />
-                    </View>
+                    <CardHeader title={zoneDisplayLabel(zone.code, zone.name)} description={zone.description} />
+                    <Button
+                      title="Start this Zone"
+                      busy={addZone.isPending}
+                      onPress={() =>
+                        walkBy
+                          ? setWalkBySetup({
+                              zoneId: zone.id,
+                              description: zone.description ?? '',
+                              leaderId: zone.zoneLeaderId,
+                            })
+                          : addZone.mutate({ zoneId: zone.id })
+                      }
+                    />
                   </Card>
                 ))}
               </>
             ) : null}
 
             {walkBySetup ? (
-              <Card style={styles.setupCard}>
-                <Text style={styles.name}>Describe and confirm this Zone</Text>
-                <Text style={styles.fieldLabel}>Description (optional)</Text>
-                <TextInput
+              <Card>
+                <CardHeader title="Describe and confirm this Zone" />
+                <Field
+                  label="Description (optional)"
                   multiline
-                  style={styles.input}
                   value={walkBySetup.description}
                   onChangeText={(description) =>
                     setWalkBySetup((current) => current && { ...current, description })
                   }
                   placeholder="What are you walking through?"
-                  placeholderTextColor={theme.color.ink2}
                 />
-                <Text style={styles.fieldLabel}>Zone leader</Text>
+                <Label>Zone leader</Label>
                 {leaderChoices.length === 0 ? <Muted>No Zone Leader is recorded for this Unit.</Muted> : null}
-                {leaderChoices.map((leader) => (
-                  <Pressable
-                    key={leader.id}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: walkBySetup.leaderId === leader.id }}
+                <View style={styles.choices} accessibilityRole="radiogroup">
+                  {leaderChoices.map((leader) => (
+                    <Pressable
+                      key={leader.id}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: walkBySetup.leaderId === leader.id }}
+                      onPress={() =>
+                        setWalkBySetup((current) => current && { ...current, leaderId: leader.id })
+                      }
+                      style={[
+                        styles.leaderChoice,
+                        walkBySetup.leaderId === leader.id && styles.leaderChoiceSelected,
+                      ]}
+                    >
+                      <Text style={styles.leaderText}>{leader.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.stack}>
+                  <Button
+                    title="Open camera"
+                    busy={addZone.isPending}
                     onPress={() =>
-                      setWalkBySetup((current) => current && { ...current, leaderId: leader.id })
+                      addZone.mutate({
+                        zoneId: walkBySetup.zoneId,
+                        zoneDescription: walkBySetup.description.trim() || null,
+                        ...(walkBySetup.leaderId
+                          ? { zoneLeaderUserId: walkBySetup.leaderId }
+                          : {}),
+                      })
                     }
-                    style={[
-                      styles.leaderChoice,
-                      walkBySetup.leaderId === leader.id && styles.leaderChoiceSelected,
-                    ]}
-                  >
-                    <Text style={styles.leaderText}>{leader.name}</Text>
-                  </Pressable>
-                ))}
-                <Button
-                  title="Open camera"
-                  busy={addZone.isPending}
-                  onPress={() =>
-                    addZone.mutate({
-                      zoneId: walkBySetup.zoneId,
-                      zoneDescription: walkBySetup.description.trim() || null,
-                      ...(walkBySetup.leaderId
-                        ? { zoneLeaderUserId: walkBySetup.leaderId }
-                        : {}),
-                    })
-                  }
-                />
-                <Button title="Cancel" variant="secondary" onPress={() => setWalkBySetup(null)} />
+                  />
+                  <Button title="Cancel" variant="secondary" onPress={() => setWalkBySetup(null)} />
+                </View>
               </Card>
-            ) : null}
-
-            {allComplete && audit.data?.status !== 'COMPLETED' ? (
-              <Button title="Finish audit" busy={finish.isPending} onPress={() => finish.mutate()} />
-            ) : null}
-
-            {audit.data?.status === 'IN_PROGRESS' ? (
-              <Button
-                title="Abort — save and pause"
-                variant="secondary"
-                onPress={() => abort.mutate()}
-              />
             ) : null}
 
             <Muted>
@@ -284,43 +302,36 @@ export default function AuditZonesScreen() {
           </View>
         }
       />
+
+      {canFinish || canAbort ? (
+        <ActionBar>
+          {canFinish ? (
+            <Button title="Finish audit" busy={finish.isPending} onPress={() => finish.mutate()} />
+          ) : null}
+          {canAbort ? (
+            <Button title="Abort — save and pause" variant="secondary" onPress={() => abort.mutate()} />
+          ) : null}
+        </ActionBar>
+      ) : null}
     </Screen>
   );
 }
 
 const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
-  name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
-  action: { marginTop: theme.space.sm },
-  footer: { gap: theme.space.sm, marginTop: theme.space.lg },
-  sectionTitle: {
-    fontFamily: theme.family.bold,
-    fontSize: theme.font.label,
-    color: theme.color.ink3,
-    textTransform: 'uppercase',
-    letterSpacing: 1.4,
-  },
-  resumeBanner: { backgroundColor: theme.color.slip, borderColor: theme.color.edge, borderLeftWidth: 6 },
-  resumeText: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.slipInk, marginBottom: theme.space.sm },
-  setupCard: { gap: theme.space.sm, borderColor: theme.color.accent, borderWidth: 2 },
-  fieldLabel: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink3, textTransform: 'uppercase', letterSpacing: 1.1 },
-  input: {
-    minHeight: 88,
-    borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    padding: theme.space.md,
-    fontFamily: theme.family.regular,
-    color: theme.color.ink,
-    backgroundColor: theme.color.tile2,
-    textAlignVertical: 'top',
-  },
+  footer: { gap: theme.space.sm, marginTop: theme.space.lg, paddingBottom: theme.space.md },
+  slipAction: { marginTop: theme.space.xs },
+  stack: { gap: theme.space.sm },
+  choices: { gap: theme.space.sm, marginBottom: theme.space.md },
   leaderChoice: {
     minHeight: 48,
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: theme.color.edge,
+    backgroundColor: theme.color.tile,
     padding: theme.space.md,
   },
+  // Selection is the one place the accent belongs (GEMBA-BOARD.md non-negotiable 6).
   leaderChoiceSelected: { borderColor: theme.color.accent, borderLeftWidth: 6, backgroundColor: theme.color.accentSoft },
   leaderText: { color: theme.color.ink, fontFamily: theme.family.medium },
 }));

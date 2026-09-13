@@ -1,0 +1,62 @@
+# Super Admin walkthrough: the five tabs, the + sheet, and a Unit and a person opened.
+# Read-only — it creates, assigns and changes nothing.
+#
+#   LOGIN_ID=... PASSWORD=... maestro test .maestro/admin.yaml
+appId: in.abassociate.audit5s
+env:
+  METRO_URL: http://10.0.2.2:8081
+---
+- launchApp
+- openLink: audit5s://expo-development-client/?url=${METRO_URL}
+- runFlow:
+    when:
+      visible:
+        id: login-id
+    commands:
+      - tapOn:
+          id: login-id
+      - inputText: ${LOGIN_ID}
+      - tapOn:
+          id: password
+      - inputText: ${PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: sign-in
+- extendedWaitUntil:
+    visible: "Organization score"
+    timeout: 60000
+- takeScreenshot: admin-overview
+- tapOn:
+    id: add-new
+- waitForAnimationToEnd
+- takeScreenshot: admin-add-sheet
+- tapOn: "Cancel"
+- tapOn: "Audits"
+- waitForAnimationToEnd
+- takeScreenshot: admin-audits-active
+- tapOn: "Completed"
+- waitForAnimationToEnd
+- takeScreenshot: admin-audits-completed
+- tapOn: "Actions"
+- waitForAnimationToEnd
+- takeScreenshot: admin-actions
+- tapOn: "Units"
+- extendedWaitUntil:
+    visible: "Unit A"
+    timeout: 15000
+- takeScreenshot: admin-units
+- tapOn: "Unit A"
+- waitForAnimationToEnd
+- takeScreenshot: admin-unit-detail
+- scroll
+- takeScreenshot: admin-unit-detail-lower
+- back
+- tapOn: "People"
+- extendedWaitUntil:
+    visible: "Cara Consult"
+    timeout: 15000
+- takeScreenshot: admin-people
+- tapOn: "Cara Consult"
+- waitForAnimationToEnd
+- takeScreenshot: admin-person
+- back

@@ -1,8 +1,19 @@
-import { ActivityIndicator, FlatList, RefreshControl, Text } from 'react-native';
+import { useCallback } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import { awaitsResponse } from '@audit5s/domain';
-import { Card, EmptyState, ErrorBanner, Muted, Screen } from '../../components/ui';
+import {
+  Card,
+  Chip,
+  EmptyState,
+  ErrorBanner,
+  Muted,
+  Screen,
+  SectionHead,
+  Slip,
+  SlipText,
+} from '../../components/ui';
 import { syncCatalogue } from '../../lib/catalogue';
 import { listLocalUnits } from '../../lib/db/catalogue.repository';
 import { listLocalCorrectiveActions } from '../../lib/db/corrective-action.repository';
@@ -61,6 +72,18 @@ export default function UnitsScreen() {
   });
   const toDo = actions.data?.filter((action) => awaitsResponse(action.effectiveStatus)).length ?? 0;
 
+  const renderUnit = useCallback(
+    ({ item }: { item: { id: string; name: string } }) => (
+      <Link href={{ pathname: '/unit/[unitId]', params: { unitId: item.id } }} asChild>
+        <Card accessibilityRole="button" accessibilityHint="Opens this Unit's Zones">
+          <Text style={styles.name}>{item.name}</Text>
+          <Muted>Zones, checklists and the way into an audit</Muted>
+        </Card>
+      </Link>
+    ),
+    [styles],
+  );
+
   if (units.isLoading) {
     return (
       <Screen style={styles.centered}>
@@ -69,30 +92,63 @@ export default function UnitsScreen() {
     );
   }
 
+  const count = units.data?.length ?? 0;
+
   return (
     <Screen>
-      <ErrorBanner
-        message={
-          sync.error ? 'Could not refresh — showing what is stored on this device.' : null
-        }
-      />
-
-      {answersActions && (
-        <Link href="/actions" asChild>
-          <Card>
-            <Text style={styles.name}>Nonconformities</Text>
-            <Muted>
-              {toDo > 0 ? `${toDo} waiting for your response` : 'Nothing waiting for you'}
-            </Muted>
-          </Card>
-        </Link>
-      )}
-
       <FlatList
         data={units.data ?? []}
         keyExtractor={(unit) => unit.id}
+        renderItem={renderUnit}
         refreshControl={
-          <RefreshControl refreshing={sync.isPending} onRefresh={() => sync.mutate()} />
+          <RefreshControl
+            refreshing={sync.isPending}
+            onRefresh={() => sync.mutate()}
+            colors={[theme.color.ink]}
+            progressBackgroundColor={theme.color.tile}
+          />
+        }
+        ListHeaderComponent={
+          <>
+            <ErrorBanner
+              message={
+                sync.error
+                  ? 'Could not refresh. Showing what is stored on this device; pull down to try again.'
+                  : null
+              }
+            />
+
+            {/* The one slip on this screen, and only when something is waiting for a response. */}
+            {answersActions && toDo > 0 ? (
+              <Link href="/actions" asChild>
+                <Slip
+                  accessibilityRole="button"
+                  title={`${toDo} nonconformit${toDo === 1 ? 'y' : 'ies'} waiting for you`}
+                >
+                  <SlipText>
+                    Record each fix with a live photograph, or explain why it is not possible.
+                  </SlipText>
+                </Slip>
+              </Link>
+            ) : null}
+            {answersActions && toDo === 0 ? (
+              <Link href="/actions" asChild>
+                <Card accessibilityRole="button">
+                  <View style={styles.row}>
+                    <Text style={styles.name}>Nonconformities</Text>
+                    <Chip>Nothing waiting</Chip>
+                  </View>
+                </Card>
+              </Link>
+            ) : null}
+
+            {count > 0 ? (
+              <SectionHead
+                title={`${count} Unit${count === 1 ? '' : 's'}`}
+                description="Stored on this device. Pull down to refresh."
+              />
+            ) : null}
+          </>
         }
         ListEmptyComponent={
           <EmptyState
@@ -104,14 +160,6 @@ export default function UnitsScreen() {
             }
           />
         }
-        renderItem={({ item }) => (
-          <Link href={{ pathname: '/unit/[unitId]', params: { unitId: item.id } }} asChild>
-            <Card>
-              <Text style={styles.name}>{item.name}</Text>
-              <Muted>Tap to see this Unit’s Zones</Muted>
-            </Card>
-          </Link>
-        )}
       />
     </Screen>
   );
@@ -119,11 +167,12 @@ export default function UnitsScreen() {
 
 const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
   name: {
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
     color: theme.color.ink,
     textTransform: 'uppercase',
-    marginTop: theme.space.xs,
+    marginBottom: 2,
   },
 }));

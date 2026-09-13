@@ -1,11 +1,24 @@
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
 import type { AuditScoreSummary } from '@audit5s/contracts';
-import { S_SECTION_SHORT_LABELS, bandFor } from '@audit5s/domain';
+import { bandFor, zoneDisplayLabel } from '@audit5s/domain';
 import { api } from '../../../lib/api';
-import { Card, EmptyState, Heading, Muted, Screen } from '../../../components/ui';
-import { createThemedStyles, ratingColor, useTheme } from '../../../lib/theme';
+import {
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  EmptyState,
+  Muted,
+  Screen,
+  SectionHead,
+  SectionRows,
+  StatGrid,
+  StatusBand,
+} from '../../../components/ui';
+import { formatPct } from '../../../lib/format';
+import { bandOf, createThemedStyles } from '../../../lib/theme';
 
 /**
  * The Consultant's score summary — `GET /audits/{id}/summary` (§8.6, N6).
@@ -20,6 +33,9 @@ import { createThemedStyles, ratingColor, useTheme } from '../../../lib/theme';
  * progress and showed them then; once it is finished, the number that matters is the one
  * the server recomputed, and showing a locally derived figure here would be showing a
  * second opinion on a settled question.
+ *
+ * The layout is the admin board's detail panel: figures, a band, then the five S rows —
+ * bars rather than the report's radar, because the question on site is "which S is weak".
  */
 export default function AuditSummaryScreen() {
   const styles = useStyles();
@@ -42,13 +58,21 @@ export default function AuditSummaryScreen() {
   if (summary.error || !summary.data) {
     return (
       <Screen>
-        <EmptyState
-          title="Scores not available"
-          detail={
-            'This needs a connection — the finished score is the server’s, not this ' +
-            'device’s. Try again when you have signal.'
-          }
-        />
+        <View style={styles.stack}>
+          <EmptyState
+            title="Scores not available"
+            detail={
+              'This needs a connection — the finished score is the server’s, not this ' +
+              'device’s. Try again when you have signal.'
+            }
+          />
+          <Button
+            title="Try again"
+            variant="secondary"
+            busy={summary.isFetching}
+            onPress={() => void summary.refetch()}
+          />
+        </View>
       </Screen>
     );
   }
@@ -71,27 +95,21 @@ export default function AuditSummaryScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.content}>
-        <Heading>Score summary</Heading>
-        <Muted>
-          Your own figures, as the server computed them. This is not the official report —
-          those are issued by a Super Admin.
-        </Muted>
+        <SectionHead
+          title="Score summary"
+          description="Your own figures, as the server computed them. This is not the official report; a Super Admin issues those."
+        />
 
-        <Card>
-          <Text style={styles.cardTitle}>Whole audit</Text>
-          <Totals totals={data.audit.totals} />
-          <SectionBars sections={data.audit.sections} />
-        </Card>
+        <ScoreBlock title="Whole audit" totals={data.audit.totals} sections={data.audit.sections} />
 
         {data.zones.map((zone) => (
-          <Card key={zone.auditZoneId ?? zone.auditId}>
-            <Text style={styles.cardTitle}>
-              Zone {zone.zoneCode} — {zone.zoneName}
-            </Text>
-            {zone.checklistTemplateName ? <Muted>{zone.checklistTemplateName}</Muted> : null}
-            <Totals totals={zone.totals} />
-            <SectionBars sections={zone.sections} />
-          </Card>
+          <ScoreBlock
+            key={zone.auditZoneId ?? zone.auditId}
+            title={zoneDisplayLabel(zone.zoneCode, zone.zoneName)}
+            description={zone.checklistTemplateName}
+            totals={zone.totals}
+            sections={zone.sections}
+          />
         ))}
 
         <Muted>
@@ -103,96 +121,50 @@ export default function AuditSummaryScreen() {
   );
 }
 
-function Totals({ totals }: { totals: AuditScoreSummary['audit']['totals'] }) {
+function ScoreBlock({
+  title,
+  description,
+  totals,
+  sections,
+}: {
+  title: string;
+  description?: string | null;
+  totals: AuditScoreSummary['audit']['totals'];
+  sections: AuditScoreSummary['audit']['sections'];
+}) {
   const styles = useStyles();
-  const theme = useTheme();
-  const band = bandFor(totals.scorePercentage);
-  const color = band ? ratingColor(band.token, theme.color) : theme.color.ink3;
+  const band = bandOf(totals.scorePercentage);
   return (
-    <View style={styles.totals}>
-      <View style={styles.totalCell}>
-        <Text style={styles.label}>MARKS</Text>
-        <Text style={styles.value}>
-          {totals.rawScore} / {totals.maxScore}
-        </Text>
+    <Card>
+      <CardHeader
+        title={title}
+        description={description}
+        action={band === 'none' ? null : <Chip tone={band}>{bandFor(totals.scorePercentage)?.label}</Chip>}
+      />
+      <StatGrid
+        items={[
+          { label: 'Marks', value: `${totals.rawScore}/${totals.maxScore}` },
+          { label: 'Score', value: formatPct(totals.scorePercentage), band },
+        ]}
+      />
+      <View style={styles.band}>
+        <StatusBand band={band} />
       </View>
-      <View style={[styles.totalCell, { borderBottomColor: color }]}>
-        <Text style={styles.label}>PERCENTAGE</Text>
-        <Text style={[styles.value, { color }]}>
-          {formatPercentage(totals.scorePercentage)}
-        </Text>
-      </View>
-      <View style={[styles.totalCell, { borderBottomColor: color }]}>
-        <Text style={styles.label}>RATING</Text>
-        <Text style={[styles.value, { color }]}>
-          {band?.label ?? 'N/A'}
-        </Text>
-      </View>
-    </View>
+      <SectionRows
+        marks
+        rows={sections.map((section) => ({
+          section: section.section,
+          pct: section.pct,
+          raw: section.raw,
+          max: section.max,
+        }))}
+      />
+    </Card>
   );
-}
-
-/**
- * The five S scores as bars.
- *
- * Bars rather than the report's radar: a pentagon at phone width is decoration, and the
- * question a Consultant asks on site is "which S is weak", which a sorted row of bars
- * answers at a glance. The colours are the shared rating-scale tokens, so this screen and
- * the PDF agree about what 74 % looks like.
- */
-function SectionBars({ sections }: { sections: AuditScoreSummary['audit']['sections'] }) {
-  const styles = useStyles();
-  const theme = useTheme();
-  return (
-    <View style={styles.sections}>
-      {sections.map((section) => {
-        const band = bandFor(section.pct);
-        const color = band ? ratingColor(band.token, theme.color) : theme.color.ink3;
-        return (
-          <View key={section.section} style={styles.sectionRow}>
-            <Text style={styles.sectionLabel}>{S_SECTION_SHORT_LABELS[section.section]}</Text>
-            <View style={styles.track}>
-              {section.pct === null ? (
-                <Text numberOfLines={1} style={styles.hatch}>╱╱╱╱╱╱╱╱╱╱╱╱╱╱</Text>
-              ) : (
-                <View style={[styles.fill, { width: `${section.pct}%`, backgroundColor: color }]} />
-              )}
-            </View>
-            <Text style={styles.sectionValue}>
-              {section.raw}/{section.max}
-            </Text>
-            <Text style={[styles.sectionPct, { color }]}>
-              {formatPercentage(section.pct)}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-/** A6: one decimal. `null` is "nothing applicable" (D4), never zero. */
-function formatPercentage(pct: number | null): string {
-  return pct === null ? 'N/A' : `${pct.toFixed(1)}%`;
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  content: { gap: theme.space.md, paddingBottom: theme.space.xl },
-  cardTitle: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
-  totals: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: theme.space.sm,
-  },
-  totalCell: { borderBottomWidth: 6, borderBottomColor: theme.color.edgeSoft, paddingBottom: theme.space.xs },
-  label: { fontFamily: theme.family.medium, fontSize: theme.font.label, letterSpacing: 1.1, color: theme.color.ink3 },
-  value: { fontFamily: theme.family.black, fontSize: theme.font.panel, color: theme.color.ink },
-  sections: { marginTop: theme.space.md, gap: 6 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionLabel: { width: 26, fontFamily: theme.family.medium, fontSize: theme.font.sm, color: theme.color.ink },
-  track: { flex: 1, height: 12, borderWidth: 1, borderColor: theme.color.edgeSoft, backgroundColor: theme.color.tile2, overflow: 'hidden' },
-  fill: { height: 10 },
-  hatch: { color: theme.color.ink3, fontFamily: theme.family.mono, fontSize: 11, lineHeight: 11 },
-  sectionValue: { width: 46, textAlign: 'right', fontFamily: theme.family.mono, fontSize: theme.font.sm, color: theme.color.ink2 },
-  sectionPct: { width: 52, textAlign: 'right', fontFamily: theme.family.monoMedium, fontSize: theme.font.sm },
+  content: { paddingBottom: theme.space.xl, gap: theme.space.sm },
+  stack: { gap: theme.space.md },
+  band: { marginTop: 10, marginBottom: theme.space.md },
 }));

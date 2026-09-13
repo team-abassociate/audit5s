@@ -1,3 +1,5 @@
+import { bandFor } from '@audit5s/domain';
+
 /** Generated from docs/design/gemba-tokens.css. Keep the names and values in sync. */
 export const gemba = {
   light: {
@@ -59,11 +61,37 @@ export const gembaFonts = {
   monoMedium: 'DMMono_500Medium',
 } as const;
 
-export function ratingColor(
-  token: string,
-  palette: (typeof gemba)[keyof typeof gemba],
-): string {
-  if (token === 'band-outstanding' || token === 'band-on-track') return palette.ok;
-  if (token === 'band-improving') return palette.warn;
-  return palette.crit;
+type Palette = (typeof gemba)[keyof typeof gemba];
+
+/**
+ * Score band → design-system band, the same mapping as admin-web's `lib/bands.ts`.
+ *
+ * `packages/domain` owns the scale (R-6b: four bands). The design system carries three colour
+ * pairs, so the two upper bands share `ok` and the band **label** keeps all four apart.
+ * `none` is "nothing applicable" or "not scored" — never a zero.
+ */
+export type Band = 'ok' | 'warn' | 'crit' | 'none';
+
+export function bandOf(percentage: number | null): Band {
+  const band = bandFor(percentage);
+  if (!band) return 'none';
+  if (band.token === 'band-outstanding' || band.token === 'band-on-track') return 'ok';
+  if (band.token === 'band-improving') return 'warn';
+  return 'crit';
+}
+
+/** The fill of a band, rail or track (`--ok-band` …). */
+export function bandFill(band: Band, palette: Palette): string {
+  if (band === 'ok') return palette.okBand;
+  if (band === 'warn') return palette.warnBand;
+  if (band === 'crit') return palette.critBand;
+  return palette.edgeSoft;
+}
+
+/** The text colour of a figure or chip in that band (`--ok` …). */
+export function bandInk(band: Band, palette: Palette): string {
+  if (band === 'ok') return palette.ok;
+  if (band === 'warn') return palette.warn;
+  if (band === 'crit') return palette.crit;
+  return palette.ink3;
 }

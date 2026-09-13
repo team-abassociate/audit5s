@@ -39,9 +39,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(true);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const running = useRef(false);
+  const again = useRef(false);
+  const latest = useRef<() => Promise<SyncResult>>(async () => ({
+    accepted: 0, conflicted: 0, failed: 0, deferred: 0, photosUploaded: 0, idle: true,
+  }));
 
   const sync = useCallback(async (): Promise<SyncResult> => {
     if (running.current) {
+      // Remember it: whatever was written since this cycle read the outbox goes out next.
+      again.current = true;
       return { accepted: 0, conflicted: 0, failed: 0, deferred: 0, photosUploaded: 0, idle: true };
     }
     running.current = true;
@@ -72,8 +78,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     } finally {
       running.current = false;
       setSyncing(false);
+      if (again.current) {
+        again.current = false;
+        void latest.current();
+      }
     }
   }, [database]);
+  latest.current = sync;
 
   useEffect(() => {
     void sync();

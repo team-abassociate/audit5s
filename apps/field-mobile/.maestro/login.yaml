@@ -1,0 +1,23 @@
+# The signed-out gate: the login tile renders and names its controls.
+#
+#   METRO_URL=http://10.0.2.2:8081 maestro test .maestro/login.yaml
+#
+# The debug build is a dev client, so the flow opens the bundle by deep link rather than
+# relying on whatever the launcher last loaded.
+appId: in.abassociate.audit5s
+env:
+  METRO_URL: http://10.0.2.2:8081
+---
+- launchApp:
+    clearState: true
+- openLink: audit5s://expo-development-client/?url=${METRO_URL}
+- extendedWaitUntil:
+    visible:
+      id: login-id
+    timeout: 60000
+- assertVisible:
+    id: password
+- assertVisible:
+    id: sign-in
+- assertVisible: "Issued when your account was created, e.g. RA3210"
+- takeScreenshot: login

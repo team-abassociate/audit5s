@@ -1,0 +1,36 @@
+# Sign in and walk the three tabs, screenshotting each for design review.
+#
+#   LOGIN_ID=SA0101 PASSWORD=... maestro test .maestro/tabs.yaml
+#
+# Credentials come from the environment and never live in this file. Needs the dev stack
+# (`./dev.sh up`) so sign-in can reach the API.
+appId: in.abassociate.audit5s
+env:
+  METRO_URL: http://10.0.2.2:8081
+---
+- launchApp
+- openLink: audit5s://expo-development-client/?url=${METRO_URL}
+- runFlow:
+    when:
+      visible:
+        id: login-id
+    commands:
+      - tapOn:
+          id: login-id
+      - inputText: ${LOGIN_ID}
+      - tapOn:
+          id: password
+      - inputText: ${PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: sign-in
+- extendedWaitUntil:
+    visible: "Sync now"
+    timeout: 60000
+- takeScreenshot: tab-units
+- tapOn: "History"
+- assertVisible: "Audits on this device"
+- takeScreenshot: tab-history
+- tapOn: "Profile"
+- assertVisible: "Sync catalogue"
+- takeScreenshot: tab-profile
