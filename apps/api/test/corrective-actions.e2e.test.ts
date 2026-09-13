@@ -385,14 +385,16 @@ describe('PART 6 — corrective actions', () => {
     expect(await status(leaderToken, inB.id)).toBe(404);
   });
 
-  it('submits: a Zone Leader of the Unit, assigned or not (R-3b); nobody else', async () => {
+  it('submits: a Zone Leader of the Unit, assigned or not (R-3b), or a Super Admin (R-18); nobody else', async () => {
     const { actions } = await walkBy(3);
     const body = { option: 'NOT_POSSIBLE', explanation: 'Structural — needs capex' };
 
     // Not the assignee, but a Zone Leader of the same Unit: accepted, deliberately.
     expect((await submit(world, secondLeader.accessToken, actions[0]!.id, body)).status).toBe(201);
     expect((await submit(world, world.outOfScopeActor.accessToken, actions[1]!.id, body)).status).toBe(404);
-    for (const role of ['SUPER_ADMIN', 'CONSULTANT', 'COORDINATOR'] as const) {
+    // R-18: a Super Admin answers any action.
+    expect((await submit(world, superAdmin, actions[2]!.id, body)).status).toBe(201);
+    for (const role of ['CONSULTANT', 'COORDINATOR'] as const) {
       expect((await submit(world, world.actors[role].accessToken, actions[2]!.id, body)).status).toBe(403);
     }
   });

@@ -149,12 +149,17 @@ describe('the catalogue version', () => {
 });
 
 describe('who may pull it', () => {
-  it('refuses the two web roles: they read the same data through the resource endpoints', async () => {
-    for (const role of ['SUPER_ADMIN', 'COORDINATOR'] as const) {
-      const response = await world.request('GET', `${base}/sync/catalogue`, {
-        token: world.actors[role].accessToken,
-      });
-      expect(response.status, role).toBe(403);
-    }
+  it('lets a Super Admin pull it, who is refused nothing (R-18)', async () => {
+    const response = await world.request('GET', `${base}/sync/catalogue`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+  });
+
+  it('refuses a Coordinator: they read the same data through the resource endpoints', async () => {
+    const response = await world.request('GET', `${base}/sync/catalogue`, {
+      token: world.actors.COORDINATOR.accessToken,
+    });
+    expect(response.status).toBe(403);
   });
 });

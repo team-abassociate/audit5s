@@ -516,6 +516,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       'audit:create_external / create_walk_by / create_cross — the cell is chosen by the ' +
       'auditType in the body, because §8.6 gives creation one endpoint and PART 6 gives it three',
     expected: {
+      SUPER_ADMIN: { inScope: CREATED },
       CONSULTANT: { inScope: CREATED },
       ZONE_LEADER: { inScope: CREATED },
     },
@@ -561,6 +562,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/audits/:auditId/start',
     description: 'audit:update — claims the single-writer lock; a second device gets 409 (D7)',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -582,6 +584,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/audits/:auditId/resume',
     description: 'audit:resume — same auditor, from the persisted cursors',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -592,6 +595,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/audits/:auditId/complete',
     description: 'audit:complete — the server recomputes every score on this edge (D5)',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -625,6 +629,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/audits/:auditId/zones/:auditZoneId',
     description: 'audit_zone:update — the upsert that takes the D6 snapshots on insert',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -635,6 +640,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/audits/:auditId/zones/:auditZoneId/complete',
     description: 'audit_zone:complete — guarded on every question of the pinned version (7.2)',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -645,6 +651,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/audit-zones/:auditZoneId/responses/:responseId',
     description: 'question_response:upsert — device owner, audit not COMPLETED; idempotent',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -656,9 +663,10 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     method: 'POST',
     path: '/api/v1/evidence/upload-intent',
     description:
-      'evidence:create — the metadata half of §9.4. Field roles only: a Super Admin has no ' +
-      'grant to create evidence at all, because evidence is captured, not administered',
+      'evidence:create — the metadata half of §9.4. Field roles, and a Super Admin, who is ' +
+      'refused nothing (R-18)',
     expected: {
+      SUPER_ADMIN: { inScope: CREATED },
       CONSULTANT: { inScope: CREATED },
       ZONE_LEADER: { inScope: CREATED },
     },
@@ -669,6 +677,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/evidence/:evidenceId/commit',
     description: 'evidence:create — HEAD, checksum, magic bytes, then E-1. Replaying it is §9.6',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -717,6 +726,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/evidence/:evidenceId',
     description: 'evidence:set_summary_flag — a clash is 409 SUMMARY_FLAG_TAKEN, from the index',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -727,6 +737,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/evidence/:evidenceId',
     description: 'evidence:soft_delete — soft, and 409 once the audit is completed (E-4)',
     expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
@@ -776,8 +787,8 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/corrective-actions/:correctiveActionId/submissions',
     description:
       'corrective_action:submit — Option A or B, one action, Idempotency-Key required. A ' +
-      'Zone Leader of the Unit, assigned or not (R-3b)',
-    expected: { ZONE_LEADER: { inScope: CREATED, outOfScope: NOT_FOUND } },
+      'Zone Leader of the Unit, assigned or not (R-3b), or a Super Admin (R-18)',
+    expected: { SUPER_ADMIN: { inScope: CREATED, outOfScope: CREATED }, ZONE_LEADER: { inScope: CREATED, outOfScope: NOT_FOUND } },
     coveredBy: 'corrective-actions.e2e.test.ts',
   },
   {
@@ -1018,8 +1029,9 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   {
     method: 'GET',
     path: '/api/v1/sync/catalogue',
-    description: 'sync:pull — the offline bootstrap; device roles only (§8.11)',
+    description: 'sync:pull — the offline bootstrap; device roles and a Super Admin (§8.11, R-18)',
     expected: {
+      SUPER_ADMIN: { inScope: OK },
       CONSULTANT: { inScope: OK },
       ZONE_LEADER: { inScope: OK },
     },
@@ -1031,6 +1043,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       'sync:push — the push path (§9.3). Answers 200 whatever happened inside: one ' +
       'malformed row produces a verdict, never a status that discards the other 99',
     expected: {
+      SUPER_ADMIN: { inScope: OK },
       CONSULTANT: { inScope: OK },
       ZONE_LEADER: { inScope: OK },
     },
@@ -1041,6 +1054,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/sync/status',
     description: 'sync:pull — the server’s view of this device, so a field problem is diagnosable',
     expected: {
+      SUPER_ADMIN: { inScope: OK },
       CONSULTANT: { inScope: OK },
       ZONE_LEADER: { inScope: OK },
     },

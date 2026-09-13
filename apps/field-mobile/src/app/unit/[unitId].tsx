@@ -191,12 +191,21 @@ export default function UnitZonesScreen() {
               startAudit.mutate(scope?.role === 'ZONE_LEADER' ? 'CROSS_5S' : 'EXTERNAL_5S')
             }
           />
-          {scope?.role === 'CONSULTANT' ? (
+          {scope?.role === 'CONSULTANT' || scope?.role === 'SUPER_ADMIN' ? (
             <Button
               title="Start walk-by"
               variant="secondary"
               busy={startAudit.isPending}
               onPress={() => startAudit.mutate('WALK_BY')}
+            />
+          ) : null}
+          {/* R-18: a Super Admin may start every audit type. */}
+          {scope?.role === 'SUPER_ADMIN' ? (
+            <Button
+              title="Start cross audit"
+              variant="secondary"
+              busy={startAudit.isPending}
+              onPress={() => startAudit.mutate('CROSS_5S')}
             />
           ) : null}
           <Muted>Live selfie required · work is saved on this device</Muted>

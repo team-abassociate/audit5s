@@ -715,7 +715,7 @@ describe('abort and resume (N7, §9.8)', () => {
     expect(stored.responses).toHaveLength(23);
   });
 
-  it('lets a Super Admin pause an audit and refuses them a resume (7.1)', async () => {
+  it('lets a Super Admin pause an audit and reach a resume, which still needs a device (7.1, R-18)', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
     const zoneId = await createZone('Z-44', 'Admin paused');
     const { auditId } = await startAuditWithZone({
@@ -731,13 +731,13 @@ describe('abort and resume (N7, §9.8)', () => {
     });
     expect(paused.status).toBe(200);
 
-    // `audit:resume` is granted to the two field roles only — the Super Admin is refused
-    // by the absent permission, before scope is even considered.
+    // R-18: `audit:resume` is his too, so no role refuses him. The single-writer lock (D7)
+    // still does: a resume names the device that will own the audit, and this one names none.
     const resumed = await world.request('POST', `${base}/audits/${auditId}/resume`, {
       token: asSuperAdmin(),
       body: {},
     });
-    expect(resumed.status).toBe(403);
+    expect(resumed.status, JSON.stringify(resumed.body)).toBe(422);
   });
 });
 

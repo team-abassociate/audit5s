@@ -223,3 +223,24 @@ describe('the table matches the diagrams in PART 7', () => {
     ]);
   });
 });
+
+describe('R-18 — a Super Admin is refused nothing', () => {
+  it('takes a move otherwise reserved to field roles', () => {
+    expect(
+      canTransition('corrective_action', 'OPEN', 'ACTION_SUBMITTED', { role: 'SUPER_ADMIN' }),
+    ).toEqual({ allowed: true });
+    expect(
+      canTransition('audit', 'IN_PROGRESS', 'COMPLETED', {
+        role: 'SUPER_ADMIN',
+        satisfied: ['all_zones_completed'],
+      }),
+    ).toEqual({ allowed: true });
+  });
+
+  it('still leaves system-only moves to the system', () => {
+    expect(canTransition('audit', 'COMPLETED', 'CLOSED', { role: 'SUPER_ADMIN' })).toMatchObject({
+      allowed: false,
+      reason: 'ROLE_NOT_PERMITTED',
+    });
+  });
+});

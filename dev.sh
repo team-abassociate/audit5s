@@ -106,7 +106,7 @@ cmd_up() {
 
   if [ -z "${CHROMIUM_EXECUTABLE_PATH:-}" ]; then
     say "Making sure the report worker's Chromium is installed"
-    pnpm --filter @audit5s/api exec playwright install chromium
+    pnpm --filter @audit5s/api exec playwright install --only-shell chromium
   fi
 
   for service in $SERVICES; do stop_service "$service"; done

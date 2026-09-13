@@ -51,7 +51,7 @@ const allRoles = (grant: ScopeGrant): Partial<Record<Role, ScopeGrant>> => ({
   ZONE_LEADER: grant,
 });
 
-export const PERMISSION_MATRIX: readonly PermissionDefinition[] = [
+const DEFINITIONS: readonly PermissionDefinition[] = [
   // ---------------------------------------------------------------- Identity & access
   {
     resource: 'user',
@@ -697,6 +697,18 @@ export const PERMISSION_MATRIX: readonly PermissionDefinition[] = [
     },
   },
 ] as const;
+
+/**
+ * R-18: a Super Admin is refused nothing. Every permission any role holds is also his,
+ * under `organization` — still a resolver through the same code path, never a bypass flag
+ * (AZ-4). Written as a rule rather than sixteen more cells so a permission added later
+ * cannot quietly lock him out. A cell that already names him (his own inbox) is kept.
+ */
+export const PERMISSION_MATRIX: readonly PermissionDefinition[] = DEFINITIONS.map((definition) =>
+  definition.grants.SUPER_ADMIN
+    ? definition
+    : { ...definition, grants: { SUPER_ADMIN: org, ...definition.grants } },
+);
 
 /** `resource:action` for every permission in the matrix. */
 export function permissionKeyOf(definition: PermissionDefinition): PermissionKey {

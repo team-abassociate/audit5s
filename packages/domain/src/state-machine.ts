@@ -248,6 +248,16 @@ export type TransitionVerdict = { allowed: true } | ({ allowed: false } & Transi
  * "already there" indistinguishable from "legally moved", which is precisely what the
  * audit-logged override path needs to tell apart.
  */
+/**
+ * Whether `role` may take `edge`. `null` is the system, which alone takes an edge with no
+ * actors. R-18: a Super Admin takes any move a person may take.
+ */
+function admits(edge: Transition<string>, role: Role | null): boolean {
+  if (role === null) return edge.actors.length === 0;
+  if (edge.actors.length === 0) return false;
+  return role === 'SUPER_ADMIN' || (edge.actors as readonly Role[]).includes(role);
+}
+
 export function canTransition(
   entity: StateMachineEntity,
   from: string,
@@ -261,9 +271,7 @@ export function canTransition(
 
   // A status pair may appear more than once only if a future table needs role-specific
   // guards on the same move; taking the first that admits the actor keeps that open.
-  const permitted = edges.filter((edge) =>
-    context.role === null ? edge.actors.length === 0 : (edge.actors as readonly Role[]).includes(context.role),
-  );
+  const permitted = edges.filter((edge) => admits(edge, context.role));
 
   if (permitted.length === 0) {
     const actors = [...new Set(edges.flatMap((edge) => edge.actors))];
@@ -354,8 +362,7 @@ export function nextStatuses(
   const reachable = TABLES[entity]
     .filter(
       (edge) =>
-        edge.from === from &&
-        (role === null ? edge.actors.length === 0 : (edge.actors as readonly Role[]).includes(role)),
+        edge.from === from && admits(edge, role),
     )
     .map((edge) => edge.to);
 

@@ -118,6 +118,13 @@ describe('the cells ARCHITECTURE.md §6.4 and §15.2 call out by name', () => {
 });
 
 describe('permissionsForRole', () => {
+  it('refuses a SUPER_ADMIN nothing: he holds every permission in the matrix (R-18)', () => {
+    const missing = PERMISSION_MATRIX.filter((definition) => !definition.grants.SUPER_ADMIN).map(
+      (definition) => `${definition.resource}:${definition.action}`,
+    );
+    expect(missing).toEqual([]);
+  });
+
   it('gives SUPER_ADMIN the widest set and CONSULTANT a strictly narrower one', () => {
     const superAdmin = permissionsForRole('SUPER_ADMIN');
     const consultant = permissionsForRole('CONSULTANT');

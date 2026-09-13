@@ -807,6 +807,12 @@ export class AuditsService {
       return request.assignmentId ?? null;
     }
 
+    // R-18: a Super Admin is never assigned work, so requiring an assignment would refuse
+    // him every external audit. He starts one unassigned, as he would a walk-by.
+    if (scope.actor.role === 'SUPER_ADMIN') {
+      return null;
+    }
+
     const assignmentScope = scopeFor(scope, 'audit_assignment:read');
 
     if (request.assignmentId) {

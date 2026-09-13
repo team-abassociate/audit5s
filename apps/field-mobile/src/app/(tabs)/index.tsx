@@ -25,6 +25,8 @@ export default function UnitsScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const { scope } = useSession();
+  // R-18: a Super Admin answers corrective actions too.
+  const answersActions = scope?.role === 'ZONE_LEADER' || scope?.role === 'SUPER_ADMIN';
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
 
@@ -55,7 +57,7 @@ export default function UnitsScreen() {
   const actions = useQuery({
     queryKey: ['local', 'corrective-actions'],
     queryFn: () => listLocalCorrectiveActions(database),
-    enabled: scope?.role === 'ZONE_LEADER',
+    enabled: answersActions,
   });
   const toDo = actions.data?.filter((action) => awaitsResponse(action.effectiveStatus)).length ?? 0;
 
@@ -75,7 +77,7 @@ export default function UnitsScreen() {
         }
       />
 
-      {scope?.role === 'ZONE_LEADER' && (
+      {answersActions && (
         <Link href="/actions" asChild>
           <Card>
             <Text style={styles.name}>Nonconformities</Text>

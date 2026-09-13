@@ -80,7 +80,8 @@ export class CorrectiveActionsService {
 
   /** §8.11's open actions, for a device. A Consultant reads actions but never answers one. */
   async listForCatalogue(scope: ScopeContext): Promise<CorrectiveAction[]> {
-    if (scope.actor.role !== 'ZONE_LEADER') return [];
+    // R-18: a Super Admin answers any action, so his device carries them all.
+    if (scope.actor.role !== 'ZONE_LEADER' && scope.actor.role !== 'SUPER_ADMIN') return [];
     const rows = await this.repository.listUnverified(scopeFor(scope, 'corrective_action:read'));
     return rows.map(toCorrectiveAction);
   }
@@ -152,7 +153,7 @@ export class CorrectiveActionsService {
     // AZ-5: this is reachable from `/sync/batch`, whose own permission is `sync:push`, so
     // the service asks the question the route would have.
     if (!grantFor(scope.actor.role, 'corrective_action:submit')) {
-      throw AppError.forbidden('FORBIDDEN', 'Only a Zone Leader answers a corrective action');
+      throw AppError.forbidden('FORBIDDEN', 'Only a Zone Leader or a Super Admin answers a corrective action');
     }
     const submitScope = scopeFor(scope, 'corrective_action:submit');
     const action = await this.mustFind(submitScope, actionId);

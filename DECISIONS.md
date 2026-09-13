@@ -1,4 +1,4 @@
-# Decision record — resolutions R-1 … R-17
+# Decision record — resolutions R-1 … R-18
 
 Companion to [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`STACK.md`](./STACK.md), the
 Stack Decision Record (the engineering handoff).
@@ -26,6 +26,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-15 | Phase 8: weighted analytics, own activity and rollup identity | Settled |
 | R-16 | Phase 9: dead letters, retention, drain and the PDF clock | Settled |
 | R-17 | Phase 9: how a data-integrity finding reaches a Super Admin | Settled |
+| R-18 | A Super Admin is refused nothing | Settled |
 
 ---
 
@@ -1086,3 +1087,48 @@ appears, or anything other than the API writes into the bucket.
 R-2 removed `domain_event` and made pg-boss the only enqueue mechanism. The checkbox is
 **not applicable**, not outstanding. The nearest live concern — a queue that has stopped
 being consumed — is §16.12's paging condition, still open and still recorded in R-16(c).
+
+---
+
+## R-18 — A Super Admin is refused nothing
+
+**Changes `ARCHITECTURE.md` §6.3 (the SA column), §7.1–§7.3 (the actor lists) and §8.11.**
+Settled 2026-09-13 by the product owner: *"a super admin shouldn't be refused … he must not
+be refused anything in the app."*
+
+Before this, sixteen cells of §6.3 withheld from the Super Admin everything a device does —
+starting, answering and completing an audit, capturing evidence, answering a corrective
+action, and `sync` itself — so he could not use the field app at all.
+
+### (a) One rule, not sixteen cells
+
+`PERMISSION_MATRIX` grants `SUPER_ADMIN` every permission any role holds, under
+`organization`. It is written as a rule over the definitions, so a permission added later
+cannot lock him out, and the matrix test asserts it. It is still a resolver through the same
+code path — **AZ-4 stands**; nothing became a bypass flag. His own inbox keeps `own_record`.
+
+### (b) What followed from the rule
+
+- **State machines.** `canTransition` admits a Super Admin on every edge a person may take.
+  Edges with no actors remain the system's.
+- **Row-level security (migration 0013).** `audit_insert` required a Unit membership he
+  cannot hold, and `app_may_answer_corrective_action()` named Zone Leaders only. Both gain
+  him beside their existing clauses; neither widens for any other role.
+- **Assignments.** `audit:create_external`'s "an active assignment must exist" is a
+  condition on the Consultant's cell. A Super Admin is never assigned work, so he starts an
+  external audit unassigned.
+- **The catalogue.** A device signed in as a Super Admin carries every unverified corrective
+  action, because he may answer any of them.
+
+### (c) What did not change
+
+- **One device owns an in-progress audit (D7).** The organization grant lets him *reach* any
+  audit; it does not let him write to one another device holds. He runs his own audits, and
+  frees a lost phone's lock with `release-device` as before.
+- **Nobody deletes an audit (D8).** There is no such permission to grant.
+- **Guards still apply.** A selfie, every question answered, a reason on a reopen — the
+  rule removes role refusals, not the conditions of a move.
+- **He may verify his own answer.** Submitting and verifying a corrective action were
+  separate roles; they now meet in one person when a Super Admin does both. Accepted with
+  the rule; every step is still audit-logged.
+

@@ -1759,38 +1759,38 @@ Cell = the scope resolver that applies. `—` = denied.
 | AuditAssignment | create | `organization` | — | — | — |
 | AuditAssignment | read | `organization` | `own_record` (assignee) | `own_unit` | `own_unit` |
 | AuditAssignment | cancel | `organization` | — | — | — |
-| Audit | create `EXTERNAL_5S` | — | `assigned_units` **and** an active assignment exists | — | — |
-| Audit | create `WALK_BY` | — | `assigned_units` | — | — |
-| Audit | create `CROSS_5S` | — | — | — | `own_unit` (**any active Zone**, N4; no self-audit restriction, D9) |
+| Audit | create `EXTERNAL_5S` | `organization` (R-18) | `assigned_units` **and** an active assignment exists | — | — |
+| Audit | create `WALK_BY` | `organization` (R-18) | `assigned_units` | — | — |
+| Audit | create `CROSS_5S` | `organization` (R-18) | — | — | `own_unit` (**any active Zone**, N4; no self-audit restriction, D9) |
 | Audit | read | `organization` | `own_audits` | `own_unit` | `own_unit` |
-| Audit | update (in progress) | — | `own_audits` **and** `owning_device_id = :device` | — | `own_audits` **and** device owner |
+| Audit | update (in progress) | `organization` (R-18) | `own_audits` **and** `owning_device_id = :device` | — | `own_audits` **and** device owner |
 | Audit | pause (abort) | `organization` | `own_audits` | — | `own_audits` |
-| Audit | resume | — | `own_audits` | — | `own_audits` |
-| Audit | complete | — | `own_audits` | — | `own_audits` |
+| Audit | resume | `organization` (R-18) | `own_audits` | — | `own_audits` |
+| Audit | complete | `organization` (R-18) | `own_audits` | — | `own_audits` |
 | Audit | cancel | `organization` | — | — | — |
 | Audit | **delete** | **— (nobody, ever)** | — | — | — |
 | Audit | edit_after_completion | `organization` (writes `AuditLog`) | — | — | — |
-| AuditZone | create / update / complete | — | `own_audits` + device owner | — | `own_audits` + device owner |
+| AuditZone | create / update / complete | `organization` (R-18) | `own_audits` + device owner | — | `own_audits` + device owner |
 | AuditZone | read | `organization` | `own_audits` | `own_unit` | `own_unit` |
-| QuestionResponse | upsert | — | `own_audits` + device owner + audit not COMPLETED | — | same |
+| QuestionResponse | upsert | `organization` (R-18) | `own_audits` + device owner + audit not COMPLETED | — | same |
 | QuestionResponse | read | `organization` | `own_audits` | `own_unit` | `own_unit` |
 
 ### Evidence
 
 | Resource | Action | SA | CON | COO | ZL |
 | --- | --- | --- | --- | --- | --- |
-| Evidence | create (upload intent) | — | `own_audits` | — | `own_audits`, or `assigned_actions` for `CORRECTIVE_AFTER` |
+| Evidence | create (upload intent) | `organization` (R-18) | `own_audits` | — | `own_audits`, or `assigned_actions` for `CORRECTIVE_AFTER` |
 | Evidence | read metadata | `organization` | `own_audits` | `own_unit` | `own_unit` |
 | Evidence | get presigned view URL | `organization` | `own_audits` | `own_unit` | `own_unit` (or `signed_token` for the linked item) |
-| Evidence | soft delete | — | `own_audits` **and** audit not COMPLETED (E-4) | — | same |
-| Evidence | set summary flag | — | `own_audits` | — | `own_audits` |
+| Evidence | soft delete | `organization` (R-18) | `own_audits` **and** audit not COMPLETED (E-4) | — | same |
+| Evidence | set summary flag | `organization` (R-18) | `own_audits` | — | `own_audits` |
 
 ### Corrective actions
 
 | Resource | Action | SA | CON | COO | ZL |
 | --- | --- | --- | --- | --- | --- |
 | CorrectiveAction | read | `organization` | `own_audits` (items raised by their audit) | `own_unit` | `own_unit` |
-| CorrectiveAction | submit (A or B) | — | — | — | `own_unit` **or** `signed_token` |
+| CorrectiveAction | submit (A or B) | `organization` (R-18) | — | — | `own_unit` **or** `signed_token` |
 | CorrectiveAction | verify | `organization` | — | — | — |
 | CorrectiveAction | reopen | `organization` | — | — | — |
 | CorrectiveAction | reassign | `organization` | — | `own_unit` | — |
@@ -1818,7 +1818,7 @@ Cell = the scope resolver that applies. `—` = denied.
 | NotificationPreference | update | `own_record` | `own_record` | `own_record` | `own_record` |
 | AuditLog | read | `organization` | — | — | — |
 | SyncConflict | read / resolve | `organization` | — | — | — |
-| Sync | push / pull | — | `assigned_units` ∩ `own_audits` | — | `own_unit` ∩ `own_audits` |
+| Sync | push / pull | `organization` (R-18) | `assigned_units` ∩ `own_audits` | — | `own_unit` ∩ `own_audits` |
 
 ## 6.4 Worked scope examples
 
