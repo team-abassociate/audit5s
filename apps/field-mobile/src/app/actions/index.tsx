@@ -1,4 +1,4 @@
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Stack } from 'expo-router';
 import { awaitsResponse, isOverdue } from '@audit5s/domain';
@@ -9,7 +9,7 @@ import {
   type LocalAction,
 } from '../../lib/db/corrective-action.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { theme } from '../../lib/theme';
+import { createThemedStyles, useTheme, type GembaTheme } from '../../lib/theme';
 
 /**
  * §2.4 step 5, "Opens Nonconformities": every open item of the Zone Leader's Unit — from
@@ -17,6 +17,8 @@ import { theme } from '../../lib/theme';
  * with the radio off. Items the device has answered but not yet synced say so.
  */
 export default function NonconformitiesScreen() {
+  const styles = useStyles();
+  const theme = useTheme();
   const database = useLocalDatabase();
   const actions = useQuery({
     queryKey: ['local', 'corrective-actions'],
@@ -43,7 +45,7 @@ export default function NonconformitiesScreen() {
                 <Text style={styles.zone}>
                   Zone {item.zoneCode} — {item.zoneName}
                 </Text>
-                <Text style={[styles.status, { color: statusColor(item) }]}>{statusLabel(item)}</Text>
+                <Text style={[styles.status, { color: statusColor(item, theme), borderColor: statusColor(item, theme) }]}>{statusLabel(item)}</Text>
               </View>
               <Muted>
                 {item.questionGlobalOrder ? `Q${item.questionGlobalOrder}: ${item.questionText ?? ''}` : 'Walk-by observation'}
@@ -62,13 +64,21 @@ export default function NonconformitiesScreen() {
   );
 }
 
-function statusColor(action: LocalAction): string {
-  if (action.pendingSubmissionId) return theme.color.textMuted;
-  return awaitsResponse(action.effectiveStatus) ? theme.color.accent : theme.color.textMuted;
+function statusColor(action: LocalAction, theme: GembaTheme): string {
+  if (action.pendingSubmissionId) return theme.color.ink2;
+  return awaitsResponse(action.effectiveStatus) ? theme.color.warn : theme.color.ink2;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: theme.space.sm },
-  zone: { fontSize: theme.font.base, fontWeight: '600', color: theme.color.text, flexShrink: 1 },
-  status: { fontSize: theme.font.sm, fontWeight: '600' },
-});
+  zone: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink, flexShrink: 1 },
+  status: {
+    fontFamily: theme.family.medium,
+    fontSize: theme.font.label,
+    textTransform: 'uppercase',
+    letterSpacing: 0.9,
+    borderWidth: 1.5,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+}));

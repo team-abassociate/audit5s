@@ -1,4 +1,4 @@
-import { SectionList, StyleSheet, Text } from 'react-native';
+import { SectionList, Text } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { S_SECTION_LABELS, S_SECTION_ORDER } from '@audit5s/domain';
@@ -8,7 +8,7 @@ import {
   listLocalQuestions,
 } from '../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { theme } from '../../lib/theme';
+import { createThemedStyles } from '../../lib/theme';
 
 /**
  * A published checklist, read from SQLite: five sections of ten, in workbook order.
@@ -18,6 +18,7 @@ import { theme } from '../../lib/theme';
  * under the right five headings, or something is wrong with the sync.
  */
 export default function ChecklistScreen() {
+  const styles = useStyles();
   const { versionId } = useLocalSearchParams<{ versionId: string }>();
   const database = useLocalDatabase();
 
@@ -69,20 +70,23 @@ export default function ChecklistScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   sectionTitle: {
-    fontSize: theme.font.sm,
-    fontWeight: '700',
-    color: theme.color.brand,
+    fontFamily: theme.family.bold,
+    fontSize: theme.font.panel,
+    color: theme.color.ink,
+    textTransform: 'uppercase',
+    letterSpacing: 0.32,
     marginTop: theme.space.lg,
     marginBottom: theme.space.sm,
   },
   question: {
+    fontFamily: theme.family.regular,
     fontSize: theme.font.base,
-    color: theme.color.text,
+    color: theme.color.ink,
     paddingVertical: theme.space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.color.border,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.color.edgeSoft,
   },
-  order: { color: theme.color.textMuted, fontWeight: '600' },
-});
+  order: { fontFamily: theme.family.monoMedium, color: theme.color.ink3 },
+}));

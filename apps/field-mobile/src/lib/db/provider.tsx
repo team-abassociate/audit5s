@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
 import { openExpoExecutor } from './expo-executor';
-import { theme } from '../theme';
+import { createThemedStyles, useTheme } from '../theme';
 
 /**
  * Opens the device database once, migrates it, and hands it to the tree.
@@ -15,6 +15,8 @@ import { theme } from '../theme';
 const LocalDatabaseContext = createContext<LocalDatabase | null>(null);
 
 export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
+  const styles = useStyles();
+  const theme = useTheme();
   const [database, setDatabase] = useState<LocalDatabase | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,8 +42,8 @@ export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
 
   if (error) {
     return (
-      <View style={centered}>
-        <Text style={{ color: theme.color.danger, textAlign: 'center', padding: theme.space.lg }}>
+      <View style={styles.centered}>
+        <Text style={styles.error}>
           {error}
         </Text>
       </View>
@@ -50,8 +52,8 @@ export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
 
   if (!database) {
     return (
-      <View style={centered}>
-        <ActivityIndicator color={theme.color.brand} />
+      <View style={styles.centered}>
+        <ActivityIndicator color={theme.color.ink} />
       </View>
     );
   }
@@ -69,9 +71,17 @@ export function useLocalDatabase(): LocalDatabase {
   return database;
 }
 
-const centered = {
-  flex: 1,
-  alignItems: 'center' as const,
-  justifyContent: 'center' as const,
-  backgroundColor: theme.color.background,
-};
+const useStyles = createThemedStyles((theme) => ({
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.color.board,
+  },
+  error: {
+    color: theme.color.crit,
+    fontFamily: theme.family.regular,
+    textAlign: 'center',
+    padding: theme.space.lg,
+  },
+}));

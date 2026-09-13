@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { PASSWORD_MIN_LENGTH } from '@audit5s/contracts';
 import { PASSWORD_REJECTION_MESSAGES, checkPassword } from '@audit5s/domain';
 import { Button, ErrorBanner, Field, Heading, Muted, Screen } from '../components/ui';
 import { ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
-import { theme } from '../lib/theme';
+import { createThemedStyles } from '../lib/theme';
 
 /**
  * The forced reset (CH-1).
@@ -15,6 +15,7 @@ import { theme } from '../lib/theme';
  * round trip, and the two can never disagree about what counts as acceptable.
  */
 export default function ResetPasswordScreen() {
+  const styles = useStyles();
   const { user, changePassword, signOut } = useSession();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -111,6 +112,6 @@ export default function ResetPasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   content: { flexGrow: 1, justifyContent: 'center', gap: theme.space.sm },
-});
+}));

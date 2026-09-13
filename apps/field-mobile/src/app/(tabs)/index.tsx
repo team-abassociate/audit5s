@@ -1,4 +1,4 @@
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, Text } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import { awaitsResponse } from '@audit5s/domain';
@@ -8,7 +8,7 @@ import { listLocalUnits } from '../../lib/db/catalogue.repository';
 import { listLocalCorrectiveActions } from '../../lib/db/corrective-action.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { useSession } from '../../lib/session';
-import { theme } from '../../lib/theme';
+import { createThemedStyles, useTheme } from '../../lib/theme';
 
 /**
  * The Units the signed-in user may touch — **rendered from SQLite** (§2.3 step 3).
@@ -22,6 +22,8 @@ import { theme } from '../../lib/theme';
  * hidden by the client.
  */
 export default function UnitsScreen() {
+  const styles = useStyles();
+  const theme = useTheme();
   const { scope } = useSession();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
@@ -60,7 +62,7 @@ export default function UnitsScreen() {
   if (units.isLoading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={theme.color.brand} />
+        <ActivityIndicator color={theme.color.ink} />
       </Screen>
     );
   }
@@ -113,12 +115,13 @@ export default function UnitsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
   name: {
-    fontSize: theme.font.lg,
-    fontWeight: '600',
-    color: theme.color.text,
+    fontFamily: theme.family.bold,
+    fontSize: theme.font.panel,
+    color: theme.color.ink,
+    textTransform: 'uppercase',
     marginTop: theme.space.xs,
   },
-});
+}));

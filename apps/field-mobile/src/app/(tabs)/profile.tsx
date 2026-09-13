@@ -1,4 +1,4 @@
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
@@ -8,7 +8,7 @@ import { useLocalDatabase } from '../../lib/db/provider';
 import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
 import { checkLogoutGate } from '../../lib/sync/status';
-import { theme } from '../../lib/theme';
+import { createThemedStyles } from '../../lib/theme';
 import type { ConsultantActivity } from '@audit5s/contracts';
 import { api } from '../../lib/api';
 
@@ -20,6 +20,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function ProfileScreen() {
+  const styles = useStyles();
   const { user, scope, signOut } = useSession();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
@@ -203,6 +204,7 @@ export default function ProfileScreen() {
 }
 
 function Row({ label, value }: { label: string; value: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -211,7 +213,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   content: { gap: theme.space.sm, paddingBottom: theme.space.xl },
   syncButton: { marginTop: theme.space.sm },
   row: {
@@ -221,6 +223,6 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.sm,
     gap: theme.space.md,
   },
-  rowLabel: { fontSize: theme.font.sm, color: theme.color.textMuted },
-  rowValue: { fontSize: theme.font.base, color: theme.color.text, flexShrink: 1, textAlign: 'right' },
-});
+  rowLabel: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink3, textTransform: 'uppercase', letterSpacing: 1.1 },
+  rowValue: { fontFamily: theme.family.mono, fontSize: theme.font.sm, color: theme.color.ink, flexShrink: 1, textAlign: 'right' },
+}));

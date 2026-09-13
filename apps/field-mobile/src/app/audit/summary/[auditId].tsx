@@ -1,11 +1,11 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
 import type { AuditScoreSummary } from '@audit5s/contracts';
 import { S_SECTION_SHORT_LABELS, bandFor } from '@audit5s/domain';
 import { api } from '../../../lib/api';
 import { Card, EmptyState, Heading, Muted, Screen } from '../../../components/ui';
-import { theme } from '../../../lib/theme';
+import { createThemedStyles, ratingColor, useTheme } from '../../../lib/theme';
 
 /**
  * The Consultant's score summary — `GET /audits/{id}/summary` (§8.6, N6).
@@ -22,6 +22,7 @@ import { theme } from '../../../lib/theme';
  * second opinion on a settled question.
  */
 export default function AuditSummaryScreen() {
+  const styles = useStyles();
   const { auditId } = useLocalSearchParams<{ auditId: string }>();
 
   const summary = useQuery({
@@ -68,57 +69,62 @@ export default function AuditSummaryScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
-      <Heading>Score summary</Heading>
-      <Muted>
-        Your own figures, as the server computed them. This is not the official report —
-        those are issued by a Super Admin.
-      </Muted>
+    <Screen>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Heading>Score summary</Heading>
+        <Muted>
+          Your own figures, as the server computed them. This is not the official report —
+          those are issued by a Super Admin.
+        </Muted>
 
-      <Card>
-        <Text style={styles.cardTitle}>Whole audit</Text>
-        <Totals totals={data.audit.totals} />
-        <SectionBars sections={data.audit.sections} />
-      </Card>
-
-      {data.zones.map((zone) => (
-        <Card key={zone.auditZoneId ?? zone.auditId}>
-          <Text style={styles.cardTitle}>
-            Zone {zone.zoneCode} — {zone.zoneName}
-          </Text>
-          {zone.checklistTemplateName ? <Muted>{zone.checklistTemplateName}</Muted> : null}
-          <Totals totals={zone.totals} />
-          <SectionBars sections={zone.sections} />
+        <Card>
+          <Text style={styles.cardTitle}>Whole audit</Text>
+          <Totals totals={data.audit.totals} />
+          <SectionBars sections={data.audit.sections} />
         </Card>
-      ))}
 
-      <Muted>
-        NA answers are excluded from the applicable maximum, so a Zone with nothing
-        applicable shows N/A rather than 0%.
-      </Muted>
-    </ScrollView>
+        {data.zones.map((zone) => (
+          <Card key={zone.auditZoneId ?? zone.auditId}>
+            <Text style={styles.cardTitle}>
+              Zone {zone.zoneCode} — {zone.zoneName}
+            </Text>
+            {zone.checklistTemplateName ? <Muted>{zone.checklistTemplateName}</Muted> : null}
+            <Totals totals={zone.totals} />
+            <SectionBars sections={zone.sections} />
+          </Card>
+        ))}
+
+        <Muted>
+          NA answers are excluded from the applicable maximum, so a Zone with nothing
+          applicable shows N/A rather than 0%.
+        </Muted>
+      </ScrollView>
+    </Screen>
   );
 }
 
 function Totals({ totals }: { totals: AuditScoreSummary['audit']['totals'] }) {
+  const styles = useStyles();
+  const theme = useTheme();
   const band = bandFor(totals.scorePercentage);
+  const color = band ? ratingColor(band.token, theme.color) : theme.color.ink3;
   return (
     <View style={styles.totals}>
-      <View>
+      <View style={styles.totalCell}>
         <Text style={styles.label}>MARKS</Text>
         <Text style={styles.value}>
           {totals.rawScore} / {totals.maxScore}
         </Text>
       </View>
-      <View>
+      <View style={[styles.totalCell, { borderBottomColor: color }]}>
         <Text style={styles.label}>PERCENTAGE</Text>
-        <Text style={[styles.value, band ? { color: band.color } : styles.na]}>
+        <Text style={[styles.value, { color }]}>
           {formatPercentage(totals.scorePercentage)}
         </Text>
       </View>
-      <View>
+      <View style={[styles.totalCell, { borderBottomColor: color }]}>
         <Text style={styles.label}>RATING</Text>
-        <Text style={[styles.value, band ? { color: band.color } : styles.na]}>
+        <Text style={[styles.value, { color }]}>
           {band?.label ?? 'N/A'}
         </Text>
       </View>
@@ -135,28 +141,27 @@ function Totals({ totals }: { totals: AuditScoreSummary['audit']['totals'] }) {
  * the PDF agree about what 74 % looks like.
  */
 function SectionBars({ sections }: { sections: AuditScoreSummary['audit']['sections'] }) {
+  const styles = useStyles();
+  const theme = useTheme();
   return (
     <View style={styles.sections}>
       {sections.map((section) => {
         const band = bandFor(section.pct);
+        const color = band ? ratingColor(band.token, theme.color) : theme.color.ink3;
         return (
           <View key={section.section} style={styles.sectionRow}>
             <Text style={styles.sectionLabel}>{S_SECTION_SHORT_LABELS[section.section]}</Text>
             <View style={styles.track}>
-              <View
-                style={[
-                  styles.fill,
-                  {
-                    width: `${section.pct ?? 0}%`,
-                    backgroundColor: band?.color ?? theme.color.textMuted,
-                  },
-                ]}
-              />
+              {section.pct === null ? (
+                <Text numberOfLines={1} style={styles.hatch}>╱╱╱╱╱╱╱╱╱╱╱╱╱╱</Text>
+              ) : (
+                <View style={[styles.fill, { width: `${section.pct}%`, backgroundColor: color }]} />
+              )}
             </View>
             <Text style={styles.sectionValue}>
               {section.raw}/{section.max}
             </Text>
-            <Text style={[styles.sectionPct, band ? { color: band.color } : styles.na]}>
+            <Text style={[styles.sectionPct, { color }]}>
               {formatPercentage(section.pct)}
             </Text>
           </View>
@@ -171,22 +176,23 @@ function formatPercentage(pct: number | null): string {
   return pct === null ? 'N/A' : `${pct.toFixed(1)}%`;
 }
 
-const styles = StyleSheet.create({
-  content: { padding: theme.space.md, gap: theme.space.md },
-  cardTitle: { fontSize: theme.font.lg, fontWeight: '600', color: theme.color.text },
+const useStyles = createThemedStyles((theme) => ({
+  content: { gap: theme.space.md, paddingBottom: theme.space.xl },
+  cardTitle: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
   totals: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: theme.space.sm,
   },
-  label: { fontSize: 10, letterSpacing: 0.6, color: theme.color.textMuted },
-  value: { fontSize: theme.font.lg, fontWeight: '700', color: theme.color.text },
-  na: { color: theme.color.textMuted },
+  totalCell: { borderBottomWidth: 6, borderBottomColor: theme.color.edgeSoft, paddingBottom: theme.space.xs },
+  label: { fontFamily: theme.family.medium, fontSize: theme.font.label, letterSpacing: 1.1, color: theme.color.ink3 },
+  value: { fontFamily: theme.family.black, fontSize: theme.font.panel, color: theme.color.ink },
   sections: { marginTop: theme.space.md, gap: 6 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionLabel: { width: 26, fontSize: theme.font.sm, fontWeight: '600', color: theme.color.text },
-  track: { flex: 1, height: 10, borderRadius: 5, backgroundColor: '#EFE7E4', overflow: 'hidden' },
-  fill: { height: 10, borderRadius: 5 },
-  sectionValue: { width: 46, textAlign: 'right', fontSize: theme.font.sm, color: theme.color.textMuted },
-  sectionPct: { width: 52, textAlign: 'right', fontSize: theme.font.sm, fontWeight: '600' },
-});
+  sectionLabel: { width: 26, fontFamily: theme.family.medium, fontSize: theme.font.sm, color: theme.color.ink },
+  track: { flex: 1, height: 12, borderWidth: 1, borderColor: theme.color.edgeSoft, backgroundColor: theme.color.tile2, overflow: 'hidden' },
+  fill: { height: 10 },
+  hatch: { color: theme.color.ink3, fontFamily: theme.family.mono, fontSize: 11, lineHeight: 11 },
+  sectionValue: { width: 46, textAlign: 'right', fontFamily: theme.family.mono, fontSize: theme.font.sm, color: theme.color.ink2 },
+  sectionPct: { width: 52, textAlign: 'right', fontFamily: theme.family.monoMedium, fontSize: theme.font.sm },
+}));

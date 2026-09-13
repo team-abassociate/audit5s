@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TextInput, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { ResponseValue, SSection } from '@audit5s/contracts';
@@ -25,7 +25,7 @@ import {
   scoreLocalZone,
 } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { theme } from '../../lib/theme';
+import { createThemedStyles, ratingColor, useTheme } from '../../lib/theme';
 
 /**
  * The questionnaire: 5 sections × 10, one question on screen at a time.
@@ -40,6 +40,8 @@ import { theme } from '../../lib/theme';
  * say, which is the Phase 3 acceptance row.
  */
 export default function QuestionnaireScreen() {
+  const styles = useStyles();
+  const theme = useTheme();
   const { auditZoneId } = useLocalSearchParams<{ auditZoneId: string }>();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
@@ -188,7 +190,7 @@ export default function QuestionnaireScreen() {
   if (zone.isLoading || questions.isLoading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={theme.color.brand} />
+        <ActivityIndicator color={theme.color.ink} />
       </Screen>
     );
   }
@@ -217,7 +219,7 @@ export default function QuestionnaireScreen() {
               style={styles.remarkInput}
               multiline
               placeholder="Anything the report should carry about this Zone"
-              placeholderTextColor={theme.color.textMuted}
+              placeholderTextColor={theme.color.ink2}
               value={zoneRemarkDraft}
               onChangeText={setZoneRemarkDraft}
             />
@@ -316,7 +318,7 @@ export default function QuestionnaireScreen() {
             style={styles.remarkInput}
             multiline
             placeholder="What you saw, in your words"
-            placeholderTextColor={theme.color.textMuted}
+            placeholderTextColor={theme.color.ink2}
             value={remarkDraft}
             onChangeText={setRemarkDraft}
             onBlur={() => {
@@ -372,6 +374,8 @@ function ScoreCard({
   breakdown: Awaited<ReturnType<typeof scoreLocalZone>> | undefined;
   answered: number;
 }) {
+  const styles = useStyles();
+  const theme = useTheme();
   if (!breakdown) return null;
   const percentage = breakdown.totals.scorePercentage;
   const band = bandFor(percentage);
@@ -379,7 +383,7 @@ function ScoreCard({
   return (
     <Card>
       <Text style={styles.label}>Score so far</Text>
-      <Text style={[styles.score, band ? { color: band.color } : null]}>
+      <Text style={[styles.score, band ? { color: ratingColor(band.token, theme.color) } : styles.naScore]}>
         {percentage === null ? 'N/A' : `${percentage.toFixed(1)}%`}
       </Text>
       <Muted>
@@ -391,40 +395,43 @@ function ScoreCard({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
   body: { gap: theme.space.sm, paddingBottom: theme.space.lg },
   summary: { gap: theme.space.md, paddingBottom: theme.space.xl },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: theme.space.xs },
-  progressText: { fontSize: theme.font.sm, fontWeight: '700', color: theme.color.text },
-  sectionLabel: { fontSize: theme.font.sm, color: theme.color.textMuted },
+  progressText: { fontFamily: theme.family.monoMedium, fontSize: theme.font.sm, color: theme.color.ink },
+  sectionLabel: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink3, textTransform: 'uppercase', letterSpacing: 1.1 },
   progressTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.color.border,
+    height: 6,
+    backgroundColor: theme.color.edgeSoft,
     marginBottom: theme.space.md,
     overflow: 'hidden',
   },
-  progressFill: { height: 4, backgroundColor: theme.color.brand },
-  question: { fontSize: theme.font.lg, fontWeight: '600', color: theme.color.text },
+  progressFill: { height: 6, backgroundColor: theme.color.accent },
+  question: { fontFamily: theme.family.medium, fontSize: theme.font.panel, lineHeight: 24, color: theme.color.ink },
   label: {
-    fontSize: theme.font.sm,
-    fontWeight: '600',
-    color: theme.color.textMuted,
+    fontFamily: theme.family.medium,
+    fontSize: theme.font.label,
+    color: theme.color.ink3,
     marginBottom: theme.space.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 1.4,
   },
   remarkInput: {
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.sm,
+    borderWidth: 1.5,
+    borderColor: theme.color.edge,
     padding: theme.space.sm,
     minHeight: 64,
-    color: theme.color.text,
+    fontFamily: theme.family.regular,
+    color: theme.color.ink,
+    backgroundColor: theme.color.tile2,
     textAlignVertical: 'top',
   },
-  score: { fontSize: theme.font.xl, fontWeight: '700', color: theme.color.text },
-  sectionTitle: { fontSize: theme.font.xl, fontWeight: '700', color: theme.color.text },
+  score: { fontFamily: theme.family.black, fontSize: theme.font.figure, letterSpacing: -1.1, color: theme.color.ink },
+  naScore: { color: theme.color.ink3, backgroundColor: theme.color.tile2 },
+  sectionTitle: { fontFamily: theme.family.bold, fontSize: theme.font.heading, color: theme.color.ink, textTransform: 'uppercase', letterSpacing: 0.38 },
   footer: { gap: theme.space.sm, paddingTop: theme.space.sm },
   navRow: { flexDirection: 'row', gap: theme.space.sm },
   navButton: { flex: 1 },
-});
+}));

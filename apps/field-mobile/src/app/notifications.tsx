@@ -1,10 +1,10 @@
-import { FlatList, Pressable, StyleSheet, Text } from 'react-native';
+import { FlatList, Pressable, Text } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import type { NotificationPage } from '@audit5s/contracts';
 import { EmptyState, ErrorBanner, Muted, Screen } from '../components/ui';
 import { api } from '../lib/api';
-import { theme } from '../lib/theme';
+import { createThemedStyles } from '../lib/theme';
 
 /**
  * The notification centre (§8.10). Notifications are server rows written by a worker, so
@@ -12,6 +12,7 @@ import { theme } from '../lib/theme';
  * last page it had.
  */
 export default function NotificationsScreen() {
+  const styles = useStyles();
   const queryClient = useQueryClient();
   const page = useQuery({
     queryKey: ['notifications'],
@@ -47,15 +48,16 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   row: {
+    minHeight: 48,
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.color.textMuted,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.color.edgeSoft,
   },
-  unread: { backgroundColor: '#FFF7F3' },
-  title: { fontSize: theme.font.base, color: theme.color.text },
-  bold: { fontWeight: '700' },
-  body: { fontSize: theme.font.sm, color: theme.color.text, marginVertical: theme.space.xs },
-});
+  unread: { backgroundColor: theme.color.accentSoft, borderLeftWidth: 4, borderLeftColor: theme.color.accent },
+  title: { fontFamily: theme.family.regular, fontSize: theme.font.base, color: theme.color.ink },
+  bold: { fontFamily: theme.family.bold },
+  body: { fontFamily: theme.family.regular, fontSize: theme.font.sm, color: theme.color.ink, marginVertical: theme.space.xs },
+}));

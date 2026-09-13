@@ -1,10 +1,10 @@
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Button, Card, EmptyState, Muted, Screen } from '../../components/ui';
 import { listLocalAudits, pendingOutboxCount } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { theme } from '../../lib/theme';
+import { createThemedStyles } from '../../lib/theme';
 
 /**
  * Audit history — **this device's** audits, read from SQLite.
@@ -17,6 +17,7 @@ import { theme } from '../../lib/theme';
  * separately.
  */
 export default function HistoryScreen() {
+  const styles = useStyles();
   const database = useLocalDatabase();
   const router = useRouter();
 
@@ -119,7 +120,7 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 
-const styles = StyleSheet.create({
-  title: { fontSize: theme.font.lg, fontWeight: '600', color: theme.color.text },
+const useStyles = createThemedStyles((theme) => ({
+  title: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
   action: { marginTop: theme.space.sm, flexDirection: 'row', gap: theme.space.sm },
-});
+}));

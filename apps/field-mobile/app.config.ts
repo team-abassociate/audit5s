@@ -13,11 +13,10 @@ const config: ExpoConfig = {
   version: '0.1.0',
   orientation: 'portrait',
   scheme: 'audit5s',
-  userInterfaceStyle: 'light',
+  userInterfaceStyle: 'automatic',
   android: {
     package: 'in.abassociate.audit5s',
     versionCode: 1,
-    adaptiveIcon: { backgroundColor: '#5C1816' },
     /*
      * Exactly the permissions Phase 4's code asks for, and no more.
      *

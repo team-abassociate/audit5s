@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
-import { Button, Muted } from './ui';
+import { Button } from './ui';
 import { processCapturedPhoto, type ProcessedImage } from '../lib/capture/media';
-import { theme } from '../lib/theme';
+import { gemba, gembaFonts } from '../lib/gemba';
 
 /**
  * The live-capture camera (§12.10).
@@ -42,7 +42,7 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }:
   if (!permission) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color={theme.color.brand} />
+        <ActivityIndicator color={gemba.dark.ink} />
       </View>
     );
   }
@@ -51,10 +51,10 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }:
     return (
       <View style={styles.centered}>
         <Text style={styles.prompt}>The camera is needed to record evidence</Text>
-        <Muted>
+        <Text style={styles.detail}>
           Photographs are the record of what was found. Without the camera an audit cannot be
           completed.
-        </Muted>
+        </Text>
         <Button title="Allow the camera" onPress={() => void requestPermission()} />
         <Button title="Back" variant="secondary" onPress={onCancel} />
       </View>
@@ -86,7 +86,7 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }:
           onPress={() => void take()}
           style={[styles.shutter, busy && styles.shutterBusy]}
         >
-          {busy ? <ActivityIndicator color="#fff" /> : <View style={styles.shutterInner} />}
+          {busy ? <ActivityIndicator color={gemba.dark.ink} /> : <View style={styles.shutterInner} />}
         </Pressable>
         <Button title="Cancel" variant="secondary" onPress={onCancel} />
       </View>
@@ -95,20 +95,20 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }:
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+  container: { flex: 1, backgroundColor: gemba.dark.board },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, backgroundColor: gemba.dark.board },
   preview: { flex: 1 },
-  controls: { padding: 20, gap: 14, alignItems: 'center', backgroundColor: '#000' },
-  prompt: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  controls: { padding: 20, gap: 14, alignItems: 'center', backgroundColor: gemba.dark.board },
+  prompt: { color: gemba.dark.ink, fontFamily: gembaFonts.medium, fontSize: 16, textAlign: 'center' },
+  detail: { color: gemba.dark.ink2, fontFamily: gembaFonts.regular, fontSize: 13, lineHeight: 20, textAlign: 'center' },
   shutter: {
     width: 76,
     height: 76,
-    borderRadius: 38,
     borderWidth: 4,
-    borderColor: '#fff',
+    borderColor: gemba.dark.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shutterBusy: { opacity: 0.6 },
-  shutterInner: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#fff' },
+  shutterInner: { width: 58, height: 58, backgroundColor: gemba.dark.ink },
 });

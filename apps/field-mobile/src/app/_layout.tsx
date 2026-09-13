@@ -3,15 +3,22 @@
 import '../lib/crypto-polyfill';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular';
+import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold';
+import { Archivo_800ExtraBold } from '@expo-google-fonts/archivo/800ExtraBold';
+import { Archivo_900Black } from '@expo-google-fonts/archivo/900Black';
+import { DMMono_400Regular } from '@expo-google-fonts/dm-mono/400Regular';
+import { DMMono_500Medium } from '@expo-google-fonts/dm-mono/500Medium';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LocalDatabaseProvider } from '../lib/db/provider';
 import { SessionProvider, useSession } from '../lib/session';
 import { SyncProvider } from '../lib/sync/provider';
 import { SyncStatusBar } from '../components/sync-status-bar';
-import { theme } from '../lib/theme';
+import { useTheme } from '../lib/theme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +41,8 @@ const queryClient = new QueryClient({
  * mirrors that rather than letting the user reach a tab that would only 403.
  */
 function AuthGate() {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { status } = useSession();
   const segments = useSegments();
   const router = useRouter();
@@ -73,8 +82,8 @@ function AuthGate() {
 
   if (status === 'loading') {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.background }}>
-        <ActivityIndicator color={theme.color.brand} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.board }}>
+        <ActivityIndicator color={theme.color.ink} />
       </View>
     );
   }
@@ -87,19 +96,45 @@ function AuthGate() {
   return (
     <>
       {signedIn && <SyncStatusBar />}
-      <Slot />
+      {/* The sync bar already pads for the status bar; headers below it must not pad again. */}
+      <SafeAreaInsetsContext.Provider value={signedIn ? { ...insets, top: 0 } : insets}>
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: theme.color.tile2 },
+            headerTintColor: theme.color.ink,
+            headerTitleStyle: { fontFamily: theme.family.bold },
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: theme.color.board },
+          }}
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+        </Stack>
+      </SafeAreaInsetsContext.Provider>
     </>
   );
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Archivo_400Regular,
+    Archivo_600SemiBold,
+    Archivo_800ExtraBold,
+    Archivo_900Black,
+    DMMono_400Regular,
+    DMMono_500Medium,
+  });
+
+  if (!fontsLoaded && !fontError) return null;
+
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <LocalDatabaseProvider>
           <SessionProvider>
             <SyncProvider>
-              <StatusBar style="light" />
+              <StatusBar style="auto" />
               <AuthGate />
             </SyncProvider>
           </SessionProvider>

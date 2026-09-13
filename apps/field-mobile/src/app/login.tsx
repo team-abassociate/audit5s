@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { Button, ErrorBanner, Field, Heading, Muted, Screen } from '../components/ui';
 import { ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
-import { theme } from '../lib/theme';
+import { createThemedStyles } from '../lib/theme';
 
 export default function LoginScreen() {
+  const styles = useStyles();
   const { signIn } = useSession();
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
@@ -80,18 +81,16 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   content: { flexGrow: 1, justifyContent: 'center', gap: theme.space.sm },
   brand: { alignItems: 'center', marginBottom: theme.space.xl, gap: theme.space.xs },
   brandMark: {
-    backgroundColor: theme.color.accent,
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: theme.font.xl,
+    backgroundColor: theme.color.ink,
+    color: theme.color.board,
+    fontFamily: theme.family.black,
+    fontSize: theme.font.figure,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.space.sm,
-    borderRadius: theme.radius.md,
-    overflow: 'hidden',
     marginBottom: theme.space.sm,
   },
-});
+}));

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { CorrectiveOption, EvidenceViewUrl, SSection } from '@audit5s/contracts';
@@ -19,7 +19,7 @@ import {
 import { useLocalDatabase } from '../../lib/db/provider';
 import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
-import { theme } from '../../lib/theme';
+import { createThemedStyles, useTheme } from '../../lib/theme';
 
 /**
  * One corrective action (§2.4 steps 6–9, §7.3).
@@ -30,6 +30,8 @@ import { theme } from '../../lib/theme';
  * capture path the app has.
  */
 export default function CorrectiveActionScreen() {
+  const styles = useStyles();
+  const theme = useTheme();
   const { actionId } = useLocalSearchParams<{ actionId: string }>();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
@@ -104,7 +106,7 @@ export default function CorrectiveActionScreen() {
   if (action.isLoading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={theme.color.brand} />
+        <ActivityIndicator color={theme.color.ink} />
       </Screen>
     );
   }
@@ -213,10 +215,10 @@ export default function CorrectiveActionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
   content: { gap: theme.space.sm, paddingBottom: theme.space.xl },
-  remark: { fontSize: theme.font.base, color: theme.color.text, marginTop: theme.space.xs },
-  photo: { width: '100%', aspectRatio: 4 / 3, borderRadius: 8, marginVertical: theme.space.sm },
+  remark: { fontFamily: theme.family.regular, fontSize: theme.font.base, color: theme.color.ink, marginTop: theme.space.xs },
+  photo: { width: '100%', aspectRatio: 4 / 3, marginVertical: theme.space.sm, borderWidth: 1, borderColor: theme.color.edge },
   choice: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.sm },
-});
+}));

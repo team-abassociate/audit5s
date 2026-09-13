@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { zoneDisplayLabel } from '@audit5s/domain';
@@ -17,7 +17,7 @@ import { recordAuditStartLocation } from '../../lib/db/audit.repository';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { useSession } from '../../lib/session';
-import { theme } from '../../lib/theme';
+import { createThemedStyles } from '../../lib/theme';
 import type { AuditType } from '@audit5s/contracts';
 
 /**
@@ -29,6 +29,7 @@ import type { AuditType } from '@audit5s/contracts';
  * the whole of §9.1.
  */
 export default function UnitZonesScreen() {
+  const styles = useStyles();
   const { unitId } = useLocalSearchParams<{ unitId: string }>();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
@@ -142,36 +143,12 @@ export default function UnitZonesScreen() {
       <FlatList
         data={zones.data ?? []}
         keyExtractor={(zone) => zone.id}
+        contentContainerStyle={(zones.data ?? []).length > 0 ? styles.listContent : undefined}
         ListEmptyComponent={
           <EmptyState
             title="No Zones"
             detail="This Unit has no active Zones yet. The Coordinator creates them in the admin app."
           />
-        }
-        ListHeaderComponent={
-          (zones.data ?? []).length > 0 ? (
-            <View style={styles.start}>
-              <Button
-                title={scope?.role === 'ZONE_LEADER' ? 'Start cross audit' : 'Start 5S audit'}
-                busy={startAudit.isPending}
-                onPress={() =>
-                  startAudit.mutate(scope?.role === 'ZONE_LEADER' ? 'CROSS_5S' : 'EXTERNAL_5S')
-                }
-              />
-              {scope?.role === 'CONSULTANT' ? (
-                <Button
-                  title="Start walk-by"
-                  variant="secondary"
-                  busy={startAudit.isPending}
-                  onPress={() => startAudit.mutate('WALK_BY')}
-                />
-              ) : null}
-              <Muted>
-                You will be asked for a photograph of yourself first. Works with the radio
-                off — everything is saved on this device.
-              </Muted>
-            </View>
-          ) : null
         }
         ListFooterComponent={
           (versions.data ?? []).length > 0 ? (
@@ -204,20 +181,42 @@ export default function UnitZonesScreen() {
           </Card>
         )}
       />
+
+      {(zones.data ?? []).length > 0 ? (
+        <View style={styles.start}>
+          <Button
+            title={scope?.role === 'ZONE_LEADER' ? 'Start cross audit' : 'Start 5S audit'}
+            busy={startAudit.isPending}
+            onPress={() =>
+              startAudit.mutate(scope?.role === 'ZONE_LEADER' ? 'CROSS_5S' : 'EXTERNAL_5S')
+            }
+          />
+          {scope?.role === 'CONSULTANT' ? (
+            <Button
+              title="Start walk-by"
+              variant="secondary"
+              busy={startAudit.isPending}
+              onPress={() => startAudit.mutate('WALK_BY')}
+            />
+          ) : null}
+          <Muted>Live selfie required · work is saved on this device</Muted>
+        </View>
+      ) : null}
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  start: { gap: theme.space.sm, marginBottom: theme.space.md },
-  name: { fontSize: theme.font.lg, fontWeight: '600', color: theme.color.text },
+const useStyles = createThemedStyles((theme) => ({
+  listContent: { paddingBottom: theme.space.md },
+  start: { gap: theme.space.sm, paddingTop: theme.space.sm, borderTopWidth: 2, borderTopColor: theme.color.edge },
+  name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
   section: { marginTop: theme.space.lg },
   sectionTitle: {
-    fontSize: theme.font.sm,
-    fontWeight: '700',
-    color: theme.color.textMuted,
+    fontFamily: theme.family.bold,
+    fontSize: theme.font.label,
+    color: theme.color.ink3,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1.4,
     marginBottom: theme.space.sm,
   },
-});
+}));

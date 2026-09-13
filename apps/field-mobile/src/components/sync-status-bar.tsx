@@ -1,9 +1,10 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { readSyncStatus, type SyncDot } from '../lib/sync/status';
 import { useLocalDatabase } from '../lib/db/provider';
 import { useSync } from '../lib/sync/provider';
-import { theme } from '../lib/theme';
+import { createThemedStyles, useTheme } from '../lib/theme';
 
 /**
  * The persistent status affordance of §9.9, on every field screen.
@@ -18,14 +19,10 @@ import { theme } from '../lib/theme';
  * is split into items and photographs because a Zone that owes eleven answers and a Zone
  * that owes eleven photographs are different problems on a weak connection.
  */
-const DOT_COLOUR: Record<SyncDot, string> = {
-  synced: '#1B7F4B',
-  pending: '#BE7D0F',
-  syncing: '#2A7097',
-  failed: '#B3261E',
-};
-
 export function SyncStatusBar() {
+  const styles = useStyles();
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const { sync, online } = useSync();
@@ -44,11 +41,12 @@ export function SyncStatusBar() {
   });
 
   const data = status.data;
-  if (!data) return null;
+  // Keep the status-bar inset until the first read: the navigator below has had its top inset zeroed.
+  if (!data) return <View style={{ paddingTop: insets.top, backgroundColor: theme.color.tile2 }} />;
 
   return (
-    <View style={styles.bar}>
-      <View style={[styles.dot, { backgroundColor: DOT_COLOUR[data.dot] }]} />
+    <View style={[styles.bar, { paddingTop: insets.top + theme.space.sm }]}>
+      <View style={[styles.dot, { backgroundColor: dotColour(data.dot, theme) }]} />
 
       <View style={styles.text}>
         <Text style={styles.label}>{describe(data)}</Text>
@@ -71,6 +69,13 @@ export function SyncStatusBar() {
       </Pressable>
     </View>
   );
+}
+
+function dotColour(dot: SyncDot, theme: ReturnType<typeof useTheme>): string {
+  if (dot === 'synced') return theme.color.okBand;
+  if (dot === 'pending') return theme.color.warnBand;
+  if (dot === 'failed') return theme.color.critBand;
+  return theme.color.accent;
 }
 
 function describe(status: {
@@ -103,27 +108,30 @@ function relative(iso: string): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    backgroundColor: '#FFF7F3',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8D7D1',
+    backgroundColor: theme.color.tile2,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.color.edge,
   },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+  dot: { width: 10, height: 10 },
   text: { flex: 1 },
-  label: { fontSize: 13, fontWeight: '600', color: theme.color.text },
-  detail: { fontSize: 11, color: theme.color.textMuted, marginTop: 1 },
+  label: { fontFamily: theme.family.medium, fontSize: theme.font.sm, color: theme.color.ink },
+  detail: { fontFamily: theme.family.regular, fontSize: theme.font.label, color: theme.color.ink2, marginTop: 1 },
   action: {
+    minHeight: 48,
+    justifyContent: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: theme.color.brand,
+    borderWidth: 1.5,
+    borderColor: theme.color.edge,
+    backgroundColor: theme.color.ink,
   },
   actionDisabled: { opacity: 0.45 },
-  actionLabel: { color: '#fff', fontSize: 12, fontWeight: '600' },
-});
+  actionLabel: { color: theme.color.board, fontFamily: theme.family.medium, fontSize: 12 },
+}));

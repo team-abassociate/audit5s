@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { zoneDisplayLabel } from '@audit5s/domain';
@@ -15,7 +15,7 @@ import {
 } from '../../../lib/db/audit.repository';
 import { listLocalZones as listCatalogueZones } from '../../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
-import { theme } from '../../../lib/theme';
+import { createThemedStyles, useTheme } from '../../../lib/theme';
 
 /**
  * The Zones of one audit: what has been done, what is next, and the way back in.
@@ -24,6 +24,8 @@ import { theme } from '../../../lib/theme';
  * answered in Zone 4" — so reopening an audit aborted three days ago costs no round trip.
  */
 export default function AuditZonesScreen() {
+  const styles = useStyles();
+  const theme = useTheme();
   const { auditId } = useLocalSearchParams<{ auditId: string }>();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
@@ -118,7 +120,7 @@ export default function AuditZonesScreen() {
   if (audit.isLoading) {
     return (
       <Screen style={styles.centered}>
-        <ActivityIndicator color={theme.color.brand} />
+        <ActivityIndicator color={theme.color.ink} />
       </Screen>
     );
   }
@@ -226,7 +228,7 @@ export default function AuditZonesScreen() {
                     setWalkBySetup((current) => current && { ...current, description })
                   }
                   placeholder="What are you walking through?"
-                  placeholderTextColor={theme.color.textMuted}
+                  placeholderTextColor={theme.color.ink2}
                 />
                 <Text style={styles.fieldLabel}>Zone leader</Text>
                 {leaderChoices.length === 0 ? <Muted>No Zone Leader is recorded for this Unit.</Muted> : null}
@@ -286,37 +288,39 @@ export default function AuditZonesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
-  name: { fontSize: theme.font.lg, fontWeight: '600', color: theme.color.text },
+  name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
   action: { marginTop: theme.space.sm },
   footer: { gap: theme.space.sm, marginTop: theme.space.lg },
   sectionTitle: {
-    fontSize: theme.font.sm,
-    fontWeight: '700',
-    color: theme.color.textMuted,
+    fontFamily: theme.family.bold,
+    fontSize: theme.font.label,
+    color: theme.color.ink3,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1.4,
   },
-  resumeBanner: { backgroundColor: '#FDF3DB', borderColor: '#BE7D0F' },
-  resumeText: { fontSize: theme.font.base, color: theme.color.text, marginBottom: theme.space.sm },
-  setupCard: { gap: theme.space.sm, borderColor: theme.color.brand },
-  fieldLabel: { fontSize: theme.font.sm, fontWeight: '600', color: theme.color.textMuted },
+  resumeBanner: { backgroundColor: theme.color.slip, borderColor: theme.color.edge, borderLeftWidth: 6 },
+  resumeText: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.slipInk, marginBottom: theme.space.sm },
+  setupCard: { gap: theme.space.sm, borderColor: theme.color.accent, borderWidth: 2 },
+  fieldLabel: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink3, textTransform: 'uppercase', letterSpacing: 1.1 },
   input: {
     minHeight: 88,
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.sm,
+    borderWidth: 1.5,
+    borderColor: theme.color.edge,
     padding: theme.space.md,
-    color: theme.color.text,
+    fontFamily: theme.family.regular,
+    color: theme.color.ink,
+    backgroundColor: theme.color.tile2,
     textAlignVertical: 'top',
   },
   leaderChoice: {
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.sm,
+    minHeight: 48,
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: theme.color.edge,
     padding: theme.space.md,
   },
-  leaderChoiceSelected: { borderColor: theme.color.brand, backgroundColor: '#FFF7F3' },
-  leaderText: { color: theme.color.text, fontWeight: '600' },
-});
+  leaderChoiceSelected: { borderColor: theme.color.accent, borderLeftWidth: 6, backgroundColor: theme.color.accentSoft },
+  leaderText: { color: theme.color.ink, fontFamily: theme.family.medium },
+}));
