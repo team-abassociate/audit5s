@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SSection } from '@audit5s/contracts';
+import logo from '../../assets/audit5s-logo.png';
 import { S_SECTION_LABELS, S_SECTION_SHORT_LABELS } from '@audit5s/domain';
 import {
   bandFill,
@@ -616,7 +617,7 @@ export function GateCard({ children }: { children: ReactNode }) {
       <View style={styles.gate}>
         <View style={styles.brand}>
           <Image
-            source={require('../../assets/audit5s-logo.png')}
+            source={logo}
             style={styles.brandLogo}
             accessibilityIgnoresInvertColors
             accessibilityLabel="audit5s"
