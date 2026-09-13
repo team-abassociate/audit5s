@@ -27,3 +27,11 @@ ALTER ROLE audit5s_owner NOBYPASSRLS NOSUPERUSER;
 -- The owner must be a member of the application role to create objects owned by it
 -- (migration 0002 hands pg-boss its own schema this way).
 GRANT audit5s_app TO audit5s_owner;
+
+-- The owner must own the database itself: since PostgreSQL 15 only the database owner may
+-- create in `public`, and migration 0002 grants CREATE ON DATABASE, which needs the owner.
+DO $$
+BEGIN
+  EXECUTE format('ALTER DATABASE %I OWNER TO audit5s_owner', current_database());
+END
+$$;
