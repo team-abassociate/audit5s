@@ -1,4 +1,6 @@
-import * as FileSystem from 'expo-file-system';
+// ponytail: the legacy API, which SDK 57 still ships; move to the `File` class when the
+// legacy entry point is removed. The root import throws on these methods since SDK 54.
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Crypto from 'expo-crypto';
 

@@ -37,6 +37,7 @@ export interface CameraCaptureProps {
 export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }: CameraCaptureProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const camera = useRef<CameraView>(null);
 
   if (!permission) {
@@ -64,11 +65,17 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }:
   const take = async () => {
     if (busy) return;
     setBusy(true);
+    setError(null);
     try {
       const photo = await camera.current?.takePictureAsync({ skipProcessing: false });
       if (!photo?.uri) return;
       // Downscaled, EXIF-stripped and hashed before anything else sees it (§9.4).
       await onCaptured(await processCapturedPhoto(photo.uri));
+    } catch (cause) {
+      // Said on the screen the auditor is looking at, never an unhandled rejection: nothing
+      // was saved, so the honest words are "try again".
+      console.error('capture failed', cause);
+      setError('The photograph was not saved. Try again.');
     } finally {
       setBusy(false);
     }
@@ -80,6 +87,11 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }:
 
       <View style={styles.controls}>
         <Text style={styles.prompt}>{prompt}</Text>
+        {error ? (
+          <Text style={styles.error} accessibilityRole="alert">
+            {error}
+          </Text>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Take the photograph"
@@ -110,5 +122,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   shutterBusy: { opacity: 0.6 },
+  error: { color: gemba.dark.crit, fontFamily: gembaFonts.medium, fontSize: 13, textAlign: 'center' },
   shutterInner: { width: 58, height: 58, backgroundColor: gemba.dark.ink },
 });
