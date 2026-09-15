@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { zoneDisplayLabel } from '@audit5s/domain';
 import {
   type Audit,
-  type AuditZone,
+  type AuditDetail,
   type Page,
   type ReportAccessToken,
   type ReportDownloadUrl,
@@ -141,15 +142,19 @@ function GeneratePanel({ unitId }: { unitId: string }) {
     enabled: !isSummary,
   });
 
+  // This Unit's Zones. `/zones` takes no Unit filter, so it would list every Unit's.
   const zones = useQuery({
     queryKey: ['zones', unitId],
-    queryFn: () => api.get<Page<Zone>>(`/zones?limit=200&unitId=${unitId}`),
+    queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?limit=200`),
     enabled: isSummary,
   });
 
+  // The audit's Zones come with the audit (`GET /audits/{id}`, §8.6). There is no
+  // `GET /audits/{id}/zones`: asking for one returned 404, which left the Zone picker empty
+  // and the Generate button permanently disabled.
   const auditZones = useQuery({
-    queryKey: ['audit-zones', auditId],
-    queryFn: () => api.get<AuditZone[]>(`/audits/${auditId}/zones`),
+    queryKey: ['audit-detail', auditId],
+    queryFn: () => api.get<AuditDetail>(`/audits/${auditId}`),
     enabled: Boolean(auditId) && !isSummary,
   });
 
@@ -234,9 +239,9 @@ function GeneratePanel({ unitId }: { unitId: string }) {
                     disabled={!auditId}
                   >
                     <option value="">Choose a Zone…</option>
-                    {(auditZones.data ?? []).map((zone) => (
+                    {(auditZones.data?.zones ?? []).map((zone) => (
                       <option key={zone.id} value={zone.id}>
-                        Zone {zone.zoneCodeSnapshot} — {zone.zoneNameSnapshot}
+                        {zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
                       </option>
                     ))}
                   </Select>
@@ -276,7 +281,7 @@ function GeneratePanel({ unitId }: { unitId: string }) {
                       )
                     }
                   />
-                  Zone {zone.code} — {zone.name}
+                  {zoneDisplayLabel(zone.code, zone.name)}
                 </label>
               ))}
             </div>

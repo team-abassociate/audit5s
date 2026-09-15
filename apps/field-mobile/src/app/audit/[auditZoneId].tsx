@@ -29,6 +29,12 @@ import {
   StatusBand,
 } from '../../components/ui';
 import { CameraCapture } from '../../components/camera-capture';
+import {
+  PhotoPreview,
+  PhotoThumbs,
+  SummaryPhotosCard,
+  type LocalPhoto,
+} from '../../components/evidence-photos';
 import { ResponseChips } from '../../components/response-chips';
 import {
   captureLocalEvidence,
@@ -85,6 +91,7 @@ export default function QuestionnaireScreen() {
   const [picked, setPicked] = useState<Record<string, ResponseValue>>({});
   const [zoneRemarkDraft, setZoneRemarkDraft] = useState('');
   const [cameraFor, setCameraFor] = useState<Row | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [showMissing, setShowMissing] = useState(false);
 
   const zone = useQuery({
@@ -186,7 +193,7 @@ export default function QuestionnaireScreen() {
       const location = await readLocation();
       const value = picked[row.questionId] ?? (row.value as ResponseValue | null);
 
-      await captureLocalEvidence(database, {
+      return captureLocalEvidence(database, {
         auditId: zone.data!.auditId,
         auditZoneId,
         kind: 'QUESTION_EVIDENCE',
@@ -209,9 +216,11 @@ export default function QuestionnaireScreen() {
           : {}),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (evidenceId) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       setCameraFor(null);
+      // §2.3 step 13: the auditor sees what they took, and may keep, flag or delete it.
+      setPreviewId(evidenceId);
       scheduleSync();
     },
   });
@@ -294,10 +303,11 @@ export default function QuestionnaireScreen() {
   const pageAnswered = pageRows.filter((row) => valueOf(row) !== null).length;
   const unanswered = rows.length - answered;
   const section = pageRows[0]?.section as SSection | undefined;
-  const photoCount = (row: Row) =>
-    row.responseId
-      ? (photos.data ?? []).filter((photo) => photo.questionResponseId === row.responseId).length
-      : 0;
+  const zonePhotos = photos.data ?? [];
+  const photosFor = (row: Row) =>
+    row.responseId ? zonePhotos.filter((photo) => photo.questionResponseId === row.responseId) : [];
+  const previewPhoto = previewId ? (zonePhotos.find((photo) => photo.id === previewId) ?? null) : null;
+  const editable = zone.data.status !== 'COMPLETED';
 
   const submit = () => {
     const firstMissing = rows.findIndex((row) => valueOf(row) === null);
@@ -368,7 +378,8 @@ export default function QuestionnaireScreen() {
           <QuestionCard
             row={item}
             value={valueOf(item)}
-            photos={photoCount(item)}
+            photos={photosFor(item)}
+            onPreview={setPreviewId}
             missing={showMissing && valueOf(item) === null}
             onAnswer={(value, remark) => {
               setPicked((current) => ({ ...current, [item.questionId]: value }));
@@ -385,6 +396,7 @@ export default function QuestionnaireScreen() {
           lastPage ? (
             <View style={styles.footer}>
               <ScoreCard breakdown={score.data} answered={answered} />
+              <SummaryPhotosCard photos={zonePhotos} onOpen={setPreviewId} />
               <Card>
                 <Field
                   label="Overall remark (optional)"
@@ -422,6 +434,8 @@ export default function QuestionnaireScreen() {
           </View>
         </View>
       </ActionBar>
+
+      <PhotoPreview photo={previewPhoto} editable={editable} onClose={() => setPreviewId(null)} />
     </Screen>
   );
 }
@@ -454,6 +468,7 @@ function QuestionCard({
   row,
   value,
   photos,
+  onPreview,
   missing,
   onAnswer,
   onRemark,
@@ -461,7 +476,8 @@ function QuestionCard({
 }: {
   row: Row;
   value: ResponseValue | null;
-  photos: number;
+  photos: readonly LocalPhoto[];
+  onPreview: (evidenceId: string) => void;
   missing: boolean;
   onAnswer: (value: ResponseValue, remark: string | null) => void;
   onRemark: (remark: string | null) => void;
@@ -493,7 +509,7 @@ function QuestionCard({
 
       <View style={styles.questionFoot}>
         <Text style={styles.photoCount}>
-          {photos} photo{photos === 1 ? '' : 's'}
+          {photos.length} photo{photos.length === 1 ? '' : 's'}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -511,6 +527,9 @@ function QuestionCard({
           onPress={onPhoto}
         />
       </View>
+
+      {/* Tap a thumbnail to preview it, flag it for the summary, or delete it. */}
+      <PhotoThumbs photos={photos} onOpen={onPreview} />
 
       {remarkOpen ? (
         <Field
