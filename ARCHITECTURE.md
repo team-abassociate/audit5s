@@ -349,7 +349,7 @@ are the acceptance-test scripts for PART 14; QA should be able to execute them v
 | 5 | **Captures selfie** (front camera, live only) | Mandatory. Stored locally, queued for upload. Audit cannot start without it. |
 | 6 | Location captured | `lat/lng/accuracy/provider/is_mocked`; compared to the Unit geofence → `location_suspicious` if outside |
 | 7 | Starts the audit | `Audit` row created **locally with a client UUIDv7**; `IN_PROGRESS`; `owning_device_id` claimed |
-| 8 | Selects Zone → confirms description → confirms Zone leader → selects department/checklist | `AuditZone` created with **snapshots** of Zone name, description, leader and checklist version |
+| 8 | Creates the Zone: **Zone 1…100** from a dropdown → optional description → types the Zone leader's name → selects the department | `AuditZone` created with **snapshots** of Zone name, description, leader name and the department's checklist version. A Zone number the Unit has never used is added to its Zones (`DECISIONS.md` R-19) |
 | 9 | Answers 1S q1…q10, then 2S…5S | **Each selection writes to SQLite immediately** (one transaction per response) and enqueues a sync item. Never blocks on network. |
 | 10 | Optionally adds a per-question remark | Optional free text on the response |
 | 11 | Captures evidence photos against a question | Classification derived from the score at capture time; queued on the **media** queue independently |
@@ -422,9 +422,9 @@ No questionnaire, no score. Photo-led observation.
 | # | Step | Rule |
 | --- | --- | --- |
 | 1 | Auditor selfie | **Mandatory**, live camera, before anything else |
-| 2 | Select Zone | From the Unit's active Zones |
+| 2 | Select Zone | Zone 1…100; a number the Unit has never used is added to its Zones (R-19) |
 | 3 | Zone description | Optional; defaults to the Zone's current description, snapshotted either way |
-| 4 | Zone leader | Confirmed/selected, snapshotted |
+| 4 | Zone leader | Name typed (R-19), or an account confirmed/selected; snapshotted |
 | 5 | Open camera | **Live capture only** — gallery selection is not offered |
 | 6 | Capture **≥1** photo | Server-enforced: `AuditZone` cannot complete with zero evidence rows |
 | 7 | Additional photos | Optional |
@@ -1738,6 +1738,10 @@ Cell = the scope resolver that applies. `—` = denied.
 | Zone | update | `organization` | — | `own_unit` | — |
 | Zone | archive | `organization` | — | `own_unit` | — |
 | Zone | assign leader | `organization` | — | `own_unit` | — |
+
+> **R-19.** A Consultant or Zone Leader adds a Zone only implicitly: by naming a Zone number
+> the Unit has never used, while conducting an audit of that Unit
+> (`app_ensure_zone_for_audit`, migration 0014). The `create` row above is unchanged.
 
 ### Checklists
 

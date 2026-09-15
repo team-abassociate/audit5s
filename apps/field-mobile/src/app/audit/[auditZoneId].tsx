@@ -9,6 +9,7 @@ import {
   S_SECTION_SHORT_LABELS,
   TOTAL_QUESTIONS,
   bandFor,
+  zoneDisplayLabel,
 } from '@audit5s/domain';
 import {
   ActionBar,
@@ -261,7 +262,7 @@ export default function QuestionnaireScreen() {
     );
   }
 
-  const title = `${zone.data.zoneCodeSnapshot} — ${zone.data.zoneNameSnapshot}`;
+  const title = zoneDisplayLabel(zone.data.zoneCodeSnapshot, zone.data.zoneNameSnapshot);
   const rows = questions.data ?? [];
 
   if (rows.length === 0) {

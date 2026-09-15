@@ -27,7 +27,6 @@ import {
   FIXTURE_UNIT as UNIT,
   FIXTURE_VERSION as VERSION,
   FIXTURE_ZONE_A as ZONE_A,
-  FIXTURE_ZONE_B as ZONE_B,
   catalogue,
 } from './test-fixtures';
 
@@ -71,7 +70,7 @@ async function startAudit(): Promise<{ auditId: string; auditZoneId: string }> {
   });
   const auditZoneId = await addLocalZone(database, {
     auditId,
-    zoneId: ZONE_A,
+    zoneNumber: 1,
     sequenceNo: 1,
     checklistVersionId: VERSION,
   });
@@ -169,15 +168,18 @@ describe('starting an audit', () => {
     const [zoneRow] = await getLocalAuditZone(database, auditZoneId);
 
     expect(zoneRow).toMatchObject({
+      zoneId: ZONE_A,
       zoneCodeSnapshot: 'Z-01',
       zoneNameSnapshot: 'Press',
       zoneDescriptionSnapshot: 'Press shop, bay 3',
       zoneLeaderNameSnapshot: 'Leader One',
+      zoneLeaderUserIdSnapshot: 'eeeeeeee-0000-4000-8000-000000000001',
+      checklistTemplateNameSnapshot: 'Shop Floor',
       status: 'DRAFT',
     });
   });
 
-  it('carries walk-by description and leader choices in the first queued write', async () => {
+  it('carries the typed description and leader name in the first queued write (R-19)', async () => {
     const auditId = await createLocalAudit(database, {
       unitId: UNIT,
       auditType: 'WALK_BY',
@@ -185,51 +187,87 @@ describe('starting an audit', () => {
     });
     const auditZoneId = await addLocalZone(database, {
       auditId,
-      zoneId: ZONE_A,
+      zoneNumber: 1,
       sequenceNo: 1,
       checklistVersionId: null,
       zoneDescription: 'North bay during the night shift',
-      zoneLeaderUserId: 'eeeeeeee-0000-4000-8000-000000000001',
+      zoneLeaderName: 'Ravi Kumar',
     });
 
     expect((await getLocalAuditZone(database, auditZoneId))[0]).toMatchObject({
       zoneDescriptionSnapshot: 'North bay during the night shift',
-      zoneLeaderNameSnapshot: 'Leader One',
+      zoneLeaderNameSnapshot: 'Ravi Kumar',
+      // Not the Zone's own leader, so not their account either.
+      zoneLeaderUserIdSnapshot: null,
     });
     const queued = (await listOutbox(database)).find(
       (item) => item.entityType === 'audit_zone' && item.entityId === auditZoneId,
     );
-    expect(JSON.parse(queued!.payload)).toMatchObject({
+    const payload = JSON.parse(queued!.payload);
+    expect(payload).toMatchObject({
+      zoneNumber: 1,
       zoneDescription: 'North bay during the night shift',
-      zoneLeaderUserId: 'eeeeeeee-0000-4000-8000-000000000001',
+      zoneLeaderName: 'Ravi Kumar',
     });
+    expect(payload).not.toHaveProperty('zoneId');
 
     await saveZoneRemark(database, auditZoneId, 'Observed after cleanup');
     const coalesced = (await listOutbox(database)).find(
       (item) => item.entityType === 'audit_zone' && item.entityId === auditZoneId,
     );
     expect(JSON.parse(coalesced!.payload)).toMatchObject({
+      zoneNumber: 1,
       zoneDescription: 'North bay during the night shift',
-      zoneLeaderUserId: 'eeeeeeee-0000-4000-8000-000000000001',
+      zoneLeaderName: 'Ravi Kumar',
       zoneRemark: 'Observed after cleanup',
     });
   });
 
-  it('refuses a Zone that is not in this device’s catalogue', async () => {
+  it('adds a Zone the catalogue does not have, named by its number (R-19)', async () => {
     const auditId = await createLocalAudit(database, {
       unitId: UNIT,
       auditType: 'EXTERNAL_5S',
-      checklistVersionId: VERSION,
+      checklistVersionId: null,
     });
+
+    const auditZoneId = await addLocalZone(database, {
+      auditId,
+      zoneNumber: 42,
+      sequenceNo: 1,
+      checklistVersionId: VERSION,
+      zoneLeaderName: 'Anita Rao',
+    });
+
+    expect((await getLocalAuditZone(database, auditZoneId))[0]).toMatchObject({
+      zoneCodeSnapshot: 'Z-42',
+      zoneNameSnapshot: 'Zone 42',
+      zoneDescriptionSnapshot: null,
+      zoneLeaderNameSnapshot: 'Anita Rao',
+      zoneLeaderUserIdSnapshot: null,
+      checklistVersionId: VERSION,
+      checklistTemplateNameSnapshot: 'Shop Floor',
+    });
+    const queued = (await listOutbox(database)).find(
+      (item) => item.entityType === 'audit_zone' && item.entityId === auditZoneId,
+    );
+    expect(JSON.parse(queued!.payload)).toMatchObject({
+      zoneNumber: 42,
+      checklistVersionId: VERSION,
+      zoneLeaderName: 'Anita Rao',
+    });
+  });
+
+  it('refuses the same Zone number twice in one audit', async () => {
+    const { auditId } = await startAudit();
 
     await expect(
       addLocalZone(database, {
         auditId,
-        zoneId: 'ffffffff-0000-4000-8000-000000000099',
-        sequenceNo: 1,
+        zoneNumber: 1,
+        sequenceNo: 2,
         checklistVersionId: VERSION,
       }),
-    ).rejects.toThrow(/not in this device/);
+    ).rejects.toThrow(/already part of this audit/);
   });
 });
 
@@ -465,7 +503,7 @@ describe('a complete offline Zone — the Phase 3 acceptance row, device half', 
     const { auditId, auditZoneId } = await startAudit();
     const secondZoneId = await addLocalZone(database, {
       auditId,
-      zoneId: ZONE_B,
+      zoneNumber: 2,
       sequenceNo: 2,
       checklistVersionId: VERSION,
     });

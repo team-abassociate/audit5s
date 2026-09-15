@@ -39,5 +39,30 @@ export function zoneCodeChoices(): Array<{ number: number; code: string }> {
  */
 export function zoneDisplayLabel(code: string, name: string): string {
   const zoneNumber = zoneNumberFromCode(code);
-  return zoneNumber === null ? `${code} — ${name}` : `Zone ${zoneNumber} — ${name}`;
+  if (zoneNumber === null) return `${code} — ${name}`;
+  const plain = `Zone ${zoneNumber}`;
+  // A Zone an auditor added by number (R-19) is named just that: "Zone 7 — Zone 7" says it twice.
+  const trimmed = name.trim();
+  return trimmed === '' || trimmed.toLocaleLowerCase() === plain.toLocaleLowerCase()
+    ? plain
+    : `${plain} — ${name}`;
+}
+
+/**
+ * The leader an audit Zone snapshots when the auditor may have typed a name (R-19).
+ *
+ * The typed name is what the reports print. The Zone's leader account is kept only when the
+ * name is that person's — otherwise the snapshot would print one person and point at another.
+ * Nothing typed means the Zone's own leader, account and name alike.
+ */
+export function zoneLeaderSnapshot(
+  zone: { zoneLeaderId: string | null; zoneLeaderName: string | null } | null | undefined,
+  typedName: string | null | undefined,
+): { userId: string | null; name: string | null } {
+  const ownId = zone?.zoneLeaderId ?? null;
+  const ownName = zone?.zoneLeaderName ?? null;
+  const typed = typedName?.trim() || null;
+  if (!typed) return { userId: ownId, name: ownName };
+  const same = ownName !== null && ownName.trim().toLocaleLowerCase() === typed.toLocaleLowerCase();
+  return { userId: same ? ownId : null, name: typed };
 }

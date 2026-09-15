@@ -471,6 +471,37 @@ export class AuditsRepository extends BaseRepository {
   }
 
   /**
+   * R-19: the Zone an auditor named by number — found in the audit's Unit, or added to it.
+   *
+   * The scope is inside `app_ensure_zone_for_audit` (0014) rather than a predicate here:
+   * the function answers only for an open audit the actor is conducting, in one of the
+   * actor's Units, and returns no row otherwise. That is narrower than `zone:create`, which
+   * this path deliberately does not grant.
+   */
+  async ensureZoneForAudit(
+    scope: ScopeContext,
+    input: {
+      auditId: string;
+      code: string;
+      name: string;
+      description: string | null;
+      sortOrder: number;
+    },
+  ): Promise<{ zoneId: string; created: boolean } | null> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const result = await tx.execute(sql<{ ensured_zone_id: string; was_created: boolean }>`
+        SELECT ensured_zone_id, was_created
+        FROM app_ensure_zone_for_audit(
+          ${input.auditId}::uuid, ${input.code}, ${input.name}, ${input.description}, ${input.sortOrder}::int
+        )
+      `);
+      const row = result.rows[0] as { ensured_zone_id: string; was_created: boolean } | undefined;
+      return row ? { zoneId: row.ensured_zone_id, created: row.was_created } : null;
+    });
+  }
+
+  /**
    * The department label a report prints beside the Zone, snapshotted with it.
    *
    * Checklists are organization-wide reference data (D2), so the grant every role holds is

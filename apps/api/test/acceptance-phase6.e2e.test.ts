@@ -130,18 +130,17 @@ async function device(id: string, token: string): Promise<Device> {
 let consultant: Device;
 let leader: Device;
 let worker: NotificationWorker;
-let zoneId: string;
 
 beforeAll(async () => {
   world = await startWorld();
   await forgetQueuedNotifications(world);
   worker = world.app.get(NotificationWorker);
 
-  const { rows } = await world.owner.query(
-    `INSERT INTO zone (unit_id, code, name, zone_leader_id) VALUES ($1, '6', 'Press line', $2) RETURNING id`,
+  // Zone 6 exists with a leader, so the device finds it by number and its actions route (R-19).
+  await world.owner.query(
+    `INSERT INTO zone (unit_id, code, name, zone_leader_id) VALUES ($1, 'Z-06', 'Press line', $2) RETURNING id`,
     [world.unitA, world.actors.ZONE_LEADER.userId],
   );
-  zoneId = rows[0].id as string;
 
   const consultantDevice = '01930000-0000-7000-8000-0000000a6001';
   const leaderDevice = '01930000-0000-7000-8000-0000000a6002';
@@ -189,7 +188,7 @@ describe('Phase 6 acceptance', () => {
     offline = true;
     const auditId = await createLocalAudit(consultant.database, { unitId: world.unitA, auditType: 'WALK_BY', checklistVersionId: null });
     await captureLocalEvidence(consultant.database, { auditId, kind: 'AUDITOR_SELFIE', ...photo() });
-    const auditZoneId = await addLocalZone(consultant.database, { auditId, zoneId, sequenceNo: 1, checklistVersionId: null });
+    const auditZoneId = await addLocalZone(consultant.database, { auditId, zoneNumber: 6, sequenceNo: 1, checklistVersionId: null });
     for (let i = 0; i < 5; i += 1) {
       await captureLocalEvidence(consultant.database, {
         auditId,

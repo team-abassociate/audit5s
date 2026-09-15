@@ -27,6 +27,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-16 | Phase 9: dead letters, retention, drain and the PDF clock | Settled |
 | R-17 | Phase 9: how a data-integrity finding reaches a Super Admin | Settled |
 | R-18 | A Super Admin is refused nothing | Settled |
+| R-19 | The auditor names the Zone | Settled |
 
 ---
 
@@ -1131,4 +1132,71 @@ code path — **AZ-4 stands**; nothing became a bypass flag. His own inbox keeps
 - **He may verify his own answer.** Submitting and verifying a corrective action were
   separate roles; they now meet in one person when a Super Admin does both. Accepted with
   the rule; every step is still audit-logged.
+
+---
+
+## R-19 — The auditor names the Zone
+
+**Changes `ARCHITECTURE.md` §2.3 (step 8), §2.7 (steps 2 and 4) and the Zones rows of §6.3.**
+Settled 2026-09-15 by the product owner. When a Super Admin assigns a Unit to a Consultant,
+the Consultant opens that Unit and the first thing they do is take a selfie. Next they
+create the Zone: a Zone number from a dropdown of Zone 1 to Zone 100, an optional
+description, and the Zone leader's name. Then they select the department, and that
+department's fifty questions are the ones asked.
+
+That is `brainstorm.md`'s own flow. The build had drifted from it in two ways. The auditor
+could only pick from Zones a Coordinator had already created, so a Unit with no Zones could
+not be audited at all. And the department was never offered: the device pinned the first
+published checklist, alphabetically, to every Zone.
+
+### (a) A Zone number finds the Zone, or adds it
+
+`PUT /audits/{id}/zones/{auditZoneId}` accepts `zoneNumber` (1–100) in place of `zoneId`.
+The server uses that Zone of the audit's Unit — code `Z-07`, as `zoneCodeForNumber` has
+always generated — and adds it, named "Zone 7", if the Unit has never used the number.
+From then on it is master data like any other Zone. It appears on the web Zones page, a
+Coordinator may rename it or assign its leader, and its score history accumulates across
+audits, because `audit_zone.zone_id` still points at one row.
+
+The number travels rather than an id because a device that is offline cannot know the id of
+a Zone that does not exist yet. `zoneId` is still accepted, so payloads queued by an older
+build still sync.
+
+### (b) Narrower than `zone:create`
+
+PART 6 still grants Consultants and Zone Leaders no `zone:create`, and `zone_insert` is
+unchanged. The one new path is `app_ensure_zone_for_audit()` (migration 0014), a
+`SECURITY DEFINER` function in the shape of R-12's and R-14(e)'s. It adds a Zone only to
+the Unit of an open audit the caller is conducting, only by code, and returns nothing
+otherwise. Each addition is written to `audit_log` as `zone.created`, naming the audit that
+added it.
+
+### (c) The leader is a name, not an account
+
+The auditor types the Zone leader's name. It is snapshotted and printed on the reports, and
+it grants nothing (C2 is unchanged). `zoneLeaderSnapshot` in `packages/domain`, used by both
+the server and the device, keeps the Zone's leader account in the snapshot only when the
+typed name is that person's; otherwise the snapshot would print one person and point at
+another.
+
+**Consequence, accepted with the decision.** Corrective actions still route from
+`zone.zone_leader_id` (§5.7). A Zone added by number has no leader account, so nobody can
+answer its nonconformities until a Coordinator or Super Admin assigns a Zone Leader to it.
+Until then its signed links let people read the finding but not answer it (R-14(d)).
+
+### (d) Description on every audit type; department per Zone
+
+The optional description is now honoured on scored audits as well as walk-bys. The
+department is chosen per Zone, and its checklist version is the one that Zone pins (QR-2).
+Nothing else about the questionnaire changes.
+
+### (e) What did not change
+
+- **The selfie gate (§7.1).** The device now asks for the selfie as soon as the Unit is
+  opened, which is where it always sat in the state machine.
+- **D6.** Snapshots are still taken on the first write only.
+- **A walk-by may still name a leader account** (§2.7 step 4); the device no longer offers
+  it, but the API keeps it.
+- **The web app does not conduct audits.** Its audit detail and the reports already print
+  the snapshotted description, leader name and department.
 
