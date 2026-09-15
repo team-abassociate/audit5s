@@ -59,7 +59,11 @@ async function main(): Promise<void> {
     throw new Error('Set DATABASE_MIGRATION_URL (preferred) or DATABASE_URL');
   }
 
-  const client = new Client({ connectionString });
+  const sslMode = process.env.DATABASE_SSL ?? 'disable';
+  const client = new Client({
+    connectionString,
+    ssl: sslMode === 'disable' ? undefined : { rejectUnauthorized: sslMode === 'require' },
+  });
   await client.connect();
 
   try {

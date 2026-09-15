@@ -1,0 +1,42 @@
+# Supabase experiment override — DB-only swap.
+#
+# Removes the local `postgres` and `pgbackrest` containers entirely (Supabase hosts and
+# backs up the database itself) and points api / worker-general / worker-report at
+# DATABASE_URL / DATABASE_MIGRATION_URL / DATABASE_SSL from the environment (.env, set
+# from .env.supabase.example) instead of the compose-internal `postgres` hostname.
+#
+# Keeps MinIO for object storage (dev.sh's convention) — this override is DB-only, R2 is
+# out of scope. Everything else (auth, storage, queue implementation) is unchanged.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#     -f docker-compose.supabase.yml up -d api worker-general worker-report minio
+
+name: audit5s
+
+services:
+  postgres:
+    # No local database in this variant — Supabase is the database.
+    deploy:
+      replicas: 0
+    profiles: ['never']
+
+  pgbackrest:
+    # Supabase manages its own backups.
+    deploy:
+      replicas: 0
+    profiles: ['never']
+
+  api:
+    environment:
+      DATABASE_SSL: ${DATABASE_SSL:-no-verify}
+    depends_on: !override []
+
+  worker-general:
+    environment:
+      DATABASE_SSL: ${DATABASE_SSL:-no-verify}
+    depends_on: !override []
+
+  worker-report:
+    environment:
+      DATABASE_SSL: ${DATABASE_SSL:-no-verify}
+    depends_on: !override []

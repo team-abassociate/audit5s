@@ -29,6 +29,14 @@ const envSchema = z.object({
    */
   DATABASE_MIGRATION_URL: z.string().optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+  /**
+   * Supabase (and most managed Postgres) require TLS on the wire and self-hosted Postgres
+   * in docker-compose does not speak it at all — so this is a plain env toggle rather than
+   * something inferred from the connection string. `no-verify` is what Supabase's pooler
+   * needs in practice: the leaf cert chains to a CA Node's default trust store does not
+   * carry, so full verification fails even though the connection is genuinely encrypted.
+   */
+  DATABASE_SSL: z.enum(['disable', 'require', 'no-verify']).default('disable'),
 
   // RS256: asymmetric so workers verify without holding the signing key (§12.3).
   JWT_PRIVATE_KEY_B64: z.string().min(1),

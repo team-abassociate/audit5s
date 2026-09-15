@@ -17,7 +17,14 @@ export const DATABASE_POOL = Symbol('DATABASE_POOL');
       provide: DATABASE_POOL,
       inject: [CONFIG],
       useFactory: (config: AppConfig): Pool =>
-        createPool({ connectionString: config.DATABASE_URL, max: config.DATABASE_POOL_MAX }),
+        createPool({
+          connectionString: config.DATABASE_URL,
+          max: config.DATABASE_POOL_MAX,
+          ssl:
+            config.DATABASE_SSL === 'disable'
+              ? undefined
+              : { rejectUnauthorized: config.DATABASE_SSL === 'require' },
+        }),
     },
     {
       provide: DATABASE,

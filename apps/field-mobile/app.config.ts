@@ -52,6 +52,8 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     'expo-secure-store',
+    'expo-font',
+    'expo-sqlite',
     [
       'expo-camera',
       {
@@ -71,9 +73,7 @@ const config: ExpoConfig = {
       },
     ],
   ],
-  extra: {
-    apiBaseUrl: process.env.API_BASE_URL ?? 'http://10.0.2.2:3000/api/v1',
-  },
+  extra: { apiBaseUrl: process.env.API_BASE_URL ?? 'http://10.0.2.2:3000/api/v1', eas: { projectId: '71411439-1202-4ffe-bf53-55ef490216e7', }, },
   experiments: { typedRoutes: true },
 };
 
