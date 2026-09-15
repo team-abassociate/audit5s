@@ -112,6 +112,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     this.boss = new PgBoss({
       connectionString: this.config.DATABASE_URL,
       schema: this.config.PGBOSS_SCHEMA,
+      // pg-boss opens its own pool beside the application's, and both count against the
+      // database's connection limit — on Supabase's session pooler, 15 in all.
+      max: this.config.PGBOSS_POOL_MAX,
     });
 
     this.boss.on('error', (error: unknown) => this.logger.error({ err: error }, 'pg-boss error'));

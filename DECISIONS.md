@@ -28,6 +28,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-17 | Phase 9: how a data-integrity finding reaches a Super Admin | Settled |
 | R-18 | A Super Admin is refused nothing | Settled |
 | R-19 | The auditor names the Zone | Settled |
+| R-20 | Access to the Unit is enough for an external audit | Settled |
 
 ---
 
@@ -1199,4 +1200,25 @@ Nothing else about the questionnaire changes.
   it, but the API keeps it.
 - **The web app does not conduct audits.** Its audit detail and the reports already print
   the snapshotted description, leader name and department.
+
+---
+
+## R-20 — Access to the Unit is enough for an external audit
+
+**Changes `ARCHITECTURE.md` §6.3 (`Audit` · create `EXTERNAL_5S`, the Consultant cell).**
+Settled 2026-09-15 by the product owner. The first audit run in the field was refused
+with `ASSIGNMENT_REQUIRED`: the Super Admin had added the Consultant to the Unit but had not
+also created an `AuditAssignment`. Given the choice, the owner chose the flow R-19 describes —
+once a Consultant is added to a Unit, they may run a 5S audit there.
+
+- **The resolver is unchanged:** `assigned_units`. Only the condition "and an active
+  assignment exists" is dropped. A Consultant still cannot audit a Unit they have no
+  membership in.
+- **Assignments still mean something.** When an open assignment exists it is linked to the
+  audit and moves through its statuses with it, so due dates and the assignment board keep
+  working. Without one the audit starts unassigned, as a Super Admin's always has (R-18).
+- **Found alongside it:** the phone dead-lettered the refused audit, and nothing on screen
+  offered to send it again, so everything queued behind it was stuck too. "Sync now"
+  now resets dead letters before syncing — `STACK.md` §5's "N failed — tap to retry" — so
+  once the cause of a refusal is fixed, the work can go.
 

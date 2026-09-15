@@ -169,8 +169,8 @@ export class AssignmentsRepository extends BaseRepository {
   }
 
   /**
-   * Whether this auditor holds an open assignment for this Unit — the matrix condition on
-   * `audit:create_external` ("an active assignment must exist").
+   * This auditor's open assignment for this Unit, which an external audit is linked to when
+   * one exists (R-20: it is no longer required).
    */
   async findOpenForUnit(
     scope: ScopeContext,

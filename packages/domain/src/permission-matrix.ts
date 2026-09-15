@@ -321,7 +321,8 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     action: 'create_external',
     description: 'Start an EXTERNAL_5S audit',
     grants: {
-      CONSULTANT: { resolver: 'assigned_units', condition: 'an active assignment must exist' },
+      // R-20: access to the Unit is enough; an open assignment is linked when one exists.
+      CONSULTANT: { resolver: 'assigned_units' },
     },
   },
   {

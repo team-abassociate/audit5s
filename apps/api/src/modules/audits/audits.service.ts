@@ -794,10 +794,12 @@ export class AuditsService {
   }
 
   /**
-   * The matrix condition on `audit:create_external` — "an active assignment must exist".
+   * The assignment an external audit fulfils, if there is one (R-20).
    *
-   * Cross and walk-by audits are self-initiated (§2.6, §2.7) and carry no assignment, so
-   * the requirement is stated for the one type that has it rather than for all three.
+   * Access to the Unit is enough to run an external audit; an assignment is not required.
+   * When an open one exists it is linked, so it still moves through its statuses with the
+   * audit. When none does, the audit starts unassigned, as a Super Admin's always has
+   * (R-18). Cross and walk-by audits are self-initiated (§2.6, §2.7) and carry none.
    */
   private async resolveAssignment(
     scope: ScopeContext,
@@ -807,8 +809,7 @@ export class AuditsService {
       return request.assignmentId ?? null;
     }
 
-    // R-18: a Super Admin is never assigned work, so requiring an assignment would refuse
-    // him every external audit. He starts one unassigned, as he would a walk-by.
+    // R-18: a Super Admin is never assigned work, so there is nothing to link.
     if (scope.actor.role === 'SUPER_ADMIN') {
       return null;
     }
@@ -829,13 +830,7 @@ export class AuditsService {
       request.unitId,
       'EXTERNAL_5S',
     );
-    if (!open) {
-      throw AppError.forbidden(
-        'ASSIGNMENT_REQUIRED',
-        'An external audit needs an open assignment for this Unit',
-      );
-    }
-    return open.id;
+    return open?.id ?? null;
   }
 }
 

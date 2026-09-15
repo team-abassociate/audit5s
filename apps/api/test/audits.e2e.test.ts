@@ -271,9 +271,9 @@ describe('assignments', () => {
 });
 
 describe('creating an audit', () => {
-  it('refuses an external audit with no open assignment for the Unit', async () => {
+  it('starts an external audit with no open assignment, unassigned (R-20)', async () => {
     // Every assignment made so far is either cancelled or belongs to someone else, except
-    // the ones this suite opened; cancel them so the requirement is the only variable.
+    // the ones this suite opened; cancel them so the absence is the only variable.
     const open = await world.request('GET', `${base}/audit-assignments?open=true&limit=200`, {
       token: asSuperAdmin(),
     });
@@ -293,8 +293,9 @@ describe('creating an audit', () => {
         deviceId: CONSULTANT_DEVICE,
       },
     });
-    expect(response.status).toBe(403);
-    expect((response.body as { code: string }).code).toBe('ASSIGNMENT_REQUIRED');
+    // Access to the Unit is enough; the audit simply fulfils no assignment.
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    expect((response.body as Audit).assignmentId).toBeNull();
   });
 
   it('lets a Zone Leader start a CROSS_5S in their own Unit with no assignment (D9, N4)', async () => {

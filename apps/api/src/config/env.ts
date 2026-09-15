@@ -30,6 +30,12 @@ const envSchema = z.object({
   DATABASE_MIGRATION_URL: z.string().optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   /**
+   * pg-boss's own pool, opened in every process beside `DATABASE_POOL_MAX`. The two add up
+   * per process and every process counts against the database's limit, so on Supabase's
+   * session pooler (15 connections in all) both must be kept small.
+   */
+  PGBOSS_POOL_MAX: z.coerce.number().int().min(1).max(100).default(4),
+  /**
    * Supabase (and most managed Postgres) require TLS on the wire and self-hosted Postgres
    * in docker-compose does not speak it at all — so this is a plain env toggle rather than
    * something inferred from the connection string. `no-verify` is what Supabase's pooler

@@ -1763,7 +1763,7 @@ Cell = the scope resolver that applies. `—` = denied.
 | AuditAssignment | create | `organization` | — | — | — |
 | AuditAssignment | read | `organization` | `own_record` (assignee) | `own_unit` | `own_unit` |
 | AuditAssignment | cancel | `organization` | — | — | — |
-| Audit | create `EXTERNAL_5S` | `organization` (R-18) | `assigned_units` **and** an active assignment exists | — | — |
+| Audit | create `EXTERNAL_5S` | `organization` (R-18) | `assigned_units` (an open assignment is linked when one exists; none is required — R-20) | — | — |
 | Audit | create `WALK_BY` | `organization` (R-18) | `assigned_units` | — | — |
 | Audit | create `CROSS_5S` | `organization` (R-18) | — | — | `own_unit` (**any active Zone**, N4; no self-audit restriction, D9) |
 | Audit | read | `organization` | `own_audits` | `own_unit` | `own_unit` |
