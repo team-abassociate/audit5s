@@ -35,6 +35,46 @@ export class AnalyticsRollupWorker {
       previousLocalDay(now, data.timezone),
     );
   }
+
+  /**
+   * Rebuilds the day an audit completed on, as soon as it completes.
+   *
+   * The board, the trend and the Zone ranking all read the rollup, so an audit finished at
+   * 15:00 used to show `N/A` until the 02:00 run. The rebuild is the same idempotent upsert
+   * the nightly job performs, so running it early changes nothing but the wait.
+   */
+  async refresh(data: AnalyticsRefreshJob): Promise<void> {
+    const unit = (await this.repository.unitRows(SYSTEM_SCOPE)).find((row) => row.id === data.unitId);
+    if (!unit) return;
+    await this.repository.rollupDay(
+      SYSTEM_SCOPE,
+      unit.id,
+      unit.timezone,
+      localDay(new Date(data.at), unit.timezone),
+    );
+  }
+
+  /**
+   * Today and yesterday for every Unit, when the worker starts.
+   *
+   * The nightly job rebuilds only the previous day, so a worker that was down at 02:00 left
+   * that day off the board for good, and audits completed before completion began raising
+   * a refresh were never picked up at all.
+   */
+  async catchUp(now = new Date()): Promise<void> {
+    for (const unit of await this.repository.unitRows(SYSTEM_SCOPE)) {
+      for (const day of [previousLocalDay(now, unit.timezone), localDay(now, unit.timezone)]) {
+        await this.repository.rollupDay(SYSTEM_SCOPE, unit.id, unit.timezone, day);
+      }
+    }
+  }
+}
+
+/** Raised inside the completing transaction (R-2), so it exists exactly when the audit does. */
+export interface AnalyticsRefreshJob {
+  unitId: string;
+  /** The completion instant. The Unit's timezone decides which local day that is. */
+  at: string;
 }
 
 /** One stable identity per Unit, in the character set pg-boss accepts for a key. */

@@ -283,18 +283,6 @@ export default function QuestionnaireScreen() {
     );
   }
 
-  if (cameraFor) {
-    return (
-      <CameraCapture
-        prompt={`Photograph for question ${cameraFor.globalOrder}`}
-        onCaptured={async (image) => {
-          await capture.mutateAsync(image);
-        }}
-        onCancel={() => setCameraFor(null)}
-      />
-    );
-  }
-
   const valueOf = (row: Row) => picked[row.questionId] ?? (row.value as ResponseValue | null);
   const pageCount = Math.ceil(rows.length / PAGE_SIZE);
   const lastPage = page >= pageCount - 1;
@@ -334,6 +322,34 @@ export default function QuestionnaireScreen() {
         }}
       />
 
+      {/* Frozen above the questions, so the S and its progress stay in view while scrolling. */}
+      <View style={styles.pinned}>
+        <SectionHead
+          title={section ? S_SECTION_LABELS[section] : 'Questions'}
+          description={`Questions ${page * PAGE_SIZE + 1}–${page * PAGE_SIZE + pageRows.length} of ${rows.length || TOTAL_QUESTIONS}`}
+        />
+        <View
+          style={styles.progressRow}
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel={`${pageAnswered} of ${pageRows.length} answered on this page`}
+          accessibilityValue={{ min: 0, max: pageRows.length, now: pageAnswered }}
+        >
+          <Text style={styles.progressLabel}>
+            {section ? S_SECTION_SHORT_LABELS[section] : ''} progress
+          </Text>
+          {/* Answering progress is not a score, so it is ink, never a band colour. */}
+          <View style={styles.progressTrack}>
+            <View
+              style={[styles.progressFill, { width: `${(pageAnswered / pageRows.length) * 100}%` }]}
+            />
+          </View>
+          <Text style={styles.progressCount}>
+            {pageAnswered}/{pageRows.length}
+          </Text>
+        </View>
+      </View>
+
       <FlatList
         ref={list}
         data={pageRows}
@@ -342,30 +358,6 @@ export default function QuestionnaireScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View>
-            <SectionHead
-              title={section ? S_SECTION_LABELS[section] : 'Questions'}
-              description={`Questions ${page * PAGE_SIZE + 1}–${page * PAGE_SIZE + pageRows.length} of ${rows.length || TOTAL_QUESTIONS}`}
-            />
-            <View
-              style={styles.progressRow}
-              accessible
-              accessibilityRole="progressbar"
-              accessibilityLabel={`${pageAnswered} of ${pageRows.length} answered on this page`}
-              accessibilityValue={{ min: 0, max: pageRows.length, now: pageAnswered }}
-            >
-              <Text style={styles.progressLabel}>
-                {section ? S_SECTION_SHORT_LABELS[section] : ''} progress
-              </Text>
-              {/* Answering progress is not a score, so it is ink, never a band colour. */}
-              <View style={styles.progressTrack}>
-                <View
-                  style={[styles.progressFill, { width: `${(pageAnswered / pageRows.length) * 100}%` }]}
-                />
-              </View>
-              <Text style={styles.progressCount}>
-                {pageAnswered}/{pageRows.length}
-              </Text>
-            </View>
             <MarkingScheme />
             {showMissing && unanswered > 0 ? (
               <ErrorBanner
@@ -436,6 +428,21 @@ export default function QuestionnaireScreen() {
       </ActionBar>
 
       <PhotoPreview photo={previewPhoto} editable={editable} onClose={() => setPreviewId(null)} />
+
+      {/* Over the questions, not instead of them. Swapping the list out for the camera
+          unmounted it and threw its scroll position away, so coming back from a photograph
+          for Q20 landed on Q11, the top of the page. */}
+      {cameraFor ? (
+        <View style={styles.cameraLayer}>
+          <CameraCapture
+            prompt={`Photograph for question ${cameraFor.globalOrder}`}
+            onCaptured={async (image) => {
+              await capture.mutateAsync(image);
+            }}
+            onCancel={() => setCameraFor(null)}
+          />
+        </View>
+      ) : null}
     </Screen>
   );
 }
@@ -597,7 +604,18 @@ function ScoreCard({
 
 const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
-  list: { paddingBottom: theme.space.lg },
+  list: { paddingTop: theme.space.md, paddingBottom: theme.space.lg },
+  // The top counterpart of `ActionBar`: bleeds to the screen edges, ruled off in 2px ink.
+  pinned: {
+    marginHorizontal: -theme.space.md,
+    marginTop: -theme.space.md,
+    paddingHorizontal: theme.space.md,
+    paddingTop: theme.space.md,
+    backgroundColor: theme.color.tile2,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.color.edge,
+  },
+  cameraLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   footer: { marginTop: theme.space.sm },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: theme.space.md },
   progressLabel: {

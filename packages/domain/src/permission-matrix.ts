@@ -94,6 +94,18 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     },
   },
   {
+    /**
+     * "Remove from the system", as far as D8 allows: the account is archived, not deleted.
+     * Nothing is ever hard-deleted here — every audit, photograph and log entry names the
+     * person who made it — so an archived user leaves every list and every picker while the
+     * record of what they did stays exactly as it was (R-25).
+     */
+    resource: 'user',
+    action: 'archive',
+    description: 'Archive a user: removed from every list, history untouched',
+    grants: { SUPER_ADMIN: org },
+  },
+  {
     resource: 'user',
     action: 'reset_password',
     description: 'Issue a fresh bootstrap credential and force a reset',

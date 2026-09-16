@@ -81,7 +81,7 @@ export default function ResetPasswordScreen() {
               label="Current password"
               value={currentPassword}
               onChangeText={setCurrentPassword}
-              secureTextEntry
+              revealable
               autoCapitalize="none"
               placeholder="Your phone number"
             />
@@ -90,7 +90,7 @@ export default function ResetPasswordScreen() {
               label="New password"
               value={newPassword}
               onChangeText={setNewPassword}
-              secureTextEntry
+              revealable
               autoCapitalize="none"
               error={localMessage}
             />
@@ -99,7 +99,7 @@ export default function ResetPasswordScreen() {
               label="Confirm new password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
-              secureTextEntry
+              revealable
               autoCapitalize="none"
               error={mismatch}
               onSubmitEditing={submit}

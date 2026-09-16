@@ -32,6 +32,8 @@ import { AppError } from '../../common/errors';
 import { scopeFor } from '../../common/auth/scope-for';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
+import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
+import type { AnalyticsRefreshJob } from '../analytics/analytics-rollup.worker';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
 import { getRequestContext } from '../../common/observability/request-context';
 import { UnitsRepository } from '../units/units.repository';
@@ -72,6 +74,7 @@ export class AuditsService {
     private readonly auditLog: AuditLogService,
     private readonly events: DomainEvents,
     private readonly correctiveActions: CorrectiveActionsService,
+    private readonly queue: QueueService,
   ) {}
 
   // ------------------------------------------------------------------------ create
@@ -516,6 +519,13 @@ export class AuditsService {
           userIds: outcome.assigneeIds,
           data: { auditType: audit.auditType, actionsOpened: outcome.opened },
         });
+        // The board reads the analytics rollup, which otherwise waits for 02:00: a Unit
+        // whose only audit had just finished read `N/A`. Same transaction, so the rebuild
+        // exists exactly when the completion does (R-2).
+        await this.queue.sendInTransaction(tx, QUEUES.analyticsRollup, {
+          unitId: audit.unitId,
+          at: completedAt.toISOString(),
+        } satisfies AnalyticsRefreshJob);
       },
     );
 

@@ -68,6 +68,14 @@ export function DashboardPage() {
   const { can } = useSession();
   const [unitId, setUnitId] = useState('');
   const [months, setMonths] = useState<number>(12);
+  /**
+   * What the Unit score tile reports: the period's weighted score, or one audit's own.
+   *
+   * The weighted figure answers "how is this Unit doing" — `Σraw / Σmax` across the period,
+   * never a mean of percentages (R-15a) — and a single audit answers "how did that one go".
+   * Both are the server's; picking between them is the one thing this control does.
+   */
+  const [scoreAuditId, setScoreAuditId] = useState('');
 
   const units = useQuery({
     queryKey: ['units'],
@@ -182,6 +190,21 @@ export function DashboardPage() {
   const notStarted = board.filter((zone) => zone.score === null);
   const audited = board.length - notStarted.length;
 
+  /** Every completed, scored audit of this Unit in the period, newest first. */
+  const scorable = useMemo(
+    () =>
+      (audits.data?.data ?? [])
+        .filter((audit) => audit.scored && audit.completedAt !== null)
+        .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)),
+    [audits.data],
+  );
+  const chosenAudit = scorable.find((audit) => audit.id === scoreAuditId) ?? null;
+  // The audit's own total, as the server recomputed it on completion — not a figure this
+  // page works out, which is the rule the whole board follows (§3).
+  const unitScore = chosenAudit
+    ? chosenAudit.totals.scorePercentage
+    : (overview.data?.score.scorePercentage ?? null);
+
   const error = [units, overview, ranking, trend, zones, audits, actions].find((query) => query.error)
     ?.error;
 
@@ -220,13 +243,30 @@ export function DashboardPage() {
             ))}
           </select>
         </div>
+        <div className="gb-sel">
+          <label className="gb-label" htmlFor="gb-score">
+            Score
+          </label>
+          <select
+            id="gb-score"
+            value={scoreAuditId}
+            onChange={(event) => setScoreAuditId(event.target.value)}
+          >
+            <option value="">Weighted, all audits</option>
+            {scorable.map((audit, index) => (
+              <option key={audit.id} value={audit.id}>
+                {`Audit ${scorable.length - index} · ${formatDate(audit.completedAt)} · ${audit.auditorName}`}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="gb-pill">
           <i />
           Last sync <span className="gb-data">{lastSync(overview.dataUpdatedAt, unitName?.timezone)}</span>
         </div>
         {can('report', 'read_snapshot') ? (
           <Link className="gb-btn" to="/reports">
-            Export
+            Reports &amp; unit summary
           </Link>
         ) : null}
         {can('audit_assignment', 'create') ? (
@@ -287,10 +327,14 @@ export function DashboardPage() {
         </div>
         <div className="gb-kpis" style={{ marginTop: 14 }}>
           <Kpi
-            label="Unit score"
-            value={score1(overview.data?.score.scorePercentage ?? null)}
-            context={`${bandLabel(overview.data?.score.scorePercentage ?? null)} · ${overview.data?.score.sampleCount ?? 0} scored zones`}
-            band={bandOf(overview.data?.score.scorePercentage ?? null)}
+            label={chosenAudit ? 'Audit score' : 'Unit score'}
+            value={score1(unitScore)}
+            context={
+              chosenAudit
+                ? `${bandLabel(unitScore)} · ${chosenAudit.auditorName} · ${formatDate(chosenAudit.completedAt)}`
+                : `${bandLabel(unitScore)} · ${overview.data?.score.sampleCount ?? 0} scored zones`
+            }
+            band={bandOf(unitScore)}
           />
           <Kpi
             label="Zones audited"

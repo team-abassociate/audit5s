@@ -41,7 +41,8 @@ export default function HistoryScreen() {
     ({ item }: { item: LocalAudit }) => (
       <Card>
         <CardHeader
-          title={AUDIT_TYPE_LABELS[item.auditType as AuditType] ?? item.auditType}
+          title={item.unitName ?? 'Unit'}
+          description={AUDIT_TYPE_LABELS[item.auditType as AuditType] ?? item.auditType}
           action={
             <Chip tone={AUDIT_STATUS_TONE[item.status as AuditStatus] ?? 'muted'}>
               {AUDIT_STATUS_LABELS[item.status as AuditStatus] ?? item.status}

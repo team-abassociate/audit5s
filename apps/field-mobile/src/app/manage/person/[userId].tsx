@@ -31,18 +31,23 @@ import {
   ROLE_LABELS,
   USER_STATUS,
 } from '../../../lib/labels';
+import { useSession } from '../../../lib/session';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 
 /**
  * One person: who they are, the Units they can reach (revoke or grant from here), the audits
  * they have run, and their account. Disabling is the "delete": they can no longer sign in,
  * and nothing they recorded goes anywhere (D8).
+ *
+ * A Coordinator (R-24) manages the Zone Leaders of their own Unit — edit, reset, disable — and
+ * reads everyone else. Unit access is the Super Admin's to give and take (§6.3).
  */
 export default function PersonScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { scope, can } = useSession();
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const [editing, setEditing] = useState(false);
   const [granting, setGranting] = useState(false);
@@ -96,6 +101,18 @@ export default function PersonScreen() {
     },
   });
 
+  /**
+   * Removal, as far as D8 allows (R-25): archived and disabled, never deleted. Their audits,
+   * photographs and activity log stay exactly as they are; the account leaves every list.
+   */
+  const remove = useMutation({
+    mutationFn: () => api.post(`/users/${userId}/archive`, {}),
+    onSuccess: async () => {
+      await refresh();
+      router.back();
+    },
+  });
+
   if (person.isLoading) {
     return (
       <Screen style={styles.centered}>
@@ -112,6 +129,10 @@ export default function PersonScreen() {
   }
 
   const p = person.data;
+  // A Super Admin manages anyone; a Coordinator only Zone Leaders (§6.3's "role = ZONE_LEADER").
+  const manages = scope?.role === 'SUPER_ADMIN' || (can('user', 'update') && p.role === 'ZONE_LEADER');
+  const mayGrant = can('unit_membership', 'create');
+  const mayRevoke = can('unit_membership', 'revoke');
   const live = (audits.data?.data ?? []).find((audit) =>
     ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'].includes(audit.status),
   );
@@ -147,7 +168,12 @@ export default function PersonScreen() {
           <EditPerson user={p} onDone={() => setEditing(false)} />
         ) : (
           <Card>
-            <CardHeader title="Details" action={<HeaderAction title="Edit" accessibilityLabel="Edit details" onPress={() => setEditing(true)} />} />
+            <CardHeader
+              title="Details"
+              action={
+                manages ? <HeaderAction title="Edit" accessibilityLabel="Edit details" onPress={() => setEditing(true)} /> : null
+              }
+            />
             <LedgerRow label="Phone" value={p.phoneE164} />
             <LedgerRow label="Email" value={p.email ?? '—'} />
             <LedgerRow label="Last sign-in" value={p.lastLoginAt ? formatDateTime(p.lastLoginAt) : 'Never'} />
@@ -161,7 +187,9 @@ export default function PersonScreen() {
             description={
               p.role === 'SUPER_ADMIN'
                 ? 'A Super Admin reaches every Unit.'
-                : 'Revoking access removes the Unit from their phone on its next sync. Their past audits stay.'
+                : mayRevoke
+                  ? 'Revoking access removes the Unit from their phone on its next sync. Their past audits stay.'
+                  : 'Unit access is given and removed by a Super Admin.'
             }
           />
           {(memberships.data?.data ?? []).map((membership) => (
@@ -171,14 +199,16 @@ export default function PersonScreen() {
                   <Text style={styles.itemTitle}>{membership.unitName}</Text>
                   <Data>Since {formatDate(membership.validFrom)}</Data>
                 </View>
-                <ConfirmAction
-                  compact
-                  title="Revoke"
-                  question={`Revoke ${p.fullName}'s access to ${membership.unitName}?`}
-                  confirmLabel="Revoke"
-                  busy={revoke.isPending && revoke.variables?.id === membership.id}
-                  onConfirm={() => revoke.mutate(membership)}
-                />
+                {mayRevoke ? (
+                  <ConfirmAction
+                    compact
+                    title="Revoke"
+                    question={`Revoke ${p.fullName}'s access to ${membership.unitName}?`}
+                    confirmLabel="Revoke"
+                    busy={revoke.isPending && revoke.variables?.id === membership.id}
+                    onConfirm={() => revoke.mutate(membership)}
+                  />
+                ) : null}
               </View>
             </View>
           ))}
@@ -186,7 +216,7 @@ export default function PersonScreen() {
             <Muted>No Unit yet, so they can reach nothing.</Muted>
           ) : null}
           <ErrorBanner message={problemMessage(revoke.error ?? grant.error)} />
-          {p.role === 'SUPER_ADMIN' ? null : granting ? (
+          {p.role === 'SUPER_ADMIN' || !mayGrant ? null : granting ? (
             <View style={styles.granting}>
               <ChoiceList
                 value={null}
@@ -226,30 +256,41 @@ export default function PersonScreen() {
           </Card>
         ) : null}
 
-        <Card>
-          <CardHeader title="Account" />
-          <View style={styles.accountActions}>
-            <ConfirmAction
-              title="Reset password"
-              question={`Reset ${p.fullName}'s password? They are signed out and sign in again with their phone number.`}
-              confirmLabel="Reset"
-              busy={reset.isPending}
-              onConfirm={() => reset.mutate()}
-            />
-            {p.status === 'DISABLED' ? (
-              <Muted>This account is disabled.</Muted>
-            ) : (
+        {manages ? (
+          <Card>
+            <CardHeader title="Account" />
+            <View style={styles.accountActions}>
               <ConfirmAction
-                title="Disable account"
-                question={`Disable ${p.fullName}? They are signed out everywhere and cannot sign in. Nothing they recorded is deleted.`}
-                confirmLabel="Disable"
-                busy={disable.isPending}
-                onConfirm={() => disable.mutate()}
+                title="Reset password"
+                question={`Reset ${p.fullName}'s password? They are signed out and sign in again with their phone number.`}
+                confirmLabel="Reset"
+                busy={reset.isPending}
+                onConfirm={() => reset.mutate()}
               />
-            )}
-            <ErrorBanner message={problemMessage(disable.error ?? reset.error)} />
-          </View>
-        </Card>
+              {p.status === 'DISABLED' ? (
+                <Muted>This account is disabled.</Muted>
+              ) : (
+                <ConfirmAction
+                  title="Disable account"
+                  question={`Disable ${p.fullName}? They are signed out everywhere and cannot sign in. Nothing they recorded is deleted.`}
+                  confirmLabel="Disable"
+                  busy={disable.isPending}
+                  onConfirm={() => disable.mutate()}
+                />
+              )}
+              {can('user', 'archive') && scope?.role === 'SUPER_ADMIN' ? (
+                <ConfirmAction
+                  title="Remove from the system"
+                  question={`Remove ${p.fullName}? They leave every list and can no longer sign in. Their audits, photographs and activity log are kept — a 5S record that could be erased would not be a record.`}
+                  confirmLabel="Remove"
+                  busy={remove.isPending}
+                  onConfirm={() => remove.mutate()}
+                />
+              ) : null}
+              <ErrorBanner message={problemMessage(disable.error ?? reset.error ?? remove.error)} />
+            </View>
+          </Card>
+        ) : null}
       </ScrollView>
     </Screen>
   );

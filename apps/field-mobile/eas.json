@@ -11,7 +11,7 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "API_BASE_URL": "https://process-pipe-poem-evening.trycloudflare.com/api/v1"
+        "API_BASE_URL": "http://192.168.68.185:3000/api/v1"
       }
     },
     "production": {

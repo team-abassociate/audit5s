@@ -33,6 +33,9 @@ export interface ResolvedToken extends ReportAccessTokenRow {
   issuedToRole: string | null;
   issuedToName: string | null;
   issuedToActiveUnitId: string | null;
+  /** The account that generated the report, while it is still active (R-22). */
+  issuedByRole: string | null;
+  issuedByName: string | null;
 }
 
 @Injectable()
@@ -92,12 +95,27 @@ export class ReportTokensRepository extends BaseRepository {
 
       const usable = holder && holder.archivedAt === null && holder.status === 'ACTIVE';
 
+      // The report's issuer: whom the link acts as when no Zone Leader is attached (R-22).
+      const [issuer] = await tx
+        .select({
+          role: users.role,
+          fullName: users.fullName,
+          status: users.status,
+          archivedAt: users.archivedAt,
+        })
+        .from(users)
+        .where(eq(users.id, row.createdByUserId))
+        .limit(1);
+      const issuerUsable = issuer && issuer.archivedAt === null && issuer.status === 'ACTIVE';
+
       return {
         ...row,
         useCount: row.useCount + 1,
         issuedToRole: usable ? holder.role : null,
         issuedToName: usable ? holder.fullName : null,
         issuedToActiveUnitId: usable ? row.unitId : null,
+        issuedByRole: issuerUsable ? issuer.role : null,
+        issuedByName: issuerUsable ? issuer.fullName : null,
       } satisfies ResolvedToken;
     });
   }

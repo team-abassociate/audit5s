@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { Button, ErrorBanner, Field, GateCard, Screen } from '../components/ui';
-import { ApiError } from '../lib/api';
+import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { Button, ErrorBanner, Field, GateCard, Muted, Screen } from '../components/ui';
+import { ApiError, apiBaseUrl, defaultApiBaseUrl, setApiBaseUrl } from '../lib/api';
 import { useSession } from '../lib/session';
 import { createThemedStyles } from '../lib/theme';
 
@@ -13,6 +13,11 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The server this phone talks to. Hidden until asked for: an auditor never touches it,
+  // and on a bench test the laptop's address changes with every Wi-Fi it joins.
+  const [serverOpen, setServerOpen] = useState(false);
+  const [server, setServer] = useState(apiBaseUrl());
+  const [serverNote, setServerNote] = useState<string | null>(null);
 
   async function submit() {
     if (busy) return;
@@ -33,6 +38,13 @@ export default function LoginScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function saveServer(value: string | null) {
+    const saved = await setApiBaseUrl(value);
+    setServer(saved);
+    setServerNote(`This phone now uses ${saved}`);
+    setError(null);
   }
 
   return (
@@ -60,7 +72,7 @@ export default function LoginScreen() {
               hint="First time? Your password is your phone number, and you will be asked to change it straight away."
               value={password}
               onChangeText={setPassword}
-              secureTextEntry
+              revealable
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="current-password"
@@ -72,6 +84,39 @@ export default function LoginScreen() {
             <ErrorBanner message={error} />
 
             <Button testID="sign-in" title="Sign in" onPress={submit} busy={busy} />
+
+            {serverOpen ? (
+              <View style={styles.server}>
+                <Field
+                  testID="server-address"
+                  label="Server address"
+                  hint="The laptop running audit5s, e.g. 192.168.1.5 — its port and path are added for you."
+                  value={server}
+                  onChangeText={setServer}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                />
+                {serverNote ? <Muted>{serverNote}</Muted> : null}
+                <Button title="Save address" variant="secondary" onPress={() => void saveServer(server)} />
+                <Button
+                  title="Use the built-in address"
+                  variant="secondary"
+                  onPress={() => void saveServer(null)}
+                />
+                <Muted>Built in: {defaultApiBaseUrl()}</Muted>
+              </View>
+            ) : (
+              <View style={styles.server}>
+                <Button
+                  testID="server-settings"
+                  title="Server address"
+                  variant="secondary"
+                  compact
+                  onPress={() => setServerOpen(true)}
+                />
+              </View>
+            )}
           </GateCard>
         </ScrollView>
       </Screen>
@@ -82,4 +127,5 @@ export default function LoginScreen() {
 const useStyles = createThemedStyles((theme) => ({
   flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center', paddingVertical: theme.space.xl },
+  server: { marginTop: theme.space.md, gap: theme.space.sm },
 }));

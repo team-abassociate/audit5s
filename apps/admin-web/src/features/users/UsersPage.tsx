@@ -5,6 +5,7 @@ import {
   ROLES,
   type CreateUserRequest,
   type CreateUserResponse,
+  type MembershipDetail,
   type Page,
   type Role,
   type Unit,
@@ -124,9 +125,11 @@ export function UsersPage() {
 }
 
 function UserRow({ user }: { user: User }) {
-  const { can, user: self } = useSession();
+  const { can, scope, user: self } = useSession();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
 
   const revokeAccess = useMutation({
     mutationFn: () => api.post<void>(`/users/${user.id}/disable`),
@@ -138,8 +141,24 @@ function UserRow({ user }: { user: User }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 
+  /**
+   * Removal, as far as D8 allows (R-25): archived and disabled, never deleted. Their audits,
+   * photographs and log entries stay exactly as they are — they simply leave every list.
+   */
+  const remove = useMutation({
+    mutationFn: () => api.post<void>(`/users/${user.id}/archive`),
+    onSuccess: async () => {
+      setConfirmingRemoval(false);
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+
   const statusTone =
     user.status === 'ACTIVE' ? 'good' : user.status === 'DISABLED' ? 'bad' : 'warn';
+  // A Coordinator manages Zone Leaders and nobody else (§6.3). Offering them a button the
+  // server refuses for anyone else is an invitation to a 403.
+  const manageable = scope?.role === 'SUPER_ADMIN' || user.role === 'ZONE_LEADER';
+  const isSelf = user.id === self?.id;
 
   return (
     <Fragment>
@@ -157,13 +176,13 @@ function UserRow({ user }: { user: User }) {
           {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'never'}
         </Td>
         <Td>
-          <div className="flex gap-2">
-            {can('user', 'update') && (
+          <div className="flex flex-wrap gap-2">
+            {can('user', 'update') && manageable && (
               <Button variant="secondary" onClick={() => setEditing((open) => !open)}>
                 {editing ? 'Close' : 'Edit'}
               </Button>
             )}
-            {can('user', 'reset_password') && (
+            {can('user', 'reset_password') && (manageable || isSelf) && (
               <Button
                 variant="secondary"
                 disabled={reset.isPending}
@@ -172,20 +191,46 @@ function UserRow({ user }: { user: User }) {
                 Reset password
               </Button>
             )}
-            {can('user', 'disable') && user.status !== 'DISABLED' && user.id !== self?.id && (
+            {can('user', 'disable') && manageable && user.status !== 'DISABLED' && !isSelf && (
               <Button
                 variant="danger"
-                title="Disable sign-in and revoke every session and device"
+                title="Disable sign-in and revoke every session and device. They stay in this list."
                 disabled={revokeAccess.isPending}
                 onClick={() => revokeAccess.mutate()}
               >
                 Revoke access
               </Button>
             )}
+            {can('user', 'archive') && !isSelf && (
+              <Button
+                variant="danger"
+                title="Remove from every list. Their audits, photographs and activity log stay."
+                disabled={remove.isPending}
+                onClick={() => (confirmingRemoval ? remove.mutate() : setConfirmingRemoval(true))}
+              >
+                {remove.isPending
+                  ? 'Removing…'
+                  : confirmingRemoval
+                    ? 'Confirm removal'
+                    : 'Remove'}
+              </Button>
+            )}
+            {confirmingRemoval && !remove.isPending && (
+              <Button variant="secondary" onClick={() => setConfirmingRemoval(false)}>
+                Keep
+              </Button>
+            )}
           </div>
-          {(revokeAccess.error || reset.error) && (
+          {confirmingRemoval && (
+            <p className="mt-2 text-xs text-ink-2">
+              {user.fullName} leaves every list and can no longer sign in. Everything they
+              recorded — audits, photographs, the activity log — is kept, because a 5S record
+              that could be erased would not be a record.
+            </p>
+          )}
+          {(revokeAccess.error || reset.error || remove.error) && (
             <div className="mt-2">
-              <ErrorNotice error={revokeAccess.error ?? reset.error} />
+              <ErrorNotice error={revokeAccess.error ?? reset.error ?? remove.error} />
             </div>
           )}
         </Td>
@@ -268,7 +313,127 @@ function EditUserForm({ user, onDone }: { user: User; onDone: () => void }) {
           <ErrorNotice error={update.error} />
         </div>
       )}
+      <div className="sm:col-span-3">
+        <UserUnits user={user} />
+      </div>
     </form>
+  );
+}
+
+/**
+ * The Units this person can reach, and the way to change them (§8.4).
+ *
+ * It sits inside the edit form because that is where an administrator looks for it — but a
+ * membership is not a user field: each change is its own call, takes effect at once, and
+ * revoking one cancels that Unit's open assignments (AA-1). Every button here says
+ * `type="button"`, or it would submit the form around it.
+ */
+function UserUnits({ user }: { user: User }) {
+  const { can } = useSession();
+  const queryClient = useQueryClient();
+  const [unitId, setUnitId] = useState('');
+
+  const memberships = useQuery({
+    queryKey: ['memberships', 'user', user.id],
+    queryFn: () =>
+      api.get<Page<MembershipDetail>>(`/memberships?userId=${user.id}&status=ACTIVE&limit=200`),
+  });
+  const units = useQuery({
+    queryKey: ['units'],
+    queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
+    enabled: can('unit_membership', 'create'),
+  });
+
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['memberships'] }),
+      queryClient.invalidateQueries({ queryKey: ['users'] }),
+    ]);
+  const grant = useMutation({
+    mutationFn: () => api.post(`/units/${unitId}/memberships`, { userId: user.id }),
+    onSuccess: async () => {
+      setUnitId('');
+      await refresh();
+    },
+  });
+  const revoke = useMutation({
+    mutationFn: (membership: MembershipDetail) =>
+      api.delete(`/units/${membership.unitId}/memberships/${membership.id}`),
+    onSuccess: refresh,
+  });
+
+  if (user.role === 'SUPER_ADMIN') {
+    return <p className="text-xs text-ink-2">A Super Admin reaches every Unit.</p>;
+  }
+
+  const held = memberships.data?.data ?? [];
+  const heldIds = new Set(held.map((membership) => membership.unitId));
+  const addable = (units.data?.data ?? []).filter((unit) => !heldIds.has(unit.id));
+
+  return (
+    <div className="border-t border-edge-soft pt-3">
+      <span className="gb-label">Units</span>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {held.map((membership) => (
+          <span
+            key={membership.id}
+            className="flex items-center gap-2 border border-edge-soft bg-tile px-2 py-1 text-sm"
+          >
+            {membership.unitName}
+            {can('unit_membership', 'revoke') && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={revoke.isPending}
+                onClick={() => revoke.mutate(membership)}
+              >
+                Remove
+              </Button>
+            )}
+          </span>
+        ))}
+        {held.length === 0 && (
+          <span className="text-xs text-ink-2">
+            No Unit yet, so this person can reach nothing.
+          </span>
+        )}
+      </div>
+
+      {can('unit_membership', 'create') && (
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="w-64">
+            <Field label="Add to a Unit">
+              <Combobox
+                value={unitId}
+                onChange={setUnitId}
+                options={addable.map((unit) => ({ id: unit.id, label: unit.name }))}
+                placeholder="Search Units…"
+              />
+            </Field>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!unitId || grant.isPending}
+            onClick={() => grant.mutate()}
+          >
+            {grant.isPending ? 'Adding…' : 'Add'}
+          </Button>
+        </div>
+      )}
+
+      {(grant.error || revoke.error) && (
+        <div className="mt-2">
+          <ErrorNotice error={grant.error ?? revoke.error} />
+        </div>
+      )}
+      {user.role !== 'CONSULTANT' && (
+        <p className="mt-2 text-xs text-ink-2">
+          A {user.role === 'COORDINATOR' ? 'Coordinator' : 'Zone Leader'} belongs to one Unit
+          at a time (M-1); adding a second is refused.
+        </p>
+      )}
+    </div>
   );
 }
 

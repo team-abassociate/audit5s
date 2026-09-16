@@ -45,7 +45,7 @@ import {
 const KIND_LABEL: Record<ReportKind, string> = {
   INITIAL_ZONE: 'Initial Zone report',
   AFTER_EVIDENCE_ZONE: 'After-evidence report',
-  MULTI_ZONE_SUMMARY: 'Multi-Zone summary',
+  MULTI_ZONE_SUMMARY: 'Unit summary report',
 };
 
 export function ReportsPage() {
@@ -142,11 +142,28 @@ function GeneratePanel({ unitId }: { unitId: string }) {
     enabled: !isSummary,
   });
 
-  // This Unit's Zones. `/zones` takes no Unit filter, so it would list every Unit's.
+  // This Unit's Zones. `/zones` takes no Unit filter, so it would list every Unit's. Always
+  // loaded: the one-click unit summary below needs them whatever kind is selected.
   const zones = useQuery({
     queryKey: ['zones', unitId],
     queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?limit=200`),
-    enabled: isSummary,
+  });
+
+  /** The whole Unit in one click: a summary over every active Zone. */
+  const unitSummary = useMutation({
+    mutationFn: () =>
+      api.post<ReportSnapshot>('/reports/generate', {
+        kind: 'MULTI_ZONE_SUMMARY',
+        unitId,
+        selectedZoneIds: (zones.data?.data ?? []).map((zone) => zone.id),
+      }),
+    onSuccess: (snapshot) => {
+      setNotice(
+        `Unit summary report version ${snapshot.version} queued. It renders in the background; ` +
+          'the history updates when it is ready.',
+      );
+      void queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
   });
 
   // The audit's Zones come with the audit (`GET /audits/{id}`, §8.6). There is no
@@ -190,6 +207,19 @@ function GeneratePanel({ unitId }: { unitId: string }) {
         description="Rendering happens in the background; this returns as soon as the payload is frozen."
       />
       <div className="space-y-3 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 border-b border-edge-soft pb-3">
+          <Button
+            onClick={() => unitSummary.mutate()}
+            disabled={unitSummary.isPending || (zones.data?.data.length ?? 0) === 0}
+          >
+            {unitSummary.isPending ? 'Queuing…' : 'Generate unit summary report'}
+          </Button>
+          <span className="text-xs text-ink-2">
+            Every active Zone of this Unit, each from its most recently completed audit. To pick
+            Zones yourself, choose “Unit summary report” as the kind below.
+          </span>
+          {unitSummary.error ? <ErrorNotice error={unitSummary.error} /> : null}
+        </div>
         <div className="flex flex-wrap gap-3">
           <div className="w-72">
             <Field label="Kind">

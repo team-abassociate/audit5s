@@ -39,7 +39,9 @@ describe('notification policy (§5.9)', () => {
     const { body } = renderNotification(
       job('CORRECTIVE_ACTION_SUBMITTED', { zoneCode: '3', zoneName: 'Press', questionNo: 12, option: 'COMPLETED', attemptNo: 2 }),
     );
-    expect(body).toBe('Zone 3 — Press, Q12: completed (attempt 2). Ready for review.');
+    expect(body).toBe(
+      'Zone 3 — Press, Q12: completed with an after photo (attempt 2) and closed. Regenerate the report to include it.',
+    );
   });
 
   it('names only the integrity findings that fired (§16.4, R-17b)', () => {

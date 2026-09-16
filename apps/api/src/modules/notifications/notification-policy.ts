@@ -122,10 +122,12 @@ export function renderNotification(event: DomainEventJob): { title: string; body
     case 'CORRECTIVE_ACTION_SUBMITTED':
       return {
         title: 'Corrective action submitted',
+        // R-23: an after-photo closes the item at once; "not possible" still needs a decision.
         body:
           `${item}${question}: ` +
-          (data.option === 'NOT_POSSIBLE' ? 'marked not possible' : 'completed') +
-          ` (attempt ${String(data.attemptNo ?? 1)}). Ready for review.`,
+          (data.option === 'NOT_POSSIBLE'
+            ? `marked not possible (attempt ${String(data.attemptNo ?? 1)}). Accept or reopen it.`
+            : `completed with an after photo (attempt ${String(data.attemptNo ?? 1)}) and closed. Regenerate the report to include it.`),
       };
     case 'CORRECTIVE_ACTION_VERIFIED':
       return { title: 'Corrective action verified', body: `${item}${question} was verified.` };

@@ -188,6 +188,15 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'POST',
+    path: '/api/v1/users/:id/archive',
+    description: 'user:archive — a Super Admin only; removal is archival, never deletion (R-25, D8)',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
+    },
+    coveredBy: 'users.e2e.test.ts',
+  },
+  {
+    method: 'POST',
     path: '/api/v1/users/:id/reset-password',
     description: 'user:reset_password; issues a fresh bootstrap credential, returns none',
     expected: {

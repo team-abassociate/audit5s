@@ -18,6 +18,7 @@ import {
 } from '../../components/ui';
 import { api } from '../../lib/api';
 import { ROLE_LABELS, USER_STATUS } from '../../lib/labels';
+import { useSession } from '../../lib/session';
 import { createThemedStyles, useTheme } from '../../lib/theme';
 
 type PeopleRole = 'CONSULTANT' | 'COORDINATOR' | 'ZONE_LEADER';
@@ -37,13 +38,18 @@ const ABOUT: Record<PeopleRole, string> = {
 /**
  * Everyone the organization has given an account, one role at a time, with one search.
  * Consultants on an audit right now come first, because that is who a Super Admin looks for.
+ * A Coordinator (R-24) sees the people of their own Unit and adds Zone leaders only.
  */
 export default function PeopleScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
-  const [role, setRole] = useState<PeopleRole>('CONSULTANT');
+  const { scope, can } = useSession();
+  const isSuperAdmin = scope?.role === 'SUPER_ADMIN';
+  const [role, setRole] = useState<PeopleRole>(isSuperAdmin ? 'CONSULTANT' : 'ZONE_LEADER');
   const [search, setSearch] = useState('');
+  // A Coordinator creates Zone Leaders and nobody else (§6.3); the server holds the same line.
+  const mayAdd = can('user', 'create') && (isSuperAdmin || role === 'ZONE_LEADER');
 
   const users = useQuery({
     queryKey: ['users', role],
@@ -102,16 +108,17 @@ export default function PeopleScreen() {
     <Screen>
       <Tabs.Screen
         options={{
-          headerRight: () => (
-            <View style={styles.tools}>
-              <HeaderAction
-                testID="add-person"
-                title="+ Add"
-                accessibilityLabel={`Add a ${ROLE_LABELS[role].toLowerCase()}`}
-                onPress={() => router.push({ pathname: '/manage/new-person', params: { role } })}
-              />
-            </View>
-          ),
+          headerRight: () =>
+            mayAdd ? (
+              <View style={styles.tools}>
+                <HeaderAction
+                  testID="add-person"
+                  title="+ Add"
+                  accessibilityLabel={`Add a ${ROLE_LABELS[role].toLowerCase()}`}
+                  onPress={() => router.push({ pathname: '/manage/new-person', params: { role } })}
+                />
+              </View>
+            ) : null,
         }}
       />
       <FlatList
@@ -139,7 +146,7 @@ export default function PeopleScreen() {
           ) : users.data ? (
             <EmptyState
               title={query ? 'No match' : `No ${label.toLowerCase()} yet`}
-              detail={query ? 'Try another name, login ID or phone number.' : 'Add one with + Add.'}
+              detail={query ? 'Try another name, login ID or phone number.' : mayAdd ? 'Add one with + Add.' : undefined}
             />
           ) : null
         }

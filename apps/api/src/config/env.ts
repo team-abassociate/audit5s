@@ -50,7 +50,8 @@ const envSchema = z.object({
   JWT_ISSUER: z.string().min(1),
   JWT_AUDIENCE: z.string().min(1),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
-  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  /** `0` (the default) is no limit: a session lasts until it is signed out or revoked (R-21). */
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(0).max(90).default(0),
   BOOTSTRAP_PASSWORD_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(72),
 
   /**

@@ -12,6 +12,7 @@ import * as SecureStore from 'expo-secure-store';
 const KEYS = {
   session: 'audit5s.session',
   deviceId: 'audit5s.deviceId',
+  serverAddress: 'audit5s.serverAddress',
 } as const;
 
 export interface StoredSession {
@@ -55,6 +56,31 @@ export async function clearSession(): Promise<void> {
   } catch {
     // Nothing to clear.
   }
+}
+
+/**
+ * The server this install talks to, when it is not the one the build was made with.
+ *
+ * A build bakes one address in, and on a bench test that address moves: the same laptop on a
+ * different Wi-Fi is a different number, and an app compiled with the old one knocks at a
+ * door that is no longer there. Typing the new address beats waiting for a rebuild. It sits
+ * beside the session because it is per-install configuration rather than business data, and
+ * because clearing app data should forget both together.
+ */
+export async function loadServerAddress(): Promise<string | null> {
+  return readString(KEYS.serverAddress);
+}
+
+export async function saveServerAddress(value: string | null): Promise<void> {
+  if (value === null) {
+    try {
+      await SecureStore.deleteItemAsync(KEYS.serverAddress);
+    } catch {
+      // Nothing to clear.
+    }
+    return;
+  }
+  await writeString(KEYS.serverAddress, value);
 }
 
 /**

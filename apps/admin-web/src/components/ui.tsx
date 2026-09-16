@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import type {
   ButtonHTMLAttributes,
+  ComponentProps,
   InputHTMLAttributes,
   KeyboardEvent,
   ReactNode,
@@ -39,6 +40,50 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return <input className={cn('gb-input', className)} {...props} />;
 }
 
+/**
+ * A password field with an eye button, so a person can check what they typed before
+ * sending it. Typed hidden by default. `ref` passes through, so react-hook-form's
+ * `register` works on it exactly as on `Input`.
+ */
+export function PasswordInput({ className, ...props }: Omit<ComponentProps<'input'>, 'type'>) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <span className="gb-password">
+      <input {...props} type={visible ? 'text' : 'password'} className={cn('gb-input', className)} />
+      <button
+        type="button"
+        className="gb-password-toggle"
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        aria-pressed={visible}
+        title={visible ? 'Hide password' : 'Show password'}
+        onClick={() => setVisible((shown) => !shown)}
+      >
+        <EyeIcon crossed={visible} />
+      </button>
+    </span>
+  );
+}
+
+/** An eye, struck through while the password is showing. Stroked in `currentColor`. */
+function EyeIcon({ crossed }: { crossed: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+      {crossed ? <path d="M3 3l18 18" /> : null}
+    </svg>
+  );
+}
+
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={cn('gb-input', className)} {...props} />;
 }
@@ -66,8 +111,11 @@ export function Combobox({
   const [text, setText] = useState(selectedLabel);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  // Narrow only on what the person has typed since opening. Filtering on the selected label
+  // itself left a picked "AB Associates" offering nothing but "AB Associates".
+  const [typing, setTyping] = useState(false);
   const matches = useMemo(() => {
-    const query = text.trim().toLocaleLowerCase();
+    const query = typing ? text.trim().toLocaleLowerCase() : '';
     return options
       .filter((option) => option.label.toLocaleLowerCase().includes(query))
       .sort((a, b) => a.label.localeCompare(b.label));
@@ -77,6 +125,7 @@ export function Combobox({
   useEffect(() => setText(selectedLabel), [selectedLabel]);
 
   const choose = (option: (typeof options)[number]) => {
+    setTyping(false);
     setText(option.label);
     onChange(option.id);
     setOpen(false);
@@ -113,12 +162,22 @@ export function Combobox({
         aria-activedescendant={open && matches[active] ? `${listId}-${active}` : undefined}
         autoComplete="off"
         value={text}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onFocus={(event) => {
+          // Open on the whole list, with the current text selected so typing replaces it.
+          setTyping(false);
+          setOpen(true);
+          event.target.select();
+        }}
+        onBlur={() => {
+          setOpen(false);
+          setTyping(false);
+          setText(selectedLabel);
+        }}
         onKeyDown={onKeyDown}
         onChange={(event) => {
           const typed = event.target.value;
           setText(typed);
+          setTyping(true);
           setOpen(true);
           setActive(0);
           const match = options.find(

@@ -34,3 +34,11 @@ apps/admin-web/.vite/
 
 # Claude Code runtime state
 .claude/scheduled_tasks.lock
+
+# Local key material and scratch output, never committed
+private.pem
+public.pem
+*-log.txt
+supabase-changes.patch
+# The LAN testing CA the web app serves to phones; generated locally, per laptop
+apps/admin-web/public/audit5s-ca.crt

@@ -167,6 +167,22 @@ export class UsersRepository extends BaseRepository {
     });
   }
 
+  /**
+   * R-25: archived and disabled in one statement, so no path leaves one without the other —
+   * an account out of every list that could still sign in would be the worst of both.
+   */
+  async archive(scope: ScopeContext, userId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .update(users)
+        .set({ status: 'DISABLED', archivedAt: new Date() })
+        .where(and(eq(users.id, userId), isNull(users.archivedAt), this.userScope(scope)))
+        .returning();
+      return row ?? null;
+    });
+  }
+
   async setBootstrapCredential(
     scope: ScopeContext,
     userId: string,

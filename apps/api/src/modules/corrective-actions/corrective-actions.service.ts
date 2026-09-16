@@ -190,10 +190,16 @@ export class CorrectiveActionsService {
           throw asAppError(error);
         }
 
+        // R-23: an answer with an after-photo closes the item there and then — no review
+        // step. `resolved_at` must accompany VERIFIED (the table's CHECK). Nobody verified
+        // it, so no verifier is recorded; a Super Admin can still reopen it.
+        const closes = target === 'VERIFIED';
         const moved = await unit.moveAction(
           actionId,
           { status: current.status, version: current.version },
-          { status: target, lastSubmittedAt: new Date() },
+          closes
+            ? { status: target, lastSubmittedAt: new Date(), resolvedAt: new Date(), verifiedByUserId: null }
+            : { status: target, lastSubmittedAt: new Date() },
         );
         if (!moved) throw this.versionConflict();
 
@@ -201,7 +207,7 @@ export class CorrectiveActionsService {
           id: submissionId,
           correctiveActionId: actionId,
           option: request.option,
-          submittedByName: request.option === 'COMPLETED' ? request.submittedByName : null,
+          submittedByName: request.submittedByName ?? null,
           description: request.option === 'COMPLETED' ? request.description : null,
           explanation: request.option === 'NOT_POSSIBLE' ? request.explanation : null,
           afterEvidenceId: photo?.id ?? null,
@@ -211,14 +217,37 @@ export class CorrectiveActionsService {
           userAgent: context?.userAgent ?? null,
         });
 
+        if (closes) {
+          // The audit rolls on (§2.8) exactly as a verification rolls it. Those edges are
+          // the system's, and the audit row admits only a Super Admin or its auditor, so the
+          // roll-up runs as the system on this same transaction.
+          await unit.asSystem(() => this.rollup(unit, current.auditId, null));
+        }
+
         await this.events.emit(unit.tx, {
           type: 'CORRECTIVE_ACTION_SUBMITTED',
-          actorUserId: scope.actor.userId,
+          // Through a link the actor may be the Super Admin who issued the report (R-22),
+          // and nobody is told of their own act — so the link's answer comes from nobody,
+          // and the Super Admin is told a response has arrived.
+          actorUserId: via === 'WEB_TOKEN' ? null : scope.actor.userId,
           unitId: current.unitId,
           resourceType: 'corrective_action',
           resourceId: actionId,
           data: { ...describe(current), option: request.option, attemptNo },
         });
+
+        if (closes) {
+          // §2.8 tells the Coordinator when an item is closed. With no review step (R-23) the
+          // closing is this submission, so the verified event is raised here, by nobody.
+          await this.events.emit(unit.tx, {
+            type: 'CORRECTIVE_ACTION_VERIFIED',
+            actorUserId: null,
+            unitId: current.unitId,
+            resourceType: 'corrective_action',
+            resourceId: actionId,
+            data: { ...describe(current) },
+          });
+        }
 
         return toSubmission((await unit.findSubmission(submissionId))!);
       });

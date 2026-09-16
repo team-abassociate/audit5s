@@ -19,6 +19,7 @@ import {
   StatusBand,
 } from '../../../components/ui';
 import { api, problemMessage } from '../../../lib/api';
+import { useSession } from '../../../lib/session';
 import { formatDateTime, formatPct } from '../../../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, humanize, isFinished } from '../../../lib/labels';
 import { bandOf, createThemedStyles, useTheme } from '../../../lib/theme';
@@ -26,7 +27,7 @@ import { bandOf, createThemedStyles, useTheme } from '../../../lib/theme';
 const REPORT_KIND: Record<ReportKind, string> = {
   INITIAL_ZONE: 'Zone report',
   AFTER_EVIDENCE_ZONE: 'After-evidence report',
-  MULTI_ZONE_SUMMARY: 'Summary report',
+  MULTI_ZONE_SUMMARY: 'Unit summary report',
 };
 
 /**
@@ -42,6 +43,9 @@ export default function ManageAuditScreen() {
   const { auditId } = useLocalSearchParams<{ auditId: string }>();
   const [opening, setOpening] = useState<string | null>(null);
   const [openError, setOpenError] = useState<unknown>(null);
+  // R-24: a Coordinator reads audits and opens reports; generating and correcting are the Super Admin's.
+  const { can } = useSession();
+  const mayGenerate = can('report', 'generate');
 
   const detail = useQuery({ queryKey: ['audit', auditId], queryFn: () => api.get<AuditDetail>(`/audits/${auditId}`) });
   const finished = detail.data ? isFinished(detail.data.status) : false;
@@ -55,6 +59,26 @@ export default function ManageAuditScreen() {
   });
   const generate = useMutation({
     mutationFn: (auditZoneId: string) => api.post<ReportSnapshot>('/reports/generate', { kind: 'INITIAL_ZONE', auditZoneId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports', 'audit', auditId] }),
+  });
+  // The zone summary report (`MULTI_ZONE_SUMMARY`) spans Zones rather than one audit, so its
+  // snapshots carry no audit of their own: they are listed from the Unit, and the ones that
+  // include a Zone of this audit are shown here.
+  const summaries = useQuery({
+    queryKey: ['reports', 'audit', auditId, 'summaries', detail.data?.unitId],
+    queryFn: () =>
+      api.get<Page<ReportSnapshot>>(`/reports?limit=50&kind=MULTI_ZONE_SUMMARY&unitId=${detail.data!.unitId}`),
+    enabled: finished && Boolean(detail.data?.unitId),
+    refetchInterval: (query) =>
+      (query.state.data?.data ?? []).some((row) => row.status === 'QUEUED' || row.status === 'RENDERING') ? 4_000 : false,
+  });
+  const generateSummary = useMutation({
+    mutationFn: (selectedZoneIds: string[]) =>
+      api.post<ReportSnapshot>('/reports/generate', {
+        kind: 'MULTI_ZONE_SUMMARY',
+        unitId: detail.data!.unitId,
+        selectedZoneIds,
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports', 'audit', auditId] }),
   });
 
@@ -147,7 +171,7 @@ export default function ManageAuditScreen() {
                   )}
                 </View>
                 {zone.zoneLeaderNameSnapshot ? <Data>Leader {zone.zoneLeaderNameSnapshot}</Data> : null}
-                {reportable ? (
+                {reportable && mayGenerate ? (
                   <View style={styles.itemAction}>
                     <Button
                       title="Generate report"
@@ -173,7 +197,22 @@ export default function ManageAuditScreen() {
                   : 'Frozen snapshots: a new version never changes an old one.'
               }
             />
-            {(reports.data?.data ?? []).map((snapshot) => (
+            {mayGenerate && audit.scored && audit.zones.some((zone) => zone.status === 'COMPLETED') ? (
+              <View style={styles.itemAction}>
+                <Button
+                  title="Generate unit summary report"
+                  variant="secondary"
+                  busy={generateSummary.isPending}
+                  onPress={() =>
+                    generateSummary.mutate(
+                      audit.zones.filter((zone) => zone.status === 'COMPLETED').map((zone) => zone.zoneId),
+                    )
+                  }
+                />
+                <ErrorBanner message={problemMessage(generateSummary.error)} />
+              </View>
+            ) : null}
+            {reportRows(reports.data?.data, summaries.data?.data, audit).map((snapshot) => (
               <View key={snapshot.id} style={styles.item}>
                 <View style={styles.itemHead}>
                   <Text style={styles.itemTitle}>
@@ -204,7 +243,7 @@ export default function ManageAuditScreen() {
           </Card>
         ) : null}
 
-        {finished && audit.scored ? (
+        {finished && audit.scored && can('audit', 'edit_after_completion') ? (
           <View style={styles.actions}>
             <Button
               title="Correct this audit"
@@ -234,3 +273,21 @@ const useStyles = createThemedStyles((theme) => ({
   itemAction: { marginTop: theme.space.sm },
   actions: { gap: theme.space.sm, marginTop: theme.space.sm },
 }));
+
+/**
+ * This audit's reports plus the zone summary reports that include one of its Zones, newest
+ * first and each once.
+ */
+function reportRows(
+  own: readonly ReportSnapshot[] | undefined,
+  summaries: readonly ReportSnapshot[] | undefined,
+  audit: AuditDetail,
+): ReportSnapshot[] {
+  const zoneIds = new Set(audit.zones.map((zone) => zone.zoneId));
+  const rows = new Map<string, ReportSnapshot>();
+  for (const snapshot of own ?? []) rows.set(snapshot.id, snapshot);
+  for (const snapshot of summaries ?? []) {
+    if ((snapshot.selectedZoneIds ?? []).some((id) => zoneIds.has(id))) rows.set(snapshot.id, snapshot);
+  }
+  return [...rows.values()].sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+}

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import type {
   AuditType,
   LocationReading,
@@ -17,6 +17,7 @@ import type { LocalDatabase } from './local-database';
 import {
   audits,
   checklistQuestions,
+  units,
   checklistVersions,
   localAuditZones,
   localQuestionResponses,
@@ -490,8 +491,13 @@ export function getLocalAudit(database: LocalDatabase, auditId: string) {
 }
 
 /** The History tab: this device's audits, newest first. */
+/** The device's audits, newest first, each with its Unit's cached name for the History list. */
 export function listLocalAudits(database: LocalDatabase) {
-  return database.select().from(audits).orderBy(sql`${audits.clientUpdatedAt} DESC`);
+  return database
+    .select({ ...getTableColumns(audits), unitName: units.name })
+    .from(audits)
+    .leftJoin(units, eq(units.id, audits.unitId))
+    .orderBy(sql`${audits.clientUpdatedAt} DESC`);
 }
 
 export function listLocalAuditZones(database: LocalDatabase, auditId: string) {

@@ -77,6 +77,14 @@ export class UsersController {
     return this.users.disable(scope, id);
   }
 
+  @RequirePermission('user', 'archive')
+  @Scope({ param: 'id', intent: 'write' })
+  @Post(':id/archive')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  archive(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.users.archive(scope, id);
+  }
+
   @RequirePermission('user', 'reset_password')
   @Scope({ param: 'id', intent: 'write' })
   @Post(':id/reset-password')

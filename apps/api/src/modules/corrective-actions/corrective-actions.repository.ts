@@ -23,6 +23,7 @@ import type {
 import type { ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
+import { SYSTEM_SCOPE } from '../../common/auth/system-scope';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { setActorContext } from '../users/users.repository';
 
@@ -412,6 +413,22 @@ export class CorrectiveActionWork {
         version: sql`${audits.version} + 1`,
       })
       .where(eq(audits.id, auditId));
+  }
+
+  /**
+   * Runs `work` as the system actor on this transaction, then restores the caller (R-23).
+   *
+   * For the audit roll-up only. Its edges have no human actor (§7.1), and the `audit` row's
+   * RLS policy admits a Super Admin or the auditor — not a Zone Leader whose answer closed
+   * the last finding. Every other statement on the transaction stays under the real actor.
+   */
+  async asSystem<T>(work: () => Promise<T>): Promise<T> {
+    await setActorContext(this.tx, SYSTEM_SCOPE.actor.userId, SYSTEM_SCOPE.actor.role);
+    try {
+      return await work();
+    } finally {
+      await setActorContext(this.tx, this.scope.actor.userId, this.scope.actor.role);
+    }
   }
 
   /**

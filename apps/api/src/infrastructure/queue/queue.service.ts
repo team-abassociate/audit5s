@@ -21,6 +21,11 @@ export const QUEUES = {
    * photograph whose commit rolled back.
    */
   mediaProcess: 'media.process',
+  /**
+   * Rebuilds the analytics day an audit completed on, so the board does not wait for the
+   * nightly rollup. Enqueued inside `complete`'s own transaction (R-2).
+   */
+  analyticsRollup: 'analytics.rollup',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

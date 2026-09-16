@@ -6,7 +6,7 @@ import type {
   UploadIntentRequest,
   UploadIntentResponse,
 } from '@audit5s/contracts';
-import type { ScopeContext, SignedTokenScope } from '@audit5s/domain';
+import { awaitsResponse, type ScopeContext, type SignedTokenScope } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { scopeFor } from '../../common/auth/scope-for';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
@@ -65,9 +65,11 @@ export class PublicCorrectiveActionsService {
       findingRemark: detail.findingRemark,
       dueAt: detail.dueAt,
       beforePhotoUrl,
-      // A verified item is finished. The page shows what was submitted, read-only, rather
-      // than a form that would be refused by `assertTransition` a moment later.
-      submittable: detail.status !== 'VERIFIED',
+      // Only an item waiting for an answer takes one. A response awaiting review (or a
+      // verified item) is shown read-only, rather than as a form whose photo upload the
+      // evidence service refuses a moment later — which the page reported as "could not
+      // reach the server".
+      submittable: awaitsResponse(detail.status),
       issuedToName: token.issuedToName,
       alreadySubmitted: latest
         ? { option: latest.option, submittedAt: latest.createdAt }
@@ -134,6 +136,13 @@ export class PublicCorrectiveActionsService {
     token: ResolvedToken,
     request: SubmitCorrectiveActionRequest,
   ): Promise<CorrectiveActionSubmission> {
+    // Anyone may hold the link (R-22), so the typed name is the only record of who answered.
+    // Without it the attempt would carry the name of the account the link acts as.
+    if (!request.submittedByName) {
+      throw AppError.validation('Your name is required', [
+        { field: 'submittedByName', message: 'Enter the name of the person answering' },
+      ]);
+    }
     if (request.option === 'COMPLETED') {
       await this.commitAfterPhoto(scope, request.afterEvidenceId);
     }

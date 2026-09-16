@@ -306,7 +306,7 @@ are the acceptance-test scripts for PART 14; QA should be able to execute them v
 
 | # | Action | System reaction | State / side effect |
 | --- | --- | --- | --- |
-| 1 | Logs in with password + (optional) TOTP | Issues access JWT (15 min) + refresh token (rotating, 30 d) | `AuditLog: auth.login` |
+| 1 | Logs in with password + (optional) TOTP | Issues access JWT (15 min) + refresh token (rotating, no time limit — `DECISIONS.md` R-21) | `AuditLog: auth.login` |
 | 2 | Creates a Unit (name, code, address, lat/lng, geofence radius, timezone) | Validates unique `code`; radius default 300 m | `Unit` row; `AuditLog: unit.created` |
 | 3 | Creates a Consultant (name, phone, email) | Generates login ID `RA3210` (PART 12.2), hashes bootstrap credential, sets `must_reset_password` | `User`; `AuditLog: user.created`; notification `USER_CREATED` (WhatsApp: credentials + reset link) |
 | 4 | Assigns Consultant → one or many Units | Creates `UnitMembership(role=CONSULTANT, active)` per Unit | Event `UNIT_ASSIGNED` → notification to Consultant |

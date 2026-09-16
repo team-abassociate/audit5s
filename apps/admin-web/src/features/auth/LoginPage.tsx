@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Button, ErrorNotice, Field, Input } from '@/components/ui';
+import { Button, ErrorNotice, Field, Input, PasswordInput } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface LoginForm {
@@ -47,8 +47,7 @@ export function LoginPage() {
           </Field>
 
           <Field label="Password">
-            <Input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               {...register('password', { required: true })}
             />

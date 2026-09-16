@@ -10,7 +10,11 @@ import { NotificationWorker } from './modules/notifications/notification.worker'
 import { StructuredLogger } from './common/observability/logger';
 import { SYSTEM_SCOPE } from './common/auth/system-scope';
 import { IntegrityWorker } from './modules/maintenance/integrity.worker';
-import { AnalyticsRollupWorker, type AnalyticsRollupJob } from './modules/analytics/analytics-rollup.worker';
+import {
+  AnalyticsRollupWorker,
+  type AnalyticsRefreshJob,
+  type AnalyticsRollupJob,
+} from './modules/analytics/analytics-rollup.worker';
 
 /**
  * `worker-general` (STACK.md §4). Same image as the API, different entrypoint, so there is
@@ -55,6 +59,19 @@ async function bootstrap(): Promise<void> {
       // second schedule to keep in step with this one for no gain.
       await integrity.sweep(SYSTEM_SCOPE, job.data.unitId);
     }
+  });
+
+  // The day an audit completed on, rebuilt as soon as it completes, so the board shows it.
+  await queue.work<AnalyticsRefreshJob>(QUEUES.analyticsRollup, async (jobs) => {
+    for (const job of jobs) {
+      await analytics.refresh(job.data);
+    }
+  });
+
+  // A missed 02:00 run, or audits completed before this worker last started, would otherwise
+  // stay off the board. Idempotent, so a restart costs a few upserts and nothing else.
+  await analytics.catchUp().catch((error: unknown) => {
+    logger.error(`analytics catch-up failed: ${error instanceof Error ? error.message : String(error)}`);
   });
 
   logger.log('worker-general ready');

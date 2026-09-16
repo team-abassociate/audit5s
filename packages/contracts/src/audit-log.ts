@@ -11,6 +11,8 @@ export const AUDIT_LOG_ACTIONS = [
   'user.created',
   'user.updated',
   'user.disabled',
+  /** Removal, as far as D8 allows: archived and disabled, never deleted (R-25). */
+  'user.archived',
   'user.password_reset',
   'consultant.assigned',
   'consultant.revoked',

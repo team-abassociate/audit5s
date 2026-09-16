@@ -37,11 +37,12 @@ export interface RequestWithSignedToken extends FastifyRequest {
  * account behind them is gone, and put the result in the request context so everything
  * downstream is ordinary.
  *
- * The actor is the Zone Leader the token was issued to. That is not a convenience: a
- * submission's `submitted_by_user_id` is `NOT NULL` and its RLS insert policy requires it
- * to be the acting user, so a public page with no identity could not write one at all. A
- * token bound to nobody therefore authorizes reading the finding and not answering it,
- * which is the honest outcome and the one the page tells the reader about.
+ * **Anyone holding the link may answer it** (R-22): the Super Admin sends the report to
+ * whoever is responsible, who may have no account at all. A submission still needs an actor
+ * — `submitted_by_user_id` is `NOT NULL` and its RLS insert policy requires the acting user
+ * to be one who may answer the action — so the link acts as the Zone Leader it was issued
+ * to when there is one, and otherwise as the Super Admin who generated the report. The
+ * person's own typed name is what the attempt records as its author.
  *
  * §10.4's rate limits are applied here too, on the token and on the IP, because this is the
  * one surface reachable by anyone holding a URL.
@@ -78,23 +79,16 @@ export class SignedTokenGuard implements CanActivate {
 
     const resolved = await this.tokens.resolve(rawToken, ipAddress);
 
-    if (!resolved.issuedToUserId || resolved.issuedToRole !== 'ZONE_LEADER') {
-      // The link is valid; there is simply nobody it can act as. Refusing here rather than
-      // later keeps every downstream write governed by a real actor and a real RLS policy.
+    const acting = linkActor(resolved);
+    if (!acting) {
+      // The link is valid, but nobody it could act as is still an active account — the
+      // report's issuer has been disabled. Refusing here keeps every downstream write
+      // governed by a real actor and a real RLS policy.
       throw AppError.forbidden(
         'FORBIDDEN',
-        'This corrective action has no Zone Leader assigned. Ask your Coordinator to assign one.',
+        'This link can no longer be answered because the account that issued it is no longer active. Ask for a new link.',
       );
     }
-
-    const actor: ActorContext = {
-      userId: resolved.issuedToUserId,
-      role: 'ZONE_LEADER',
-      activeUnitId: resolved.unitId,
-      unitIds: [resolved.unitId],
-      // A link is not a device. Nothing on this surface writes a device-bound row.
-      deviceId: null,
-    };
 
     request[SIGNED_TOKEN_PROPERTY] = {
       tokenId: resolved.id,
@@ -103,7 +97,7 @@ export class SignedTokenGuard implements CanActivate {
       issuedToName: resolved.issuedToName,
     };
 
-    setActor(actor, `${resolved.issuedToName ?? 'Zone Leader'} (signed link)`);
+    setActor(acting.actor, acting.label);
     return true;
   }
 
@@ -116,6 +110,45 @@ export class SignedTokenGuard implements CanActivate {
       );
     }
   }
+}
+
+type ResolvedLink = Awaited<ReturnType<ReportTokensService['resolve']>>;
+
+/**
+ * Whom a link acts as (R-22).
+ *
+ * The Zone Leader it was issued to, when there is one; otherwise the Super Admin who
+ * generated the report, who may answer any corrective action (R-18). Either way the scope
+ * is still `signed_token`: one action, in one Unit, and the three routes of this surface.
+ * `null` only when neither account is active any more.
+ */
+function linkActor(resolved: ResolvedLink): { actor: ActorContext; label: string } | null {
+  // A link is not a device. Nothing on this surface writes a device-bound row.
+  if (resolved.issuedToUserId && resolved.issuedToRole === 'ZONE_LEADER') {
+    return {
+      actor: {
+        userId: resolved.issuedToUserId,
+        role: 'ZONE_LEADER',
+        activeUnitId: resolved.unitId,
+        unitIds: [resolved.unitId],
+        deviceId: null,
+      },
+      label: `${resolved.issuedToName ?? 'Zone Leader'} (signed link)`,
+    };
+  }
+  if (resolved.issuedByRole === 'SUPER_ADMIN') {
+    return {
+      actor: {
+        userId: resolved.createdByUserId,
+        role: 'SUPER_ADMIN',
+        activeUnitId: null,
+        unitIds: [resolved.unitId],
+        deviceId: null,
+      },
+      label: `Signed link issued by ${resolved.issuedByName ?? 'a Super Admin'}`,
+    };
+  }
+  return null;
 }
 
 /** Never key a rate-limit bucket on a raw secret: buckets are logged. */

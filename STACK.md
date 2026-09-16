@@ -55,7 +55,7 @@ assumption.
 | ORM | Drizzle ORM + drizzle-kit (pg dialect on server, sqlite dialect on mobile) |
 | Queue / jobs | pg-boss on the same PostgreSQL. **No Redis.** |
 | PDF reports | Playwright + chrome-headless-shell, dedicated worker, concurrency 1 |
-| Authentication | Custom JWT — Argon2id, 15-min access, 30-day rotating single-use refresh, JTI denylist, device binding, offline unlock |
+| Authentication | Custom JWT — Argon2id, 15-min access, rotating single-use refresh with no time limit (`DECISIONS.md` R-21), JTI denylist, device binding, offline unlock |
 | Authorization | Application `ScopeGuard` (canonical) + Postgres RLS (defence-in-depth) |
 | Object storage | Cloudflare R2 via `@aws-sdk/client-s3`, endpoint from env var |
 | Push | Firebase Cloud Messaging, behind a `PushChannel` adapter |

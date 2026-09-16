@@ -122,6 +122,11 @@ export const submitCorrectiveActionRequestSchema = z.discriminatedUnion('option'
   z.object({
     option: z.literal('NOT_POSSIBLE'),
     id: uuidSchema.optional(),
+    /**
+     * Who is answering. Required through a signed link, where the answerer may have no
+     * account (R-22); a signed-in user may omit it and their account's name is recorded.
+     */
+    submittedByName: text(200).optional(),
     explanation: text(4000),
   }),
 ]);

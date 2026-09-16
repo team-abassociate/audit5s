@@ -6,6 +6,7 @@ import { createSyncTransport } from './http-transport';
 import { readFileBytes } from '../capture/media';
 import { getDeviceId } from '../secure-storage';
 import { useLocalDatabase } from '../db/provider';
+import { useSession } from '../session';
 
 /**
  * The sync engine's triggers (§9.3).
@@ -20,6 +21,10 @@ import { useLocalDatabase } from '../db/provider';
  * One cycle at a time, always. Two concurrent drains would both read the same PENDING rows
  * and push the same items in two batches — which the server would deduplicate correctly,
  * and which would still waste the scarce thing.
+ *
+ * Only a role that holds `sync:push` syncs. A Coordinator (R-24) manages from the phone with
+ * live server data and records nothing offline; the server refuses them sync (§6.3), and a
+ * cycle that could only fail every sixty seconds would read as a broken app.
  */
 interface SyncContextValue {
   sync: () => Promise<SyncResult>;
@@ -33,22 +38,27 @@ const SyncContext = createContext<SyncContextValue | null>(null);
 /** Every 60 s while online (§9.3). */
 const TICK_MS = 60_000;
 
+const IDLE: SyncResult = { accepted: 0, conflicted: 0, failed: 0, deferred: 0, photosUploaded: 0, idle: true };
+
 export function SyncProvider({ children }: { children: ReactNode }) {
   const database = useLocalDatabase();
+  const { status, can } = useSession();
+  const allowed = status === 'ready' && can('sync', 'push');
+  const allowedRef = useRef(allowed);
+  allowedRef.current = allowed;
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState(true);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const running = useRef(false);
   const again = useRef(false);
-  const latest = useRef<() => Promise<SyncResult>>(async () => ({
-    accepted: 0, conflicted: 0, failed: 0, deferred: 0, photosUploaded: 0, idle: true,
-  }));
+  const latest = useRef<() => Promise<SyncResult>>(async () => IDLE);
 
   const sync = useCallback(async (): Promise<SyncResult> => {
+    if (!allowedRef.current) return IDLE;
     if (running.current) {
       // Remember it: whatever was written since this cycle read the outbox goes out next.
       again.current = true;
-      return { accepted: 0, conflicted: 0, failed: 0, deferred: 0, photosUploaded: 0, idle: true };
+      return IDLE;
     }
     running.current = true;
     setSyncing(true);
@@ -87,6 +97,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   latest.current = sync;
 
   useEffect(() => {
+    if (!allowed) return;
     void sync();
     const timer = setInterval(() => void sync(), TICK_MS);
 
@@ -98,7 +109,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       clearInterval(timer);
       subscription.remove();
     };
-  }, [sync]);
+  }, [sync, allowed]);
 
   const value = useMemo(
     () => ({ sync, syncing, online, lastResult }),
