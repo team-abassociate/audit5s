@@ -70,8 +70,8 @@ describe('RESPONSE_TOKENS', () => {
 });
 
 describe('BRAND_TOKENS', () => {
-  it('carries the maroon and orange measured from the report chrome', () => {
-    expect(BRAND_TOKENS.maroon).toBe('#5C1816');
-    expect(BRAND_TOKENS.orange).toBe('#F46A00');
+  it('carries the report chrome palette', () => {
+    expect(BRAND_TOKENS.ink).toBe('#1D1B16');
+    expect(BRAND_TOKENS.accent).toBe('#0B6E77');
   });
 });

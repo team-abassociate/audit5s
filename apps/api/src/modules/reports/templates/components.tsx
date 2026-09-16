@@ -196,7 +196,7 @@ export function RadarWeb({
           key={fraction}
           points={ring(fraction)}
           fill="none"
-          stroke={brand.tableBorder ?? '#E8D7D1'}
+          stroke={brand.hairline ?? '#D8D2C4'}
           strokeWidth={0.6}
         />
       ))}
@@ -207,15 +207,15 @@ export function RadarWeb({
           y1={centre}
           x2={round(centre + p.cos * radius)}
           y2={round(centre + p.sin * radius)}
-          stroke={brand.tableBorder ?? '#E8D7D1'}
+          stroke={brand.hairline ?? '#D8D2C4'}
           strokeWidth={0.6}
         />
       ))}
       <polygon
         points={polygon}
-        fill={brand.orange ?? '#F46A00'}
-        fillOpacity={0.22}
-        stroke={brand.maroon ?? '#5C1816'}
+        fill={brand.accent ?? '#0B6E77'}
+        fillOpacity={0.16}
+        stroke={brand.ink ?? '#1D1B16'}
         strokeWidth={1.4}
       />
       {points.map((p) => {
@@ -230,7 +230,7 @@ export function RadarWeb({
               textAnchor="middle"
               fontSize={8}
               fontWeight={700}
-              fill={brand.maroon ?? '#5C1816'}
+              fill={brand.ink ?? '#1D1B16'}
             >
               {S_SECTION_SHORT_LABELS[p.section.section]}
             </text>
@@ -239,7 +239,7 @@ export function RadarWeb({
               y={y + 8}
               textAnchor="middle"
               fontSize={7}
-              fill={brand.orange ?? '#F46A00'}
+              fill={brand.accent ?? '#0B6E77'}
             >
               {p.section.raw}/{p.section.max}
             </text>
@@ -254,9 +254,11 @@ export function RadarWeb({
 export function ZoneComparisonBars({
   zones,
   bands,
+  brand,
 }: {
   zones: readonly { zoneCode: string; zoneName: string; pct: number | null }[];
   bands: readonly ReportBand[];
+  brand: Record<string, string>;
 }) {
   const rowHeight = 16;
   const labelWidth = 132;
@@ -277,24 +279,31 @@ export function ZoneComparisonBars({
         const width = zone.pct === null ? 0 : round((zone.pct / 100) * trackWidth);
         return (
           <g key={`${zone.zoneCode}-${index}`}>
-            <text x={0} y={y + 9} fontSize={7.5} fill="#1A1A1A">
+            <text x={0} y={y + 9} fontSize={7.5} fill={brand.ink ?? '#1D1B16'}>
               {truncate(`${zone.zoneCode} — ${zone.zoneName}`, 30)}
             </text>
-            <rect x={labelWidth} y={y} width={trackWidth} height={10} fill="#F3ECE9" rx={2} />
+            <rect
+              x={labelWidth}
+              y={y}
+              width={trackWidth}
+              height={10}
+              fill="none"
+              stroke={brand.hairline ?? '#D8D2C4'}
+              strokeWidth={0.75}
+            />
             <rect
               x={labelWidth}
               y={y}
               width={width}
               height={10}
-              fill={band?.color ?? '#9CA3AF'}
-              rx={2}
+              fill={band?.color ?? (brand.inkSoft ?? '#5B5647')}
             />
             <text
               x={labelWidth + trackWidth + 6}
               y={y + 9}
               fontSize={7.5}
               fontWeight={700}
-              fill={band?.color ?? '#6B7280'}
+              fill={band?.color ?? (brand.inkSoft ?? '#5B5647')}
             >
               {formatPercentage(zone.pct)}
             </text>

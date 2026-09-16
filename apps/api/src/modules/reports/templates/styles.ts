@@ -14,6 +14,15 @@ import type { ReportPayload } from '@audit5s/contracts';
  *     the same bytes, and a font that arrives over the network is the classic way that
  *     stops being true.
  *
+ * The type scale below deliberately does **not** borrow the product's Archivo / DM Mono
+ * pairing (`docs/design/GEMBA-BOARD.md` §4): that pairing is fetched from Google Fonts, and
+ * this pipeline may not fetch anything at render time (R-14). What it does borrow is the
+ * same *discipline* — a flat, unrounded, functionally-coloured page instead of a rounded,
+ * softly-shadowed one — expressed in the system serif-free stack that was already safe to
+ * ship. That is deliberate for a second reason: these PDFs leave the building and sit in
+ * front of MNC clients, so the sharp, structured, no-ornament register reads as an audit
+ * document rather than a dashboard printed onto paper.
+ *
  * Colours come from `payload.bands` / `payload.brand` rather than from `packages/domain`,
  * so a report reopened in December keeps the palette it was issued with even if the
  * business repaints the scale (§10.2).
@@ -52,8 +61,8 @@ html, body {
   /* System stack only: nothing is fetched, so the render cannot vary with the network. */
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 9.5pt;
-  line-height: 1.35;
-  color: #1A1A1A;
+  line-height: 1.4;
+  color: ${brand.ink};
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
@@ -67,124 +76,169 @@ html, body {
   right: 0;
   display: flex;
   justify-content: space-between;
+  border-top: 0.75px solid ${brand.hairline};
+  padding-top: 2px;
   font-size: 7.5pt;
-  color: #7A6A66;
+  letter-spacing: 0.02em;
+  color: ${brand.inkSoft};
 }
 
-/* ------------------------------------------------------------------ header band (§3.5) */
+/* ------------------------------------------------------------------ header band (§3.5)
+   Flat, unrounded, ink-on-white: a masthead rather than a rounded app card. The two
+   blocks (mark + title on the left, firm identity on the right) sit at opposite ends of
+   one hard rule, so the page reads immediately as one firm's letterhead. */
 .header {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  background: ${brand.maroon};
-  color: #FFFFFF;
-  padding: 10px 12px;
-  border-radius: 4px;
+  align-items: stretch;
+  gap: 12px;
+  border-bottom: 2px solid ${brand.ink};
+  padding-bottom: 10px;
 }
 .header .badge {
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: ${brand.orange};
+  width: 30px;
+  height: 30px;
+  border: 1.5px solid ${brand.ink};
+  background: ${brand.ink};
   color: #FFFFFF;
   font-weight: 700;
-  font-size: 13pt;
+  font-size: 11pt;
+  letter-spacing: 0.02em;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.header .titles { flex: 1 1 auto; }
-.header .title { font-size: 14pt; font-weight: 700; letter-spacing: 0.4px; }
-.header .subtitle { font-size: 8.5pt; opacity: 0.88; margin-top: 1px; }
+.header .titles { flex: 1 1 auto; align-self: center; }
+.header .title {
+  font-size: 13.5pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: ${brand.ink};
+}
+.header .subtitle {
+  font-size: 8pt;
+  color: ${brand.inkSoft};
+  margin-top: 1px;
+  letter-spacing: 0.01em;
+}
 .header .logo-card {
   flex: 0 0 auto;
-  background: #FFFFFF;
-  color: ${brand.maroon};
-  border-radius: 4px;
-  padding: 6px 9px;
+  align-self: center;
+  border-left: 1.5px solid ${brand.hairline};
+  padding-left: 10px;
   text-align: right;
-  line-height: 1.15;
+  line-height: 1.2;
 }
-.header .logo-card .org { font-weight: 700; font-size: 9pt; }
-.header .logo-card .tag { font-size: 6.5pt; color: #6B5A56; letter-spacing: 0.3px; }
+.header .logo-card .org {
+  font-weight: 700;
+  font-size: 9.5pt;
+  letter-spacing: 0.03em;
+  color: ${brand.ink};
+}
+.header .logo-card .tag {
+  font-size: 6.5pt;
+  color: ${brand.accent};
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
 
-/* -------------------------------------------------------------- metadata grid (§4.1.2) */
+/* -------------------------------------------------------------- metadata grid (§4.1.2)
+   Each cell is a flat labelled tile: a hairline frame, no fill, no radius — a data field
+   on a form, not a card floating on a board. */
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px 10px;
+  gap: 0;
   margin-top: 10px;
+  border: 1px solid ${brand.hairline};
+  border-bottom: none;
+  border-right: none;
 }
 .meta-cell {
-  border: 1px solid ${brand.tableBorder};
-  border-radius: 3px;
-  padding: 5px 7px;
-  background: ${brand.rowTintA};
+  border-right: 1px solid ${brand.hairline};
+  border-bottom: 1px solid ${brand.hairline};
+  padding: 5px 8px 6px;
 }
 .meta-label {
   font-size: 6.5pt;
-  letter-spacing: 0.6px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #8A7772;
+  color: ${brand.inkSoft};
 }
-.meta-value { font-size: 10pt; font-weight: 700; margin-top: 1px; }
+.meta-value {
+  font-size: 10pt;
+  font-weight: 700;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
 
-/* ------------------------------------------------------------------------ section rule */
+/* ------------------------------------------------------------------------ section rule
+   A section opens with a short uppercase, letter-spaced label under a hard ink rule —
+   the print equivalent of the product's tape marker, without the texture: this is a
+   client deliverable, not a shop-floor board. */
 h2.section-title {
-  font-size: 9pt;
-  letter-spacing: 1px;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: ${brand.maroon};
-  margin: 14px 0 5px;
+  color: ${brand.ink};
+  margin: 16px 0 6px;
   padding-bottom: 3px;
-  border-bottom: 2px solid ${brand.orange};
+  border-bottom: 1.5px solid ${brand.ink};
 }
 
 /* --------------------------------------------------------------------------- tables */
 table { width: 100%; border-collapse: collapse; }
 th, td {
-  border: 1px solid ${brand.tableBorder};
+  border: 1px solid ${brand.hairline};
   padding: 3.5px 6px;
   text-align: left;
   vertical-align: top;
 }
 thead th {
-  background: ${brand.maroon};
+  background: ${brand.ink};
   color: #FFFFFF;
   font-size: 7pt;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   font-weight: 600;
 }
-tbody tr:nth-child(odd) { background: ${brand.rowTintA}; }
-tbody tr:nth-child(even) { background: ${brand.rowTintB}; }
+tbody tr:nth-child(odd) { background: #FFFFFF; }
+tbody tr:nth-child(even) { background: ${brand.panel}; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
-.centre { text-align: center; }
+.centre { text-align: center; font-variant-numeric: tabular-nums; }
 /* A section header inside the checklist, carrying its subtotal. */
 tbody tr.section-row, tbody tr.section-row td {
-  background: ${brand.maroon};
+  background: ${brand.ink};
   color: #FFFFFF;
   font-weight: 700;
   font-size: 8pt;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.05em;
 }
 tbody tr.total-row, tbody tr.total-row td {
-  background: ${brand.rowTintB};
+  background: ${brand.panel};
   font-weight: 700;
-  border-top: 2px solid ${brand.maroon};
+  border-top: 2px solid ${brand.ink};
 }
-.q-remark { display: block; font-size: 7.5pt; color: #6B5A56; margin-top: 1.5px; }
-.na { color: #6B7280; }
+.q-remark { display: block; font-size: 7.5pt; color: ${brand.inkSoft}; margin-top: 1.5px; }
+.na { color: ${brand.inkSoft}; }
 
-/* ----------------------------------------------------------- radar + verification row */
-.web-row { display: flex; gap: 10px; align-items: stretch; margin-top: 8px; }
+/* ----------------------------------------------------------- radar + verification row
+   Twin panels of equal weight — identity on the left, the five-S shape on the right —
+   divided by one hairline rather than floating as two separate cards. */
+.web-row {
+  display: flex;
+  align-items: stretch;
+  margin-top: 10px;
+  border: 1px solid ${brand.hairline};
+}
 .verification {
   flex: 0 0 32%;
-  border: 1px solid ${brand.tableBorder};
-  border-radius: 3px;
-  padding: 6px;
-  background: ${brand.rowTintA};
+  padding: 8px;
+  border-right: 1px solid ${brand.hairline};
   text-align: center;
 }
 .verification .selfie {
@@ -192,28 +246,28 @@ tbody tr.total-row, tbody tr.total-row td {
   height: auto;
   max-height: 52mm;
   object-fit: cover;
-  border-radius: 3px;
-  border: 1px solid ${brand.tableBorder};
+  border: 1px solid ${brand.hairline};
 }
 .radar-box {
   flex: 1 1 auto;
-  border: 1px solid ${brand.tableBorder};
-  border-radius: 3px;
-  padding: 6px;
+  padding: 8px;
   text-align: center;
 }
-.caption { font-size: 7pt; color: #6B5A56; margin-top: 3px; }
+.caption { font-size: 7pt; color: ${brand.inkSoft}; margin-top: 3px; }
 
-/* ------------------------------------------------------------- rating-scale pills */
+/* ------------------------------------------------------------- rating-scale pills
+   Outlined chips, not filled capsules: colour still marks the band, but the shape stays
+   flat and square-cornered, in keeping with the rest of the page. */
 .pills { display: flex; gap: 6px; margin-top: 8px; }
 .pill {
   flex: 1 1 0;
-  border: 1px solid;
-  border-radius: 999px;
+  border: 1.25px solid;
   padding: 3px 8px;
   font-size: 7.5pt;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   text-align: center;
+  background: #FFFFFF !important;
 }
 
 /* ------------------------------------------------------------------------- evidence */
@@ -224,8 +278,7 @@ tbody tr.total-row, tbody tr.total-row td {
   margin-top: 6px;
 }
 .photo-card {
-  border: 1px solid ${brand.tableBorder};
-  border-radius: 3px;
+  border: 1px solid ${brand.hairline};
   padding: 5px;
   background: #FFFFFF;
   /* Paper-friendly: a photo never starts a page of its own (§4.1 item 8). */
@@ -233,7 +286,7 @@ tbody tr.total-row, tbody tr.total-row td {
 }
 .photo-card img { width: 100%; height: auto; max-height: 62mm; object-fit: contain; }
 .photo-caption { font-size: 7.5pt; font-weight: 600; margin-top: 3px; }
-.photo-remark { font-size: 7pt; color: #6B5A56; }
+.photo-remark { font-size: 7pt; color: ${brand.inkSoft}; }
 
 .nc-row {
   display: grid;
@@ -248,14 +301,12 @@ tbody tr.total-row, tbody tr.total-row td {
  * helpful "awaiting after-photo" label). The after-evidence report fills it.
  */
 .nc-placeholder {
-  border: 1px dashed ${brand.tableBorder};
-  border-radius: 3px;
-  background: #FCFAF9;
+  border: 1px dashed ${brand.hairline};
+  background: ${brand.panel};
   min-height: 42mm;
 }
 .nc-answer {
-  border: 1px solid ${brand.tableBorder};
-  border-radius: 3px;
+  border: 1px solid ${brand.hairline};
   padding: 5px;
   background: #FFFFFF;
 }
@@ -264,25 +315,25 @@ tbody tr.total-row, tbody tr.total-row td {
   display: inline-block;
   font-size: 6.5pt;
   font-weight: 700;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.05em;
   padding: 1px 5px;
-  border-radius: 3px;
+  border: 1px solid currentColor;
 }
-.badge-good { background: #E2F4E9; color: #1B7F4B; }
-/* Exclamation in a filled yellow rectangle, per the brainstorm (§4.1 item 8). */
-.badge-nc { background: #F5C518; color: #4A3B00; }
-.badge-verified { background: #E2F4E9; color: #1B7F4B; }
-.badge-not-possible { background: #FCE7E5; color: #B3261E; }
-.badge-pending { background: #FDF3DB; color: #BE7D0F; }
+.badge-good { color: #1B7F4B; background: #E2F4E9; }
+.badge-nc { color: #B3261E; background: #FCE7E5; }
+.badge-verified { color: #1B7F4B; background: #E2F4E9; }
+.badge-not-possible { color: #B3261E; background: #FCE7E5; }
+.badge-pending { color: #BE7D0F; background: #FDF3DB; }
 .cta {
   display: inline-block;
   margin-top: 4px;
   padding: 3px 8px;
-  border-radius: 3px;
-  background: ${brand.orange};
-  color: #FFFFFF !important;
+  border: 1.25px solid ${brand.accent};
+  background: #FFFFFF;
+  color: ${brand.accent} !important;
   font-size: 7.5pt;
   font-weight: 700;
+  letter-spacing: 0.02em;
   text-decoration: none;
 }
 .redacted {
@@ -290,23 +341,24 @@ tbody tr.total-row, tbody tr.total-row td {
   align-items: center;
   justify-content: center;
   min-height: 42mm;
-  border: 1px dashed ${brand.tableBorder};
-  border-radius: 3px;
-  background: #FCFAF9;
-  color: #8A7772;
+  border: 1px dashed ${brand.hairline};
+  background: ${brand.panel};
+  color: ${brand.inkSoft};
   font-size: 8pt;
 }
 
 /* --------------------------------------------------------------------------- notes */
 .footnote {
   font-size: 7pt;
-  color: #6B5A56;
+  color: ${brand.inkSoft};
   margin-top: 5px;
   font-style: italic;
 }
+/* The one callout this page allows itself, and only when there is something to read:
+   an accent rail, not a filled panel, so it stays legible in mono photocopies too. */
 .zone-remark {
-  border-left: 3px solid ${brand.orange};
-  background: ${brand.rowTintA};
+  border-left: 3px solid ${brand.accent};
+  background: ${brand.panel};
   padding: 5px 8px;
   margin-top: 6px;
   font-size: 8.5pt;
@@ -314,8 +366,11 @@ tbody tr.total-row, tbody tr.total-row td {
 .closure-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
+  gap: 0;
   margin-top: 6px;
+  border: 1px solid ${brand.hairline};
+  border-bottom: none;
+  border-right: none;
 }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .avoid-break { break-inside: avoid; }

@@ -85,13 +85,13 @@ export class ChecklistErrorReportWriter {
   }
 }
 
-/** The maroon header band the reports use, so the artefact looks like the product. */
+/** The ink header band the reports use, so the artefact looks like the product. */
 function header(row: ExcelJS.Row): void {
   row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   row.fill = {
     type: 'pattern',
     pattern: 'solid',
-    fgColor: { argb: `FF${BRAND_TOKENS.maroon.slice(1).toUpperCase()}` },
+    fgColor: { argb: `FF${BRAND_TOKENS.ink.slice(1).toUpperCase()}` },
   };
 }
 

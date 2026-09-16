@@ -118,7 +118,7 @@ describe('POST /reports/generate', () => {
     // And the palette travels with the report, so December's reopen looks like March's.
     expect(payload.bands.length).toBe(4);
     expect(payload.bands[0]!.label).toBe('Outstanding');
-    expect(payload.brand.maroon).toBe('#5C1816');
+    expect(payload.brand.ink).toBe('#1D1B16');
   }, 120_000);
 
   it('refuses an audit that is not completed', async () => {

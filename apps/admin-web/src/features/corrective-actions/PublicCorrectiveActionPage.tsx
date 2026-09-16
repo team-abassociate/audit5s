@@ -136,7 +136,7 @@ export function PublicCorrectiveActionPage({ token }: { token: string }) {
   );
 }
 
-/** The maroon band, the card, and a page that works at 360 px. */
+/** The ink header band, the card, and a page that works at 360 px. */
 function Shell({ children }: { children: React.ReactNode }) {
   // Document-level, for anything a browser fetches that is not one of the calls above —
   // and so that this page's URL never reaches another origin even by accident.

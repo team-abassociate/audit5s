@@ -92,7 +92,7 @@ describe('§4.1 — the initial Zone report', () => {
     expect(html).toContain('&lt; 60% Needs Support');
   });
 
-  it('opens each checklist section with a maroon header row carrying its subtotal', () => {
+  it('opens each checklist section with an ink header row carrying its subtotal', () => {
     const table = sectionOf(html, 'Checklist — responses and marks');
     expect(table).toContain('class="section-row"');
     expect(table).toContain('1S – SEIRI (SORT)');

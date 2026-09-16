@@ -91,11 +91,16 @@ export const RESPONSE_TOKENS: Readonly<Record<string, ResponseToken>> = {
   NA: { label: 'Not applicable', color: '#6B7280', marks: null },
 } as const;
 
-/** Report chrome, measured from the sample PDFs. */
+/**
+ * Report chrome — the print counterpart to the product's own design language
+ * (`docs/design/GEMBA-BOARD.md`): the same restrained, functional palette, carried into a
+ * client-facing PDF rather than the operational dashboard. Structured and flat rather than
+ * decorative, because these reports leave the building and sit in front of MNC clients.
+ */
 export const BRAND_TOKENS = {
-  maroon: '#5C1816',
-  orange: '#F46A00',
-  tableBorder: '#E8D7D1',
-  rowTintA: '#FFFAF7',
-  rowTintB: '#FFF7F3',
+  ink: '#1D1B16',
+  inkSoft: '#5B5647',
+  hairline: '#D8D2C4',
+  panel: '#F6F4EE',
+  accent: '#0B6E77',
 } as const;

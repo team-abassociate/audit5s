@@ -89,6 +89,7 @@ export function SummaryReport({
           pct: zone.totals.scorePercentage,
         }))}
         bands={payload.bands}
+        brand={payload.brand}
       />
 
       <div className="footnote">
