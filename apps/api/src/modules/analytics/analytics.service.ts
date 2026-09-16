@@ -360,12 +360,22 @@ function group<T>(rows: T[], key: (row: T) => string): Map<string, T[]> {
   return result;
 }
 
+/**
+ * One ring of the radar: an audit's score for one S, over every Zone it covered.
+ *
+ * Σraw/Σmax (R-15a). `null` when that audit does not exist — a Unit audited once has no
+ * previous cycle, and the chart must show an absent ring rather than invent one — and
+ * equally when the S was N/A throughout, where a denominator of zero is not a score of 0.
+ */
 function latestScore(
-  rows: Array<{ section: SSection; score_percentage: string | null; ordinal: number }>,
+  rows: Array<{ section: SSection; raw_score: string | null; max_score: string | null; ordinal: number }>,
   section: SSection,
   ordinal: number,
 ): number | null {
-  return nullableNumber(rows.find((row) => row.section === section && row.ordinal === ordinal)?.score_percentage);
+  const row = rows.find((entry) => entry.section === section && entry.ordinal === ordinal);
+  if (!row) return null;
+  const max = number(row.max_score);
+  return max === 0 ? null : (number(row.raw_score) / max) * 100;
 }
 
 function aggregateClosure(rows: ClosureRow[]) {

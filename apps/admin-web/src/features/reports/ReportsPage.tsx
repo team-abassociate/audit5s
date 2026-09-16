@@ -12,7 +12,7 @@ import {
   type Unit,
   type Zone,
 } from '@audit5s/contracts';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import {
   Badge,
@@ -98,7 +98,9 @@ export function ReportsPage() {
         />
       </Card>
 
-      {mayGenerate && selectedUnit ? <GeneratePanel unitId={selectedUnit} /> : null}
+      {mayGenerate && selectedUnit ? (
+        <GeneratePanel unitId={selectedUnit} onUnitChange={setUnitId} />
+      ) : null}
 
       <Card>
         <CardHeader title="Version history" description="Newest first. Nothing here is ever replaced." />
@@ -126,7 +128,13 @@ export function ReportsPage() {
  * and its scope unambiguous — which is why this is a real multi-select rather than a
  * "whole Unit" checkbox that would have to be re-interpreted later.
  */
-function GeneratePanel({ unitId }: { unitId: string }) {
+function GeneratePanel({
+  unitId,
+  onUnitChange,
+}: {
+  unitId: string;
+  onUnitChange: (unitId: string) => void;
+}) {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<ReportKind>('INITIAL_ZONE');
   const [auditId, setAuditId] = useState('');
@@ -136,9 +144,14 @@ function GeneratePanel({ unitId }: { unitId: string }) {
 
   const isSummary = kind === 'MULTI_ZONE_SUMMARY';
 
+  // Every audit the actor may see, not only the Unit picked at the top of the page. A
+  // report names one audit-Zone and nothing else, so scoping this list to the current Unit
+  // hid every audit of every other Unit behind a selector a person had no reason to touch
+  // first — the page looked like it had forgotten most of the work. Choosing an audit
+  // switches the Unit instead, which keeps the history below showing what was just queued.
   const audits = useQuery({
-    queryKey: ['audits', 'completed', unitId],
-    queryFn: () => api.get<Page<Audit>>(`/audits?limit=200&unitId=${unitId}`),
+    queryKey: ['audits', 'completed', 'all-units'],
+    queryFn: () => fetchAll<Audit>('/audits?limit=200'),
     enabled: !isSummary,
   });
 
@@ -176,8 +189,12 @@ function GeneratePanel({ unitId }: { unitId: string }) {
   });
 
   // Only a completed audit can be reported on (§10.2), so the picker offers no other.
+  // Newest first: the report someone wants is nearly always the audit that just finished.
   const completedAudits = useMemo(
-    () => (audits.data?.data ?? []).filter((audit) => audit.completedAt !== null),
+    () =>
+      (audits.data ?? [])
+        .filter((audit) => audit.completedAt !== null)
+        .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)),
     [audits.data],
   );
 
@@ -248,14 +265,18 @@ function GeneratePanel({ unitId }: { unitId: string }) {
                   <Select
                     value={auditId}
                     onChange={(event) => {
+                      const chosen = completedAudits.find((audit) => audit.id === event.target.value);
                       setAuditId(event.target.value);
                       setAuditZoneId('');
+                      // The audit carries the Unit with it, so the history below follows the
+                      // report that is about to be queued rather than a Unit left behind.
+                      if (chosen && chosen.unitId !== unitId) onUnitChange(chosen.unitId);
                     }}
                   >
                     <option value="">Choose an audit…</option>
                     {completedAudits.map((audit) => (
                       <option key={audit.id} value={audit.id}>
-                        {audit.auditorName} — {formatDate(audit.completedAt)} ({audit.auditType})
+                        {auditLabel(audit)}
                       </option>
                     ))}
                   </Select>
@@ -619,6 +640,18 @@ function TokensPanel({ snapshot, onClose }: { snapshot: ReportSnapshot; onClose:
 
 function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString() : '—';
+}
+
+/**
+ * `GE · Pune Plant · 16/09/2026` — who audited, where, and when, in that order.
+ *
+ * The auditor is two letters rather than a full name because the Unit is the thing being
+ * scanned for; the date is what separates two audits of the same Unit by the same person,
+ * which is exactly the pair a list sorted newest-first puts next to each other.
+ */
+function auditLabel(audit: Audit): string {
+  const initials = audit.auditorName.trim().slice(0, 2).toUpperCase() || '??';
+  return `${initials} · ${audit.unitName} · ${formatDate(audit.completedAt)}`;
 }
 
 function formatDateTime(iso: string | null): string {

@@ -36,6 +36,21 @@ const KIND_LABEL: Record<ReportKind, string> = {
 };
 
 /**
+ * The statuses the worker may still move a snapshot out of.
+ *
+ * `FAILED` is in the list because the retry STACK.md §5 asks for is worthless without it:
+ * attempt 1 marks the snapshot FAILED on its way out, so a guard of QUEUED/RENDERING alone
+ * means attempt 2 re-renders the document, stores the PDF, and then updates no row at all —
+ * a report left FAILED forever beside its own finished file. A transient failure (a
+ * Chromium that could not start for want of memory) is exactly what a retry is for.
+ *
+ * `READY` is *not* in the list, and that is the invariant: a rendered report is immutable,
+ * the worker ignores a redelivered job for one, and RS-1's trigger refuses the write even
+ * if both of those were wrong. Regeneration inserts a version; it never rewrites this one.
+ */
+const RETRYABLE = ['QUEUED', 'RENDERING', 'FAILED'] as const;
+
+/**
  * Reports (§8.9, PART 10).
  *
  * Two rules shape everything here.
@@ -419,7 +434,7 @@ export class ReportsService {
   // ------------------------------------------------------------- the worker's callbacks
 
   async markRendering(scope: ScopeContext, snapshotId: string): Promise<boolean> {
-    return this.repository.markStatus(scope, snapshotId, ['QUEUED', 'RENDERING'], {
+    return this.repository.markStatus(scope, snapshotId, RETRYABLE, {
       status: 'RENDERING',
     });
   }
@@ -429,13 +444,23 @@ export class ReportsService {
     snapshot: ReportSnapshotRow,
     result: { objectKey: string; checksumSha256: string; pageCount: number | null },
   ): Promise<void> {
-    await this.repository.markStatus(scope, snapshot.id, ['QUEUED', 'RENDERING'], {
+    const moved = await this.repository.markStatus(scope, snapshot.id, RETRYABLE, {
       status: 'READY',
       pdfObjectKey: result.objectKey,
       pdfChecksumSha256: result.checksumSha256,
       pageCount: result.pageCount,
       renderedAt: new Date(),
     });
+
+    // A write-back that moved nothing is not a rendered report, however well the render
+    // itself went: the PDF is in storage and no row points at it. Silently returning here
+    // is what left a retried snapshot FAILED next to its own finished document.
+    if (!moved) {
+      throw new Error(
+        `report.render ${snapshot.id}: the PDF was stored but the snapshot did not leave ` +
+          `its status behind, so nothing points at it`,
+      );
+    }
 
     // The event rides its own transaction: the render already committed, and a failure to
     // tell people about a finished report must not un-finish it.
@@ -458,7 +483,7 @@ export class ReportsService {
   }
 
   async markFailed(scope: ScopeContext, snapshotId: string, reason: string): Promise<void> {
-    await this.repository.markStatus(scope, snapshotId, ['QUEUED', 'RENDERING'], {
+    await this.repository.markStatus(scope, snapshotId, RETRYABLE, {
       status: 'FAILED',
       failedReason: reason.slice(0, 2000),
     });

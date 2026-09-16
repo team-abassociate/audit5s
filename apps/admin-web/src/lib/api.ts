@@ -240,6 +240,32 @@ async function sendText(path: string, body: unknown): Promise<string> {
   );
 }
 
+/**
+ * Every page of a list, followed by its cursor.
+ *
+ * A screen that counts things, or offers a picker of everything there is, cannot stop at
+ * the first page: `limit` caps at 200 (`paginationQuerySchema`), and a list that quietly
+ * ends there looks exactly like a Unit that has only ever had two audits. The ceiling is a
+ * guard against a runaway loop, not a page size.
+ */
+export async function fetchAll<T>(path: string, ceiling = 5000): Promise<T[]> {
+  const rows: T[] = [];
+  let cursor: string | null = null;
+  do {
+    const page: Paged<T> = await send<Paged<T>>(
+      cursor ? `${path}&cursor=${encodeURIComponent(cursor)}` : path,
+    );
+    rows.push(...page.data);
+    cursor = page.nextCursor;
+  } while (cursor && rows.length < ceiling);
+  return rows;
+}
+
+interface Paged<T> {
+  data: T[];
+  nextCursor: string | null;
+}
+
 export const api = {
   get: <T>(path: string) => send<T>(path),
   postText: (path: string, body: unknown) => sendText(path, body),

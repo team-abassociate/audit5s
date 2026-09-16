@@ -169,11 +169,14 @@ export class ReportsRepository extends BaseRepository {
    * The worker's write-back. Guarded on the status it expects, so a job delivered twice
    * (pg-boss makes no at-most-once promise) cannot move a READY snapshot at all — RS-1's
    * trigger would refuse it anyway, and this turns that into a no-op rather than an error.
+   *
+   * Returns whether a row actually moved. A caller that treats `false` as success is
+   * claiming a render that no row records, so the callers in `ReportsService` do not.
    */
   async markStatus(
     scope: ScopeContext,
     snapshotId: string,
-    from: readonly ('QUEUED' | 'RENDERING')[],
+    from: readonly ('QUEUED' | 'RENDERING' | 'FAILED')[],
     patch: Partial<typeof reportSnapshots.$inferInsert>,
   ): Promise<boolean> {
     return this.inTransaction(scope, async (tx) => {

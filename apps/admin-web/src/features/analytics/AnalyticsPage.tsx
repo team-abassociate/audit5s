@@ -24,7 +24,6 @@ import type {
   ClosureAnalytics,
   CorrectiveAction,
   OrganizationOverview,
-  Page,
   RecurrentNonconformity,
   Unit,
   UnitSections,
@@ -33,7 +32,7 @@ import type {
 import { bandOf } from '@/lib/bands';
 import { useToken } from '@/lib/tokens';
 import { Button, Card, CardHeader, Combobox, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
 
 const SECTION_LABELS: Record<string, string> = {
@@ -386,6 +385,9 @@ function UnitContext({ unitId }: { unitId: string }) {
   if (!sections.data || !recurrence.data || !closure.data) return null;
 
   const radarRows = sections.data.radar.map((row) => ({ section: SECTION_LABELS[row.section], current: row.currentScorePercentage, previous: row.previousScorePercentage, samples: row.sampleCount }));
+  // A Unit audited once has nothing to compare against, so the second ring is not drawn and
+  // the legend does not name a cycle that never happened.
+  const hasPrevious = radarRows.some((row) => row.previous !== null);
   const funnel = [
     { stage: 'Open', count: closure.data.opened },
     { stage: 'Submitted', count: closure.data.submitted },
@@ -395,15 +397,21 @@ function UnitContext({ unitId }: { unitId: string }) {
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <DatasetCard title="Current vs previous S" rows={radarRows} filename="section-radar.csv">
+      <DatasetCard
+        title={hasPrevious ? 'Latest vs previous audit · S profile' : 'Latest audit · S profile'}
+        rows={hasPrevious ? radarRows : radarRows.map(({ section, current, samples }) => ({ section, current, samples }))}
+        filename="section-radar.csv"
+      >
         <ResponsiveContainer width="100%" height={280}>
           <RadarChart data={radarRows}>
             <PolarGrid stroke={token('--edge-soft')} />
             <PolarAngleAxis dataKey="section" stroke={token('--ink-3')} />
             {/* Current is the score colour; the previous cycle is neutral ink, not a
                 second hue — the accent is never a chart fill (non-negotiable 6). */}
-            <Radar name="Current" dataKey="current" stroke={token('--ok-band')} fill={token('--ok-band')} fillOpacity={0.25} />
-            <Radar name="Previous" dataKey="previous" stroke={token('--ink-3')} fill={token('--ink-3')} fillOpacity={0.12} />
+            <Radar name="Latest audit" dataKey="current" stroke={token('--ok-band')} fill={token('--ok-band')} fillOpacity={0.25} />
+            {hasPrevious ? (
+              <Radar name="Previous audit" dataKey="previous" stroke={token('--ink-3')} fill={token('--ink-3')} fillOpacity={0.12} />
+            ) : null}
             <Legend /><Tooltip contentStyle={TOOLTIP} />
           </RadarChart>
         </ResponsiveContainer>
@@ -438,18 +446,6 @@ const TOOLTIP = {
   color: 'var(--ink)',
   fontSize: 12.5,
 } as const;
-
-/** Every page of a list, so a count on this screen is the whole count, not the first 200. */
-async function fetchAll<T>(path: string): Promise<T[]> {
-  const rows: T[] = [];
-  let cursor: string | null = null;
-  do {
-    const page: Page<T> = await api.get<Page<T>>(cursor ? `${path}&cursor=${encodeURIComponent(cursor)}` : path);
-    rows.push(...page.data);
-    cursor = page.nextCursor;
-  } while (cursor && rows.length < 5000);
-  return rows;
-}
 
 function auditLabel({ audit, number }: NumberedAudit): string {
   return `Audit ${number} · ${formatDate(audit.completedAt)} · ${audit.auditorName}`;
