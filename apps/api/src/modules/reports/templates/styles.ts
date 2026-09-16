@@ -34,7 +34,8 @@ export function reportStyles(payload: ReportPayload): string {
       (band) => `
 .band-${band.token} { color: ${band.color}; }
 .tint-${band.token} { background: ${band.tint}; color: ${band.color}; }
-.pill-${band.token} { background: ${band.tint}; color: ${band.color}; border-color: ${band.color}; }`,
+.pill-${band.token} { background: ${band.tint}; color: ${band.color}; border-color: ${band.color}; }
+.band-fill-${band.token} { background: ${band.color}; }`,
     )
     .join('\n');
 
@@ -65,6 +66,12 @@ html, body {
   color: ${brand.ink};
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+  /* The technical-manual register: a faint column grid on every page, not a decoration —
+     a drawing sheet's guide lines, printed rather than blank. */
+  background-image: repeating-linear-gradient(
+    90deg, rgba(0, 0, 0, 0.04) 0, rgba(0, 0, 0, 0.04) 1px, transparent 1px, transparent calc(100% / 12)
+  );
+  counter-reset: clause;
 }
 
 /* Chromium's own header/footer is disabled in the launch options; this is the printed
@@ -178,7 +185,8 @@ html, body {
 /* ------------------------------------------------------------------------ section rule
    A section opens with a short uppercase, letter-spaced label under a hard ink rule —
    the print equivalent of the product's tape marker, without the texture: this is a
-   client deliverable, not a shop-floor board. */
+   client deliverable, not a shop-floor board. The "§N" is a CSS counter, not text in the
+   markup — the heading's own text stays exactly what §4.1–§4.3 name it. */
 h2.section-title {
   font-size: 8.5pt;
   font-weight: 700;
@@ -188,6 +196,12 @@ h2.section-title {
   margin: 16px 0 6px;
   padding-bottom: 3px;
   border-bottom: 1.5px solid ${brand.ink};
+}
+h2.section-title::before {
+  counter-increment: clause;
+  content: "\\00A7" counter(clause) "  ";
+  color: ${brand.accent};
+  font-family: "Courier New", Courier, monospace;
 }
 
 /* --------------------------------------------------------------------------- tables */
@@ -210,13 +224,17 @@ tbody tr:nth-child(odd) { background: #FFFFFF; }
 tbody tr:nth-child(even) { background: ${brand.panel}; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .centre { text-align: center; font-variant-numeric: tabular-nums; }
-/* A section header inside the checklist, carrying its subtotal. */
+/* A section header inside the checklist, carrying its subtotal — a light panel between
+   two hard ink rules rather than a solid fill, so the subtotal's own band colour (below)
+   still reads instead of disappearing into a dark background. */
 tbody tr.section-row, tbody tr.section-row td {
-  background: ${brand.ink};
-  color: #FFFFFF;
-  font-weight: 700;
+  background: ${brand.panel};
+  color: ${brand.ink};
+  font-weight: 800;
   font-size: 8pt;
   letter-spacing: 0.05em;
+  border-top: 1.5px solid ${brand.ink};
+  border-bottom: 1.5px solid ${brand.ink};
 }
 tbody tr.total-row, tbody tr.total-row td {
   background: ${brand.panel};
@@ -256,8 +274,8 @@ tbody tr.total-row, tbody tr.total-row td {
 .caption { font-size: 7pt; color: ${brand.inkSoft}; margin-top: 3px; }
 
 /* ------------------------------------------------------------- rating-scale pills
-   Outlined chips, not filled capsules: colour still marks the band, but the shape stays
-   flat and square-cornered, in keeping with the rest of the page. */
+   Outlined chips, not filled capsules: colour still marks the band, carried once more by
+   a small filled swatch so it reads even where a reader's printer renders text in black. */
 .pills { display: flex; gap: 6px; margin-top: 8px; }
 .pill {
   flex: 1 1 0;
@@ -268,7 +286,38 @@ tbody tr.total-row, tbody tr.total-row td {
   letter-spacing: 0.02em;
   text-align: center;
   background: #FFFFFF !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
+.pill .swatch { width: 8px; height: 8px; border: 1px solid currentColor; background: currentColor; flex: 0 0 auto; }
+
+/* --------------------------------------------------------------- score index bars (§2)
+   The same S-wise numbers as the ledger table below, read at a glance: one bar per S,
+   tinted by its own band, the 85% target marked once on every row. */
+.bars { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.bar-row { display: grid; grid-template-columns: 22px 1fr 54px; align-items: center; gap: 8px; }
+.bar-label { font-size: 7.5pt; font-weight: 800; }
+.bar-track {
+  position: relative;
+  height: 7px;
+  background: ${brand.hairline};
+}
+.bar-track.na {
+  background: repeating-linear-gradient(-45deg, ${brand.hairline} 0 4px, transparent 4px 8px);
+}
+.bar-fill { position: absolute; left: 0; top: 0; bottom: 0; }
+.bar-target {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 85%;
+  width: 0;
+  border-left: 1.25px dashed ${payload.bands[payload.bands.length - 1]?.color ?? brand.accent};
+}
+.bar-val { font-size: 7.5pt; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-foot { font-size: 6.5pt; font-style: italic; color: ${brand.inkSoft}; margin-top: 1px; }
 
 /* ------------------------------------------------------------------------- evidence */
 .good-grid {

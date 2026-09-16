@@ -96,6 +96,7 @@ export function RatingPills({ bands }: { bands: readonly ReportBand[] }) {
               : `${band.minPercentage}–${upper}%`;
         return (
           <div key={band.token} className={`pill pill-${band.token}`}>
+            <span className="swatch" />
             {range} {band.label}
           </div>
         );
@@ -143,32 +144,81 @@ export function SectionTable({
   );
 }
 
+/**
+ * The five-S scorecard as index bars, ahead of the ledger `SectionTable` — the same
+ * numbers, read at a glance: each bar tinted by its own band, an em-dash and a hatched
+ * track for a fully-NA section (never a zero-length coloured bar, D4), and the 85% target
+ * marked once on every row so every S is read against the same line.
+ */
+export function SectionBars({
+  sections,
+  bands,
+}: {
+  sections: readonly SectionScorePayload[];
+  bands: readonly ReportBand[];
+}) {
+  return (
+    <div className="bars">
+      {sections.map((section) => {
+        const band = bandOf(bands, section.pct);
+        return (
+          <div className="bar-row" key={section.section}>
+            <span className="bar-label">{S_SECTION_SHORT_LABELS[section.section]}</span>
+            <div className={`bar-track ${section.pct === null ? 'na' : ''}`}>
+              {section.pct !== null ? (
+                <div
+                  className={`bar-fill ${band ? `band-fill-${band.token}` : ''}`}
+                  style={{ width: `${section.pct}%` }}
+                />
+              ) : null}
+              <div className="bar-target" />
+            </div>
+            <span className="bar-val">
+              {section.pct === null ? 'N/A' : formatMarks(section.raw, section.max)}
+            </span>
+          </div>
+        );
+      })}
+      <div className="bar-foot">Target 85% — dashed rule marks the line above.</div>
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------------- the radar web
 
 /**
  * The 5S performance web (§4.1 item 4).
  *
- * A regular pentagon, one axis per S, labelled `1S…5S` with `achieved/max` beneath each in
- * orange, and the polygon plotted on **percentage** — which is what makes two Zones with
- * different applicable maxima comparable on one shape. A fully-NA section has no point on
- * its axis and is drawn at the centre, because `null` is not zero and the alternative
- * (omitting the vertex) would silently change the polygon into a quadrilateral.
+ * A regular pentagon, one axis per S, labelled `1S…5S` with `achieved/max` beneath each,
+ * and the polygon plotted on **percentage** — which is what makes two Zones with different
+ * applicable maxima comparable on one shape. A fully-NA section has no point on its axis
+ * and is drawn at the centre, because `null` is not zero and the alternative (omitting the
+ * vertex) would silently change the polygon into a quadrilateral.
+ *
+ * Each vertex is tinted by its **own** band — the same "matrix cell coloured by its own
+ * score" rule the Zone-wise matrix uses — so a strong Zone with one weak S shows that S in
+ * red rather than hiding it inside a green shape. The dashed ring is the rating scale's
+ * lowest boundary (§3 in the design brief), always in that band's colour regardless of how
+ * this Zone scored, because it marks the line rather than this Zone's position on it.
  */
 export function RadarWeb({
   sections,
+  bands,
   brand,
   size = 190,
 }: {
   sections: readonly SectionScorePayload[];
+  bands: readonly ReportBand[];
   brand: Record<string, string>;
   size?: number;
 }) {
   const centre = size / 2;
   const radius = size * 0.33;
+  const target = bands[bands.length - 1]?.color ?? brand.accent ?? '#B3261E';
   const points = sections.map((section, index) => {
     // Start at twelve o'clock and go clockwise, so 1S is at the top as in the sample.
     const angle = (Math.PI * 2 * index) / sections.length - Math.PI / 2;
-    return { section, angle, cos: Math.cos(angle), sin: Math.sin(angle) };
+    return { section, angle, cos: Math.cos(angle), sin: Math.sin(angle), band: bandOf(bands, section.pct) };
   });
 
   const ring = (fraction: number) =>
@@ -191,15 +241,23 @@ export function RadarWeb({
       xmlns="http://www.w3.org/2000/svg"
       role="img"
     >
-      {[0.25, 0.5, 0.75, 1].map((fraction) => (
+      {[0.25, 0.5, 0.75].map((fraction) => (
         <polygon
           key={fraction}
           points={ring(fraction)}
           fill="none"
-          stroke={brand.hairline ?? '#D8D2C4'}
+          stroke={brand.hairline ?? '#D8D8D3'}
           strokeWidth={0.6}
         />
       ))}
+      <polygon
+        points={ring(1)}
+        fill="none"
+        stroke={brand.ink ?? '#101112'}
+        strokeWidth={1}
+      />
+      {/* The 85% target line (GEMBA-BOARD.md §6 "Trend chart"), drawn on the shape itself. */}
+      <polygon points={ring(0.85)} fill="none" stroke={target} strokeWidth={1} strokeDasharray="3 3" />
       {points.map((p) => (
         <line
           key={`axis-${p.section.section}`}
@@ -207,17 +265,29 @@ export function RadarWeb({
           y1={centre}
           x2={round(centre + p.cos * radius)}
           y2={round(centre + p.sin * radius)}
-          stroke={brand.hairline ?? '#D8D2C4'}
+          stroke={brand.hairline ?? '#D8D8D3'}
           strokeWidth={0.6}
         />
       ))}
       <polygon
         points={polygon}
-        fill={brand.accent ?? '#0B6E77'}
-        fillOpacity={0.16}
-        stroke={brand.ink ?? '#1D1B16'}
+        fill={brand.ink ?? '#101112'}
+        fillOpacity={0.06}
+        stroke={brand.ink ?? '#101112'}
         strokeWidth={1.4}
       />
+      {points.map((p) => {
+        const value = (p.section.pct ?? 0) / 100;
+        return (
+          <circle
+            key={`dot-${p.section.section}`}
+            cx={round(centre + p.cos * radius * value)}
+            cy={round(centre + p.sin * radius * value)}
+            r={2.6}
+            fill={p.band?.color ?? (brand.inkSoft ?? '#5B5B57')}
+          />
+        );
+      })}
       {points.map((p) => {
         const labelRadius = radius + 15;
         const x = round(centre + p.cos * labelRadius);
@@ -230,7 +300,7 @@ export function RadarWeb({
               textAnchor="middle"
               fontSize={8}
               fontWeight={700}
-              fill={brand.ink ?? '#1D1B16'}
+              fill={brand.ink ?? '#101112'}
             >
               {S_SECTION_SHORT_LABELS[p.section.section]}
             </text>
@@ -239,7 +309,7 @@ export function RadarWeb({
               y={y + 8}
               textAnchor="middle"
               fontSize={7}
-              fill={brand.accent ?? '#0B6E77'}
+              fill={p.band?.color ?? (brand.inkSoft ?? '#5B5B57')}
             >
               {p.section.raw}/{p.section.max}
             </text>
@@ -279,7 +349,7 @@ export function ZoneComparisonBars({
         const width = zone.pct === null ? 0 : round((zone.pct / 100) * trackWidth);
         return (
           <g key={`${zone.zoneCode}-${index}`}>
-            <text x={0} y={y + 9} fontSize={7.5} fill={brand.ink ?? '#1D1B16'}>
+            <text x={0} y={y + 9} fontSize={7.5} fill={brand.ink ?? '#101112'}>
               {truncate(`${zone.zoneCode} — ${zone.zoneName}`, 30)}
             </text>
             <rect
@@ -288,7 +358,7 @@ export function ZoneComparisonBars({
               width={trackWidth}
               height={10}
               fill="none"
-              stroke={brand.hairline ?? '#D8D2C4'}
+              stroke={brand.hairline ?? '#D8D8D3'}
               strokeWidth={0.75}
             />
             <rect
@@ -296,14 +366,14 @@ export function ZoneComparisonBars({
               y={y}
               width={width}
               height={10}
-              fill={band?.color ?? (brand.inkSoft ?? '#5B5647')}
+              fill={band?.color ?? (brand.inkSoft ?? '#5B5B57')}
             />
             <text
               x={labelWidth + trackWidth + 6}
               y={y + 9}
               fontSize={7.5}
               fontWeight={700}
-              fill={band?.color ?? (brand.inkSoft ?? '#5B5647')}
+              fill={band?.color ?? (brand.inkSoft ?? '#5B5B57')}
             >
               {formatPercentage(zone.pct)}
             </text>

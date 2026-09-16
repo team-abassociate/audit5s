@@ -7,6 +7,7 @@ import {
   Photo,
   RadarWeb,
   RatingPills,
+  SectionBars,
   SectionTable,
   ZoneComparisonBars,
   bandOf,
@@ -65,11 +66,12 @@ export function SummaryReport({
       </div>
 
       <h2 className="section-title">S-wise scoring</h2>
+      <SectionBars sections={payload.sections} bands={payload.bands} />
       <SectionTable sections={payload.sections} bands={payload.bands} />
 
       <h2 className="section-title">5S performance web — all selected zones</h2>
       <div className="radar-box">
-        <RadarWeb sections={payload.sections} brand={payload.brand} size={210} />
+        <RadarWeb sections={payload.sections} bands={payload.bands} brand={payload.brand} size={210} />
         <div className="caption">
           Each S shows summed achieved marks / summed applicable maximum; polygon uses
           percentage.

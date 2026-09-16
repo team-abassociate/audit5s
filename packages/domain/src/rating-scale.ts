@@ -92,15 +92,16 @@ export const RESPONSE_TOKENS: Readonly<Record<string, ResponseToken>> = {
 } as const;
 
 /**
- * Report chrome — the print counterpart to the product's own design language
- * (`docs/design/GEMBA-BOARD.md`): the same restrained, functional palette, carried into a
- * client-facing PDF rather than the operational dashboard. Structured and flat rather than
- * decorative, because these reports leave the building and sit in front of MNC clients.
+ * Report chrome — the "Technical Manual" register: a strict hairline grid, numbered
+ * clauses, and one accent colour carried structurally (target lines, the clause marker,
+ * the corrective-action link) rather than decoratively. Deliberately flat and unrounded —
+ * these reports leave the building and sit in front of MNC clients — with every actual
+ * rating still carried by `RATING_BANDS` / `RESPONSE_TOKENS`, never by this palette.
  */
 export const BRAND_TOKENS = {
-  ink: '#1D1B16',
-  inkSoft: '#5B5647',
-  hairline: '#D8D2C4',
-  panel: '#F6F4EE',
-  accent: '#0B6E77',
+  ink: '#101112',
+  inkSoft: '#5B5B57',
+  hairline: '#D8D8D3',
+  panel: '#F1F0EC',
+  accent: '#B3261E',
 } as const;

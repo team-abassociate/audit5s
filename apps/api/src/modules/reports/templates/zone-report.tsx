@@ -12,7 +12,9 @@ import {
   Photo,
   RadarWeb,
   RatingPills,
+  SectionBars,
   SectionTable,
+  bandOf,
   formatDate,
   formatMarks,
   formatPercentage,
@@ -73,6 +75,7 @@ export function ZoneReport({
       </div>
 
       <h2 className="section-title">S-wise scoring</h2>
+      <SectionBars sections={zone.sections} bands={payload.bands} />
       <SectionTable sections={zone.sections} bands={payload.bands} />
 
       {/* §4.1 item 4: the web, with the AUDITOR VERIFICATION box to its left. */}
@@ -88,7 +91,7 @@ export function ZoneReport({
         </div>
         <div className="radar-box">
           <h2 className="section-title">5S performance web</h2>
-          <RadarWeb sections={zone.sections} brand={payload.brand} />
+          <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} />
           <div className="caption">
             Each S shows achieved marks / applicable maximum; polygon uses percentage.
           </div>
@@ -153,9 +156,10 @@ function SelfieImage({ objectKey, resolve }: { objectKey: string; resolve: Image
 }
 
 /**
- * §4.1 item 6: `Sr. | Check Point | Response | Marks`, each section opening with a maroon
- * header row carrying its subtotal, and the optional per-question remark as a second,
- * smaller line under the question text.
+ * §4.1 item 6: `Sr. | Check Point | Response | Marks`, each section opening with a panel
+ * header row carrying its subtotal — tinted by that section's own band, the same rule the
+ * S-wise table and the Zone-wise matrix use — and the optional per-question remark as a
+ * second, smaller line under the question text.
  */
 function ChecklistTable({ zone, payload }: { zone: ReportZone; payload: ReportPayload }) {
   return (
@@ -175,10 +179,13 @@ function ChecklistTable({ zone, payload }: { zone: ReportZone; payload: ReportPa
           const score = zone.sections.find((entry) => entry.section === section);
           const questions = zone.questions.filter((question) => question.section === section);
           if (questions.length === 0 && !score) return null;
+          const band = bandOf(payload.bands, score?.pct ?? null);
           return [
             <tr className="section-row" key={`head-${section}`}>
               <td colSpan={3}>{sectionLabel(section)}</td>
-              <td className="centre">{formatMarks(score?.raw ?? 0, score?.max ?? 0)}</td>
+              <td className={`centre ${band ? `band-${band.token}` : 'na'}`}>
+                {formatMarks(score?.raw ?? 0, score?.max ?? 0)}
+              </td>
             </tr>,
             ...questions.map((question) => {
               const token = question.value ? payload.responseTokens[question.value] : undefined;
@@ -192,7 +199,7 @@ function ChecklistTable({ zone, payload }: { zone: ReportZone; payload: ReportPa
                   <td className={question.value ? `response-${question.value}` : 'na'}>
                     {token?.label ?? '—'}
                   </td>
-                  <td className="centre">
+                  <td className={`centre ${question.value ? `response-${question.value}` : 'na'}`}>
                     {question.value === 'NA' ? 'NA' : (question.marks ?? '—')}
                   </td>
                 </tr>
@@ -203,7 +210,15 @@ function ChecklistTable({ zone, payload }: { zone: ReportZone; payload: ReportPa
         <tr className="total-row">
           <td colSpan={2}>Zone total</td>
           <td className="num">{formatMarks(zone.totals.rawScore, zone.totals.maxScore)}</td>
-          <td className="centre">{formatPercentage(zone.totals.scorePercentage)}</td>
+          <td
+            className={`centre ${
+              bandOf(payload.bands, zone.totals.scorePercentage)
+                ? `band-${bandOf(payload.bands, zone.totals.scorePercentage)!.token}`
+                : 'na'
+            }`}
+          >
+            {formatPercentage(zone.totals.scorePercentage)}
+          </td>
         </tr>
       </tbody>
     </table>
