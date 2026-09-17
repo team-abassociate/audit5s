@@ -119,22 +119,45 @@ describe('managing sectors', () => {
 
 describe('an industry in use', () => {
   it('refuses to archive, and says what is still pointing at it', async () => {
-    const list = await world.request('GET', `${base}/industries`, { token: asSuperAdmin() });
-    const engineering = (list.body as Industry[]).find((row) => row.code === 'ENGINEERING')!;
+    // The in-use condition is built here rather than assumed from fixtures. 0018's UPDATE
+    // tags the templates that existed *when it ran*, and this world truncates and reseeds
+    // afterwards — so the seeded catalogue is untagged, which is correct behaviour and a
+    // bad thing to hang an assertion on.
+    const created = await world.request('POST', `${base}/industries`, {
+      token: asSuperAdmin(),
+      body: { code: 'WAREHOUSE', name: 'Warehouse' },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const warehouse = created.body as Industry;
 
-    // The seeded catalogue is tagged ENGINEERING, so this is the in-use case without any
-    // setup — and the one that matters, because archiving it would leave every template
-    // labelled with something no screen lists.
-    expect(engineering.templateCount).toBeGreaterThan(0);
+    const tagged = await world.request('PATCH', `${base}/units/${world.unitA}`, {
+      token: asSuperAdmin(),
+      body: { industryId: warehouse.id },
+    });
+    expect(tagged.status, JSON.stringify(tagged.body)).toBe(200);
 
-    const response = await world.request('DELETE', `${base}/industries/${engineering.id}`, {
+    const refused = await world.request('DELETE', `${base}/industries/${warehouse.id}`, {
       token: asSuperAdmin(),
     });
-    expect(response.status).toBe(409);
-    expect((response.body as { code: string }).code).toBe('RESOURCE_IN_USE');
-    // The message names the counts, because "cannot archive" without them leaves the
-    // reader to go hunting for what they would have to move first.
-    expect((response.body as { detail: string }).detail).toMatch(/checklist template/);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect((refused.body as { code: string }).code).toBe('RESOURCE_IN_USE');
+    // The message names what is pointing at it — "cannot archive" alone leaves the reader
+    // hunting for what they would have to move first.
+    expect((refused.body as { detail: string }).detail).toMatch(/unit/i);
+
+    // Released, it archives — which also proves the refusal was about the reference and
+    // not about the row being special.
+    const released = await world.request('PATCH', `${base}/units/${world.unitA}`, {
+      token: asSuperAdmin(),
+      body: { industryId: null },
+    });
+    expect(released.status, JSON.stringify(released.body)).toBe(200);
+    expect((released.body as { industryId: string | null }).industryId).toBeNull();
+
+    const archived = await world.request('DELETE', `${base}/industries/${warehouse.id}`, {
+      token: asSuperAdmin(),
+    });
+    expect(archived.status, JSON.stringify(archived.body)).toBe(200);
   });
 });
 
