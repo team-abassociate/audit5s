@@ -55,6 +55,10 @@ export function catalogue(): SyncCatalogue {
         longitude: null,
         geofenceRadiusM: 300,
         timezone: 'Asia/Kolkata',
+        // The fixture Unit is unclassified (0018), which is what every Unit is until
+        // somebody sets a sector — and is therefore offered every checklist.
+        industryId: null,
+        industryName: null,
         photoCapPerZone: 30,
         version: 1,
         archivedAt: null,
