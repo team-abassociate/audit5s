@@ -32,36 +32,55 @@ export class IndustriesRepository extends BaseRepository {
   }
 
   /**
-   * The counts come from correlated subqueries rather than two group-bys joined in.
-   * At the scale this list runs at — a handful of sectors — one query that reads plainly
-   * beats a faster one that does not, and the screen needs both numbers on every row to
-   * tell someone whether archiving an industry would strand anything.
+   * The list, with how many templates and Units point at each row.
+   *
+   * Three plain queries rather than correlated subqueries inside the projection. The
+   * subquery version returned 0 for every row — a correlation that reads correctly and
+   * does not bind is the kind of bug that looks like missing data, and it cost a CI round
+   * to find. Two grouped counts and a join in memory cannot be wrong that way, and at a
+   * handful of sectors the difference is unmeasurable.
+   *
+   * Both counts ignore archived rows: an archived template is not a reason to keep a
+   * sector alive.
    */
   async list(scope: ScopeContext, includeArchived: boolean) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      return tx
-        .select({
-          id: industries.id,
-          code: industries.code,
-          name: industries.name,
-          description: industries.description,
-          sortOrder: industries.sortOrder,
-          archivedAt: industries.archivedAt,
-          createdAt: industries.createdAt,
-          updatedAt: industries.updatedAt,
-          templateCount: sql<number>`(
-            SELECT count(*)::int FROM checklist_template t
-             WHERE t.industry_id = ${industries.id} AND t.archived_at IS NULL
-          )`,
-          unitCount: sql<number>`(
-            SELECT count(*)::int FROM unit u
-             WHERE u.industry_id = ${industries.id} AND u.archived_at IS NULL
-          )`,
-        })
+
+      const rows = await tx
+        .select()
         .from(industries)
         .where(includeArchived ? undefined : isNull(industries.archivedAt))
         .orderBy(asc(industries.sortOrder), asc(industries.name));
+
+      const templates = await tx.execute(sql`
+        SELECT industry_id, count(*)::int AS n
+          FROM checklist_template
+         WHERE industry_id IS NOT NULL AND archived_at IS NULL
+         GROUP BY industry_id
+      `);
+      const units = await tx.execute(sql`
+        SELECT industry_id, count(*)::int AS n
+          FROM unit
+         WHERE industry_id IS NOT NULL AND archived_at IS NULL
+         GROUP BY industry_id
+      `);
+
+      const tally = (result: { rows: unknown[] }): Map<string, number> =>
+        new Map(
+          (result.rows as Array<{ industry_id: string; n: number }>).map((row) => [
+            row.industry_id,
+            Number(row.n),
+          ]),
+        );
+      const byTemplate = tally(templates);
+      const byUnit = tally(units);
+
+      return rows.map((row) => ({
+        ...row,
+        templateCount: byTemplate.get(row.id) ?? 0,
+        unitCount: byUnit.get(row.id) ?? 0,
+      }));
     });
   }
 
