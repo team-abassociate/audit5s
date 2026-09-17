@@ -517,7 +517,16 @@ export class AuditsService {
           resourceType: 'audit',
           resourceId: auditId,
           userIds: outcome.assigneeIds,
-          data: { auditType: audit.auditType, actionsOpened: outcome.opened },
+          // Who, where and when, not just what. A Coordinator reading "5S audit completed"
+          // on a phone cannot tell which of their plants it came from or who conducted it,
+          // and the notification is often the only place they will see it.
+          data: {
+            auditType: audit.auditType,
+            actionsOpened: outcome.opened,
+            auditorName: audit.auditorName,
+            unitName: audit.unitName,
+            completedAt: completedAt.toISOString(),
+          },
         });
         // The board reads the analytics rollup, which otherwise waits for 02:00: a Unit
         // whose only audit had just finished read `N/A`. Same transaction, so the rebuild

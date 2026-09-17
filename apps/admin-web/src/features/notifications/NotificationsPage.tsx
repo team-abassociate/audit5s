@@ -7,9 +7,90 @@ import type {
   NotificationPage,
   NotificationPreferences,
 } from '@audit5s/contracts';
+import { Link } from '@tanstack/react-router';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { Button, Card, CardHeader, ErrorNotice, Spinner, Table, Td, Th } from '@/components/ui';
+
+
+/** The tabs a notification can send someone to. */
+type NotificationTarget =
+  | '/audits'
+  | '/corrective-actions'
+  | '/reports'
+  | '/checklists'
+  | '/units'
+  | '/users'
+  | '/sync'
+  | '/dashboard';
+
+const TARGET_LABEL: Record<NotificationTarget, string> = {
+  '/audits': 'audits',
+  '/corrective-actions': 'corrective actions',
+  '/reports': 'reports',
+  '/checklists': 'checklists',
+  '/units': 'units & zones',
+  '/users': 'users',
+  '/sync': 'sync health',
+  '/dashboard': 'dashboard',
+};
+
+const EVENT_LABEL: Record<NotificationEventType, string> = {
+  UNIT_ASSIGNED: 'Unit access',
+  UNIT_ACCESS_REVOKED: 'Unit access',
+  AUDIT_ASSIGNED: 'Audit',
+  AUDIT_STARTED: 'Audit',
+  AUDIT_PAUSED: 'Audit',
+  AUDIT_COMPLETED: 'Audit',
+  CORRECTIVE_ACTION_SUBMITTED: 'Corrective action',
+  CORRECTIVE_ACTION_VERIFIED: 'Corrective action',
+  CORRECTIVE_ACTION_REOPENED: 'Corrective action',
+  SYNC_FAILURE: 'Sync',
+  CHECKLIST_PUBLISHED: 'Checklist',
+  REPORT_GENERATED: 'Report',
+  DATA_INTEGRITY_ALERT: 'Integrity',
+};
+
+/**
+ * Where a notification leads.
+ *
+ * Keyed on `resourceType` — what the event is *about* — and only falling back to the
+ * event type when the row carries no resource. The routes are flat, so this lands on the
+ * right tab rather than the exact record; that is still the difference between one click
+ * and a hunt.
+ */
+function notificationTarget(notification: Notification): NotificationTarget {
+  switch (notification.resourceType) {
+    case 'audit':
+    case 'audit_assignment':
+      return '/audits';
+    case 'corrective_action':
+      return '/corrective-actions';
+    case 'report':
+    case 'report_access_token':
+      return '/reports';
+    case 'checklist_template':
+    case 'checklist_version':
+      return '/checklists';
+    case 'unit':
+    case 'unit_membership':
+    case 'zone':
+      return '/units';
+    case 'user':
+      return '/users';
+    case 'sync_conflict':
+    case 'device':
+      return '/sync';
+    default:
+      // No resource, or one this build does not know: fall back on the event itself, and
+      // failing that the dashboard, which is never a wrong place to arrive.
+      return notification.eventType === 'SYNC_FAILURE'
+        ? '/sync'
+        : notification.eventType === 'DATA_INTEGRITY_ALERT'
+          ? '/dashboard'
+          : '/dashboard';
+  }
+}
 
 /**
  * The notification centre and its preferences (§8.10). In-app is always on (§5.9); what a
@@ -65,28 +146,55 @@ export function NotificationsPage() {
           <p className="px-4 py-4 text-sm text-ink-3">Nothing here.</p>
         )}
         <ul className="divide-y divide-edge-soft">
-          {page.data?.data.map((notification) => (
-            <li key={notification.id}>
-              <button
-                type="button"
-                className={cn(
-                  'w-full px-4 py-3 text-left hover:bg-board',
-                  !notification.readAt && 'bg-tile-2',
-                )}
-                onClick={() => !notification.readAt && markRead.mutate(notification.id)}
-              >
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className={cn('text-sm', !notification.readAt && 'font-semibold')}>
-                    {notification.title}
+          {page.data?.data.map((notification) => {
+            const target = notificationTarget(notification);
+            return (
+              <li key={notification.id}>
+                {/*
+                  The whole row is the link. A notification that says something happened
+                  and then makes you find it yourself has done half its job — and the half
+                  it skipped is the one that takes the reader the longest.
+                */}
+                <Link
+                  to={target}
+                  className={cn(
+                    'flex w-full items-start gap-3 px-4 py-3 text-left no-underline hover:bg-board',
+                    !notification.readAt && 'bg-tile-2',
+                  )}
+                  onClick={() => !notification.readAt && markRead.mutate(notification.id)}
+                >
+                  {/* Unread is a dot, not only a background tint: a tint alone disappears
+                      on a projector and against a dark theme's own surfaces. */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'mt-1.5 h-2 w-2 shrink-0 rounded-full',
+                      notification.readAt ? 'bg-transparent' : 'bg-crit',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className={cn('text-sm', !notification.readAt && 'font-semibold')}>
+                        {notification.title}
+                      </span>
+                      <span className="shrink-0 text-xs text-ink-3">
+                        {new Date(notification.createdAt).toLocaleString()}
+                      </span>
+                    </span>
+                    <span className="block text-sm text-ink-2">{notification.body}</span>
+                    <span className="mt-1 flex items-center gap-2">
+                      <span className="gb-chip gb-chip--muted">
+                        {EVENT_LABEL[notification.eventType]}
+                      </span>
+                      <span className="text-xs text-ink-3">
+                        Open {TARGET_LABEL[target]} →
+                      </span>
+                    </span>
                   </span>
-                  <span className="shrink-0 text-xs text-ink-3">
-                    {new Date(notification.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-sm text-ink-2">{notification.body}</p>
-              </button>
-            </li>
-          ))}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </Card>
 

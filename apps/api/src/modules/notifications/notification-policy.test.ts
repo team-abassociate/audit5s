@@ -24,6 +24,45 @@ describe('notification policy (§5.9)', () => {
     }
   });
 
+  it('names the auditor, the Unit and the day a completed audit finished', () => {
+    const { title, body } = renderNotification(
+      job('AUDIT_COMPLETED', {
+        auditType: 'EXTERNAL_5S',
+        actionsOpened: 3,
+        auditorName: 'Priya Nair',
+        unitName: 'Nashik Plant',
+        completedAt: '2026-09-12T08:30:00.000Z',
+      }),
+    );
+    // A queue of notifications that all read "Audit completed" is one notification
+    // repeated: the title has to say which audit this was.
+    expect(title).toContain('Priya Nair');
+    expect(title).toContain('Nashik Plant');
+    expect(body).toContain('3 corrective actions opened');
+    // en-IN abbreviates September as "Sept", not "Sep" — the assertion allows either
+    // rather than pinning a detail of the platform's locale data.
+    expect(body).toMatch(/12 Sept? 2026/);
+  });
+
+  it('still renders a sentence for an event stored before those fields existed', () => {
+    // Notifications are durable rows. One enqueued by the previous build carries only
+    // `auditType` and `actionsOpened`, and must not render "undefined completed a ...".
+    const { title, body } = renderNotification(
+      job('AUDIT_COMPLETED', { auditType: 'EXTERNAL_5S', actionsOpened: 0 }),
+    );
+    expect(title).toBe('Audit completed');
+    expect(title).not.toMatch(/undefined|null/);
+    expect(body).not.toMatch(/undefined|null/);
+    expect(body).toContain('no nonconformities');
+  });
+
+  it('falls back to the Unit alone when the auditor is not on the event', () => {
+    const { title } = renderNotification(
+      job('AUDIT_COMPLETED', { auditType: 'CROSS_5S', unitName: 'Pune Works' }),
+    );
+    expect(title).toBe('Cross 5S audit completed at Pune Works');
+  });
+
   it('tries WhatsApp first for a template event, SMS only when WhatsApp is off', () => {
     const on = { whatsappEnabled: true, smsEnabled: true };
     expect(firstExternalChannel('AUDIT_ASSIGNED', on)).toBe('WHATSAPP');

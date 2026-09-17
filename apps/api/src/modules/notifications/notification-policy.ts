@@ -72,6 +72,17 @@ const AUDIT_TYPE_LABEL: Record<string, string> = {
   WALK_BY: 'Walk-by audit',
 };
 
+/**
+ * A date a person reads, from an ISO timestamp. Falls back to the leading date portion
+ * rather than throwing: a malformed timestamp must not cost someone their notification.
+ */
+function formatDay(iso: string): string {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime())
+    ? iso.slice(0, 10)
+    : at.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export function renderNotification(event: DomainEventJob): { title: string; body: string } {
   const data = event.data;
   const auditType = AUDIT_TYPE_LABEL[String(data.auditType)] ?? 'Audit';
@@ -111,12 +122,24 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       };
     case 'AUDIT_COMPLETED': {
       const opened = Number(data.actionsOpened ?? 0);
+      // The title names the auditor and the Unit, because a list of notifications that all
+      // read "Audit completed" is a list of one notification repeated. Every part is
+      // optional: an older event carries none of them and still renders a sentence.
+      const who = data.auditorName ? String(data.auditorName) : null;
+      const where = data.unitName ? String(data.unitName) : null;
+      const when = data.completedAt ? ` on ${formatDay(String(data.completedAt))}` : '';
+      const outcome =
+        opened === 0
+          ? 'no nonconformities were raised'
+          : `${opened} corrective action${opened === 1 ? '' : 's'} opened`;
       return {
-        title: 'Audit completed',
-        body:
-          opened === 0
-            ? `${auditType} completed with no nonconformities.`
-            : `${auditType} completed — ${opened} corrective action${opened === 1 ? '' : 's'} opened.`,
+        title:
+          who && where
+            ? `${who} completed a ${auditType.toLowerCase()} at ${where}`
+            : where
+              ? `${auditType} completed at ${where}`
+              : 'Audit completed',
+        body: `Completed${when} — ${outcome}.`,
       };
     }
     case 'CORRECTIVE_ACTION_SUBMITTED':
