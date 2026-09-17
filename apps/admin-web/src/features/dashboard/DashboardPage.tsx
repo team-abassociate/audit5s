@@ -8,7 +8,6 @@ import type {
   SectionScorePayload,
   Unit,
   UnitOverview,
-  UnitTrend,
   Zone,
   ZoneRankingItem,
 } from '@audit5s/contracts';
@@ -113,11 +112,6 @@ export function DashboardPage() {
       ),
     enabled,
   });
-  const trend = useQuery({
-    queryKey: ['dashboard', unit, from, 'trend'],
-    queryFn: () => api.get<UnitTrend>(`/analytics/units/${unit}/trend?granularity=month&${range}`),
-    enabled,
-  });
   const zones = useQuery({
     queryKey: ['dashboard', unit, 'zones'],
     queryFn: () => api.get<Page<Zone>>(`/units/${unit}/zones?limit=200`),
@@ -213,6 +207,32 @@ export function DashboardPage() {
         .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)),
     [audits.data],
   );
+  /**
+   * The trajectory: one point per audit, oldest first, over the last twelve months.
+   *
+   * It used to plot `/analytics/units/{id}/trend?granularity=month`, which is the Unit's
+   * weighted composite per calendar month — `Σraw / Σmax` across whatever audits fell in
+   * it. That answers "how did the Unit do in August", and it is the wrong question for a
+   * line titled Unit trajectory: two audits in one month collapsed into a single point, a
+   * month with none broke the line, and no point on the chart matched any score anyone
+   * could look up on an audit.
+   *
+   * These are the audits' own totals, exactly as the score tile above reports them, so the
+   * chart and the tile can no longer disagree. Still the server's figures — this picks and
+   * orders them, it does not compute them (§3).
+   */
+  const trajectory = useMemo(() => {
+    const cutoff = Date.now() - 365 * DAY;
+    return scorable
+      .filter((audit) => Date.parse(audit.completedAt!) >= cutoff)
+      .slice()
+      .reverse()
+      .map((audit) => ({
+        period: formatDate(audit.completedAt),
+        scorePercentage: audit.totals.scorePercentage,
+      }));
+  }, [scorable]);
+
   const chosenAudit = scorable.find((audit) => audit.id === scoreAuditId) ?? null;
 
   /**
@@ -245,7 +265,7 @@ export function DashboardPage() {
       ? chosenAudit.totals.scorePercentage
       : (overview.data?.score.scorePercentage ?? null);
 
-  const error = [units, overview, ranking, trend, zones, audits, actions].find((query) => query.error)
+  const error = [units, overview, ranking, zones, audits, actions].find((query) => query.error)
     ?.error;
 
   return (
@@ -546,13 +566,15 @@ export function DashboardPage() {
           <div>
             <h2 className="gb-h1">Unit trajectory</h2>
             <p>
-              Composite Unit score by month. The dashed rule is the Outstanding boundary at{' '}
-              {TARGET}.
+              Each completed audit&apos;s own score, oldest first, over the last twelve months.
+              The dashed rule is the Outstanding boundary at {TARGET}.
             </p>
           </div>
-          <span className="gb-label">Score % · monthly</span>
+          <span className="gb-label">
+            Score % · {trajectory.length} {trajectory.length === 1 ? 'audit' : 'audits'}
+          </span>
         </div>
-        <Trend points={trend.data?.points ?? []} />
+        <Trend points={trajectory} />
       </section>
 
       {/* ----------------------------------------------------- action pressure */}
@@ -941,12 +963,12 @@ function DetailPanel({ zone, actions }: { zone: BoardZone; actions: CorrectiveAc
 }
 
 /** §6 "Trend chart": hand-authored SVG, all strokes and fills from tokens. */
-function Trend({ points }: { points: UnitTrend['points'] }) {
+function Trend({ points }: { points: Array<{ period: string; scorePercentage: number | null }> }) {
   const geometry = trendGeometry(points);
   if (!geometry) {
     return (
       <div className="gb-trend" style={{ marginTop: 14 }}>
-        <p className="gb-label">No scored audit in the selected period.</p>
+        <p className="gb-label">No scored audit in the last twelve months.</p>
       </div>
     );
   }
@@ -956,7 +978,7 @@ function Trend({ points }: { points: UnitTrend['points'] }) {
     <div className="gb-trend" style={{ marginTop: 14 }}>
       <div className="gb-legend">
         <span>
-          <i /> Unit composite
+          <i /> Audit score
         </span>
         <span>
           <i className="gb-target" /> Outstanding {TARGET}
@@ -971,7 +993,7 @@ function Trend({ points }: { points: UnitTrend['points'] }) {
       <svg
         viewBox="0 0 720 182"
         role="img"
-        aria-label={`Unit composite score across ${points.length} periods, currently ${score1(current)} against an Outstanding boundary of ${TARGET}`}
+        aria-label={`Score of each of the last ${geometry.points.length} completed audits, most recently ${score1(current)} against an Outstanding boundary of ${TARGET}`}
       >
         <g className="gb-grid-line">
           {geometry.gridY.map((y) => (
@@ -981,6 +1003,11 @@ function Trend({ points }: { points: UnitTrend['points'] }) {
         <line className="gb-target-line" x1={44} y1={geometry.targetY} x2={706} y2={geometry.targetY} />
         <path className="gb-area" d={geometry.area} />
         <path className="gb-line" d={geometry.line} />
+        {/* One marker per audit: the line alone hides how many audits drew it, and a
+            flat run of four reads the same as a single reading without them. */}
+        {geometry.points.slice(0, -1).map((point) => (
+          <circle key={point.label} className="gb-mark" cx={point.x} cy={point.y} r={3.5} />
+        ))}
         <circle className="gb-dot" cx={geometry.end.x} cy={geometry.end.y} r={5} />
         <text className="gb-now" x={geometry.end.x - 6} y={geometry.end.y - 10} textAnchor="end">
           {score1(current)}

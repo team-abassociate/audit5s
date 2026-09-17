@@ -692,6 +692,14 @@ body {
   stroke: var(--ok-band);
   stroke-width: 3;
 }
+/* One per audit behind the endpoint: same shape, quieter, so the latest reading still
+   reads as the current one rather than as one of a row of equals. */
+.gb-mark {
+  fill: var(--tile);
+  stroke: var(--ok-band);
+  stroke-width: 2;
+  opacity: 0.75;
+}
 .gb-axis {
   fill: var(--ink-3);
   font-size: 10px;
@@ -1141,8 +1149,7 @@ body {
 }
 .gb-nav a,
 .gb-badge,
-.gb-legend span,
-.gb-dot {
+.gb-legend span {
   border-radius: var(--r-sm);
 }
 .gb-nav i,

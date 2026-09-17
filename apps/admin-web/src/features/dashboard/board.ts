@@ -161,9 +161,28 @@ const RIGHT = 706;
 const TOP = 16;
 const BOTTOM = 150;
 
+/**
+ * Breathing room inside the plot frame, so the first point does not sit on the y-axis and
+ * the last does not touch the right edge. A marker drawn exactly on the axis reads as part
+ * of the axis rather than as a reading.
+ */
+const INSET = 34;
+
+/**
+ * The widest gap allowed between two consecutive points.
+ *
+ * Without it the series always stretches to fill the frame, so three audits sat 330px
+ * apart and the eye read the distance as elapsed time — which it is not, because the
+ * x-axis here is one step per audit, not a calendar. Capping the step and centring what
+ * is left keeps a short series legible and honest.
+ */
+const MAX_STEP = 96;
+
 export interface TrendGeometry {
   line: string;
   area: string;
+  /** One marker per reading. A line alone hides how many audits produced it. */
+  points: Array<{ x: number; y: number; value: number; label: string }>;
   end: { x: number; y: number; value: number };
   yTicks: Array<{ y: number; label: string }>;
   xTicks: Array<{ x: number; label: string }>;
@@ -186,8 +205,16 @@ export function trendGeometry(
 
   const low = Math.max(0, Math.floor((Math.min(...scored.map((p) => p.value)) - 5) / 20) * 20);
   const span = 100 - low;
-  const x = (index: number) =>
-    scored.length === 1 ? (LEFT + RIGHT) / 2 : LEFT + (index * (RIGHT - LEFT)) / (scored.length - 1);
+
+  // Points sit inside an inset frame, spaced at most `MAX_STEP` apart, and the run is
+  // centred when it is narrower than the frame — so two audits read as two readings near
+  // the middle rather than as a line flung across the page.
+  const plotLeft = LEFT + INSET;
+  const available = RIGHT - INSET - plotLeft;
+  const step = scored.length === 1 ? 0 : Math.min(MAX_STEP, available / (scored.length - 1));
+  const startX = plotLeft + (available - step * (scored.length - 1)) / 2;
+
+  const x = (index: number) => startX + index * step;
   const y = (value: number) => TOP + ((100 - value) / span) * (BOTTOM - TOP);
 
   const coordinates = scored.map((point, index) => ({ x: x(index), y: y(point.value), ...point }));
@@ -199,6 +226,12 @@ export function trendGeometry(
   return {
     line: `M${line}`,
     area: `M${line} L${round(last.x)},${BOTTOM} L${round(coordinates[0]!.x)},${BOTTOM} Z`,
+    points: coordinates.map((c) => ({
+      x: round(c.x),
+      y: round(c.y),
+      value: c.value,
+      label: c.period,
+    })),
     end: { x: round(last.x), y: round(last.y), value: last.value },
     yTicks: ticks.map((value) => ({ y: round(y(value)), label: String(value) })),
     // Every other period when the series is long, so the axis never collides with itself.

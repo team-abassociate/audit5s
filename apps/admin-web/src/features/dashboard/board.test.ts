@@ -139,6 +139,49 @@ describe('mergeBoard', () => {
 });
 
 describe('trendGeometry', () => {
+  const at = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ period: `A${i + 1}`, scorePercentage: 70 + i }));
+
+  it('keeps the first reading off the y-axis', () => {
+    // A marker drawn on the axis reads as part of the axis. The plot frame starts at 44,
+    // so the first point must sit clear of it.
+    const geometry = trendGeometry(at(4))!;
+    expect(geometry.points[0]!.x).toBeGreaterThan(44 + 20);
+  });
+
+  it('does not fling a short series across the whole frame', () => {
+    // Two audits used to sit 662px apart, which read as elapsed time on an axis that
+    // counts audits, not days.
+    const geometry = trendGeometry(at(2))!;
+    const gap = geometry.points[1]!.x - geometry.points[0]!.x;
+    expect(gap).toBeLessThanOrEqual(96);
+  });
+
+  it('centres a series too short to fill the frame', () => {
+    const geometry = trendGeometry(at(3))!;
+    const leftGap = geometry.points[0]!.x - 44;
+    const rightGap = 706 - geometry.points.at(-1)!.x;
+    expect(Math.abs(leftGap - rightGap)).toBeLessThan(1);
+  });
+
+  it('still fills the frame once there are enough audits to need it', () => {
+    const geometry = trendGeometry(at(20))!;
+    const gap = geometry.points[1]!.x - geometry.points[0]!.x;
+    expect(gap).toBeLessThan(96);
+    expect(geometry.points.at(-1)!.x).toBeGreaterThan(600);
+  });
+
+  it('centres a lone reading rather than pinning it to either edge', () => {
+    const geometry = trendGeometry(at(1))!;
+    expect(geometry.points).toHaveLength(1);
+    expect(geometry.points[0]!.x).toBeCloseTo((44 + 706) / 2, 0);
+  });
+
+  it('gives every reading a marker, labelled as it was passed in', () => {
+    const geometry = trendGeometry(at(5))!;
+    expect(geometry.points.map((point) => point.label)).toEqual(['A1', 'A2', 'A3', 'A4', 'A5']);
+  });
+
   it('has nothing to draw when no period carries a score', () => {
     expect(trendGeometry([{ period: '2026-09', scorePercentage: null }])).toBeNull();
   });
