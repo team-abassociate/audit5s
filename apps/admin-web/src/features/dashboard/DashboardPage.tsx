@@ -27,7 +27,7 @@ import {
   delta1,
   mergeBoard,
   score1,
-  score3,
+  score2,
   trendGeometry,
   worstIndex,
   type Band,
@@ -58,7 +58,8 @@ const RECENT = 5;
 const DAY = 86_400_000;
 
 /**
- * The Zone board (GEMBA-BOARD.md §1): the magnetic whiteboard by the line, rendered.
+ * The Zone board (GEMBA-BOARD.md §1): every Zone in the Unit, its score, and the one thing
+ * someone must act on.
  *
  * Every figure on it is the server's — the client filters and lays out, it never scores
  * (§3, ARCHITECTURE.md §8.6), and a Zone with nothing applicable reads `N/A` on a hatch
@@ -167,7 +168,14 @@ export function DashboardPage() {
   const selected = board.find((zone) => zone.code === selectedCode) ?? board[worstIndex(board)];
 
   const now = Date.now();
-  const open = (actions.data?.data ?? []).filter(
+  const raised = actions.data?.data ?? [];
+  /**
+   * Closed means `VERIFIED`. An accepted `NOT_POSSIBLE` also ends at `VERIFIED` (§7.3), so
+   * this one test covers both ways a finding can be finished, and `ACTION_SUBMITTED` is
+   * correctly not counted — it is waiting on a reviewer, not closed.
+   */
+  const closed = raised.filter((action) => action.status === 'VERIFIED');
+  const open = raised.filter(
     (action) => action.status === 'OPEN' || action.status === 'REOPENED',
   );
   const overdue = open.filter(
@@ -326,13 +334,17 @@ export function DashboardPage() {
           <span className="gb-badge">Outstanding ≥ {TARGET}</span>
         </div>
         <div className="gb-kpis" style={{ marginTop: 14 }}>
+          {/* The score alone. The tile used to append "N scored zones", which read as a
+              second, unrelated figure sitting inside the score — the zone count already has
+              its own tile beside this one. Only the band word stays, because it is what the
+              tile's colour means. */}
           <Kpi
             label={chosenAudit ? 'Audit score' : 'Unit score'}
-            value={score1(unitScore)}
+            value={score2(unitScore)}
             context={
               chosenAudit
                 ? `${bandLabel(unitScore)} · ${chosenAudit.auditorName} · ${formatDate(chosenAudit.completedAt)}`
-                : `${bandLabel(unitScore)} · ${overview.data?.score.sampleCount ?? 0} scored zones`
+                : bandLabel(unitScore)
             }
             band={bandOf(unitScore)}
           />
@@ -364,11 +376,19 @@ export function DashboardPage() {
             }
             band={overdue.length === 0 ? 'ok' : 'crit'}
           />
+          {/* Closed out of raised, not a percentage: "2/5" is the sentence a Coordinator
+              actually says, and at this Unit's volume a percentage turns five findings into
+              a figure like 40.0 that reads more precise than it is. The band still comes
+              from the server's rate, so the colour is unchanged. */}
           <Kpi
-            label="Closure rate"
-            value={score1(overview.data?.closureRatePercentage ?? null)}
+            label="Closure"
+            value={raised.length === 0 ? '—' : `${closed.length}/${raised.length}`}
             context={
-              closureHours === null ? 'nothing closed yet' : `${closureHours.toFixed(1)} h average`
+              raised.length === 0
+                ? 'nothing raised in this period'
+                : closureHours === null
+                  ? 'nothing closed yet'
+                  : `${closureHours.toFixed(1)} h average to close`
             }
             band={bandOf(overview.data?.closureRatePercentage ?? null)}
           />
@@ -557,7 +577,7 @@ export function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {sortActions(actions.data?.data ?? [], now)
+              {sortActions(raised, now)
                 .slice(0, 12)
                 .map((action) => {
                   const state = actionState(action, now);
@@ -579,7 +599,7 @@ export function DashboardPage() {
                     </tr>
                   );
                 })}
-              {(actions.data?.data ?? []).length === 0 ? (
+              {raised.length === 0 ? (
                 <tr>
                   <td className={rail('none')} colSpan={7}>
                     No corrective actions in this Unit.
@@ -628,7 +648,7 @@ export function DashboardPage() {
                     <td>{audit.auditorName}</td>
                     <td>{audit.auditType.replace(/_/g, ' ')}</td>
                     <td className="gb-data">{summary?.zones.length ?? '—'}</td>
-                    <td className="gb-data">{score3(pct)}</td>
+                    <td className="gb-data">{score2(pct)}</td>
                     <td>
                       <span className={`gb-chip gb-chip--${chipTone(bandOf(pct))}`}>
                         {bandLabel(pct)}

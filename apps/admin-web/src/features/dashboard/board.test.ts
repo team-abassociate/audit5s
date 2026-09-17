@@ -8,6 +8,7 @@ import {
   delta1,
   mergeBoard,
   score1,
+  score2,
   score3,
   trendGeometry,
   type LatestZoneAudit,
@@ -55,14 +56,30 @@ describe('band assignment', () => {
     expect(bandOf(null)).toBe('none');
     expect(bandLabel(null)).toBe('N/A');
     expect(score1(null)).toBe('N/A');
+    expect(score2(null)).toBe('N/A');
     expect(score3(null)).toBe('N/A');
   });
 });
 
 describe('figures', () => {
-  it('shows one decimal in tiles and three in records', () => {
+  it('shows one decimal in tiles, two in audit tables and three in records', () => {
     expect(score1(76.94)).toBe('76.9');
+    expect(score2(76.94)).toBe('76.94');
     expect(score3(76.94)).toBe('76.940');
+  });
+
+  it('pads an audit score to two decimals so a column of them stays aligned', () => {
+    expect(score2(80)).toBe('80.00');
+    expect(score2(76.9)).toBe('76.90');
+  });
+
+  it('never lets the displayed rounding decide a band', () => {
+    // 74.999 is Improving; rounding it for display reads as 75.00, which is On Track. The
+    // band must come from the raw value, never be re-derived from this string. R-6b puts
+    // the four boundaries at 90 / 75 / 60.
+    expect(score2(74.999)).toBe('75.00');
+    expect(bandOf(74.999)).toBe('warn');
+    expect(bandOf(75)).toBe('ok');
   });
 
   it('always signs a delta, with a real minus sign', () => {

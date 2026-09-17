@@ -15,6 +15,19 @@ export function score1(percentage: number | null): string {
   return percentage === null ? 'N/A' : percentage.toFixed(1);
 }
 
+/**
+ * Two decimals for an audit score in a register or table.
+ *
+ * §3 originally called for three here, on the reasoning that those tables stand in for the
+ * record. The owner asked for two: the third decimal of a percentage is noise a plant
+ * manager reads past, and no band boundary falls between two and three decimals, so nothing
+ * can change band by rounding here. `score3` is kept for the places that genuinely are a
+ * ledger.
+ */
+export function score2(percentage: number | null): string {
+  return percentage === null ? 'N/A' : percentage.toFixed(2);
+}
+
 /** Three decimals in anything that stands in for a record (§3). */
 export function score3(percentage: number | null): string {
   return percentage === null ? 'N/A' : percentage.toFixed(3);
