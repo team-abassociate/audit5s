@@ -28,6 +28,9 @@ const NAV: NavItem[] = [
   { to: '/notifications', label: 'Notifications', resource: 'notification', action: 'read', group: 1 },
   { to: '/units', label: 'Units & zones', resource: 'unit', action: 'read', group: 2 },
   { to: '/checklists', label: 'Checklists', resource: 'checklist_template', action: 'read', group: 2 },
+  // Beside the catalogue it labels. Hidden from anyone who cannot add one — a read-only
+  // list of four sector names is not worth a rail entry.
+  { to: '/industries', label: 'Industries', resource: 'industry', action: 'create', group: 2 },
   { to: '/users', label: 'Users & roles', resource: 'user', action: 'read', group: 2 },
   { to: '/analytics', label: 'Analytics', resource: 'analytics', action: 'unit_dashboard', group: 3 },
   { to: '/reports', label: 'Reports', resource: 'report', action: 'read_snapshot', group: 3 },

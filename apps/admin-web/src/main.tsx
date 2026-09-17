@@ -21,6 +21,7 @@ import { PublicCorrectiveActionPage } from '@/features/corrective-actions/Public
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { SyncHealthPage } from '@/features/sync/SyncHealthPage';
+import { IndustriesPage } from '@/features/industries/IndustriesPage';
 import { ChecklistsPage } from '@/features/checklists/ChecklistsPage';
 import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -145,6 +146,12 @@ const analyticsRoute = createRoute({
   component: AnalyticsPage,
 });
 
+const industriesRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/industries',
+  component: IndustriesPage,
+});
+
 const checklistsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/checklists',
@@ -202,6 +209,7 @@ const routeTree = rootRoute.addChildren([
     dashboardRoute,
     analyticsRoute,
     unitsRoute,
+    industriesRoute,
     checklistsRoute,
     auditsRoute,
     correctiveActionsRoute,

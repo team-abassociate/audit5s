@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import {
   UNIT_COORDINATOR_EDITABLE_FIELDS,
+  type Industry,
   type MembershipDetail,
   type Page,
   type Unit,
@@ -28,6 +29,11 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
   const unit = useQuery({
     queryKey: ['unit', unitId],
     queryFn: () => api.get<Unit>(`/units/${unitId}`),
+  });
+
+  const industries = useQuery({
+    queryKey: ['industries', false],
+    queryFn: () => api.get<Industry[]>('/industries'),
   });
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -74,7 +80,14 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
         <form
           className="grid gap-3 p-4 sm:grid-cols-2"
           onSubmit={handleSubmit((values) =>
-            update.mutate({ ...values, version: unit.data!.version }),
+            update.mutate({
+              ...values,
+              // A `<select>` has no null, only "". The contract wants `null` to mean "no
+              // industry", and "" would fail its uuid check with a message about a field
+              // the person deliberately left blank.
+              industryId: values.industryId ? values.industryId : null,
+              version: unit.data!.version,
+            }),
           )}
         >
           <Field
@@ -99,6 +112,30 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
           </Field>
           <Field label="Timezone" error={fieldErrors.timezone}>
             <Input {...register('timezone')} />
+          </Field>
+          {/*
+            The sector decides which checklists this plant's audits offer, so it is a Super
+            Admin's field like the name (0018) — a Coordinator changing it would silently
+            re-point their own auditors at a different catalogue. Blank means no narrowing,
+            which is every Unit's behaviour before industries existed.
+          */}
+          <Field
+            label="Industry"
+            hint={
+              isCoordinator
+                ? 'Super Admin only — it decides which checklists this Unit is offered'
+                : 'Blank offers every checklist'
+            }
+            error={fieldErrors.industryId}
+          >
+            <Select disabled={!editable('industryId')} {...register('industryId')}>
+              <option value="">Not set — every checklist</option>
+              {(industries.data ?? []).map((industry) => (
+                <option key={industry.id} value={industry.id}>
+                  {industry.name}
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field
             label="Geofence radius (m)"
