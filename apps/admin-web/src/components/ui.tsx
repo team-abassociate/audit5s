@@ -260,8 +260,21 @@ export function Th({ children }: { children: ReactNode }) {
   return <th>{children}</th>;
 }
 
-export function Td({ children, className }: { children: ReactNode; className?: string }) {
-  return <td className={className}>{children}</td>;
+/** `colSpan` so a table can carry group headings without hand-rolling a second cell. */
+export function Td({
+  children,
+  className,
+  colSpan,
+}: {
+  children: ReactNode;
+  className?: string;
+  colSpan?: number;
+}) {
+  return (
+    <td className={className} colSpan={colSpan}>
+      {children}
+    </td>
+  );
 }
 
 export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good' | 'warn' | 'bad'; children: ReactNode }) {
