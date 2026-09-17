@@ -487,7 +487,7 @@ export function DashboardPage() {
             ) : null}
           </div>
           {selected ? (
-            <DetailPanel zone={selected} actions={open.filter((a) => a.zoneCode === selected.code)} />
+            <DetailPanel zone={selected} actions={raised.filter((a) => a.zoneCode === selected.code)} />
           ) : null}
         </div>
       </section>
@@ -823,6 +823,12 @@ function DetailPanel({ zone, actions }: { zone: BoardZone; actions: CorrectiveAc
     (section) => section.pct === null && section.na > 0,
   );
 
+  const openFindings = actions.filter((action) => findingStatus(action).tone === 'open');
+  const sortedFindings = [...actions].sort((a, b) => {
+    const byTone = FINDING_ORDER[findingStatus(a).tone] - FINDING_ORDER[findingStatus(b).tone];
+    return byTone !== 0 ? byTone : b.openedAt.localeCompare(a.openedAt);
+  });
+
   return (
     <div className="gb-detail">
       <div className="gb-detail-head">
@@ -886,22 +892,46 @@ function DetailPanel({ zone, actions }: { zone: BoardZone; actions: CorrectiveAc
           </p>
         ) : null}
 
+        {/*
+          Every finding of this zone, not only the open ones.
+
+          The panel used to list open findings alone, so a zone that had fixed everything
+          read identically to one that was never audited — and the work that had been done
+          was invisible on the board that is supposed to show it.
+
+          The rail and the chip carry the same fact, which is the point: colour alone never
+          says whether something is closed (non-negotiable 9), so the row stays readable on
+          a projector, in sunlight, and to a colour-blind reader.
+        */}
         <div className="gb-findings">
-          <span className="gb-label">Open findings · {actions.length}</span>
+          <span className="gb-label">
+            Findings · {openFindings.length} open of {actions.length}
+          </span>
           {actions.length === 0 ? (
-            <p style={{ fontSize: 12.5, margin: '8px 0 0' }}>No open findings in this zone.</p>
+            <p style={{ fontSize: 12.5, margin: '8px 0 0' }}>No findings raised in this zone.</p>
           ) : (
             <ul>
-              {actions.map((action) => (
-                <li
-                  key={action.id}
-                  className={action.scoreAtCapture === 'SCORE_0' ? 'gb-crit' : undefined}
-                >
-                  <i />
-                  {findingTitle(action)}
-                  <span>{Math.floor((Date.now() - Date.parse(action.openedAt)) / DAY)} d</span>
-                </li>
-              ))}
+              {sortedFindings.map((action) => {
+                const state = findingStatus(action);
+                // Age counts to closure for a finished finding, not to today: a finding
+                // closed in three days a month ago took three days, and showing 30 would
+                // make prompt work look like a backlog.
+                const until =
+                  state.tone === 'closed' && action.resolvedAt !== null
+                    ? Date.parse(action.resolvedAt)
+                    : Date.now();
+                return (
+                  <li key={action.id} className={`gb-finding gb-finding--${state.tone}`}>
+                    <i />
+                    <div className="gb-finding-text">
+                      {findingTitle(action)}
+                      {action.scoreAtCapture === 'SCORE_0' ? <b> · captured at 0</b> : null}
+                    </div>
+                    <em>{state.label}</em>
+                    <span>{Math.floor((until - Date.parse(action.openedAt)) / DAY)} d</span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -1042,6 +1072,43 @@ function actionState(action: CorrectiveAction, now: number): { band: Band; label
   if (action.status === 'NOT_POSSIBLE') return { band: 'none', label: 'Not possible' };
   return { band: 'none', label: action.status === 'REOPENED' ? 'Reopened' : 'Open' };
 }
+
+/**
+ * Open, in flight, or closed — the distinction the zone panel colour-codes.
+ *
+ * Deliberately not `actionState`, which answers a different question: that one is about
+ * *urgency* (overdue, due this week) and drives the register below. A finding can be open
+ * and not yet due, and the panel still has to show it as open.
+ *
+ * `NOT_POSSIBLE` sits with the submitted work rather than with the closed findings: it is
+ * an answer awaiting a reviewer's acceptance, and §7.3 ends it at `VERIFIED` like any
+ * other. Counting it as closed here would show a finding as resolved that nobody has yet
+ * agreed to resolve.
+ */
+function findingStatus(action: CorrectiveAction): {
+  tone: 'open' | 'submitted' | 'closed';
+  label: string;
+} {
+  switch (action.status) {
+    case 'OPEN':
+      return { tone: 'open', label: 'Open' };
+    case 'REOPENED':
+      return { tone: 'open', label: 'Reopened' };
+    case 'ACTION_SUBMITTED':
+      return { tone: 'submitted', label: 'Awaiting review' };
+    case 'NOT_POSSIBLE':
+      return { tone: 'submitted', label: 'Not possible' };
+    case 'VERIFIED':
+      return { tone: 'closed', label: 'Closed' };
+  }
+}
+
+/** Open first, then what is awaiting review, then what is done; newest first within each. */
+const FINDING_ORDER: Record<'open' | 'submitted' | 'closed', number> = {
+  open: 0,
+  submitted: 1,
+  closed: 2,
+};
 
 function findingTitle(action: CorrectiveAction): string {
   return action.questionText ?? action.findingRemark ?? 'Walk-by observation';

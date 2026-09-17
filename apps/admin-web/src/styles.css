@@ -483,18 +483,59 @@ body {
 .gb-findings li i {
   width: 4px;
   align-self: stretch;
-  background: var(--warn-band);
+  border-radius: var(--r-pill);
+  background: var(--edge);
   flex: none;
 }
-.gb-findings li.gb-crit i {
+/*
+ * The rail and the chip carry the finding's state together. Colour is the fast read and
+ * the word is the reliable one — non-negotiable 9, and the reason a closed finding is
+ * still legible on a projector or to a reader who cannot separate the two hues.
+ */
+.gb-finding--open i {
   background: var(--crit-band);
 }
-.gb-findings li span {
+.gb-finding--closed i {
+  background: var(--warn-band);
+}
+.gb-finding--submitted i {
+  background: var(--edge);
+}
+.gb-finding-text {
+  min-width: 0;
+}
+/* A finding photographed at score 0 — the severity it was captured at, not its state. */
+.gb-finding-text b {
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.gb-findings li em {
   margin-left: auto;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+  border-radius: var(--r-pill);
+  padding: 1px 8px;
+  align-self: center;
+}
+.gb-finding--open em {
+  color: var(--crit);
+}
+.gb-finding--closed em {
+  color: var(--warn);
+}
+.gb-finding--submitted em {
+  color: var(--ink-2);
+}
+/* The age column keeps its place at the end once the chip takes `margin-left:auto`. */
+.gb-findings li span {
   font-family: var(--font-data);
   font-size: 11px;
   color: var(--ink-3);
   white-space: nowrap;
+  align-self: center;
 }
 .gb-aside {
   font-size: 12px;
