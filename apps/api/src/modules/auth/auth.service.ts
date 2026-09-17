@@ -1,4 +1,4 @@
-import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   permissionsForRole,
@@ -26,6 +26,7 @@ import {
 } from '../../common/rate-limit/rate-limit.service';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { AuthRepository } from './auth.repository';
+import { EMAIL_CHANNEL, type EmailChannel } from '../../infrastructure/messaging/email-channel';
 import { PasswordService } from './password.service';
 
 type UserRow = NonNullable<Awaited<ReturnType<AuthRepository['findByLoginId']>>>;
@@ -42,6 +43,7 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly rateLimits: RateLimitService,
     private readonly auditLog: AuditLogService,
+    @Inject(EMAIL_CHANNEL) private readonly email: EmailChannel,
   ) {}
 
   async login(request: LoginRequest): Promise<LoginResponse> {
@@ -255,13 +257,115 @@ export class AuthService {
    * here would turn the endpoint into a login-ID oracle.
    */
   async forgotPassword(loginId: string): Promise<void> {
+    const context = getRequestContext();
+
+    // Rate-limited on the login ID and the caller's address alike. Without the first, this
+    // endpoint is a way to fill somebody's inbox; without the second, a way to fill many.
+    const perLogin = this.rateLimits.consume(`reset:${loginId}`, RATE_LIMITS.otpRequestPerPhone);
+    const perIp = this.rateLimits.consume(
+      `reset-ip:${context?.ipAddress ?? 'unknown'}`,
+      RATE_LIMITS.otpRequestPerIp,
+    );
+    // Silently, not with a 429: a rate-limit response distinguishable from the ordinary
+    // one would answer "does this login ID exist" for anyone willing to ask twice.
+    if (!perLogin.allowed || !perIp.allowed) return;
+
     const user = await this.repository.findByLoginId(loginId);
-    if (!user) {
+    if (!user) return;
+
+    if (!user.email) {
+      // Nothing to send to. Logged so an administrator can see why a user who asked never
+      // received anything, and still answered 202 to the caller for the same reason as
+      // above — the absence of an address is a fact about the account.
+      this.logger.warn({ userId: user.id }, 'Password reset requested but no email on file');
       return;
     }
-    // The invitation carries a one-time reset link; a password is never sent in plaintext
-    // over WhatsApp or SMS (§12.1). Delivery lands with notifications in Phase 6.
-    this.logger.log({ userId: user.id }, 'Password reset requested');
+
+    // The raw token is never stored and never logged. This is the only moment it exists
+    // outside the user's mailbox.
+    const token = randomBytes(32).toString('base64url');
+    const ttlMs = this.config.PASSWORD_RESET_TTL_MINUTES * 60_000;
+    await this.repository.issuePasswordReset({
+      userId: user.id,
+      tokenHash: hashToken(token),
+      expiresAt: new Date(Date.now() + ttlMs),
+      ipAddress: context?.ipAddress ?? null,
+    });
+
+    const link = `${this.config.WEB_APP_URL}/reset-password?token=${token}`;
+    const minutes = this.config.PASSWORD_RESET_TTL_MINUTES;
+    try {
+      await this.email.send({
+        to: user.email,
+        subject: 'Reset your audit5s password',
+        // Lines joined rather than one escaped string: the message is read by a person in
+        // a mail client, and it should be as easy to read here as it is there.
+        text: [
+          `Hello ${user.fullName},`,
+          '',
+          `Someone asked to reset the password for ${user.loginId}.`,
+          'Open this link to choose a new one:',
+          '',
+          link,
+          '',
+          `The link works once and expires in ${minutes} minutes.`,
+          '',
+          'If this was not you, ignore this message — your password has not changed.',
+          '',
+        ].join('\n'),
+      });
+      this.logger.log({ userId: user.id }, 'Password reset link sent');
+    } catch (error) {
+      // The caller still gets 202. A send failure is an operator's problem, and reporting
+      // it here would say that this login ID exists and has an address.
+      this.logger.error(
+        { userId: user.id, error: error instanceof Error ? error.message : String(error) },
+        'Password reset link could not be sent',
+      );
+    }
+  }
+
+  /**
+   * Completes a reset (§12.1). The token is the only credential: whoever holds it proved
+   * they can read the account's mailbox, which is the whole basis of the flow.
+   */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const userId = await this.repository.redeemPasswordReset(hashToken(token));
+    // Unknown, expired and already-spent are one answer. Telling them apart would say
+    // whether a token ever existed, and a used one is the interesting case to an attacker.
+    if (!userId) {
+      throw AppError.unauthorized('RESET_TOKEN_INVALID', 'This reset link is no longer valid');
+    }
+
+    const user = await this.repository.findById(userId);
+    if (!user) {
+      throw AppError.unauthorized('RESET_TOKEN_INVALID', 'This reset link is no longer valid');
+    }
+
+    // The same strength rules a deliberate change is held to. A reset is the path someone
+    // takes when they are in a hurry, which is exactly when a weak password gets chosen.
+    this.passwords.assertAcceptable({
+      password: newPassword,
+      phoneE164: user.phoneE164,
+      fullName: user.fullName,
+      loginId: user.loginId,
+    });
+
+    await this.repository.setPassword({
+      userId: user.id,
+      passwordHash: await this.passwords.hash(newPassword),
+      mustResetPassword: false,
+    });
+
+    // Every other session ends. Someone resetting a password they could not remember may
+    // be locking an intruder out, and leaving that intruder's refresh token alive would
+    // defeat the reset entirely.
+    await this.repository.revokeAllUserTokens(user.id);
+
+    await this.auditLog.recordSafely(
+      { action: 'user.password_reset', resourceType: 'user', resourceId: user.id },
+      `${user.fullName} (${user.loginId})`,
+    );
   }
 
   async requestOtp(phone: string): Promise<void> {

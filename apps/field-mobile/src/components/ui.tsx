@@ -455,35 +455,62 @@ export function Field({
   error,
   hint,
   containerStyle,
+  revealable,
   ...rest
 }: TextInputProps & {
   label: string;
   error?: string;
   hint?: string;
   containerStyle?: StyleProp<ViewStyle>;
+  /** A password: typed hidden, with a Show / Hide toggle so the person can check it. */
+  revealable?: boolean;
 }) {
   const styles = useStyles();
   const theme = useTheme();
   const [focused, setFocused] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const input = (
+    <TextInput
+      accessibilityLabel={label}
+      style={[
+        styles.input,
+        rest.multiline && styles.inputMultiline,
+        revealable && styles.inputRevealable,
+        error ? styles.inputError : null,
+      ]}
+      placeholderTextColor={theme.color.ink3}
+      {...rest}
+      {...(revealable ? { secureTextEntry: !revealed } : {})}
+      onFocus={(event) => {
+        setFocused(true);
+        rest.onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        setFocused(false);
+        rest.onBlur?.(event);
+      }}
+    />
+  );
   return (
     <View style={[styles.field, containerStyle]}>
       <Label>{label}</Label>
       {/* The web's `:focus-visible` ring: 2px accent, offset 2px — the accent's one job. */}
       <View style={[styles.focusRing, focused && { borderColor: theme.color.accent }]}>
-        <TextInput
-          accessibilityLabel={label}
-          style={[styles.input, rest.multiline && styles.inputMultiline, error ? styles.inputError : null]}
-          placeholderTextColor={theme.color.ink3}
-          {...rest}
-          onFocus={(event) => {
-            setFocused(true);
-            rest.onFocus?.(event);
-          }}
-          onBlur={(event) => {
-            setFocused(false);
-            rest.onBlur?.(event);
-          }}
-        />
+        {revealable ? (
+          <View style={styles.inputRow}>
+            {input}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={revealed ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+              onPress={() => setRevealed((shown) => !shown)}
+              style={({ pressed }) => [styles.reveal, pressed && styles.revealPressed]}
+            >
+              <Text style={styles.revealText}>{revealed ? 'Hide' : 'Show'}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          input
+        )}
       </View>
       {hint && !error ? <Text style={styles.hint}>{hint}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -1032,6 +1059,27 @@ const useStyles = createThemedStyles((theme) => ({
   },
   inputMultiline: { minHeight: 88, textAlignVertical: 'top' },
   inputError: { borderColor: theme.color.critBand },
+  inputRow: { flexDirection: 'row' },
+  inputRevealable: { flex: 1, borderRightWidth: 0 },
+  // The Show / Hide toggle: a square tile sharing the input's ink edge.
+  reveal: {
+    minWidth: 64,
+    minHeight: 48,
+    paddingHorizontal: theme.space.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: theme.color.edge,
+    backgroundColor: theme.color.tile,
+  },
+  revealPressed: { backgroundColor: theme.color.tile2 },
+  revealText: {
+    fontFamily: theme.family.bold,
+    fontSize: 10.5,
+    letterSpacing: 0.95,
+    textTransform: 'uppercase',
+    color: theme.color.ink,
+  },
   hint: { fontFamily: theme.family.regular, fontSize: 12.5, lineHeight: 18, color: theme.color.ink2, marginTop: theme.space.xs },
   error: {
     fontFamily: theme.family.regular,

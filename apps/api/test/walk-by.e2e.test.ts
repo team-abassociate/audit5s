@@ -286,6 +286,71 @@ describe('§2.7 — the ten steps, in order', () => {
   });
 });
 
+describe('R-19 — the auditor names the Zone by number', () => {
+  it('adds a Zone the Unit has never used, and snapshots what the auditor typed', async () => {
+    const auditId = await startWalkBy();
+
+    const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${randomUUID()}`, {
+      token: consultantToken,
+      body: {
+        zoneNumber: 88,
+        sequenceNo: 1,
+        zoneDescription: 'Scrap yard behind the press shop',
+        zoneLeaderName: 'Ravi Kumar',
+      },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const zone = response.body as AuditZone;
+    expect(zone).toMatchObject({
+      zoneCodeSnapshot: 'Z-88',
+      zoneNameSnapshot: 'Zone 88',
+      zoneDescriptionSnapshot: 'Scrap yard behind the press shop',
+      zoneLeaderNameSnapshot: 'Ravi Kumar',
+      // A typed name is not an account (C2).
+      zoneLeaderUserIdSnapshot: null,
+    });
+
+    // It is master data now — one row, logged like a Coordinator's — and the next audit
+    // naming Zone 88 reuses it, so the Zone's score history accumulates.
+    const { rows } = await world.owner.query(
+      `SELECT id, name, description FROM zone WHERE unit_id = $1 AND code = 'Z-88'`,
+      [world.unitA],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(zone.zoneId);
+    expect(rows[0].description).toBe('Scrap yard behind the press shop');
+
+    const { rows: logged } = await world.owner.query(
+      `SELECT actor_user_id FROM audit_log WHERE action = 'zone.created' AND resource_id = $1`,
+      [zone.zoneId],
+    );
+    expect(logged).toEqual([{ actor_user_id: world.actors.CONSULTANT.userId }]);
+
+    const secondAuditId = await startWalkBy();
+    const again = await world.request(
+      'PUT',
+      `${base}/audits/${secondAuditId}/zones/${randomUUID()}`,
+      { token: consultantToken, body: { zoneNumber: 88, sequenceNo: 1 } },
+    );
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect((again.body as AuditZone).zoneId).toBe(zone.zoneId);
+    // Nothing typed this time, so the Zone's own description is what is snapshotted.
+    expect((again.body as AuditZone).zoneDescriptionSnapshot).toBe(
+      'Scrap yard behind the press shop',
+    );
+  });
+
+  it('refuses a Zone that names neither a number nor an id', async () => {
+    const auditId = await startWalkBy();
+
+    const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${randomUUID()}`, {
+      token: consultantToken,
+      body: { sequenceNo: 1 },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
+  });
+});
+
 describe('§2.7 — no questionnaire', () => {
   it('refuses a walk-by audit that pins a checklist version', async () => {
     const refused = await world.request('POST', `${base}/audits`, {

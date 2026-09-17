@@ -51,6 +51,11 @@ export class ChecklistsRepository extends BaseRepository {
           name: checklistTemplates.name,
           description: checklistTemplates.description,
           isActive: checklistTemplates.isActive,
+          industryId: checklistTemplates.industryId,
+          // Through a scalar subquery rather than a join: `industry` is readable by every
+          // signed-in actor (0018), and a join would change the row shape of two queries
+          // that several callers already destructure.
+          industryName: sql<string | null>`(SELECT i.name FROM industry i WHERE i.id = ${checklistTemplates.industryId})`,
           sortOrder: checklistTemplates.sortOrder,
           archivedAt: checklistTemplates.archivedAt,
           createdAt: checklistTemplates.createdAt,
@@ -69,6 +74,12 @@ export class ChecklistsRepository extends BaseRepository {
           this.everything(
             scope,
             query.includeArchived ? undefined : isNull(checklistTemplates.archivedAt),
+            // Unclassified templates come through every filter (0018): NULL means "offered
+            // everywhere", so narrowing to Hospital must not hide a template nobody has
+            // labelled yet — which, on the day a second sector is added, is all of them.
+            query.industryId
+              ? sql`(${checklistTemplates.industryId} = ${query.industryId} OR ${checklistTemplates.industryId} IS NULL)`
+              : undefined,
             query.cursor ? gt(checklistTemplates.id, query.cursor) : undefined,
           ),
         )
@@ -87,6 +98,11 @@ export class ChecklistsRepository extends BaseRepository {
           name: checklistTemplates.name,
           description: checklistTemplates.description,
           isActive: checklistTemplates.isActive,
+          industryId: checklistTemplates.industryId,
+          // Through a scalar subquery rather than a join: `industry` is readable by every
+          // signed-in actor (0018), and a join would change the row shape of two queries
+          // that several callers already destructure.
+          industryName: sql<string | null>`(SELECT i.name FROM industry i WHERE i.id = ${checklistTemplates.industryId})`,
           sortOrder: checklistTemplates.sortOrder,
           archivedAt: checklistTemplates.archivedAt,
           createdAt: checklistTemplates.createdAt,

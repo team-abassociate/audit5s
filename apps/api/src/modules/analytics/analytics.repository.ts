@@ -206,35 +206,61 @@ export class AnalyticsRepository extends BaseRepository {
     );
   }
 
+  /**
+   * The radar's two rings: this Unit's **latest audit** and the one before it, each S
+   * summed over every Zone that audit covered.
+   *
+   * The ordinal ranks *audits*, not audit-Zones. Ranking Zones — which this did — made the
+   * last Zone completed the "current" ring and the Zone completed just before it the
+   * "previous" one, so a Unit with a single audit over three Zones was shown a previous
+   * cycle it never had, and neither ring was the audit's own figure. An audit is the unit
+   * of comparison because an audit is what a Unit repeats.
+   *
+   * Raw and max travel instead of the per-Zone percentage: the ring is Σraw/Σmax over the
+   * audit's Zones (R-15a), never the mean of each Zone's percentage, which would let a
+   * four-question Zone outvote a forty-question one.
+   */
   async latestSections(scope: ScopeContext, unitId: string) {
     return this.inScope(scope, async (tx) => {
       const result = await tx.execute(sql<{
         section: SSection;
-        score_percentage: string | null;
-        audit_zone_id: string;
+        raw_score: string | null;
+        max_score: string | null;
         ordinal: number;
       }>`
-        WITH completed_zones AS (
-          SELECT audit_zone.id, audit_zone.completed_at,
-                 dense_rank() OVER (ORDER BY audit_zone.completed_at DESC, audit_zone.id DESC) AS ordinal
-          FROM audit_zone
-          JOIN audit ON audit.id = audit_zone.audit_id
+        WITH scored_audits AS (
+          SELECT DISTINCT audit.id, audit.completed_at
+          FROM audit
+          JOIN audit_zone ON audit_zone.audit_id = audit.id
           WHERE ${this.scoped(scope, { unitId: audits.unitId }, eq(audits.unitId, unitId), completed())}
+            AND audit.completed_at IS NOT NULL
             AND audit_zone.completed_at IS NOT NULL
             AND audit_zone.score_percentage IS NOT NULL
+        ),
+        ranked_audits AS (
+          SELECT id,
+                 dense_rank() OVER (ORDER BY completed_at DESC, id DESC) AS ordinal
+          FROM scored_audits
         )
-        SELECT audit_zone_section_score.section, audit_zone_section_score.score_percentage,
-               audit_zone_section_score.audit_zone_id, completed_zones.ordinal::int
-        FROM completed_zones
+        SELECT audit_zone_section_score.section,
+               SUM(audit_zone_section_score.raw_score) AS raw_score,
+               SUM(audit_zone_section_score.max_score) AS max_score,
+               ranked_audits.ordinal::int
+        FROM ranked_audits
+        JOIN audit_zone
+          ON audit_zone.audit_id = ranked_audits.id
+         AND audit_zone.completed_at IS NOT NULL
+         AND audit_zone.score_percentage IS NOT NULL
         JOIN audit_zone_section_score
-          ON audit_zone_section_score.audit_zone_id = completed_zones.id
-        WHERE completed_zones.ordinal <= 2
-        ORDER BY completed_zones.ordinal, audit_zone_section_score.section
+          ON audit_zone_section_score.audit_zone_id = audit_zone.id
+        WHERE ranked_audits.ordinal <= 2
+        GROUP BY audit_zone_section_score.section, ranked_audits.ordinal
+        ORDER BY ranked_audits.ordinal, audit_zone_section_score.section
       `);
       return result.rows as Array<{
         section: SSection;
-        score_percentage: string | null;
-        audit_zone_id: string;
+        raw_score: string | null;
+        max_score: string | null;
         ordinal: number;
       }>;
     });

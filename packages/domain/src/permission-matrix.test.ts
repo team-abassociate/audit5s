@@ -43,7 +43,15 @@ describe('matrix integrity', () => {
   });
 
   it('never grants the organization resolver to a non-SUPER_ADMIN role', () => {
-    const reference = new Set(['checklist_template:read', 'checklist_version:read']);
+    // The organization-wide reference data of D2. `industry:read` joins the catalogue it
+    // labels: a sector list carries no Unit-identifying information, every field client
+    // caches it offline beside the templates, and a Consultant cannot be shown the
+    // catalogue while being refused the word that says which catalogue it is.
+    const reference = new Set([
+      'checklist_template:read',
+      'checklist_version:read',
+      'industry:read',
+    ]);
     for (const definition of PERMISSION_MATRIX) {
       for (const role of ROLES) {
         if (role === 'SUPER_ADMIN') continue;

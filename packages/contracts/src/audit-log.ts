@@ -11,11 +11,17 @@ export const AUDIT_LOG_ACTIONS = [
   'user.created',
   'user.updated',
   'user.disabled',
+  /** Removal, as far as D8 allows: archived and disabled, never deleted (R-25). */
+  'user.archived',
   'user.password_reset',
   'consultant.assigned',
   'consultant.revoked',
   'coordinator.assigned',
   'coordinator.revoked',
+  /** Sectors (0018). Reference data, but who added a sector and when is worth keeping. */
+  'industry.created',
+  'industry.updated',
+  'industry.archived',
   'zone.created',
   'zone.updated',
   'zone.archived',

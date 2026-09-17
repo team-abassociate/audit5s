@@ -30,6 +30,12 @@ const envSchema = z.object({
   DATABASE_MIGRATION_URL: z.string().optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   /**
+   * pg-boss's own pool, opened in every process beside `DATABASE_POOL_MAX`. The two add up
+   * per process and every process counts against the database's limit, so on Supabase's
+   * session pooler (15 connections in all) both must be kept small.
+   */
+  PGBOSS_POOL_MAX: z.coerce.number().int().min(1).max(100).default(4),
+  /**
    * Supabase (and most managed Postgres) require TLS on the wire and self-hosted Postgres
    * in docker-compose does not speak it at all — so this is a plain env toggle rather than
    * something inferred from the connection string. `no-verify` is what Supabase's pooler
@@ -44,7 +50,8 @@ const envSchema = z.object({
   JWT_ISSUER: z.string().min(1),
   JWT_AUDIENCE: z.string().min(1),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
-  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  /** `0` (the default) is no limit: a session lasts until it is signed out or revoked (R-21). */
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(0).max(90).default(0),
   BOOTSTRAP_PASSWORD_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(72),
 
   /**
@@ -91,6 +98,24 @@ const envSchema = z.object({
    * one setting rather than a per-report argument.
    */
   WEB_APP_URL: z.string().default('http://127.0.0.1:5173'),
+
+  /**
+   * Transactional email, for the password-reset link and nothing else yet.
+   *
+   * An HTTP API rather than SMTP, so there is no mail library in the tree — Node 22's
+   * `fetch` is the whole client. The payload is `{ from, to, subject, text }`, which is
+   * Resend's shape and close enough to Brevo's and Postmark's that a different provider is
+   * a header and a field name, not a rewrite.
+   *
+   * All three are optional together. Absent, the channel reports itself unconfigured and
+   * refuses to send — visibly, rather than dropping a reset on the floor.
+   */
+  EMAIL_API_URL: z.string().optional(),
+  EMAIL_API_KEY: z.string().optional(),
+  /** The `From:` address. Must be a sender the provider has verified, or it will refuse. */
+  EMAIL_FROM: z.string().optional(),
+  /** §12.1: short, because a live password-reset link is a live password. */
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
   /** §10.4: "Default 30 days, configurable per report." */
   REPORT_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /** A report's presigned download. §12.6 caps it at 300 s regardless. */

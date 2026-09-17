@@ -104,6 +104,9 @@ export const ERROR_CODES = [
   'TOKEN_EXPIRED',
   'TOKEN_INVALID',
   'TOKEN_REUSED',
+  /** A password-reset link that is unknown, expired or already spent — one code for all
+   *  three, because telling them apart would say whether a token ever existed. */
+  'RESET_TOKEN_INVALID',
   'TOKEN_AUDIENCE_MISMATCH',
   'ACCOUNT_LOCKED',
   'ACCOUNT_DISABLED',
@@ -120,6 +123,8 @@ export const ERROR_CODES = [
   'CONFLICT',
   'VERSION_CONFLICT',
   'DUPLICATE_CODE',
+  /** Refused because something still points at it — archiving would strand those rows. */
+  'RESOURCE_IN_USE',
   'DUPLICATE_NAME',
   'IDEMPOTENCY_KEY_REUSE',
   'LOGIN_ID_ALLOCATION_FAILED',

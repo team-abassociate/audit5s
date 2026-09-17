@@ -67,9 +67,13 @@ export function rollupPath(from: AuditStatus, to: RollupStatus): Transition<Audi
   return null;
 }
 
-/** Option A lands on ACTION_SUBMITTED, Option B on NOT_POSSIBLE (§7.3). */
+/**
+ * Option A closes the item at once (R-23): an answer with a live after-photo is the fix, and
+ * there is no review step in front of it. Option B still lands on NOT_POSSIBLE, where a
+ * Super Admin accepts or reopens it, because nothing was fixed.
+ */
 export function submissionTarget(option: CorrectiveOption): CorrectiveActionStatus {
-  return option === 'COMPLETED' ? 'ACTION_SUBMITTED' : 'NOT_POSSIBLE';
+  return option === 'COMPLETED' ? 'VERIFIED' : 'NOT_POSSIBLE';
 }
 
 /** The Zone Leader's to-do: nothing submitted yet, or sent back. */

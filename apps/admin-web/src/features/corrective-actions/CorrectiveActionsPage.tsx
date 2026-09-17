@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CORRECTIVE_ACTION_STATUSES,
@@ -7,7 +7,9 @@ import {
   type CorrectiveActionStatus,
   type CorrectiveActionSubmission,
   type EvidenceViewUrl,
+  type Audit,
   type Page,
+  type Unit,
   type User,
 } from '@audit5s/contracts';
 import { awaitsReview, isOverdue, sectionLabel } from '@audit5s/domain';
@@ -27,18 +29,85 @@ import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
 export function CorrectiveActionsPage() {
   const [status, setStatus] = useState<CorrectiveActionStatus | ''>('');
   const [overdue, setOverdue] = useState(false);
+  const [unitId, setUnitId] = useState('');
+  const [auditId, setAuditId] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
 
+  const units = useQuery({
+    queryKey: ['units'],
+    queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
+  });
+
+  /**
+   * The chosen Unit's completed audits, for the second filter. Numbered oldest-first so
+   * "Audit 3" means the same thing here as on the Analytics tab; a Unit's third audit does
+   * not become its fourth because a newer one arrived.
+   */
+  const audits = useQuery({
+    queryKey: ['corrective-actions', 'audits', unitId],
+    queryFn: () => api.get<Page<Audit>>(`/audits?unitId=${unitId}&limit=200`),
+    enabled: unitId !== '',
+  });
+  const numbered = useMemo(() => {
+    const completed = (audits.data?.data ?? [])
+      .filter((audit) => audit.completedAt !== null)
+      .sort((a, b) => a.completedAt!.localeCompare(b.completedAt!));
+    return new Map(completed.map((audit, index) => [audit.id, { audit, number: index + 1 }]));
+  }, [audits.data]);
+
   const actions = useQuery({
-    queryKey: ['corrective-actions', status, overdue],
+    queryKey: ['corrective-actions', status, overdue, unitId, auditId],
     queryFn: () =>
       api.get<Page<CorrectiveAction>>(
-        `/corrective-actions?limit=200${status ? `&status=${status}` : ''}${overdue ? '&overdue=true' : ''}`,
+        `/corrective-actions?limit=200${status ? `&status=${status}` : ''}` +
+          `${overdue ? '&overdue=true' : ''}${unitId ? `&unitId=${unitId}` : ''}` +
+          `${auditId ? `&auditId=${auditId}` : ''}`,
       ),
     refetchInterval: 60_000,
   });
 
-  const waiting = actions.data?.data.filter((action) => awaitsReview(action.status)).length ?? 0;
+  const rows = actions.data?.data ?? [];
+  const waiting = rows.filter((action) => awaitsReview(action.status)).length;
+
+  /**
+   * Unit → audit → its actions.
+   *
+   * A flat list of every nonconformity in the organization is unusable at more than one
+   * Unit: the rows interleave, and nothing tells you which visit produced which finding.
+   * Grouping is what makes the page a work queue rather than a log.
+   */
+  const unitName = (id: string) =>
+    units.data?.data.find((unit) => unit.id === id)?.name ?? 'Unknown unit';
+
+  const grouped = useMemo(() => {
+    const byUnit = new Map<string, Map<string, CorrectiveAction[]>>();
+    for (const action of rows) {
+      const byAudit = byUnit.get(action.unitId) ?? new Map<string, CorrectiveAction[]>();
+      byAudit.set(action.auditId, [...(byAudit.get(action.auditId) ?? []), action]);
+      byUnit.set(action.unitId, byAudit);
+    }
+    // Worst first at both levels: the Unit carrying the most overdue work comes first, and
+    // within it the audit that raised the most. The page opens on what needs attention.
+    const overdueCount = (list: CorrectiveAction[]) =>
+      list.filter((action) => isOverdue(action.status, action.dueAt, Date.now())).length;
+    return [...byUnit.entries()]
+      .map(([id, byAudit]) => ({
+        unitId: id,
+        name: unitName(id),
+        audits: [...byAudit.entries()]
+          .map(([aid, list]) => ({ auditId: aid, list, overdue: overdueCount(list) }))
+          .sort(
+            (a, b) =>
+              b.overdue - a.overdue ||
+              (b.list[0]!.auditCompletedAt ?? '').localeCompare(a.list[0]!.auditCompletedAt ?? ''),
+          ),
+        overdue: overdueCount([...byAudit.values()].flat()),
+        total: [...byAudit.values()].flat().length,
+      }))
+      .sort((a, b) => b.overdue - a.overdue || a.name.localeCompare(b.name));
+  }, [rows, units.data]);
+
+  const overdueTotal = grouped.reduce((sum, unit) => sum + unit.overdue, 0);
 
   return (
     <div className="space-y-4">
@@ -53,6 +122,52 @@ export function CorrectiveActionsPage() {
         />
         <div className="flex flex-wrap items-end gap-3 border-b border-edge-soft px-4 py-3">
           <div className="w-56">
+            <Field label="Unit">
+              <Select
+                value={unitId}
+                onChange={(event) => {
+                  setUnitId(event.target.value);
+                  // An audit belongs to one Unit, so a Unit change can only invalidate it.
+                  setAuditId('');
+                }}
+              >
+                <option value="">Every unit</option>
+                {(units.data?.data ?? []).map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="w-64">
+            <Field
+              label="Audit"
+              hint={unitId === '' ? 'Pick a unit first' : undefined}
+            >
+              <Select
+                value={auditId}
+                onChange={(event) => setAuditId(event.target.value)}
+                disabled={unitId === '' || numbered.size === 0}
+              >
+                <option value="">
+                  {unitId === ''
+                    ? 'Every audit'
+                    : numbered.size === 0
+                      ? 'No completed audits'
+                      : `Every audit · ${numbered.size}`}
+                </option>
+                {[...numbered.values()]
+                  .reverse()
+                  .map(({ audit, number }) => (
+                    <option key={audit.id} value={audit.id}>
+                      {`Audit ${number} · ${new Date(audit.completedAt!).toLocaleDateString()} · ${audit.auditorName}`}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="w-48">
             <Field label="Status">
               <Select value={status} onChange={(event) => setStatus(event.target.value as CorrectiveActionStatus | '')}>
                 <option value="">Any</option>
@@ -70,16 +185,45 @@ export function CorrectiveActionsPage() {
           </label>
         </div>
 
+        {/*
+          The one thing on this page somebody must act on today. It names the Units rather
+          than only counting, because "9 overdue" tells a Super Admin nothing about who to
+          call — and calling someone is the entire response to an overdue action.
+        */}
+        {overdueTotal > 0 && !overdue && (
+          <div className="px-4 pt-3">
+            <div className="gb-slip">
+              <b>
+                {overdueTotal} corrective {overdueTotal === 1 ? 'action is' : 'actions are'} overdue
+              </b>
+              <p>
+                {grouped
+                  .filter((unit) => unit.overdue > 0)
+                  .map((unit) => `${unit.name} (${unit.overdue})`)
+                  .join(', ')}
+                . Their Zone Leaders are named on each row below.{' '}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => setOverdue(true)}
+                >
+                  Show only these
+                </button>
+              </p>
+            </div>
+          </div>
+        )}
+
         {actions.isLoading && <Spinner />}
         {actions.error && (
           <div className="p-4">
             <ErrorNotice error={actions.error} />
           </div>
         )}
-        {actions.data && actions.data.data.length === 0 && (
+        {actions.data && rows.length === 0 && (
           <p className="px-4 py-4 text-sm text-ink-3">No corrective actions match.</p>
         )}
-        {actions.data && actions.data.data.length > 0 && (
+        {actions.data && rows.length > 0 && (
           <Table>
             <thead>
               <tr>
@@ -91,36 +235,73 @@ export function CorrectiveActionsPage() {
               </tr>
             </thead>
             <tbody>
-              {actions.data.data.map((action) => (
-                <tr
-                  key={action.id}
-                  className="cursor-pointer hover:bg-board"
-                  onClick={() => setSelected(action.id)}
-                >
-                  <Td>
-                    <span className="font-medium">
-                      Zone {action.zoneCode} — {action.zoneName}
-                    </span>
-                    <div className="text-xs text-ink-3">{itemLabel(action)}</div>
-                  </Td>
-                  <Td>
-                    <StatusBadge status={action.status} />
-                    {action.reopenCount > 0 && (
-                      <span className="ml-1 text-xs text-ink-3">reopened ×{action.reopenCount}</span>
-                    )}
-                  </Td>
-                  <Td>{action.assignedZoneLeaderName ?? '—'}</Td>
-                  <Td>
-                    {action.dueAt ? (
-                      <span className={isOverdue(action.status, action.dueAt, Date.now()) ? 'text-crit' : ''}>
-                        {new Date(action.dueAt).toLocaleDateString()}
+              {grouped.map((unit) => (
+                <Fragment key={unit.unitId}>
+                  <tr className="bg-tile-2">
+                    <Td colSpan={5}>
+                      <span className="gb-h2">{unit.name}</span>
+                      <span className="ml-2 text-xs text-ink-3">
+                        {unit.total} {unit.total === 1 ? 'action' : 'actions'}
+                        {unit.overdue > 0 ? ` · ${unit.overdue} overdue` : ''}
                       </span>
-                    ) : (
-                      '—'
-                    )}
-                  </Td>
-                  <Td>{new Date(action.openedAt).toLocaleDateString()}</Td>
-                </tr>
+                    </Td>
+                  </tr>
+                  {unit.audits.map((group) => (
+                    <Fragment key={group.auditId}>
+                      <tr className="bg-board">
+                        <Td colSpan={5}>
+                          <span className="text-xs font-medium text-ink-2">
+                            {auditHeading(group.list[0]!, numbered.get(group.auditId)?.number)}
+                          </span>
+                          {group.overdue > 0 && (
+                            <span className="ml-2 text-xs text-crit">
+                              {group.overdue} overdue
+                            </span>
+                          )}
+                        </Td>
+                      </tr>
+                      {group.list.map((action) => {
+                        const late = isOverdue(action.status, action.dueAt, Date.now());
+                        return (
+                          <tr
+                            key={action.id}
+                            className="cursor-pointer hover:bg-board"
+                            onClick={() => setSelected(action.id)}
+                          >
+                            <Td>
+                              <span className="font-medium">
+                                Zone {action.zoneCode} — {action.zoneName}
+                              </span>
+                              <div className="text-xs text-ink-3">{itemLabel(action)}</div>
+                            </Td>
+                            <Td>
+                              <StatusBadge status={action.status} />
+                              {action.reopenCount > 0 && (
+                                <span className="ml-1 text-xs text-ink-3">
+                                  reopened ×{action.reopenCount}
+                                </span>
+                              )}
+                            </Td>
+                            <Td>{action.assignedZoneLeaderName ?? '—'}</Td>
+                            <Td>
+                              {action.dueAt ? (
+                                // The word as well as the colour: an overdue row has to
+                                // survive a projector and a colour-blind reader.
+                                <span className={late ? 'text-crit' : ''}>
+                                  {new Date(action.dueAt).toLocaleDateString()}
+                                  {late && <b className="ml-1">Overdue</b>}
+                                </span>
+                              ) : (
+                                '—'
+                              )}
+                            </Td>
+                            <Td>{new Date(action.openedAt).toLocaleDateString()}</Td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </Table>
@@ -130,6 +311,19 @@ export function CorrectiveActionsPage() {
       {selected && <ActionPanel actionId={selected} onClose={() => setSelected(null)} />}
     </div>
   );
+}
+
+/**
+ * The heading for one audit's findings. The number is the Unit's own sequence, matching
+ * the picker and the Analytics tab; it is absent when the list is not filtered to a Unit,
+ * because numbering audits across Units would invent a sequence that does not exist.
+ */
+function auditHeading(sample: CorrectiveAction, number: number | undefined): string {
+  const when = sample.auditCompletedAt
+    ? new Date(sample.auditCompletedAt).toLocaleDateString()
+    : 'not completed';
+  const kind = sample.auditType.replace(/_/g, ' ').toLowerCase();
+  return number === undefined ? `${kind} · ${when}` : `Audit ${number} · ${kind} · ${when}`;
 }
 
 function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => void }) {

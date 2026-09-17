@@ -262,7 +262,7 @@ describe('Phase 3 acceptance', () => {
 
     const auditZoneId = await addLocalZone(database, {
       auditId,
-      zoneId,
+      zoneNumber: 11,
       sequenceNo: 1,
       checklistVersionId: versionId,
     });

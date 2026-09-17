@@ -12,6 +12,7 @@ import { ADMIN_EDITABLE_USER_FIELDS, SELF_EDITABLE_USER_FIELDS } from '@audit5s/
 import type { ScopeContext } from '@audit5s/domain';
 import { CONFIG, type AppConfig } from '../../config/env';
 import { AppError } from '../../common/errors';
+import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { PasswordService } from '../auth/password.service';
 import { AuthRepository } from '../auth/auth.repository';
@@ -66,18 +67,33 @@ export class UsersService {
       Date.now() + this.config.BOOTSTRAP_PASSWORD_TTL_HOURS * 60 * 60 * 1000,
     );
 
-    const created = await this.repository.createWithLoginId({
-      fullName: request.fullName,
-      phoneE164: request.phone,
-      email: request.email ?? null,
-      role: request.role,
-      passwordHash: await this.passwords.hash(request.phone),
-      bootstrapExpiresAt,
-      createdByUserId: actor.userId,
-      createdByRole: actor.role,
-      unitId: request.role === 'SUPER_ADMIN' ? null : unitId,
-      assignedByUserId: actor.userId,
-    });
+    const passwordHash = await this.passwords.hash(request.phone);
+    const created = await this.repository
+      .createWithLoginId({
+        fullName: request.fullName,
+        phoneE164: request.phone,
+        email: request.email ?? null,
+        role: request.role,
+        passwordHash,
+        bootstrapExpiresAt,
+        createdByUserId: actor.userId,
+        createdByRole: actor.role,
+        unitId: request.role === 'SUPER_ADMIN' ? null : unitId,
+        assignedByUserId: actor.userId,
+      })
+      .catch((error: unknown) => {
+        // The phone number is the bootstrap credential, so two active accounts cannot share
+        // one. This used to surface as a 500, which the app read as "cannot reach the server".
+        if (isUniqueViolation(error, 'user_phone_active_key')) {
+          throw AppError.validation('This phone number already belongs to another active user', [
+            {
+              field: 'phone',
+              message: 'Already used by another active account. Each person needs their own number.',
+            },
+          ]);
+        }
+        throw error;
+      });
 
     await this.auditLog.record({
       action: 'user.created',
@@ -210,6 +226,39 @@ export class UsersService {
       resourceId: userId,
       before: { status: before.status },
       after: { status: 'DISABLED' },
+    });
+  }
+
+  /**
+   * "Remove from the system", as far as D8 allows (R-25).
+   *
+   * Nothing here is ever hard-deleted: every audit, photograph and log row names the person
+   * who made it, and the database refuses to orphan them. So removal is archival — the
+   * account is disabled, its sessions and devices are revoked, and it leaves every list and
+   * every picker, while the record of what it did stays exactly as it was.
+   */
+  async archive(scope: ScopeContext, userId: string): Promise<void> {
+    const before = await this.repository.findById(scope, userId);
+    if (!before) {
+      throw AppError.notFound('No such user');
+    }
+    if (scope.actor.userId === userId) {
+      throw AppError.conflict('CONFLICT', 'You cannot remove your own account');
+    }
+
+    const archived = await this.repository.archive(scope, userId);
+    if (!archived) {
+      throw AppError.notFound('No such user');
+    }
+
+    await this.auth.revokeUserAccess(userId);
+
+    await this.auditLog.record({
+      action: 'user.archived',
+      resourceType: 'user',
+      resourceId: userId,
+      before: { status: before.status, archivedAt: null },
+      after: { status: 'DISABLED', archivedAt: new Date().toISOString() },
     });
   }
 

@@ -17,6 +17,7 @@ import {
   sSectionSchema,
   syncStateSchema,
 } from './enums';
+import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from './zone';
 
 /**
  * Assignments, audits, audit Zones and question responses (ARCHITECTURE.md §5.5, §8.6).
@@ -371,42 +372,50 @@ export type ListAuditsQuery = z.infer<typeof listAuditsQuerySchema>;
 /**
  * `PUT /audits/{auditId}/zones/{auditZoneId}` — the upsert that takes the D6 snapshots.
  *
- * The snapshot fields are absent by construction: they are read from the live Zone by the
- * server on first write and never again. A client cannot supply them, so a client cannot
- * rewrite history by supplying different ones.
+ * The snapshots are taken by the server on first write and never again, so a later write
+ * cannot rewrite history. What the auditor *enters* when creating the Zone — its
+ * description and its leader's name (R-19) — is part of what was audited, and is copied on
+ * that first write like everything else.
  */
-export const upsertAuditZoneRequestSchema = z.object({
-  zoneId: uuidSchema,
-  sequenceNo: z.number().int().min(1).max(1000),
-  checklistVersionId: uuidSchema.optional(),
-  /**
-   * §2.7 step 3 — the walk-by Zone description: "Optional; defaults to the Zone's current
-   * description, snapshotted either way."
-   *
-   * The one exception to "a client cannot supply a snapshot", and it is an exception §2.7
-   * asks for by name rather than a loophole: a walk-by is an observation of what the
-   * auditor found, and the description is part of the observation. Absent, the server
-   * copies the Zone's own description, which is the default half of that sentence.
-   *
-   * Honoured for `WALK_BY` and ignored on a scored audit — the same shape as
-   * `classification` on an upload intent, and for the same reason: a device replaying an
-   * old payload should not have a Zone refused over a field the server was always going
-   * to overwrite.
-   */
-  zoneDescription: clearable(z.string().trim().max(2000)),
-  /**
-   * §2.7 step 4 — the walk-by Zone leader: "Confirmed/selected, snapshotted."
-   *
-   * Absent means confirm the Zone's own leader. Present must name a `ZONE_LEADER` holding
-   * an ACTIVE membership in the audit's Unit, or the request is
-   * `422 ZONE_LEADER_NOT_IN_UNIT` — the service checks it, because a membership is not
-   * expressible here.
-   */
-  zoneLeaderUserId: uuidSchema.optional(),
-  zoneRemark: clearable(z.string().trim().max(4000)),
-  resumeQuestionId: uuidSchema.nullable().optional(),
-  clientUpdatedAt: isoDateTimeSchema.optional(),
-});
+export const upsertAuditZoneRequestSchema = z
+  .object({
+    /** A Zone picked from the Unit's master list. Ignored when `zoneNumber` is sent. */
+    zoneId: uuidSchema.optional(),
+    /**
+     * R-19 — the Zone 1…100 the auditor chose. The server uses that Zone of the audit's
+     * Unit, adding it to the Unit's master list the first time any audit names it. Sent
+     * instead of an id because a device offline cannot know the id of a Zone that does not
+     * exist yet.
+     */
+    zoneNumber: z.number().int().min(ZONE_NUMBER_MIN).max(ZONE_NUMBER_MAX).optional(),
+    sequenceNo: z.number().int().min(1).max(1000),
+    /** The department whose fifty questions this Zone answers (QR-2). */
+    checklistVersionId: uuidSchema.optional(),
+    /**
+     * Optional on every audit type (§2.7 step 3, R-19). Absent or empty, the server copies
+     * the Zone's own description.
+     */
+    zoneDescription: clearable(z.string().trim().max(2000)),
+    /**
+     * R-19 — the Zone leader's name as the auditor typed it. A name, not an account: it is
+     * printed on the reports and routes nothing. Absent or empty, the Zone's own leader is
+     * used.
+     */
+    zoneLeaderName: clearable(z.string().trim().max(200)),
+    /**
+     * §2.7 step 4 on a walk-by, for a leader picked from accounts. Must name a
+     * `ZONE_LEADER` holding an ACTIVE membership in the audit's Unit, or the request is
+     * `422 ZONE_LEADER_NOT_IN_UNIT`.
+     */
+    zoneLeaderUserId: uuidSchema.optional(),
+    zoneRemark: clearable(z.string().trim().max(4000)),
+    resumeQuestionId: uuidSchema.nullable().optional(),
+    clientUpdatedAt: isoDateTimeSchema.optional(),
+  })
+  .refine((body) => body.zoneNumber !== undefined || body.zoneId !== undefined, {
+    message: 'Name the Zone with zoneNumber or zoneId',
+    path: ['zoneNumber'],
+  });
 export type UpsertAuditZoneRequest = z.infer<typeof upsertAuditZoneRequestSchema>;
 
 export const completeAuditZoneRequestSchema = z.object({

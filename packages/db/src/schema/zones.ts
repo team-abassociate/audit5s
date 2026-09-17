@@ -32,6 +32,15 @@ export const zones = pgTable(
     ),
     /** A responsibility pointer, not a permission (C2). */
     zoneLeaderId: uuid('zone_leader_id').references(() => users.id, { onDelete: 'restrict' }),
+    /**
+     * Free-text leader, for a Zone whose leader has no user account (0015).
+     *
+     * Display-only, and the account always outranks it: reads coalesce
+     * `app_zone_leader_name(unit_id, zone_leader_id)` ahead of this. Written only by
+     * `app_set_zone_leader_name()`, from the name an auditor types during an audit —
+     * never by an ordinary update, and never joined on.
+     */
+    zoneLeaderName: text('zone_leader_name'),
     sortOrder: integer('sort_order').notNull().default(0),
     version: integer('version').notNull().default(1),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

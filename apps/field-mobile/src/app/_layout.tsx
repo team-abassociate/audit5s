@@ -15,7 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LocalDatabaseProvider } from '../lib/db/provider';
-import { SessionProvider, useSession } from '../lib/session';
+import { managesOnPhone, SessionProvider, useSession } from '../lib/session';
 import { SyncProvider } from '../lib/sync/provider';
 import { SyncStatusBar } from '../components/sync-status-bar';
 import { HeaderTitle } from '../components/ui';
@@ -45,7 +45,8 @@ function AuthGate() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { status, scope } = useSession();
-  const isSuperAdmin = scope?.role === 'SUPER_ADMIN';
+  // R-24: a Coordinator's home is Overview too, like a Super Admin's.
+  const isSuperAdmin = managesOnPhone(scope?.role);
   const segments = useSegments();
   const router = useRouter();
 

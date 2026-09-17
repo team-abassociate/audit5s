@@ -6,6 +6,8 @@ import type {
   UploadIntentResponse,
 } from '@audit5s/contracts';
 import { sectionLabel } from '@audit5s/domain';
+// The address only — not the client, which carries a session this page must never send.
+import { BASE_URL } from '@/lib/api';
 
 /**
  * The live corrective-action page — `/ca/{token}` (§10.4, PART 14 Phase 7's Web row).
@@ -29,8 +31,6 @@ import { sectionLabel } from '@audit5s/domain';
  *     ask for a new one — never a silent failure a Zone Leader would read as "the system
  *     lost my work".
  */
-
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api/v1';
 
 /**
  * **The token is in this page's URL, so no request may carry a referrer.**
@@ -95,24 +95,27 @@ export function PublicCorrectiveActionPage({ token }: { token: string }) {
     );
   }
 
-  if (state.status === 'error' || !state.item) {
-    return (
-      <Shell>
-        <h1 className="gb-h1">Something went wrong</h1>
-        <p className="mt-2 text-sm text-ink-2">{state.message}</p>
-      </Shell>
-    );
-  }
-
+  // Before the error branch: `done` carries no item, and checked after it a successful
+  // submission rendered "Something went wrong" although the answer had been saved.
   if (state.status === 'done') {
     return (
       <Shell>
         <div className="gb-panel p-4">
           <h1 className="gb-h1">Thank you — that is submitted</h1>
           <p className="mt-2 text-sm text-ink-2">
-            Your response has been recorded and sent for review. You may close this page.
+            Your response has been recorded and the Super Admin has been notified. You may
+            close this page.
           </p>
         </div>
+      </Shell>
+    );
+  }
+
+  if (state.status === 'error' || !state.item) {
+    return (
+      <Shell>
+        <h1 className="gb-h1">Something went wrong</h1>
+        <p className="mt-2 text-sm text-ink-2">{state.message}</p>
       </Shell>
     );
   }
@@ -129,7 +132,9 @@ export function PublicCorrectiveActionPage({ token }: { token: string }) {
         />
       ) : (
         <p className="border border-edge-soft bg-board p-4 text-sm text-ink-2">
-          This item has been verified and is closed. Nothing further is needed.
+          {state.item.status === 'VERIFIED'
+            ? 'This item has been answered and is closed. Nothing further is needed.'
+            : 'A response to this item has been received and is waiting for review. Nothing more is needed unless it is reopened.'}
         </p>
       )}
     </Shell>
@@ -191,7 +196,7 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
       {item.beforePhotoUrl ? (
         <figure className="mt-3">
           <img
-            src={item.beforePhotoUrl}
+            src={sameOriginWhenSecure(item.beforePhotoUrl)}
             alt="The finding as it was recorded"
             className="w-full border border-edge-soft"
             referrerPolicy="no-referrer"
@@ -206,8 +211,8 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
 
       {item.alreadySubmitted ? (
         <p className="gb-slip mt-3">
-          A response was already submitted on {formatDate(item.alreadySubmitted.submittedAt)}. You
-          may submit again if it was reopened.
+          A response was already submitted on {formatDate(item.alreadySubmitted.submittedAt)}.
+          {item.submittable ? ' It was reopened, so you may answer it again.' : ''}
         </p>
       ) : null}
     </section>
@@ -258,8 +263,13 @@ function SubmitForm({
   async function submit() {
     setError(null);
 
-    if (option === 'COMPLETED' && (!photo || !name.trim() || !description.trim())) {
-      setError('Option A needs your name, a description, and a photograph of the work.');
+    // Anyone with the link may answer (R-22), so the name is how the answer is attributed.
+    if (!name.trim()) {
+      setError('Please enter your name.');
+      return;
+    }
+    if (option === 'COMPLETED' && (!photo || !description.trim())) {
+      setError('Option A needs a description and a photograph of the work.');
       return;
     }
     if (option === 'NOT_POSSIBLE' && !explanation.trim()) {
@@ -288,7 +298,12 @@ function SubmitForm({
                 description: description.trim(),
                 afterEvidenceId,
               }
-            : { option, id: submissionId.current, explanation: explanation.trim() },
+            : {
+                option,
+                id: submissionId.current,
+                submittedByName: name.trim(),
+                explanation: explanation.trim(),
+              },
         ),
       });
 
@@ -304,10 +319,16 @@ function SubmitForm({
 
       (await response.json()) as CorrectiveActionSubmission;
       onDone();
-    } catch {
-      // The network, not the server. Saying so matters: the work is not lost, and a retry
-      // with the same id cannot create a second attempt.
-      setError('Could not reach the server. Check your connection and try again.');
+    } catch (caught) {
+      // `fetch` rejects with a TypeError only when the network failed; the photo upload
+      // throws an Error carrying the server's own sentence, which must be shown as it is
+      // rather than disguised as a connection problem. Either way nothing is lost, and a
+      // retry with the same id cannot create a second attempt.
+      setError(
+        caught instanceof TypeError || !(caught instanceof Error)
+          ? 'Could not reach the server. Check your connection and try again.'
+          : caught.message,
+      );
     } finally {
       setBusy(false);
     }
@@ -326,17 +347,20 @@ function SubmitForm({
         </OptionTab>
       </div>
 
+      {/* Both answers carry a name: anyone holding the link may answer it (R-22). */}
+      <div className="mt-4">
+        <Labelled label="Your name">
+          <input
+            className="gb-input"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoComplete="name"
+          />
+        </Labelled>
+      </div>
+
       {option === 'COMPLETED' ? (
         <div className="mt-4 space-y-3">
-          <Labelled label="Your name">
-            <input
-              className="gb-input"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              autoComplete="name"
-            />
-          </Labelled>
-
           <Labelled label="Photograph of the completed work">
             <LiveCapture onCapture={acceptPhoto} preview={photoUrl} />
           </Labelled>
@@ -530,6 +554,25 @@ function LiveCapture({
  * the submission endpoint performs it server-side instead, so the link still authorizes
  * only what §10.4 says it does. See `PublicCorrectiveActionsService.submit`.
  */
+/**
+ * Storage URLs, made safe for a page served over HTTPS.
+ *
+ * A LAN test setup mints `http://192.168.x.x:3000/...` for uploads and for the before photo,
+ * and a browser blocks both from an HTTPS page as mixed content. The presigned signature
+ * covers the method, the object key and the expiry — **never the host** — so the path is
+ * taken as it stands and addressed to this page's own origin, which proxies `/api` to the
+ * API. Off an HTTPS page, or for a URL already secure, nothing changes.
+ */
+function sameOriginWhenSecure(url: string): string {
+  if (typeof window === 'undefined' || window.location.protocol !== 'https:') return url;
+  try {
+    const target = new URL(url, window.location.href);
+    return target.protocol === 'https:' ? url : `${target.pathname}${target.search}`;
+  } catch {
+    return url;
+  }
+}
+
 async function uploadAfterPhoto(token: string, submissionId: string, photo: Blob): Promise<string> {
   const bytes = new Uint8Array(await photo.arrayBuffer());
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -569,7 +612,7 @@ async function uploadAfterPhoto(token: string, submissionId: string, photo: Blob
   const intent = (await intentResponse.json()) as UploadIntentResponse;
 
   // Cross-origin, to object storage. `no-referrer` is load-bearing here, not hygiene.
-  const put = await fetch(intent.uploadUrl, {
+  const put = await fetch(sameOriginWhenSecure(intent.uploadUrl), {
     ...NO_REFERRER,
     method: 'PUT',
     headers: intent.requiredHeaders,

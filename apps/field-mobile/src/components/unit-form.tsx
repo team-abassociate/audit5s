@@ -9,13 +9,18 @@ import { Button, Card, CardHeader, ErrorBanner, Field } from './ui';
 /**
  * Create or edit a Unit. The same fields as the web's Unit form, minus the map pin and
  * geofence, which want a map and belong on the web.
+ *
+ * `canRename` is false for a Coordinator (U-1, §6.3): the name is shown but not editable, and
+ * is left out of the update so the server's FIELD_NOT_EDITABLE is never provoked.
  */
 export function UnitForm({
   unit,
+  canRename = true,
   onSaved,
   onCancel,
 }: {
   unit?: Unit;
+  canRename?: boolean;
   onSaved: (unit: Unit) => void;
   onCancel?: () => void;
 }) {
@@ -43,7 +48,7 @@ export function UnitForm({
         // An emptied field clears it (`clearable` on the wire); `version` guards a stale edit.
         const { name, ...rest } = trimmed;
         return api.patch<Unit>(`/units/${unit.id}`, {
-          name,
+          ...(canRename ? { name } : {}),
           ...Object.fromEntries(Object.entries(rest).map(([key, value]) => [key, value || null])),
           version: unit.version,
         });
@@ -63,7 +68,14 @@ export function UnitForm({
   return (
     <Card>
       <CardHeader title={unit ? 'Edit details' : 'Unit details'} />
-      <Field label="Name" value={values.name} onChangeText={set('name')} placeholder="e.g. Chakan Plant 2" />
+      <Field
+        label="Name"
+        value={values.name}
+        onChangeText={set('name')}
+        placeholder="e.g. Chakan Plant 2"
+        editable={canRename}
+        hint={canRename ? undefined : 'Only a Super Admin can rename a Unit.'}
+      />
       <Field label="Address (optional)" value={values.address} onChangeText={set('address')} multiline />
       <Field label="City (optional)" value={values.city} onChangeText={set('city')} />
       <Field label="State (optional)" value={values.state} onChangeText={set('state')} />

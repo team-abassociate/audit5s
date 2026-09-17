@@ -188,14 +188,27 @@ describe('Phase 7 acceptance', () => {
       );
       expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
 
-      // ------------------------------------------------- 3. Super Admin verifies it
+      // --------------------------------- 3. …which closed it, with nobody verifying
+      //
+      // R-23(a): the after-photo is the closure. There is no review step for an Option A
+      // answer any more, so the Super Admin's verify is refused rather than redundant —
+      // and the finding is already VERIFIED by the time they could ask.
+      const afterSubmit = (await world.request(
+        'GET',
+        `${base}/corrective-actions/${link.correctiveActionId}`,
+        { token: superAdmin },
+      )).body as CorrectiveActionDetail;
+      expect(afterSubmit.status).toBe('VERIFIED');
+      // Closed by the submission, so no person verified it — that is the field's whole
+      // purpose, and a report that claimed otherwise would be wrong about who signed off.
+      expect(afterSubmit.verifiedByUserId).toBeNull();
+
       const verified = await world.request(
         'POST',
         `${base}/corrective-actions/${link.correctiveActionId}/verify`,
         { token: superAdmin, body: { comment: 'Confirmed on the floor.' } },
       );
-      expect(verified.status, JSON.stringify(verified.body)).toBe(200);
-      expect((verified.body as CorrectiveActionDetail).status).toBe('VERIFIED');
+      expect(verified.status, JSON.stringify(verified.body)).toBe(409);
 
       // ------------------------------- 4. …and regenerates as an After-Evidence v2
       //

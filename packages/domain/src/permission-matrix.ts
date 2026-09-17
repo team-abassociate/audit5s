@@ -94,6 +94,18 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     },
   },
   {
+    /**
+     * "Remove from the system", as far as D8 allows: the account is archived, not deleted.
+     * Nothing is ever hard-deleted here — every audit, photograph and log entry names the
+     * person who made it — so an archived user leaves every list and every picker while the
+     * record of what they did stays exactly as it was (R-25).
+     */
+    resource: 'user',
+    action: 'archive',
+    description: 'Archive a user: removed from every list, history untouched',
+    grants: { SUPER_ADMIN: org },
+  },
+  {
     resource: 'user',
     action: 'reset_password',
     description: 'Issue a fresh bootstrap credential and force a reset',
@@ -228,6 +240,36 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: { SUPER_ADMIN: org, COORDINATOR: ownUnit },
   },
 
+  // --------------------------------------------------------------------- Industries
+  // The same shape as the checklist catalogue below, and for the same reason: an industry
+  // is organization-wide reference data (D2) carrying no Unit-identifying information, and
+  // every client needs the label on a catalogue it is already allowed to read. Writing is
+  // a Super Admin's — deciding what sector a business is in is not day-to-day upkeep.
+  {
+    resource: 'industry',
+    action: 'create',
+    description: 'Add an industry',
+    grants: { SUPER_ADMIN: org },
+  },
+  {
+    resource: 'industry',
+    action: 'update',
+    description: 'Rename or reorder an industry',
+    grants: { SUPER_ADMIN: org },
+  },
+  {
+    resource: 'industry',
+    action: 'archive',
+    description: 'Archive an industry',
+    grants: { SUPER_ADMIN: org },
+  },
+  {
+    resource: 'industry',
+    action: 'read',
+    description: 'Read the list of industries',
+    grants: allRoles(org),
+  },
+
   // --------------------------------------------------------------------- Checklists
   // Organization-wide reference data (D2): read access is intentionally broad, because it
   // carries no Unit-identifying information and every field client must cache it offline.
@@ -321,7 +363,8 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     action: 'create_external',
     description: 'Start an EXTERNAL_5S audit',
     grants: {
-      CONSULTANT: { resolver: 'assigned_units', condition: 'an active assignment must exist' },
+      // R-20: access to the Unit is enough; an open assignment is linked when one exists.
+      CONSULTANT: { resolver: 'assigned_units' },
     },
   },
   {

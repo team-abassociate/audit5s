@@ -274,10 +274,10 @@ describe('Phase 4 acceptance', () => {
       location: { latitude: 19.9975, longitude: 73.7898, accuracyM: 12, provider: 'FUSED' },
     });
 
-    for (const [index, zoneId] of zoneIds.entries()) {
+    for (const index of zoneIds.keys()) {
       const auditZoneId = await addLocalZone(database, {
         auditId,
-        zoneId,
+        zoneNumber: 41 + index,
         sequenceNo: index + 1,
         checklistVersionId: versionId,
       });

@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { readSyncStatus, type SyncDot } from '../lib/sync/status';
 import { useLocalDatabase } from '../lib/db/provider';
 import { useSession } from '../lib/session';
+import { retryDeadLetters } from '../lib/sync/engine';
 import { useSync } from '../lib/sync/provider';
 import { createThemedStyles, useTheme } from '../lib/theme';
 import { Avatar, Button } from './ui';
@@ -40,7 +41,15 @@ export function SyncStatusBar() {
   });
 
   const syncNow = useMutation({
-    mutationFn: () => sync(),
+    mutationFn: async () => {
+      // STACK.md §5's "N failed — tap to retry". A dead letter waits for a person, and this
+      // tap is that person: without it an item the server once refused — and everything
+      // queued behind it — could never be sent again, even after the cause was fixed.
+      if (status.data?.deadLettered) {
+        await retryDeadLetters(database);
+      }
+      return sync();
+    },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
     },
@@ -92,7 +101,7 @@ export function SyncStatusBar() {
           {/* Tappable offline too: "offline" is the last attempt's result, and a retry is how it ends. */}
           <Button
             compact
-            title={syncing ? 'Syncing…' : 'Sync now'}
+            title={syncing ? 'Syncing…' : data.deadLettered > 0 ? 'Retry' : 'Sync now'}
             disabled={syncing}
             onPress={() => syncNow.mutate()}
           />

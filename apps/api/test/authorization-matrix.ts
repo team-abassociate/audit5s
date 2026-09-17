@@ -93,6 +93,17 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'POST',
+    path: '/api/v1/auth/reset-password',
+    description:
+      'Completes the emailed link. Public by necessity — the caller cannot sign in, which ' +
+      'is why they are here. The token is the credential, and an invalid, expired or ' +
+      'already-spent one is refused with the same code so it says nothing about which.',
+    public: true,
+    expected: {},
+    coveredBy: 'auth-lifecycle.e2e.test.ts',
+  },
+  {
+    method: 'POST',
     path: '/api/v1/auth/otp/request',
     description: 'OTP scaffold',
     public: true,
@@ -183,6 +194,15 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     expected: {
       SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
       COORDINATOR: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'users.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/users/:id/archive',
+    description: 'user:archive — a Super Admin only; removal is archival, never deletion (R-25, D8)',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
     },
     coveredBy: 'users.e2e.test.ts',
   },
@@ -347,6 +367,60 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       COORDINATOR: { inScope: OK },
       ZONE_LEADER: { inScope: OK },
     },
+  },
+
+  // -------------------------------------------------------------- industries
+  // The same shape as the checklist catalogue below it, and for the same reason: a sector
+  // list carries no Unit-identifying data and labels a catalogue every client already
+  // reads. Writing is a Super Admin's — what sector a business is in is not day-to-day
+  // upkeep, and a Coordinator changing it would silently re-point their plant's auditors
+  // at a different set of checklists.
+  {
+    method: 'GET',
+    path: '/api/v1/industries',
+    description: 'industry:read — the sector list, cached beside the catalogue it labels',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/industries',
+    description: 'industry:create — Super Admin only',
+    expected: {
+      SUPER_ADMIN: { inScope: CREATED },
+      CONSULTANT: { inScope: DENIED },
+      COORDINATOR: { inScope: DENIED },
+      ZONE_LEADER: { inScope: DENIED },
+    },
+    coveredBy: 'industries.e2e.test.ts',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/industries/:id',
+    description: 'industry:update — Super Admin only',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: DENIED, outOfScope: DENIED },
+      COORDINATOR: { inScope: DENIED, outOfScope: DENIED },
+      ZONE_LEADER: { inScope: DENIED, outOfScope: DENIED },
+    },
+    coveredBy: 'industries.e2e.test.ts',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/industries/:id',
+    description: 'industry:archive — Super Admin only; archives, never deletes (D8)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: DENIED, outOfScope: DENIED },
+      COORDINATOR: { inScope: DENIED, outOfScope: DENIED },
+      ZONE_LEADER: { inScope: DENIED, outOfScope: DENIED },
+    },
+    coveredBy: 'industries.e2e.test.ts',
   },
 
   // -------------------------------------------------------------- checklists

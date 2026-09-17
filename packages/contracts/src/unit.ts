@@ -26,6 +26,12 @@ export const unitSchema = z.object({
   /** `null` disables geofencing for the Unit. */
   geofenceRadiusM: z.number().int().nullable(),
   timezone: z.string(),
+  /**
+   * The sector this Unit operates in (0018), which narrows the checklists its audits
+   * offer. `null` narrows nothing. Never an access decision.
+   */
+  industryId: uuidSchema.nullable(),
+  industryName: z.string().nullable(),
   photoCapPerZone: z.number().int(),
   version: z.number().int(),
   archivedAt: isoDateTimeSchema.nullable(),
@@ -80,8 +86,15 @@ export const UNIT_COORDINATOR_EDITABLE_FIELDS = [
   'photoCapPerZone',
 ] as const;
 
-/** Writable by SUPER_ADMIN only. */
-export const UNIT_SUPER_ADMIN_ONLY_FIELDS = ['name'] as const;
+/**
+ * Writable by SUPER_ADMIN only.
+ *
+ * `industryId` sits here rather than with the Coordinator's fields because it decides
+ * which catalogue the Unit's auditors are offered. That is an organization-wide call about
+ * what this plant *is*, in the same family as its name — not day-to-day upkeep like an
+ * address or a contact number.
+ */
+export const UNIT_SUPER_ADMIN_ONLY_FIELDS = ['name', 'industryId'] as const;
 
 export const createUnitRequestSchema = z.object({
   name: unitNameSchema,
@@ -98,6 +111,8 @@ export const createUnitRequestSchema = z.object({
   geofenceRadiusM: z.number().int().min(10).max(20000).nullable().optional(),
   timezone: timezoneSchema.default('Asia/Kolkata'),
   photoCapPerZone: z.number().int().min(1).max(500).optional(),
+  /** The sector this plant operates in (0018). Omitted means unclassified. */
+  industryId: uuidSchema.nullable().optional(),
 });
 export type CreateUnitRequest = z.infer<typeof createUnitRequestSchema>;
 
@@ -127,6 +142,12 @@ export const updateUnitRequestSchema = z
   .object({
     ...coordinatorEditableShape,
     name: unitNameSchema.optional(),
+    /**
+     * Accepted on the wire for the same reason `name` is: a Coordinator who sends it
+     * reaches the field-level check and is told `FIELD_NOT_EDITABLE` naming the field,
+     * rather than getting a generic validation error about an unrecognised key.
+     */
+    industryId: uuidSchema.nullable().optional(),
     /** Optimistic concurrency (ARCHITECTURE.md §5). */
     version: z.number().int().positive().optional(),
   })

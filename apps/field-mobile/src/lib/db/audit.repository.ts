@@ -1,15 +1,24 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import type {
   AuditType,
   LocationReading,
   ResponseValue,
   SSection,
 } from '@audit5s/contracts';
-import { numericScoreFor, scoreZone, type ScoreBreakdown } from '@audit5s/domain';
+import {
+  numericScoreFor,
+  scoreZone,
+  zoneCodeForNumber,
+  zoneLeaderSnapshot,
+  zoneNumberFromCode,
+  type ScoreBreakdown,
+} from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import {
   audits,
   checklistQuestions,
+  units,
+  checklistVersions,
   localAuditZones,
   localQuestionResponses,
   outbox,
@@ -97,21 +106,29 @@ export async function createLocalAudit(
 
 export interface AddZoneInput {
   auditId: string;
-  zoneId: string;
+  /** The Zone 1…100 the auditor chose (R-19). */
+  zoneNumber: number;
   sequenceNo: number;
+  /** The department whose fifty questions this Zone answers; null on a walk-by. */
   checklistVersionId: string | null;
   zoneDescription?: string | null;
-  zoneLeaderUserId?: string;
+  /** The Zone leader's name, as the auditor typed it (R-19). */
+  zoneLeaderName?: string | null;
   id?: string;
   now?: string;
 }
 
 /**
- * Adds a Zone to the audit, taking the D6 snapshots from the cached Zone row.
+ * Adds a Zone to the audit by its number, taking the D6 snapshots on the device.
+ *
+ * The Zone need not be in the catalogue (R-19): an auditor may name a Zone nobody has
+ * created yet, and the server adds it to the Unit when this write arrives. So the row points
+ * at the catalogue Zone when there is one and at a local id when there is not, and the
+ * outbox names the Zone by its number — never by that local id.
  *
  * The device snapshots for the same reason the server does: what the report renders must
- * not move when the Zone is edited later. The server re-reads its own copy on the way in
- * and does not trust these — but the device needs them to render the questionnaire header
+ * not move when the Zone is edited later. The server takes its own copy on the way in and
+ * does not trust these — but the device needs them to render the questionnaire header
  * offline, so both hold a snapshot and the server's is authoritative.
  */
 export async function addLocalZone(
@@ -121,52 +138,67 @@ export async function addLocalZone(
   const id = input.id ?? uuidv7();
   const now = input.now ?? new Date().toISOString();
 
+  const [audit] = await database
+    .select({ unitId: audits.unitId })
+    .from(audits)
+    .where(eq(audits.id, input.auditId))
+    .limit(1);
+  if (!audit) {
+    throw new Error(`Audit ${input.auditId} is not on this device`);
+  }
+
+  const code = zoneCodeForNumber(input.zoneNumber);
+
+  // The server's `UNIQUE (audit_id, zone_id)`, checked by code: a Zone not in the catalogue
+  // has a fresh local id every time, so the local index alone would not catch a repeat.
+  const [repeat] = await database
+    .select({ id: localAuditZones.id })
+    .from(localAuditZones)
+    .where(and(eq(localAuditZones.auditId, input.auditId), eq(localAuditZones.zoneCodeSnapshot, code)))
+    .limit(1);
+  if (repeat) {
+    throw new Error(`Zone ${input.zoneNumber} is already part of this audit`);
+  }
+
   const [zone] = await database
     .select()
     .from(zones)
-    .where(eq(zones.id, input.zoneId))
+    .where(and(eq(zones.unitId, audit.unitId), eq(zones.code, code)))
     .limit(1);
-
-  if (!zone) {
-    throw new Error(`Zone ${input.zoneId} is not in this device's catalogue`);
+  if (zone?.archived) {
+    throw new Error(`Zone ${input.zoneNumber} is archived in this Unit`);
   }
 
-  const selectedLeader = input.zoneLeaderUserId
+  const version = input.checklistVersionId
     ? (
         await database
-          .select({ id: zones.zoneLeaderId, name: zones.zoneLeaderName })
-          .from(zones)
-          .where(
-            and(
-              eq(zones.unitId, zone.unitId),
-              eq(zones.zoneLeaderId, input.zoneLeaderUserId),
-            ),
-          )
+          .select({ templateName: checklistVersions.templateName })
+          .from(checklistVersions)
+          .where(eq(checklistVersions.id, input.checklistVersionId))
           .limit(1)
       )[0]
-    : null;
-
-  if (input.zoneLeaderUserId && !selectedLeader) {
-    throw new Error(`Zone leader ${input.zoneLeaderUserId} is not in this device's catalogue`);
+    : undefined;
+  if (input.checklistVersionId && !version) {
+    throw new Error(`Checklist ${input.checklistVersionId} is not on this device`);
   }
 
-  const zoneDescription =
-    input.zoneDescription === undefined ? zone.description : input.zoneDescription;
-  const zoneLeaderUserId = input.zoneLeaderUserId ?? zone.zoneLeaderId;
-  const zoneLeaderName = selectedLeader?.name ?? zone.zoneLeaderName;
+  const typedDescription = input.zoneDescription?.trim() || null;
+  const typedLeader = input.zoneLeaderName?.trim() || null;
+  const leader = zoneLeaderSnapshot(zone, typedLeader);
 
   await database.insert(localAuditZones).values({
     id,
     auditId: input.auditId,
-    zoneId: input.zoneId,
+    zoneId: zone?.id ?? uuidv7(),
     sequenceNo: input.sequenceNo,
     status: 'DRAFT',
-    zoneCodeSnapshot: zone.code,
-    zoneNameSnapshot: zone.name,
-    zoneDescriptionSnapshot: zoneDescription,
-    zoneLeaderUserIdSnapshot: zoneLeaderUserId,
-    zoneLeaderNameSnapshot: zoneLeaderName,
+    zoneCodeSnapshot: code,
+    zoneNameSnapshot: zone?.name ?? `Zone ${input.zoneNumber}`,
+    zoneDescriptionSnapshot: typedDescription ?? zone?.description ?? null,
+    zoneLeaderUserIdSnapshot: leader.userId,
+    zoneLeaderNameSnapshot: leader.name,
     checklistVersionId: input.checklistVersionId,
+    checklistTemplateNameSnapshot: version?.templateName ?? null,
     clientUpdatedAt: now,
   });
 
@@ -177,11 +209,11 @@ export async function addLocalZone(
 
   await enqueue(database, 'audit_zone', id, 'upsert', {
     auditId: input.auditId,
-    zoneId: input.zoneId,
+    zoneNumber: input.zoneNumber,
     sequenceNo: input.sequenceNo,
     checklistVersionId: input.checklistVersionId ?? undefined,
-    ...(input.zoneDescription !== undefined ? { zoneDescription: input.zoneDescription } : {}),
-    ...(input.zoneLeaderUserId ? { zoneLeaderUserId: input.zoneLeaderUserId } : {}),
+    ...(typedDescription ? { zoneDescription: typedDescription } : {}),
+    ...(typedLeader ? { zoneLeaderName: typedLeader } : {}),
   });
 
   return id;
@@ -360,15 +392,17 @@ export async function saveZoneRemark(
     .limit(1);
 
   if (zone) {
+    // The outbox coalesces this with a first write that has not synced yet, so it must carry
+    // everything that write did — the Zone by number above all, since a Zone the catalogue
+    // lacked has only a local id the server has never seen (R-19).
+    const zoneNumber = zoneNumberFromCode(zone.zoneCodeSnapshot);
     await enqueue(database, 'audit_zone', auditZoneId, 'upsert', {
       auditId: zone.auditId,
-      zoneId: zone.zoneId,
+      ...(zoneNumber !== null ? { zoneNumber } : { zoneId: zone.zoneId }),
       sequenceNo: zone.sequenceNo,
       checklistVersionId: zone.checklistVersionId ?? undefined,
       zoneDescription: zone.zoneDescriptionSnapshot,
-      ...(zone.zoneLeaderUserIdSnapshot
-        ? { zoneLeaderUserId: zone.zoneLeaderUserIdSnapshot }
-        : {}),
+      zoneLeaderName: zone.zoneLeaderNameSnapshot,
       zoneRemark: remark,
     });
   }
@@ -457,8 +491,13 @@ export function getLocalAudit(database: LocalDatabase, auditId: string) {
 }
 
 /** The History tab: this device's audits, newest first. */
+/** The device's audits, newest first, each with its Unit's cached name for the History list. */
 export function listLocalAudits(database: LocalDatabase) {
-  return database.select().from(audits).orderBy(sql`${audits.clientUpdatedAt} DESC`);
+  return database
+    .select({ ...getTableColumns(audits), unitName: units.name })
+    .from(audits)
+    .leftJoin(units, eq(units.id, audits.unitId))
+    .orderBy(sql`${audits.clientUpdatedAt} DESC`);
 }
 
 export function listLocalAuditZones(database: LocalDatabase, auditId: string) {

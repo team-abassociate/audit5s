@@ -1,193 +1,231 @@
 /* ============================================================================
-   GEMBA BOARD — design tokens + primitives
-   audit5s · admin web + field mobile
+   AUDIT5S — design tokens + primitives
+   admin web · (field mobile keeps the high-contrast board port — see §9)
+
    This file is authoritative. Every colour, border, shadow and radius in the
-   product comes from here. If a value is not in this file, it is a bug.
+   web product comes from here. If a value is not in this file, it is a bug.
+
+   Supersedes the Gemba Board whiteboard treatment (hard borders, zero-blur
+   offset shadows, 900-weight caps). The structure, the score semantics and the
+   `gb-` class names are unchanged — only the material is. See GEMBA-BOARD.md §0.
    ============================================================================ */
 
 :root{
-  /* --- surfaces: whiteboard --- */
-  --board:#EEEBE1;                    /* page ground (dry-erase board) */
-  --board-line:rgba(29,27,22,.055);   /* 28px grid ruled on the ground */
-  --tile:#FCFBF7;                     /* raised object (magnet, card, row) */
-  --tile-2:#F6F3EA;                   /* recessed / header / inert object */
+  /* --- surfaces --- */
+  --board:#F7F8FA;                    /* page ground */
+  --board-line:transparent;           /* the ruled grid is gone; name kept so no rule breaks */
+  --tile:#FFFFFF;                     /* raised object (card, row, tile) */
+  --tile-2:#F9FAFB;                   /* recessed / header / inert object */
 
   /* --- ink --- */
-  --ink:#1D1B16;                      /* primary text, tile borders */
-  --ink-2:#5B5647;                    /* secondary text */
-  --ink-3:#8A8372;                    /* labels, axes, disabled */
+  --ink:#101828;                      /* primary text */
+  --ink-2:#475467;                    /* secondary text */
+  --ink-3:#98A2B3;                    /* labels, axes, disabled */
 
   /* --- edges --- */
-  --edge:#1D1B16;                     /* structural border (1.5px / 2px) */
-  --edge-soft:#CFC9B8;                /* internal hairline (1px) */
-  --hard:rgba(29,27,22,.22);          /* the hard offset shadow, never blurred */
+  --edge:#D0D5DD;                     /* structural border (1px) */
+  --edge-soft:#EAECF0;                /* internal hairline */
+  --hard:rgba(16,24,40,.08);          /* retained name; now a soft shadow colour */
 
-  /* --- board materials --- */
-  --tape:#D9CF9A;   --tape-ink:#33301F;   /* masking-tape strip */
-  --slip:#E8E24B;   --slip-ink:#33301F;   /* yellow slip: one warning per view */
+  /* --- elevation: soft and blurred, the opposite of the old system --- */
+  --shadow-1:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  --shadow-2:0 2px 4px rgba(16,24,40,.05), 0 4px 10px rgba(16,24,40,.08);
+  --shadow-3:0 4px 8px rgba(16,24,40,.06), 0 12px 20px rgba(16,24,40,.10);
 
-  /* --- semantic status (independent of accent) --- */
-  --ok:#2F6E3A;     --ok-band:#3E8E4B;
-  --warn:#7E5C03;   --warn-band:#D79A05;
-  --crit:#AB2F1C;   --crit-band:#B4321F;
+  /* --- radius --- */
+  --r-sm:6px;
+  --r:8px;
+  --r-lg:12px;
+  --r-pill:999px;
+
+  /* --- notice surfaces (were tape + slip) --- */
+  --tape:#F2F4F7;   --tape-ink:#475467;   /* quiet marker */
+  --slip:#FFFAEB;   --slip-ink:#93370D;   /* the one alert per view */
+  --slip-edge:#FEDF89;
+
+  /* --- semantic status: meaning unchanged, values modernised --- */
+  --ok:#067647;     --ok-band:#17B26A;
+  --warn:#B54708;   --warn-band:#F79009;
+  --crit:#B42318;   --crit-band:#F04438;
 
   /* --- accent: interaction only, never decoration --- */
-  --accent:#0B6E77;
-  --accent-soft:#D5E7E8;
+  --accent:#0E7490;
+  --accent-soft:#E6F4F6;
+  --accent-ink:#0B5F70;
 
   /* --- rhythm --- */
-  --u:14px;                           /* base unit; all spacing is a multiple */
-  --motion:143ms;                     /* the only duration; ease-out only */
+  --u:8px;                            /* base unit; all spacing is a multiple */
+  --motion:160ms;
 }
 
-/* system dark (no stamp on <html>) */
+/* system dark */
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --board:#151816;
-    --board-line:rgba(255,255,255,.045);
-    --tile:#1E2220;
-    --tile-2:#191D1B;
-    --ink:#EDEAE0;
-    --ink-2:#A8A899;
-    --ink-3:#7B7D71;
-    --edge:#3C423D;
-    --edge-soft:#2C312D;
-    --hard:rgba(0,0,0,.55);
-    --tape:#57512F;   --tape-ink:#EDE6C4;
-    --slip:#D2C92F;   --slip-ink:#33301F;
-    --ok:#6FC27E;     --ok-band:#49A05A;
-    --warn:#E7B03A;   --warn-band:#D79A05;
-    --crit:#F27458;   --crit-band:#D94A2E;
+    --board:#0E1116;
+    --board-line:transparent;
+    --tile:#161A20;
+    --tile-2:#1B2028;
+    --ink:#ECEFF3;
+    --ink-2:#98A2B3;
+    --ink-3:#697586;
+    --edge:#2A313B;
+    --edge-soft:#212832;
+    --hard:rgba(0,0,0,.45);
+    --shadow-1:0 1px 2px rgba(0,0,0,.30), 0 1px 3px rgba(0,0,0,.24);
+    --shadow-2:0 2px 4px rgba(0,0,0,.30), 0 4px 10px rgba(0,0,0,.36);
+    --shadow-3:0 4px 8px rgba(0,0,0,.32), 0 12px 20px rgba(0,0,0,.44);
+    --tape:#1F252E;   --tape-ink:#98A2B3;
+    --slip:#2A2010;   --slip-ink:#FEDF89;  --slip-edge:#5A4415;
+    --ok:#47CD89;     --ok-band:#17B26A;
+    --warn:#FDB022;   --warn-band:#F79009;
+    --crit:#F97066;   --crit-band:#F04438;
     --accent:#4FD2D8;
     --accent-soft:#12302F;
+    --accent-ink:#7FE3E8;
   }
 }
 
 /* explicit choice wins in both directions */
 :root[data-theme="dark"]{
-  --board:#151816; --board-line:rgba(255,255,255,.045); --tile:#1E2220; --tile-2:#191D1B;
-  --ink:#EDEAE0; --ink-2:#A8A899; --ink-3:#7B7D71; --edge:#3C423D; --edge-soft:#2C312D;
-  --hard:rgba(0,0,0,.55); --tape:#57512F; --tape-ink:#EDE6C4; --slip:#D2C92F; --slip-ink:#33301F;
-  --ok:#6FC27E; --ok-band:#49A05A; --warn:#E7B03A; --warn-band:#D79A05;
-  --crit:#F27458; --crit-band:#D94A2E; --accent:#4FD2D8; --accent-soft:#12302F;
+  --board:#0E1116; --board-line:transparent; --tile:#161A20; --tile-2:#1B2028;
+  --ink:#ECEFF3; --ink-2:#98A2B3; --ink-3:#697586; --edge:#2A313B; --edge-soft:#212832;
+  --hard:rgba(0,0,0,.45);
+  --shadow-1:0 1px 2px rgba(0,0,0,.30), 0 1px 3px rgba(0,0,0,.24);
+  --shadow-2:0 2px 4px rgba(0,0,0,.30), 0 4px 10px rgba(0,0,0,.36);
+  --shadow-3:0 4px 8px rgba(0,0,0,.32), 0 12px 20px rgba(0,0,0,.44);
+  --tape:#1F252E; --tape-ink:#98A2B3; --slip:#2A2010; --slip-ink:#FEDF89; --slip-edge:#5A4415;
+  --ok:#47CD89; --ok-band:#17B26A; --warn:#FDB022; --warn-band:#F79009;
+  --crit:#F97066; --crit-band:#F04438; --accent:#4FD2D8; --accent-soft:#12302F;
+  --accent-ink:#7FE3E8;
 }
 
 /* ============================================================================
    TYPE
-   Two families. No third.
+   Two families, unchanged. What changed is weight and casing: sentence case
+   everywhere, 600 where it used to be 800/900, no font-stretch, and no
+   letter-spaced caps outside nothing at all.
    ============================================================================ */
 /* <link rel="stylesheet"
-     href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=DM+Mono:wght@400;500&display=swap"> */
+     href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..700&family=DM+Mono:wght@400;500&display=swap"> */
 
 :root{
-  --font-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --font-display:"Archivo","Inter","Helvetica Neue",Arial,sans-serif;
   --font-data:"DM Mono",ui-monospace,SFMono-Regular,monospace;
 }
 
 body{
   background:var(--board);
-  background-image:linear-gradient(var(--board-line) 1px,transparent 1px),
-                   linear-gradient(90deg,var(--board-line) 1px,transparent 1px);
-  background-size:28px 28px;               /* 2 × base unit */
+  background-image:none;                   /* the dry-erase rule is gone */
   color:var(--ink);
   font-family:var(--font-display);
-  font-size:15px;
+  font-size:14px;
   line-height:1.5;
   margin:0;
 }
 
-/* Section / page headings: heavy, expanded, uppercase. */
-.gb-h1{font-size:19px;font-weight:800;font-stretch:112%;text-transform:uppercase;letter-spacing:.02em}
-.gb-h2{font-size:16px;font-weight:800;font-stretch:110%;text-transform:uppercase;letter-spacing:.02em}
+/* Section / page headings: sentence case, medium weight. */
+.gb-h1{font-size:17px;font-weight:600;letter-spacing:-.01em;text-transform:none;font-stretch:100%}
+.gb-h2{font-size:15px;font-weight:600;letter-spacing:-.005em;text-transform:none;font-stretch:100%}
 
-/* Display numerals: Archivo 900, tight, tabular. NEVER mono, never below 800. */
-.gb-figure{font-weight:900;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1.05}
+/* Display numerals: 700, tight, tabular. */
+.gb-figure{font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.15}
 
 /* Small data (tables, timestamps, axes, deltas): DM Mono, tabular. */
 .gb-data{font-family:var(--font-data);font-variant-numeric:tabular-nums}
 
-/* Field label above any value. */
+/* Field label above any value: sentence case, no tracking. */
 .gb-label{
-  font-size:10.5px;font-weight:600;letter-spacing:.13em;
-  text-transform:uppercase;color:var(--ink-3);
+  font-size:12px;font-weight:500;letter-spacing:0;
+  text-transform:none;color:var(--ink-3);
 }
 
 /* ============================================================================
-   PRIMITIVES — the four objects the whole product is built from
+   PRIMITIVES — the same four objects, in the new material
    ============================================================================ */
 
-/* 1. TILE — a magnet on the board. Every card is this. */
+/* 1. TILE — a card. Every panel is this. */
 .gb-tile{
   background:var(--tile);
-  border:1.5px solid var(--edge);
-  box-shadow:3px 3px 0 var(--hard);     /* hard, offset, never blurred */
-  border-radius:0;                       /* nothing in this system is rounded */
-  padding:12px 14px 14px;
+  border:1px solid var(--edge-soft);
+  box-shadow:var(--shadow-1);
+  border-radius:var(--r);
+  padding:16px;
 }
 .gb-tile--interactive{
   cursor:pointer;
-  transition:box-shadow var(--motion) ease-out,transform var(--motion) ease-out;
+  transition:box-shadow var(--motion) ease-out,border-color var(--motion) ease-out,
+             transform var(--motion) ease-out;
 }
-.gb-tile--interactive:hover{box-shadow:5px 5px 0 var(--hard)}
-.gb-tile--interactive:active{box-shadow:0 0 0 var(--hard);transform:translate(3px,3px)}
+.gb-tile--interactive:hover{box-shadow:var(--shadow-2);border-color:var(--edge)}
+.gb-tile--interactive:active{box-shadow:var(--shadow-1);transform:translateY(1px)}
 .gb-tile[aria-pressed="true"],.gb-tile--selected{
-  border-width:2.5px;box-shadow:5px 5px 0 var(--hard);background:var(--tile-2);
+  border-color:var(--accent);
+  box-shadow:var(--shadow-2),0 0 0 3px var(--accent-soft);
+  background:var(--tile);
 }
-.gb-tile--pending{background:var(--tile-2);border-style:dashed;box-shadow:none}
+.gb-tile--pending{
+  background:var(--tile-2);border-style:dashed;border-color:var(--edge);box-shadow:none;
+}
 
 /* 2. BAND — the status stripe under a value. Colour lives here, not in text. */
-.gb-band{height:6px;background:var(--edge-soft)}
+.gb-band{height:4px;background:var(--edge-soft);border-radius:var(--r-pill)}
 .gb-band--ok{background:var(--ok-band)}
 .gb-band--warn{background:var(--warn-band)}
 .gb-band--crit{background:var(--crit-band)}
 .gb-band--none{background:repeating-linear-gradient(90deg,var(--edge-soft) 0 6px,transparent 6px 12px)}
 
-/* 3. TAPE — a straight masking-tape strip. Section markers only. */
+/* 3. TAPE — a quiet marker. Section markers only. */
 .gb-tape{
-  background:var(--tape);color:var(--tape-ink);padding:4px 12px;
-  font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  background:var(--tape);color:var(--tape-ink);
+  padding:3px 10px;border-radius:var(--r-pill);
+  font-size:12px;font-weight:500;letter-spacing:0;text-transform:none;
 }
 
-/* 4. SLIP — the yellow note. At most ONE per view, and only when someone must act. */
+/* 4. SLIP — the one alert per view, and only when someone must act. */
 .gb-slip{
   background:var(--slip);color:var(--slip-ink);
-  border:1.5px solid var(--edge);box-shadow:3px 3px 0 var(--hard);
+  border:1px solid var(--slip-edge);box-shadow:none;border-radius:var(--r);
   padding:12px 14px;
 }
-.gb-slip b{display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:800}
-.gb-slip p{margin:6px 0 0;font-size:13px;line-height:1.4}
+.gb-slip b{display:block;font-size:13px;letter-spacing:0;text-transform:none;font-weight:600}
+.gb-slip p{margin:4px 0 0;font-size:13px;line-height:1.45}
 
-/* Button — a tile you can press. */
+/* Button. */
 .gb-btn{
-  font:inherit;font-size:12.5px;font-weight:600;
+  font:inherit;font-size:13px;font-weight:500;
   background:var(--tile);color:var(--ink);
-  border:1.5px solid var(--edge);box-shadow:2px 2px 0 var(--hard);
-  padding:6px 11px;cursor:pointer;white-space:nowrap;
-  transition:box-shadow var(--motion) ease-out,transform var(--motion) ease-out;
+  border:1px solid var(--edge);box-shadow:var(--shadow-1);border-radius:var(--r-sm);
+  padding:7px 12px;cursor:pointer;white-space:nowrap;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  transition:background var(--motion) ease-out,box-shadow var(--motion) ease-out,
+             border-color var(--motion) ease-out;
 }
-.gb-btn:hover{box-shadow:3px 3px 0 var(--hard)}
-.gb-btn:active{box-shadow:0 0 0 var(--hard);transform:translate(2px,2px)}
-.gb-btn--primary{background:var(--ink);color:var(--board)}
+.gb-btn:hover{background:var(--tile-2);border-color:var(--ink-3);box-shadow:var(--shadow-2)}
+.gb-btn:active{background:var(--tile-2);box-shadow:none}
+.gb-btn--primary{background:var(--accent);color:#FFFFFF;border-color:var(--accent)}
+.gb-btn--primary:hover{background:var(--accent-ink);border-color:var(--accent-ink);color:#FFFFFF}
 
 /* Focus — one treatment everywhere, the only place accent appears by default. */
 :where(a,button,select,input,textarea,[tabindex]):focus-visible{
   outline:2px solid var(--accent);outline-offset:2px;
 }
 
-/* Status chip — outline only, colour carried by currentColor. */
+/* Status chip — outlined pill. Still shape + colour, never colour alone. */
 .gb-chip{
-  font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
-  border:1.5px solid currentColor;padding:2px 7px;display:inline-block;white-space:nowrap;
+  font-size:12px;font-weight:500;letter-spacing:0;text-transform:none;
+  border:1px solid currentColor;padding:2px 9px;border-radius:var(--r-pill);
+  display:inline-block;white-space:nowrap;
 }
 .gb-chip--ok{color:var(--ok)}
 .gb-chip--warn{color:var(--warn)}
 .gb-chip--crit{color:var(--crit)}
 .gb-chip--muted{color:var(--ink-2)}
 
-/* Severity rail — left edge of a row that needs attention. */
-.gb-row-crit{border-left:4px solid var(--crit-band)}
-.gb-row-warn{border-left:4px solid var(--warn-band)}
-.gb-row-none{border-left:4px solid transparent}
+/* Severity rail — left edge of a row that needs attention. Inset so it does not
+   fight the row's own border radius the way a real border did. */
+.gb-row-crit{box-shadow:inset 3px 0 0 var(--crit-band)}
+.gb-row-warn{box-shadow:inset 3px 0 0 var(--warn-band)}
+.gb-row-none{box-shadow:none}
 
 /* Not-applicable fill — hatching, never a colour, never a zero. */
 .gb-na{

@@ -20,20 +20,27 @@ import {
 import { api, problemMessage } from '../../../lib/api';
 import { formatDate, formatDateTime } from '../../../lib/format';
 import { humanize } from '../../../lib/labels';
+import { useSession } from '../../../lib/session';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 
 /**
  * Reviewing one corrective action: the finding and its before photo, the latest response and
  * its after photo, then Verify or Reopen. Reopening needs a reason, which the Zone leader
  * reads; both carry the version read, so a second reviewer gets VERSION_CONFLICT (§15.8).
+ *
+ * A Coordinator (R-24) reads it: verifying, reopening and answering are not the role's (§6.3),
+ * so those controls are not shown.
  */
 export default function ReviewActionScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { can } = useSession();
   const { actionId } = useLocalSearchParams<{ actionId: string }>();
   const [note, setNote] = useState('');
+  const mayReview = can('corrective_action', 'verify');
+  const mayAnswer = can('corrective_action', 'submit');
 
   const detail = useQuery({
     queryKey: ['corrective-action', actionId],
@@ -143,7 +150,7 @@ export default function ReviewActionScreen() {
           </Card>
         )}
 
-        {reviewing ? (
+        {reviewing && mayReview ? (
           <Card>
             <CardHeader
               title="Your review"
@@ -174,13 +181,15 @@ export default function ReviewActionScreen() {
           <Card>
             <CardHeader
               title="Waiting for a response"
-              description="The Zone leader answers this. A Super Admin may answer it too."
+              description="Whoever holds the report link can answer it, as can a Super Admin."
             />
-            <Button
-              title="Respond from this phone"
-              variant="secondary"
-              onPress={() => router.push({ pathname: '/actions/[actionId]', params: { actionId: action.id } })}
-            />
+            {mayAnswer ? (
+              <Button
+                title="Respond from this phone"
+                variant="secondary"
+                onPress={() => router.push({ pathname: '/actions/[actionId]', params: { actionId: action.id } })}
+              />
+            ) : null}
           </Card>
         ) : null}
       </ScrollView>

@@ -21,26 +21,36 @@ import {
 } from '../../../components/ui';
 import { api, problemMessage } from '../../../lib/api';
 import { ROLE_LABELS } from '../../../lib/labels';
+import { useSession } from '../../../lib/session';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 
 /**
- * One Unit, for a Super Admin: its details, its Zones, the people with access, and the way
- * to start an audit there. Archiving is the "delete": nothing in the audit trail is ever
- * removed (D8), so the Unit leaves every list and keeps its history.
+ * One Unit: its details, its Zones, the people with access, and the way to start an audit
+ * there. Archiving is the "delete": nothing in the audit trail is ever removed (D8), so the
+ * Unit leaves every list and keeps its history.
+ *
+ * A Coordinator (R-24) edits the details except the name (U-1) and sees who has access; granting
+ * and revoking access, starting an audit and archiving are the Super Admin's, and are hidden.
  */
 export default function ManageUnitScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { can } = useSession();
   const { unitId } = useLocalSearchParams<{ unitId: string }>();
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
 
+  const mayEdit = can('unit', 'update_profile');
+  const mayGrant = can('unit_membership', 'create');
+  const mayRevoke = can('unit_membership', 'revoke');
+
   const unit = useQuery({ queryKey: ['unit', unitId], queryFn: () => api.get<Unit>(`/units/${unitId}`) });
+  // This Unit's Zones. `/zones` takes no Unit filter and listed every Unit's.
   const zones = useQuery({
     queryKey: ['zones', unitId],
-    queryFn: () => api.get<Page<Zone>>(`/zones?limit=200&unitId=${unitId}`),
+    queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?limit=200`),
   });
   const members = useQuery({
     queryKey: ['memberships', 'unit', unitId],
@@ -102,12 +112,21 @@ export default function ManageUnitScreen() {
       <Stack.Screen options={{ title: u.name }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {editing ? (
-          <UnitForm unit={u} onSaved={() => setEditing(false)} onCancel={() => setEditing(false)} />
+          <UnitForm
+            unit={u}
+            canRename={can('unit', 'update_identity')}
+            onSaved={() => setEditing(false)}
+            onCancel={() => setEditing(false)}
+          />
         ) : (
           <Card>
             <CardHeader
               title="Details"
-              action={<HeaderAction title="Edit" accessibilityLabel="Edit the Unit's details" onPress={() => setEditing(true)} />}
+              action={
+                mayEdit ? (
+                  <HeaderAction title="Edit" accessibilityLabel="Edit the Unit's details" onPress={() => setEditing(true)} />
+                ) : null
+              }
             />
             <LedgerRow label="Address" value={u.address ?? '—'} />
             <LedgerRow label="City" value={[u.city, u.state, u.postalCode].filter(Boolean).join(', ') || '—'} />
@@ -135,7 +154,11 @@ export default function ManageUnitScreen() {
         <Card>
           <CardHeader
             title="People"
-            description="Who can reach this Unit. Revoking access removes it from their phone on its next sync."
+            description={
+              mayRevoke
+                ? 'Who can reach this Unit. Revoking access removes it from their phone on its next sync.'
+                : 'Who can reach this Unit. Access is given and removed by a Super Admin.'
+            }
           />
           {(members.data?.data ?? []).map((member) => (
             <View key={member.id} style={styles.item}>
@@ -146,20 +169,22 @@ export default function ManageUnitScreen() {
                     {ROLE_LABELS[member.role]}, {member.userLoginId}
                   </Data>
                 </View>
-                <ConfirmAction
-                  compact
-                  title="Revoke"
-                  question={`Revoke ${member.userFullName}'s access to ${u.name}? Their past audits stay.`}
-                  confirmLabel="Revoke"
-                  busy={revoke.isPending && revoke.variables?.id === member.id}
-                  onConfirm={() => revoke.mutate(member)}
-                />
+                {mayRevoke ? (
+                  <ConfirmAction
+                    compact
+                    title="Revoke"
+                    question={`Revoke ${member.userFullName}'s access to ${u.name}? Their past audits stay.`}
+                    confirmLabel="Revoke"
+                    busy={revoke.isPending && revoke.variables?.id === member.id}
+                    onConfirm={() => revoke.mutate(member)}
+                  />
+                ) : null}
               </View>
             </View>
           ))}
           {members.data && members.data.data.length === 0 ? <Muted>Nobody has access yet.</Muted> : null}
           <ErrorBanner message={problemMessage(revoke.error ?? grant.error)} />
-          {adding ? (
+          {!mayGrant ? null : adding ? (
             <View style={styles.adding}>
               <ChoiceList
                 value={null}
@@ -179,17 +204,21 @@ export default function ManageUnitScreen() {
         </Card>
 
         <View style={styles.actions}>
-          <Button
-            title="Start an audit here"
-            onPress={() => router.push({ pathname: '/unit/[unitId]', params: { unitId } })}
-          />
-          <ConfirmAction
-            title="Archive Unit"
-            question={`Archive ${u.name}? It leaves every list and no new audit can start there. Its audits, reports and people's history are kept.`}
-            confirmLabel="Archive"
-            busy={archive.isPending}
-            onConfirm={() => archive.mutate()}
-          />
+          {can('audit', 'create_external') ? (
+            <Button
+              title="Start an audit here"
+              onPress={() => router.push({ pathname: '/unit/[unitId]', params: { unitId } })}
+            />
+          ) : null}
+          {can('unit', 'archive') ? (
+            <ConfirmAction
+              title="Archive Unit"
+              question={`Archive ${u.name}? It leaves every list and no new audit can start there. Its audits, reports and people's history are kept.`}
+              confirmLabel="Archive"
+              busy={archive.isPending}
+              onConfirm={() => archive.mutate()}
+            />
+          ) : null}
           <ErrorBanner message={problemMessage(archive.error)} />
         </View>
       </ScrollView>

@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import type { LoginResponse, MeResponse, ResolvedScope, AuthenticatedUser } from '@audit5s/contracts';
-import { api, setSession, setSessionLostHandler, getSession } from './api';
+import type { LoginResponse, MeResponse, ResolvedScope, AuthenticatedUser, Role } from '@audit5s/contracts';
+import { api, loadApiBaseUrl, setSession, setSessionLostHandler, getSession } from './api';
 import { getDeviceId } from './secure-storage';
 
 interface SessionState {
@@ -16,11 +16,25 @@ interface SessionContextValue extends SessionState {
   signOut(): Promise<void>;
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
   refreshMe(): Promise<void>;
+  /**
+   * Permission check, from the **server-resolved** scope (§8.3). The app never works out a
+   * role's rights itself: it hides what the scope does not list, and the API refuses it anyway.
+   */
+  can(resource: string, action: string): boolean;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
 const INITIAL: SessionState = { status: 'loading', user: null, scope: null };
+
+/**
+ * The roles whose phone is a management console rather than a field kit: the Super Admin and,
+ * since R-24, the Coordinator — who sees the same screens with only their own Unit in them
+ * and without the actions their role does not hold.
+ */
+export function managesOnPhone(role: Role | undefined): boolean {
+  return role === 'SUPER_ADMIN' || role === 'COORDINATOR';
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>(INITIAL);
@@ -50,6 +64,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     void (async () => {
+      // Before the first request: the device may have been pointed at another server.
+      await loadApiBaseUrl();
       const stored = await getSession();
       if (cancelled) return;
       if (!stored) {
@@ -118,9 +134,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const can = useCallback(
+    (resource: string, action: string) =>
+      (state.scope?.permissions as readonly string[] | undefined)?.includes(`${resource}:${action}`) ?? false,
+    [state.scope],
+  );
+
   const value = useMemo<SessionContextValue>(
-    () => ({ ...state, signIn, signOut, changePassword, refreshMe }),
-    [state, signIn, signOut, changePassword, refreshMe],
+    () => ({ ...state, signIn, signOut, changePassword, refreshMe, can }),
+    [state, signIn, signOut, changePassword, refreshMe, can],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

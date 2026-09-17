@@ -130,18 +130,17 @@ async function device(id: string, token: string): Promise<Device> {
 let consultant: Device;
 let leader: Device;
 let worker: NotificationWorker;
-let zoneId: string;
 
 beforeAll(async () => {
   world = await startWorld();
   await forgetQueuedNotifications(world);
   worker = world.app.get(NotificationWorker);
 
-  const { rows } = await world.owner.query(
-    `INSERT INTO zone (unit_id, code, name, zone_leader_id) VALUES ($1, '6', 'Press line', $2) RETURNING id`,
+  // Zone 6 exists with a leader, so the device finds it by number and its actions route (R-19).
+  await world.owner.query(
+    `INSERT INTO zone (unit_id, code, name, zone_leader_id) VALUES ($1, 'Z-06', 'Press line', $2) RETURNING id`,
     [world.unitA, world.actors.ZONE_LEADER.userId],
   );
-  zoneId = rows[0].id as string;
 
   const consultantDevice = '01930000-0000-7000-8000-0000000a6001';
   const leaderDevice = '01930000-0000-7000-8000-0000000a6002';
@@ -189,7 +188,7 @@ describe('Phase 6 acceptance', () => {
     offline = true;
     const auditId = await createLocalAudit(consultant.database, { unitId: world.unitA, auditType: 'WALK_BY', checklistVersionId: null });
     await captureLocalEvidence(consultant.database, { auditId, kind: 'AUDITOR_SELFIE', ...photo() });
-    const auditZoneId = await addLocalZone(consultant.database, { auditId, zoneId, sequenceNo: 1, checklistVersionId: null });
+    const auditZoneId = await addLocalZone(consultant.database, { auditId, zoneNumber: 6, sequenceNo: 1, checklistVersionId: null });
     for (let i = 0; i < 5; i += 1) {
       await captureLocalEvidence(consultant.database, {
         auditId,
@@ -254,13 +253,20 @@ describe('Phase 6 acceptance', () => {
     );
     expect(told.map((row) => row.resource_id).sort()).toEqual(onDevice.map((action) => action.id).sort());
 
-    // --- Verification closes the audit.
-    for (const action of onDevice) {
+    // --- What closes the audit.
+    //
+    // R-23(a): an Option A answer closed its finding on the submitting transaction, so only
+    // the Option B answers are still waiting for a decision. Verifying the ones that closed
+    // themselves is refused — R-23 removed the review step for them, it did not make it
+    // optional — so the loop accepts exactly the answers that need accepting.
+    const stillOpen = await Promise.all(onDevice.map((action) => detail(action.id)));
+    for (const [index, action] of onDevice.entries()) {
       const verified = await world.request('POST', `${base}/corrective-actions/${action.id}/verify`, {
         token: world.actors.SUPER_ADMIN.accessToken,
         body: {},
       });
-      expect(verified.status, JSON.stringify(verified.body)).toBe(200);
+      const expected = stillOpen[index]!.status === 'NOT_POSSIBLE' ? 200 : 409;
+      expect(verified.status, `${action.id}: ${JSON.stringify(verified.body)}`).toBe(expected);
     }
     const closed = (await world.request('GET', `${base}/audits/${auditId}`, { token: world.actors.SUPER_ADMIN.accessToken }))
       .body as Audit;

@@ -109,6 +109,19 @@ export const forgotPasswordRequestSchema = z.object({
 });
 export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
 
+/**
+ * `POST /auth/reset-password` — the second half of the emailed link.
+ *
+ * The token is the only credential: holding it proves the sender can read the account's
+ * mailbox, which is the entire basis of the flow. No login ID is asked for, because
+ * requiring one would let a caller test login IDs against a token they already hold.
+ */
+export const resetPasswordRequestSchema = z.object({
+  token: z.string().min(20).max(256),
+  newPassword: newPasswordSchema,
+});
+export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
+
 export const otpRequestSchema = z.object({ phone: phoneE164Schema });
 export type OtpRequest = z.infer<typeof otpRequestSchema>;
 

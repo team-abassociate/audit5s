@@ -32,6 +32,8 @@ import { AppError } from '../../common/errors';
 import { scopeFor } from '../../common/auth/scope-for';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
+import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
+import type { AnalyticsRefreshJob } from '../analytics/analytics-rollup.worker';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
 import { getRequestContext } from '../../common/observability/request-context';
 import { UnitsRepository } from '../units/units.repository';
@@ -72,6 +74,7 @@ export class AuditsService {
     private readonly auditLog: AuditLogService,
     private readonly events: DomainEvents,
     private readonly correctiveActions: CorrectiveActionsService,
+    private readonly queue: QueueService,
   ) {}
 
   // ------------------------------------------------------------------------ create
@@ -514,8 +517,24 @@ export class AuditsService {
           resourceType: 'audit',
           resourceId: auditId,
           userIds: outcome.assigneeIds,
-          data: { auditType: audit.auditType, actionsOpened: outcome.opened },
+          // Who, where and when, not just what. A Coordinator reading "5S audit completed"
+          // on a phone cannot tell which of their plants it came from or who conducted it,
+          // and the notification is often the only place they will see it.
+          data: {
+            auditType: audit.auditType,
+            actionsOpened: outcome.opened,
+            auditorName: audit.auditorName,
+            unitName: audit.unitName,
+            completedAt: completedAt.toISOString(),
+          },
         });
+        // The board reads the analytics rollup, which otherwise waits for 02:00: a Unit
+        // whose only audit had just finished read `N/A`. Same transaction, so the rebuild
+        // exists exactly when the completion does (R-2).
+        await this.queue.sendInTransaction(tx, QUEUES.analyticsRollup, {
+          unitId: audit.unitId,
+          at: completedAt.toISOString(),
+        } satisfies AnalyticsRefreshJob);
       },
     );
 
@@ -794,10 +813,12 @@ export class AuditsService {
   }
 
   /**
-   * The matrix condition on `audit:create_external` — "an active assignment must exist".
+   * The assignment an external audit fulfils, if there is one (R-20).
    *
-   * Cross and walk-by audits are self-initiated (§2.6, §2.7) and carry no assignment, so
-   * the requirement is stated for the one type that has it rather than for all three.
+   * Access to the Unit is enough to run an external audit; an assignment is not required.
+   * When an open one exists it is linked, so it still moves through its statuses with the
+   * audit. When none does, the audit starts unassigned, as a Super Admin's always has
+   * (R-18). Cross and walk-by audits are self-initiated (§2.6, §2.7) and carry none.
    */
   private async resolveAssignment(
     scope: ScopeContext,
@@ -807,8 +828,7 @@ export class AuditsService {
       return request.assignmentId ?? null;
     }
 
-    // R-18: a Super Admin is never assigned work, so requiring an assignment would refuse
-    // him every external audit. He starts one unassigned, as he would a walk-by.
+    // R-18: a Super Admin is never assigned work, so there is nothing to link.
     if (scope.actor.role === 'SUPER_ADMIN') {
       return null;
     }
@@ -829,13 +849,7 @@ export class AuditsService {
       request.unitId,
       'EXTERNAL_5S',
     );
-    if (!open) {
-      throw AppError.forbidden(
-        'ASSIGNMENT_REQUIRED',
-        'An external audit needs an open assignment for this Unit',
-      );
-    }
-    return open.id;
+    return open?.id ?? null;
   }
 }
 

@@ -1,34 +1,52 @@
 import { useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { zoneDisplayLabel } from '@audit5s/domain';
-import { ActionBar, Button, Card, EmptyState, Muted, Screen, SectionHead } from '../../components/ui';
-import { createLocalAudit } from '../../lib/db/audit.repository';
+import type { AuditType } from '@audit5s/contracts';
 import {
-  getLocalUnit,
-  listLocalChecklistVersions,
-  listLocalZones,
-} from '../../lib/db/catalogue.repository';
-import { useLocalDatabase } from '../../lib/db/provider';
+  ActionBar,
+  Button,
+  Card,
+  CardHeader,
+  ErrorBanner,
+  Muted,
+  Screen,
+  SectionHead,
+  Segmented,
+} from '../../components/ui';
 import { CameraCapture } from '../../components/camera-capture';
+import { createLocalAudit, recordAuditStartLocation } from '../../lib/db/audit.repository';
+import { getLocalUnit } from '../../lib/db/catalogue.repository';
 import { captureLocalEvidence } from '../../lib/db/evidence.repository';
-import { recordAuditStartLocation } from '../../lib/db/audit.repository';
+import { useLocalDatabase } from '../../lib/db/provider';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { useSession } from '../../lib/session';
 import { createThemedStyles } from '../../lib/theme';
-import type { AuditType } from '@audit5s/contracts';
+
+const AUDIT_TYPE_LABELS: Record<AuditType, string> = {
+  EXTERNAL_5S: '5S audit',
+  WALK_BY: 'Walk-by',
+  CROSS_5S: 'Cross audit',
+};
+
+/** What each role may start here (PART 6). R-18: a Super Admin may start every type. */
+function auditTypesFor(role: string | undefined): AuditType[] {
+  if (role === 'CONSULTANT') return ['EXTERNAL_5S', 'WALK_BY'];
+  if (role === 'ZONE_LEADER') return ['CROSS_5S'];
+  if (role === 'SUPER_ADMIN') return ['EXTERNAL_5S', 'WALK_BY', 'CROSS_5S'];
+  return [];
+}
 
 /**
- * A Unit's active Zones, read from SQLite, and the way into an audit.
+ * Opening a Unit is the way into an audit, and the selfie comes first (R-19, §7.1).
  *
  * Starting one writes a row locally and nothing else: no request is made, and none is
  * waited for. The server hears about the audit when the outbox drains, and arbitrates
- * device ownership then (D7) — until it does, the questionnaire is fully usable, which is
- * the whole of §9.1.
+ * device ownership then (D7). The Zone is created on the next screen, after the selfie —
+ * the Zone number, its description, the leader's name and the department.
  */
-export default function UnitZonesScreen() {
+export default function UnitStartScreen() {
   const styles = useStyles();
   const { unitId } = useLocalSearchParams<{ unitId: string }>();
   const database = useLocalDatabase();
@@ -41,39 +59,24 @@ export default function UnitZonesScreen() {
     queryFn: () => getLocalUnit(database, unitId),
   });
 
-  const zones = useQuery({
-    queryKey: ['local', 'zones', unitId],
-    queryFn: () => listLocalZones(database, unitId),
-  });
-
-  const versions = useQuery({
-    queryKey: ['local', 'checklist-versions'],
-    queryFn: () => listLocalChecklistVersions(database),
-  });
-
-  const title = unit.data?.[0]?.name ?? 'Zones';
+  const types = auditTypesFor(scope?.role);
+  const [picked, setPicked] = useState<AuditType | null>(null);
+  const auditType = picked ?? types[0] ?? null;
+  const walkBy = auditType === 'WALK_BY';
 
   // §7.1's selfie gate, on the device. The audit row is created first — `evidence.audit_id`
   // is a foreign key on the server and the device mirrors its shape — then the camera
   // opens, and the audit is only usable once the selfie is in SQLite.
-  const [capturing, setCapturing] = useState(false);
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null);
-  const [pendingAuditType, setPendingAuditType] = useState<AuditType | null>(null);
 
   const startAudit = useMutation({
-    mutationFn: (auditType: AuditType) =>
-      createLocalAudit(database, {
-        unitId,
-        auditType,
-        // The first published version on the device. Phase 4 lets the auditor pick the
-        // department when a Unit uses more than one.
-        checklistVersionId: auditType === 'WALK_BY' ? null : (versions.data?.[0]?.id ?? null),
-      }),
-    onSuccess: async (auditId, auditType) => {
+    mutationFn: (type: AuditType) =>
+      // No audit-level checklist: the department is chosen per Zone, and that is the
+      // version each Zone pins (QR-2).
+      createLocalAudit(database, { unitId, auditType: type, checklistVersionId: null }),
+    onSuccess: async (auditId) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       setPendingAuditId(auditId);
-      setPendingAuditType(auditType);
-      setCapturing(true);
     },
   });
 
@@ -110,105 +113,84 @@ export default function UnitZonesScreen() {
     },
     onSuccess: async (auditId) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
-      setCapturing(false);
       setPendingAuditId(null);
-      setPendingAuditType(null);
-      router.push({ pathname: '/audit/zones/[auditId]', params: { auditId } });
+      // Replace, so Back from the Zone form does not land on a spent selfie screen.
+      router.replace({ pathname: '/audit/zones/[auditId]', params: { auditId } });
     },
   });
 
-  if (capturing && pendingAuditId) {
+  if (pendingAuditId) {
     return (
       <CameraCapture
         facing="front"
-        prompt={`Take your photograph to begin the ${pendingAuditType === 'WALK_BY' ? 'walk-by' : 'audit'}`}
+        prompt={`Take your selfie to begin the ${walkBy ? 'walk-by' : 'audit'}`}
         onCaptured={async (image) => {
           await saveSelfie.mutateAsync(image);
         }}
         onCancel={() => {
           // The audit row stays: it is at ASSIGNED with no selfie, which is exactly what
-          // §7.1 describes, and the auditor can come back to it from History.
-          setCapturing(false);
+          // §7.1 describes, and the auditor can come back to it from Audits.
           setPendingAuditId(null);
-          setPendingAuditType(null);
         }}
       />
     );
   }
 
-  const zoneCount = zones.data?.length ?? 0;
+  const title = unit.data?.[0]?.name ?? 'Unit';
 
   return (
     <Screen>
       <Stack.Screen options={{ title, headerBackTitle: 'Units' }} />
 
-      <FlatList
-        data={zones.data ?? []}
-        keyExtractor={(zone) => zone.id}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={
-          zoneCount > 0 ? (
-            <SectionHead
-              title="Zones"
-              description={`${zoneCount} active Zone${zoneCount === 1 ? '' : 's'}, stored on this device.`}
-            />
-          ) : null
-        }
-        ListEmptyComponent={
-          <EmptyState
-            title="No Zones"
-            detail="This Unit has no active Zones yet. The Coordinator creates them in the admin app."
-          />
-        }
-        renderItem={({ item }) => (
-          // The web board's zone tile without a figure: the device holds no score for a
-          // Zone, and an empty band would claim one.
-          <Card>
-            <Text style={styles.name}>{zoneDisplayLabel(item.code, item.name)}</Text>
-            {item.description ? <Muted>{item.description}</Muted> : null}
-            <Text style={styles.meta}>
-              {item.zoneLeaderName ? `Leader ${item.zoneLeaderName}` : 'No Zone Leader'}
-            </Text>
-          </Card>
-        )}
-      />
+      <ScrollView contentContainerStyle={styles.content}>
+        <SectionHead
+          title="Start an audit"
+          description="Your selfie first, then the Zone. Nothing here needs a connection."
+        />
 
-      {zoneCount > 0 ? (
+        {types.length > 1 && auditType ? (
+          <Segmented
+            options={types.map((value) => ({ value, label: AUDIT_TYPE_LABELS[value] }))}
+            value={auditType}
+            onChange={setPicked}
+          />
+        ) : null}
+
+        <Card>
+          <CardHeader
+            title="1 · Take your selfie"
+            description="A live photograph at the Unit. It starts the audit and records where you are."
+          />
+        </Card>
+        <Card>
+          <CardHeader
+            title="2 · Create the Zone"
+            description={
+              walkBy
+                ? 'Zone 1 to 100, an optional description and the Zone Leader’s name. Then the photographs.'
+                : 'Zone 1 to 100, an optional description, the Zone Leader’s name and the department. Then its 50 questions.'
+            }
+          />
+        </Card>
+
+        <ErrorBanner
+          message={
+            startAudit.error || saveSelfie.error
+              ? 'The audit could not be started on this device. Try again.'
+              : null
+          }
+        />
+      </ScrollView>
+
+      {auditType ? (
         <ActionBar>
           <Button
             testID="start-audit"
-            title={scope?.role === 'ZONE_LEADER' ? 'Start cross audit' : 'Start 5S audit'}
+            title="Take selfie"
             busy={startAudit.isPending}
-            onPress={() =>
-              startAudit.mutate(scope?.role === 'ZONE_LEADER' ? 'CROSS_5S' : 'EXTERNAL_5S')
-            }
+            onPress={() => startAudit.mutate(auditType)}
           />
-          {/* The secondary audit types share one row, so the primary stays in thumb reach
-              without the bar swallowing the list. R-18: a Super Admin may start every type. */}
-          {scope?.role === 'CONSULTANT' || scope?.role === 'SUPER_ADMIN' ? (
-            <View style={styles.secondary}>
-              <View style={styles.secondaryItem}>
-                <Button
-                  title="Start walk-by"
-                  variant="secondary"
-                  busy={startAudit.isPending}
-                  onPress={() => startAudit.mutate('WALK_BY')}
-                />
-              </View>
-              {scope?.role === 'SUPER_ADMIN' ? (
-                <View style={styles.secondaryItem}>
-                  <Button
-                    title="Cross audit"
-                    accessibilityLabel="Start cross audit"
-                    variant="secondary"
-                    busy={startAudit.isPending}
-                    onPress={() => startAudit.mutate('CROSS_5S')}
-                  />
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-          <Muted>A live selfie starts the audit. Work is saved on this device.</Muted>
+          <Muted>Work is saved on this device and syncs when there is a connection.</Muted>
         </ActionBar>
       ) : null}
     </Screen>
@@ -216,15 +198,5 @@ export default function UnitZonesScreen() {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  listContent: { paddingBottom: theme.space.md },
-  name: {
-    fontFamily: theme.family.bold,
-    fontSize: theme.font.panel,
-    color: theme.color.ink,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  meta: { fontFamily: theme.family.regular, fontSize: 11.5, color: theme.color.ink2, marginTop: 5 },
-  secondary: { flexDirection: 'row', gap: theme.space.sm },
-  secondaryItem: { flex: 1 },
+  content: { gap: theme.space.sm, paddingBottom: theme.space.md },
 }));

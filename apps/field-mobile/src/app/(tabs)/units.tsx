@@ -15,14 +15,20 @@ import {
   SectionHead,
 } from '../../components/ui';
 import { api } from '../../lib/api';
+import { useSession } from '../../lib/session';
 import { createThemedStyles, useTheme } from '../../lib/theme';
 
-/** Every Unit the organization runs, for a Super Admin: search, add, open. Live server data. */
+/**
+ * The Units in reach: every Unit for a Super Admin, the Coordinator's own for a Coordinator
+ * (R-24) — the server scopes the list. Search, add (Super Admin only), open. Live server data.
+ */
 export default function ManageUnitsScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
+  const { can } = useSession();
   const [search, setSearch] = useState('');
+  const mayCreate = can('unit', 'create');
 
   const units = useQuery({ queryKey: ['units'], queryFn: () => api.get<Page<Unit>>('/units?limit=200') });
 
@@ -56,11 +62,12 @@ export default function ManageUnitsScreen() {
     <Screen>
       <Tabs.Screen
         options={{
-          headerRight: () => (
-            <View style={styles.tools}>
-              <HeaderAction testID="add-unit" title="+ Unit" accessibilityLabel="Add a Unit" onPress={() => router.push('/manage/new-unit')} />
-            </View>
-          ),
+          headerRight: () =>
+            mayCreate ? (
+              <View style={styles.tools}>
+                <HeaderAction testID="add-unit" title="+ Unit" accessibilityLabel="Add a Unit" onPress={() => router.push('/manage/new-unit')} />
+              </View>
+            ) : null,
         }}
       />
       <FlatList
@@ -89,7 +96,7 @@ export default function ManageUnitsScreen() {
           ) : units.data ? (
             <EmptyState
               title={query ? 'No match' : 'No Units yet'}
-              detail={query ? 'Try another name or city.' : 'Add the first Unit with + Unit.'}
+              detail={query ? 'Try another name or city.' : mayCreate ? 'Add the first Unit with + Unit.' : 'No Unit is assigned to you.'}
             />
           ) : null
         }

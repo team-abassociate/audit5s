@@ -21,6 +21,11 @@ export const QUEUES = {
    * photograph whose commit rolled back.
    */
   mediaProcess: 'media.process',
+  /**
+   * Rebuilds the analytics day an audit completed on, so the board does not wait for the
+   * nightly rollup. Enqueued inside `complete`'s own transaction (R-2).
+   */
+  analyticsRollup: 'analytics.rollup',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -112,6 +117,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     this.boss = new PgBoss({
       connectionString: this.config.DATABASE_URL,
       schema: this.config.PGBOSS_SCHEMA,
+      // pg-boss opens its own pool beside the application's, and both count against the
+      // database's connection limit — on Supabase's session pooler, 15 in all.
+      max: this.config.PGBOSS_POOL_MAX,
     });
 
     this.boss.on('error', (error: unknown) => this.logger.error({ err: error }, 'pg-boss error'));

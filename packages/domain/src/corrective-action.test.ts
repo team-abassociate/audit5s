@@ -60,9 +60,19 @@ describe('rollupPath', () => {
 });
 
 describe('corrective-action helpers', () => {
-  it('maps each option to its target (§7.3)', () => {
-    expect(submissionTarget('COMPLETED')).toBe('ACTION_SUBMITTED');
+  it('maps each option to its target (R-23)', () => {
+    // An after-photo closes the item at once; "not possible" still waits for a Super Admin.
+    expect(submissionTarget('COMPLETED')).toBe('VERIFIED');
     expect(submissionTarget('NOT_POSSIBLE')).toBe('NOT_POSSIBLE');
+  });
+
+  it('lets an answer with an after-photo close an open or reopened item directly (R-23)', () => {
+    for (const from of ['OPEN', 'REOPENED'] as const) {
+      expect(canTransition('corrective_action', from, 'VERIFIED', { role: 'ZONE_LEADER' })).toEqual({
+        allowed: true,
+      });
+    }
+    expect(awaitsReview(submissionTarget('COMPLETED'))).toBe(false);
   });
 
   it('splits the two to-do lists', () => {

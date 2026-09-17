@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { PASSWORD_MIN_LENGTH } from '@audit5s/contracts';
 import { api } from '@/lib/api';
-import { Button, ErrorNotice, Field, Input } from '@/components/ui';
+import { Button, ErrorNotice, Field, PasswordInput } from '@/components/ui';
 import { useSession } from '@/lib/session';
 
 interface ResetForm {
@@ -53,8 +53,7 @@ export function ForcedResetPage() {
 
         <form onSubmit={onSubmit} className="gb-stack" style={{ marginTop: 22 }}>
           <Field label="Current password" hint="The temporary credential you signed in with">
-            <Input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               {...register('currentPassword', { required: true })}
             />
@@ -65,8 +64,7 @@ export function ForcedResetPage() {
             hint={`At least ${PASSWORD_MIN_LENGTH} characters, and not your name or phone number`}
             error={errors.newPassword?.message}
           >
-            <Input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               {...register('newPassword', {
                 required: 'Required',
@@ -79,8 +77,7 @@ export function ForcedResetPage() {
           </Field>
 
           <Field label="Confirm new password" error={errors.confirmPassword?.message}>
-            <Input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               {...register('confirmPassword', {
                 required: 'Required',

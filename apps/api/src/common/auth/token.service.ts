@@ -81,14 +81,20 @@ export class TokenService implements OnModuleInit {
     }
   }
 
+  /**
+   * With `REFRESH_TOKEN_TTL_DAYS=0` (the default, R-21) a session has no time limit. It
+   * still ends on sign-out, a password change, refresh-token reuse, or a disabled account.
+   */
   issueRefreshToken(): IssuedRefreshToken {
     const token = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(
-      Date.now() + this.config.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
-    );
+    const days = this.config.REFRESH_TOKEN_TTL_DAYS;
+    const expiresAt = days === 0 ? NEVER : new Date(Date.now() + days * 24 * 60 * 60 * 1000);
     return { token, tokenHash: hashToken(token), expiresAt };
   }
 }
+
+/** "No limit". `refresh_token.expires_at` is NOT NULL, so never is the last day there is. */
+const NEVER = new Date('9999-12-31T23:59:59.999Z');
 
 /** SHA-256, hex. Used for refresh tokens and OTP codes alike — neither is ever stored raw. */
 export function hashToken(token: string): string {

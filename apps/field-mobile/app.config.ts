@@ -50,6 +50,18 @@ const config: ExpoConfig = {
     ],
   },
   plugins: [
+    [
+      'expo-build-properties',
+      {
+        /*
+         * Android 9+ refuses cleartext HTTP, which a bench-test build aimed at a laptop on
+         * the same Wi-Fi (`http://192.168.x.x:3000`) needs: a LAN address has no certificate.
+         * Deployed behind a real hostname the API is HTTPS end to end, and this goes back to
+         * the default — it is here for testing, not for the field.
+         */
+        android: { usesCleartextTraffic: true },
+      },
+    ],
     'expo-router',
     'expo-secure-store',
     'expo-font',

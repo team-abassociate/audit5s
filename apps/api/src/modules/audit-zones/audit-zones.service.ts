@@ -9,9 +9,12 @@ import {
   auditTypeRequiresZonePhoto,
   auditTypeUsesChecklist,
   isAuditCompleted,
+  zoneCodeForNumber,
+  zoneLeaderSnapshot,
   type ScopeContext,
   type TransitionGuard,
 } from '@audit5s/domain';
+import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { asAppError } from '../audit-assignments/assignments.service';
@@ -29,15 +32,12 @@ import { EvidenceService } from '../evidence/evidence.service';
  * copies nothing. That is why a Coordinator may keep editing Zone master data — the
  * report renders the copy, and history cannot move under it.
  *
- * A client cannot supply a snapshot — with two exceptions §2.7 asks for by name, and only
- * on a walk-by. Steps 3 and 4 of that flow are "Zone description: optional; defaults to the
- * Zone's current description, snapshotted either way" and "Zone leader: confirmed/selected,
- * snapshotted". A walk-by is an observation rather than a questionnaire, so what the auditor
- * says they were looking at, and who they were standing with, *is* the record. Both are
- * validated before they are snapshotted: a leader must hold an ACTIVE `ZONE_LEADER`
- * membership in the audit's Unit, and on a scored audit both fields are ignored rather than
- * refused — a device replaying an old payload should not have a Zone rejected over a field
- * the server was always going to overwrite.
+ * What the auditor enters when creating the Zone is part of that first write (R-19): the
+ * Zone 1…100 they chose, an optional description and the Zone leader's name as typed, on
+ * every audit type. A Zone number the Unit has never used is added to its master list here,
+ * which is the one way a Consultant or Zone Leader adds a Zone. A walk-by may still name a
+ * leader account instead (§2.7 step 4), and that account must hold an ACTIVE `ZONE_LEADER`
+ * membership in the audit's Unit.
  */
 @Injectable()
 export class AuditZonesService {
@@ -45,6 +45,7 @@ export class AuditZonesService {
     private readonly repository: AuditsRepository,
     private readonly scoring: ScoringService,
     private readonly evidence: EvidenceService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   async upsert(
@@ -61,7 +62,11 @@ export class AuditZonesService {
       throw AppError.conflict('CONFLICT', 'This audit Zone belongs to another audit');
     }
 
-    const zone = await this.repository.readZoneSnapshot(scope, request.zoneId);
+    // A Zone already on this audit keeps the master Zone it was created with. Only a first
+    // write resolves one — and, for a Zone number the Unit has never used, adds it.
+    const zoneId = existing?.zoneId ?? (await this.resolveZone(scope, audit, auditId, request));
+
+    const zone = await this.repository.readZoneSnapshot(scope, zoneId);
     if (!zone) {
       throw AppError.notFound('No such Zone');
     }
@@ -98,15 +103,47 @@ export class AuditZonesService {
       ? await this.repository.readTemplateNameForVersion(scope, checklistVersionId)
       : null;
 
-    // §2.7 steps 3 and 4, honoured on a walk-by and ignored on a scored audit.
-    const leader = await this.resolveWalkByLeader(scope, audit, request);
+    // A walk-by's leader account (§2.7 step 4) wins; otherwise the typed name (R-19), and
+    // failing both, the Zone's own leader.
+    const account = await this.resolveWalkByLeader(scope, audit, request);
+
+    /**
+     * The typed name is written back to the Zone before the snapshot is taken (0015).
+     *
+     * Order matters. `zone` was read before this, so it still carries the leader as it was;
+     * writing first and snapshotting the *result* means the audit records the name the Zone
+     * now shows, rather than the two disagreeing by one write.
+     *
+     * The function refuses silently — a closed audit, someone else's audit, a Zone in
+     * another Unit — and a refusal is not an error here. It only means the Zone keeps the
+     * leader it had, which is exactly what the snapshot below then records. The audit is
+     * never blocked over a display field.
+     *
+     * Skipped entirely for a walk-by that resolved a real leader account: that path already
+     * names a user, and `app_set_zone_leader_name` would decline to overwrite one anyway.
+     */
+    let zoneLeaderName = zone?.zoneLeaderName ?? null;
+    if (!account && request.zoneLeaderName?.trim() && zone) {
+      zoneLeaderName = await this.repository.setZoneLeaderName(scope, {
+        auditId,
+        zoneId,
+        name: request.zoneLeaderName,
+      });
+    }
+
+    const leader = account
+      ? { userId: account.id, name: account.fullName }
+      : zoneLeaderSnapshot(
+          zone ? { zoneLeaderId: zone.zoneLeaderId, zoneLeaderName } : null,
+          request.zoneLeaderName,
+        );
 
     const snapshot: ZoneSnapshot = {
       zoneCodeSnapshot: zone.code,
       zoneNameSnapshot: zone.name,
-      zoneDescriptionSnapshot: walkByDescription(audit, request) ?? zone.description,
-      zoneLeaderUserIdSnapshot: leader?.id ?? zone.zoneLeaderId,
-      zoneLeaderNameSnapshot: leader?.fullName ?? zone.zoneLeaderName,
+      zoneDescriptionSnapshot: request.zoneDescription?.trim() || zone.description,
+      zoneLeaderUserIdSnapshot: leader.userId,
+      zoneLeaderNameSnapshot: leader.name,
       checklistTemplateNameSnapshot: templateName,
     };
 
@@ -114,7 +151,7 @@ export class AuditZonesService {
       await this.repository.upsertZone(scope, {
         id: auditZoneId,
         auditId,
-        zoneId: request.zoneId,
+        zoneId,
         sequenceNo: request.sequenceNo,
         checklistVersionId,
         zoneRemark: request.zoneRemark,
@@ -245,6 +282,48 @@ export class AuditZonesService {
   }
 
   /**
+   * R-19: the master Zone a first write names. A Zone number is found in the audit's Unit
+   * or added to it, through `app_ensure_zone_for_audit` (0014), which answers only for an
+   * open audit the actor is conducting. An added Zone is logged like one a Coordinator
+   * creates, so the master list never gains a row nobody can account for.
+   */
+  private async resolveZone(
+    scope: ScopeContext,
+    audit: AuditRow,
+    auditId: string,
+    request: UpsertAuditZoneRequest,
+  ): Promise<string> {
+    if (request.zoneNumber === undefined) {
+      // The contract refuses a body that names neither.
+      return request.zoneId!;
+    }
+
+    const code = zoneCodeForNumber(request.zoneNumber);
+    const name = `Zone ${request.zoneNumber}`;
+    const ensured = await this.repository.ensureZoneForAudit(scope, {
+      auditId,
+      code,
+      name,
+      description: request.zoneDescription?.trim() || null,
+      sortOrder: request.zoneNumber,
+    });
+    if (!ensured) {
+      throw AppError.notFound('No such audit');
+    }
+
+    if (ensured.created) {
+      await this.auditLog.record({
+        action: 'zone.created',
+        resourceType: 'zone',
+        resourceId: ensured.zoneId,
+        unitId: audit.unitId,
+        after: { code, name, addedByAuditId: auditId },
+      });
+    }
+    return ensured.zoneId;
+  }
+
+  /**
    * §2.7 step 4: the Zone leader a walk-by auditor confirmed or selected.
    *
    * Null means "use the Zone's own leader", which is both the absent case and the
@@ -307,18 +386,4 @@ export class AuditZonesService {
       );
     }
   }
-}
-
-/**
- * §2.7 step 3's description, or null to fall back to the Zone's own.
- *
- * `undefined` means the client said nothing; `null` means it cleared the field, and both
- * fall back — a walk-by Zone with an empty description renders the Zone's, which is what
- * "defaults to the Zone's current description" says. Only a non-empty string overrides.
- */
-function walkByDescription(audit: AuditRow, request: UpsertAuditZoneRequest): string | null {
-  if (auditTypeUsesChecklist(audit.auditType)) {
-    return null;
-  }
-  return request.zoneDescription ?? null;
 }

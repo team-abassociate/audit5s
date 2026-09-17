@@ -1,18 +1,19 @@
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
 import { HeaderTitle } from '../../components/ui';
-import { useSession } from '../../lib/session';
+import { managesOnPhone, useSession } from '../../lib/session';
 import { useTheme } from '../../lib/theme';
 
 /**
  * The bottom tabs, by role.
  *
- * - **Consultant, Coordinator, Zone Leader:** Units · History · Profile — exactly N1, and an
- *   auditor holding a phone in a plant is not browsing.
- * - **Super Admin:** Overview · Audits · Actions · Units · People — the admin web's rail
- *   (Unit board, Audits, Corrective actions, Units & zones, Users & roles) at five, as the
- *   product owner settled on 2026-09-13. N1 binds the Consultant's navigation only. Profile
- *   and notifications hang off the Overview header instead of taking a tab.
+ * - **Consultant, Zone Leader:** Units · History · Profile — exactly N1, and an auditor
+ *   holding a phone in a plant is not browsing.
+ * - **Super Admin and Coordinator (R-24):** Overview · Audits · Actions · Units · People — the
+ *   admin web's rail (Unit board, Audits, Corrective actions, Units & zones, Users & roles) at
+ *   five, as the product owner settled on 2026-09-13. A Coordinator sees their own Unit only,
+ *   and each screen hides the actions the role does not hold. Profile and notifications hang
+ *   off the Overview header instead of taking a tab.
  *
  * Every screen is a route in this group; a tab the role does not get is `href: null`, hidden
  * from the bar rather than absent, so a link to it still resolves.
@@ -25,7 +26,7 @@ import { useTheme } from '../../lib/theme';
 export default function TabsLayout() {
   const theme = useTheme();
   const { scope } = useSession();
-  const admin = scope?.role === 'SUPER_ADMIN';
+  const admin = managesOnPhone(scope?.role);
   const icon = (glyph: string) =>
     function TabIcon({ color }: { color: ColorValue }) {
       return <Text style={{ color, fontFamily: theme.family.bold, fontSize: 18 }}>{glyph}</Text>;

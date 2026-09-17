@@ -190,10 +190,16 @@ export class CorrectiveActionsService {
           throw asAppError(error);
         }
 
+        // R-23: an answer with an after-photo closes the item there and then — no review
+        // step. `resolved_at` must accompany VERIFIED (the table's CHECK). Nobody verified
+        // it, so no verifier is recorded; a Super Admin can still reopen it.
+        const closes = target === 'VERIFIED';
         const moved = await unit.moveAction(
           actionId,
           { status: current.status, version: current.version },
-          { status: target, lastSubmittedAt: new Date() },
+          closes
+            ? { status: target, lastSubmittedAt: new Date(), resolvedAt: new Date(), verifiedByUserId: null }
+            : { status: target, lastSubmittedAt: new Date() },
         );
         if (!moved) throw this.versionConflict();
 
@@ -201,7 +207,7 @@ export class CorrectiveActionsService {
           id: submissionId,
           correctiveActionId: actionId,
           option: request.option,
-          submittedByName: request.option === 'COMPLETED' ? request.submittedByName : null,
+          submittedByName: request.submittedByName ?? null,
           description: request.option === 'COMPLETED' ? request.description : null,
           explanation: request.option === 'NOT_POSSIBLE' ? request.explanation : null,
           afterEvidenceId: photo?.id ?? null,
@@ -211,14 +217,37 @@ export class CorrectiveActionsService {
           userAgent: context?.userAgent ?? null,
         });
 
+        if (closes) {
+          // The audit rolls on (§2.8) exactly as a verification rolls it. Those edges are
+          // the system's, and the audit row admits only a Super Admin or its auditor, so the
+          // roll-up runs as the system on this same transaction.
+          await unit.asSystem(() => this.rollup(unit, current.auditId, null));
+        }
+
         await this.events.emit(unit.tx, {
           type: 'CORRECTIVE_ACTION_SUBMITTED',
-          actorUserId: scope.actor.userId,
+          // Through a link the actor may be the Super Admin who issued the report (R-22),
+          // and nobody is told of their own act — so the link's answer comes from nobody,
+          // and the Super Admin is told a response has arrived.
+          actorUserId: via === 'WEB_TOKEN' ? null : scope.actor.userId,
           unitId: current.unitId,
           resourceType: 'corrective_action',
           resourceId: actionId,
           data: { ...describe(current), option: request.option, attemptNo },
         });
+
+        if (closes) {
+          // §2.8 tells the Coordinator when an item is closed. With no review step (R-23) the
+          // closing is this submission, so the verified event is raised here, by nobody.
+          await this.events.emit(unit.tx, {
+            type: 'CORRECTIVE_ACTION_VERIFIED',
+            actorUserId: null,
+            unitId: current.unitId,
+            resourceType: 'corrective_action',
+            resourceId: actionId,
+            data: { ...describe(current) },
+          });
+        }
 
         return toSubmission((await unit.findSubmission(submissionId))!);
       });
@@ -267,6 +296,33 @@ export class CorrectiveActionsService {
       if (expectedVersion !== undefined && expectedVersion !== current.version) {
         throw this.versionConflict();
       }
+
+      /*
+       * A review needs something to review.
+       *
+       * The state table alone does not say this any more. R-23 added `OPEN → VERIFIED` and
+       * `REOPENED → VERIFIED` so a Zone Leader's after-photo could close a finding on the
+       * submitting transaction — and `admits()` lets a Super Admin take *every* edge (R-18,
+       * "refused nothing"). Together those two rules handed this endpoint a way to verify a
+       * finding nobody had answered: a nonconformity closed with no evidence that anything
+       * was fixed, rolling its audit on to CLOSED.
+       *
+       * That is the one thing a 5S record must not permit, so the guard is here rather than
+       * in the table: R-23's edges are for a *submission*, and this is not one. Narrowing
+       * the table instead would take the after-photo path away from the Super Admin, who
+       * legitimately answers findings in Units they run.
+       *
+       * `VERIFIED` stays reviewable because reopening a closed finding is the documented
+       * `VERIFIED → REOPENED` edge, and R-23 explicitly kept it.
+       */
+      if (current.status === 'OPEN' || current.status === 'REOPENED') {
+        throw AppError.conflict(
+          'INVALID_STATE_TRANSITION',
+          `corrective_action ${current.status} → ${outcome} is not a transition this state ` +
+            'machine defines: there is no submitted answer to review.',
+        );
+      }
+
       try {
         assertTransition('corrective_action', current.status, outcome, {
           role: scope.actor.role,

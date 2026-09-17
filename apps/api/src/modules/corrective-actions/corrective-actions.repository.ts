@@ -23,6 +23,7 @@ import type {
 import type { ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
+import { SYSTEM_SCOPE } from '../../common/auth/system-scope';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { setActorContext } from '../users/users.repository';
 
@@ -99,6 +100,52 @@ export interface NewSubmission {
 export class CorrectiveActionsRepository extends BaseRepository {
   constructor(@Inject(DATABASE) db: Database, resolvers: ScopeResolverRegistry) {
     super(db, resolvers);
+  }
+
+  // ------------------------------------------------------------------ overdue sweep
+
+  /**
+   * Claims this Unit's overdue, unannounced actions and marks them announced.
+   *
+   * One statement, because claiming and marking must not be separable: an `UPDATE …
+   * RETURNING` cannot hand the same row to two sweeps, whereas a read followed by a write
+   * can and eventually would — `worker-general` is one process today, and the moment it is
+   * two, the duplicate is a Zone Leader told twice about the same finding.
+   *
+   * It writes before anyone is notified, which is the safe way round. If the emit then
+   * fails, one overdue action goes unannounced and the dashboard still shows it; the other
+   * order risks announcing the same thing every night, and a nightly reminder is one
+   * people filter.
+   */
+  async claimOverdue(scope: ScopeContext, unitId: string, now: Date) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const claimed = await tx
+        .update(correctiveActions)
+        .set({ overdueNotifiedAt: now })
+        .where(
+          and(
+            eq(correctiveActions.unitId, unitId),
+            inArray(correctiveActions.status, ['OPEN', 'REOPENED']),
+            isNull(correctiveActions.overdueNotifiedAt),
+            sql`${correctiveActions.dueAt} IS NOT NULL AND ${correctiveActions.dueAt} < ${now}`,
+            this.scoped(scope, scopeColumns),
+          ),
+        )
+        .returning({ id: correctiveActions.id });
+
+      if (claimed.length === 0) return [];
+
+      // The Zone's code and name live on the audit's snapshot, not on the action, so the
+      // rows a notification needs come from the same projection every other read uses —
+      // in this transaction, so a claim without its message cannot be committed.
+      return this.selectActions(tx).where(
+        inArray(
+          correctiveActions.id,
+          claimed.map((row) => row.id),
+        ),
+      );
+    });
   }
 
   // -------------------------------------------------------------------------- reads
@@ -312,7 +359,15 @@ export class CorrectiveActionWork {
       .update(correctiveActions)
       .set({
         ...columns,
-        ...(incrementReopenCount ? { reopenCount: sql`${correctiveActions.reopenCount} + 1` } : {}),
+        ...(incrementReopenCount
+          ? {
+              reopenCount: sql`${correctiveActions.reopenCount} + 1`,
+              // A reopened action gets a fresh chance to run late, so it gets a fresh
+              // chance to be announced (0016). Cleared here, in the same statement as the
+              // status change, so the two can never disagree about which it is.
+              overdueNotifiedAt: null,
+            }
+          : {}),
         version: sql`${correctiveActions.version} + 1`,
       })
       .where(
@@ -412,6 +467,22 @@ export class CorrectiveActionWork {
         version: sql`${audits.version} + 1`,
       })
       .where(eq(audits.id, auditId));
+  }
+
+  /**
+   * Runs `work` as the system actor on this transaction, then restores the caller (R-23).
+   *
+   * For the audit roll-up only. Its edges have no human actor (§7.1), and the `audit` row's
+   * RLS policy admits a Super Admin or the auditor — not a Zone Leader whose answer closed
+   * the last finding. Every other statement on the transaction stays under the real actor.
+   */
+  async asSystem<T>(work: () => Promise<T>): Promise<T> {
+    await setActorContext(this.tx, SYSTEM_SCOPE.actor.userId, SYSTEM_SCOPE.actor.role);
+    try {
+      return await work();
+    } finally {
+      await setActorContext(this.tx, this.scope.actor.userId, this.scope.actor.role);
+    }
   }
 
   /**

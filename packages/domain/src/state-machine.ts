@@ -202,6 +202,10 @@ export const ASSIGNMENT_TRANSITIONS: readonly Transition<AssignmentStatus>[] = [
 
 /** `corrective_action` (7.3). Defined here in full; Phase 6 wires the endpoints to it. */
 export const CORRECTIVE_ACTION_TRANSITIONS: readonly Transition<CorrectiveActionStatus>[] = [
+  // R-23: an answer with an after-photo closes the item directly. The two edges into
+  // ACTION_SUBMITTED stay so rows submitted before the change can still be reviewed.
+  { from: 'OPEN', to: 'VERIFIED', actors: ['ZONE_LEADER'] },
+  { from: 'REOPENED', to: 'VERIFIED', actors: ['ZONE_LEADER'] },
   { from: 'OPEN', to: 'ACTION_SUBMITTED', actors: ['ZONE_LEADER'] },
   { from: 'OPEN', to: 'NOT_POSSIBLE', actors: ['ZONE_LEADER'], guards: ['reason_given'] },
   { from: 'ACTION_SUBMITTED', to: 'VERIFIED', actors: ['SUPER_ADMIN'] },

@@ -8,7 +8,6 @@ import type {
   SectionScorePayload,
   Unit,
   UnitOverview,
-  UnitTrend,
   Zone,
   ZoneRankingItem,
 } from '@audit5s/contracts';
@@ -27,7 +26,7 @@ import {
   delta1,
   mergeBoard,
   score1,
-  score3,
+  score2,
   trendGeometry,
   worstIndex,
   type Band,
@@ -58,7 +57,8 @@ const RECENT = 5;
 const DAY = 86_400_000;
 
 /**
- * The Zone board (GEMBA-BOARD.md §1): the magnetic whiteboard by the line, rendered.
+ * The Zone board (GEMBA-BOARD.md §1): every Zone in the Unit, its score, and the one thing
+ * someone must act on.
  *
  * Every figure on it is the server's — the client filters and lays out, it never scores
  * (§3, ARCHITECTURE.md §8.6), and a Zone with nothing applicable reads `N/A` on a hatch
@@ -68,6 +68,21 @@ export function DashboardPage() {
   const { can } = useSession();
   const [unitId, setUnitId] = useState('');
   const [months, setMonths] = useState<number>(12);
+  /**
+   * What the Unit score tile reports: the period's weighted score, or one audit's own.
+   *
+   * The weighted figure answers "how is this Unit doing" — `Σraw / Σmax` across the period,
+   * never a mean of percentages (R-15a) — and a single audit answers "how did that one go".
+   * Both are the server's; picking between them is the one thing this control does.
+   */
+  const [scoreAuditId, setScoreAuditId] = useState('');
+  /**
+   * Which Zone of the chosen audit the score tile reports, `''` meaning the audit as a
+   * whole. Only ever set while an audit is chosen — "Zone A of the weighted period" is not
+   * a figure the server computes and not one this page may invent, so picking an audit is
+   * what makes the Zone control appear at all.
+   */
+  const [scoreZoneCode, setScoreZoneCode] = useState('');
 
   const units = useQuery({
     queryKey: ['units'],
@@ -95,11 +110,6 @@ export function DashboardPage() {
       api.get<ZoneRankingItem[]>(
         `/analytics/units/${unit}/zones/ranking?order=worst&limit=200&${range}`,
       ),
-    enabled,
-  });
-  const trend = useQuery({
-    queryKey: ['dashboard', unit, from, 'trend'],
-    queryFn: () => api.get<UnitTrend>(`/analytics/units/${unit}/trend?granularity=month&${range}`),
     enabled,
   });
   const zones = useQuery({
@@ -159,7 +169,14 @@ export function DashboardPage() {
   const selected = board.find((zone) => zone.code === selectedCode) ?? board[worstIndex(board)];
 
   const now = Date.now();
-  const open = (actions.data?.data ?? []).filter(
+  const raised = actions.data?.data ?? [];
+  /**
+   * Closed means `VERIFIED`. An accepted `NOT_POSSIBLE` also ends at `VERIFIED` (§7.3), so
+   * this one test covers both ways a finding can be finished, and `ACTION_SUBMITTED` is
+   * correctly not counted — it is waiting on a reviewer, not closed.
+   */
+  const closed = raised.filter((action) => action.status === 'VERIFIED');
+  const open = raised.filter(
     (action) => action.status === 'OPEN' || action.status === 'REOPENED',
   );
   const overdue = open.filter(
@@ -182,7 +199,73 @@ export function DashboardPage() {
   const notStarted = board.filter((zone) => zone.score === null);
   const audited = board.length - notStarted.length;
 
-  const error = [units, overview, ranking, trend, zones, audits, actions].find((query) => query.error)
+  /** Every completed, scored audit of this Unit in the period, newest first. */
+  const scorable = useMemo(
+    () =>
+      (audits.data?.data ?? [])
+        .filter((audit) => audit.scored && audit.completedAt !== null)
+        .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)),
+    [audits.data],
+  );
+  /**
+   * The trajectory: one point per audit, oldest first, over the last twelve months.
+   *
+   * It used to plot `/analytics/units/{id}/trend?granularity=month`, which is the Unit's
+   * weighted composite per calendar month — `Σraw / Σmax` across whatever audits fell in
+   * it. That answers "how did the Unit do in August", and it is the wrong question for a
+   * line titled Unit trajectory: two audits in one month collapsed into a single point, a
+   * month with none broke the line, and no point on the chart matched any score anyone
+   * could look up on an audit.
+   *
+   * These are the audits' own totals, exactly as the score tile above reports them, so the
+   * chart and the tile can no longer disagree. Still the server's figures — this picks and
+   * orders them, it does not compute them (§3).
+   */
+  const trajectory = useMemo(() => {
+    const cutoff = Date.now() - 365 * DAY;
+    return scorable
+      .filter((audit) => Date.parse(audit.completedAt!) >= cutoff)
+      .slice()
+      .reverse()
+      .map((audit) => ({
+        period: formatDate(audit.completedAt),
+        scorePercentage: audit.totals.scorePercentage,
+      }));
+  }, [scorable]);
+
+  const chosenAudit = scorable.find((audit) => audit.id === scoreAuditId) ?? null;
+
+  /**
+   * The chosen audit's per-Zone breakdown.
+   *
+   * `summaries` above only covers the last five audits, and the Score control lists every
+   * scored audit in the period, so a sixth-newest pick would otherwise have no zones to
+   * offer. Same query key as `summaries` uses, so choosing one of the recent five is served
+   * from cache rather than refetched.
+   */
+  const chosenSummary = useQuery({
+    queryKey: ['audit', scoreAuditId, 'summary'],
+    queryFn: () => api.get<AuditScoreSummary>(`/audits/${scoreAuditId}/summary`),
+    enabled: chosenAudit !== null,
+  });
+
+  /** Only the Zones this audit actually covered, and only those it finished scoring. */
+  const scorableZones = useMemo(
+    () => (chosenSummary.data?.zones ?? []).filter((zone) => zone.status === 'COMPLETED'),
+    [chosenSummary.data],
+  );
+  const chosenZone = scorableZones.find((zone) => zone.zoneCode === scoreZoneCode) ?? null;
+
+  // Every figure here is the server's, recomputed on completion — never one this page works
+  // out, which is the rule the whole board follows (§3). Narrowing from period → audit →
+  // Zone only ever picks a different server-supplied number.
+  const unitScore = chosenZone
+    ? chosenZone.totals.scorePercentage
+    : chosenAudit
+      ? chosenAudit.totals.scorePercentage
+      : (overview.data?.score.scorePercentage ?? null);
+
+  const error = [units, overview, ranking, zones, audits, actions].find((query) => query.error)
     ?.error;
 
   return (
@@ -220,13 +303,64 @@ export function DashboardPage() {
             ))}
           </select>
         </div>
+        <div className="gb-sel">
+          <label className="gb-label" htmlFor="gb-score">
+            Score
+          </label>
+          <select
+            id="gb-score"
+            value={scoreAuditId}
+            onChange={(event) => {
+              setScoreAuditId(event.target.value);
+              // A Zone code is only meaningful within the audit that was showing it. Left
+              // set, picking a second audit would either read a same-coded Zone it never
+              // covered or silently fall back to the audit total.
+              setScoreZoneCode('');
+            }}
+          >
+            <option value="">Weighted, all audits</option>
+            {scorable.map((audit, index) => (
+              <option key={audit.id} value={audit.id}>
+                {`Audit ${scorable.length - index} · ${formatDate(audit.completedAt)} · ${audit.auditorName}`}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Only the Zones that audit covered, and only once an audit is chosen. */}
+        {chosenAudit ? (
+          <div className="gb-sel">
+            <label className="gb-label" htmlFor="gb-score-zone">
+              Zone
+            </label>
+            <select
+              id="gb-score-zone"
+              value={scoreZoneCode}
+              onChange={(event) => setScoreZoneCode(event.target.value)}
+              disabled={chosenSummary.isLoading || scorableZones.length === 0}
+            >
+              <option value="">
+                {chosenSummary.isLoading
+                  ? 'Loading zones…'
+                  : scorableZones.length === 0
+                    ? 'No scored zones'
+                    : `Whole audit · ${scorableZones.length} zones`}
+              </option>
+              {scorableZones.map((zone) => (
+                <option key={zone.zoneCode} value={zone.zoneCode}>
+                  {`${zone.zoneName} (${zone.zoneCode})`}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="gb-pill">
           <i />
           Last sync <span className="gb-data">{lastSync(overview.dataUpdatedAt, unitName?.timezone)}</span>
         </div>
         {can('report', 'read_snapshot') ? (
           <Link className="gb-btn" to="/reports">
-            Export
+            Reports &amp; unit summary
           </Link>
         ) : null}
         {can('audit_assignment', 'create') ? (
@@ -286,11 +420,21 @@ export function DashboardPage() {
           <span className="gb-badge">Outstanding ≥ {TARGET}</span>
         </div>
         <div className="gb-kpis" style={{ marginTop: 14 }}>
+          {/* The score alone. The tile used to append "N scored zones", which read as a
+              second, unrelated figure sitting inside the score — the zone count already has
+              its own tile beside this one. Only the band word stays, because it is what the
+              tile's colour means. */}
           <Kpi
-            label="Unit score"
-            value={score1(overview.data?.score.scorePercentage ?? null)}
-            context={`${bandLabel(overview.data?.score.scorePercentage ?? null)} · ${overview.data?.score.sampleCount ?? 0} scored zones`}
-            band={bandOf(overview.data?.score.scorePercentage ?? null)}
+            label={chosenZone ? 'Zone score' : chosenAudit ? 'Audit score' : 'Unit score'}
+            value={score2(unitScore)}
+            context={
+              chosenZone
+                ? `${bandLabel(unitScore)} · ${chosenZone.zoneName} · ${formatDate(chosenAudit!.completedAt)}`
+                : chosenAudit
+                  ? `${bandLabel(unitScore)} · ${chosenAudit.auditorName} · ${formatDate(chosenAudit.completedAt)}`
+                  : bandLabel(unitScore)
+            }
+            band={bandOf(unitScore)}
           />
           <Kpi
             label="Zones audited"
@@ -320,11 +464,19 @@ export function DashboardPage() {
             }
             band={overdue.length === 0 ? 'ok' : 'crit'}
           />
+          {/* Closed out of raised, not a percentage: "2/5" is the sentence a Coordinator
+              actually says, and at this Unit's volume a percentage turns five findings into
+              a figure like 40.0 that reads more precise than it is. The band still comes
+              from the server's rate, so the colour is unchanged. */}
           <Kpi
-            label="Closure rate"
-            value={score1(overview.data?.closureRatePercentage ?? null)}
+            label="Closure"
+            value={raised.length === 0 ? '—' : `${closed.length}/${raised.length}`}
             context={
-              closureHours === null ? 'nothing closed yet' : `${closureHours.toFixed(1)} h average`
+              raised.length === 0
+                ? 'nothing raised in this period'
+                : closureHours === null
+                  ? 'nothing closed yet'
+                  : `${closureHours.toFixed(1)} h average to close`
             }
             band={bandOf(overview.data?.closureRatePercentage ?? null)}
           />
@@ -355,7 +507,7 @@ export function DashboardPage() {
             ) : null}
           </div>
           {selected ? (
-            <DetailPanel zone={selected} actions={open.filter((a) => a.zoneCode === selected.code)} />
+            <DetailPanel zone={selected} actions={raised.filter((a) => a.zoneCode === selected.code)} />
           ) : null}
         </div>
       </section>
@@ -414,13 +566,15 @@ export function DashboardPage() {
           <div>
             <h2 className="gb-h1">Unit trajectory</h2>
             <p>
-              Composite Unit score by month. The dashed rule is the Outstanding boundary at{' '}
-              {TARGET}.
+              Each completed audit&apos;s own score, oldest first, over the last twelve months.
+              The dashed rule is the Outstanding boundary at {TARGET}.
             </p>
           </div>
-          <span className="gb-label">Score % · monthly</span>
+          <span className="gb-label">
+            Score % · {trajectory.length} {trajectory.length === 1 ? 'audit' : 'audits'}
+          </span>
         </div>
-        <Trend points={trend.data?.points ?? []} />
+        <Trend points={trajectory} />
       </section>
 
       {/* ----------------------------------------------------- action pressure */}
@@ -513,7 +667,7 @@ export function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {sortActions(actions.data?.data ?? [], now)
+              {sortActions(raised, now)
                 .slice(0, 12)
                 .map((action) => {
                   const state = actionState(action, now);
@@ -535,7 +689,7 @@ export function DashboardPage() {
                     </tr>
                   );
                 })}
-              {(actions.data?.data ?? []).length === 0 ? (
+              {raised.length === 0 ? (
                 <tr>
                   <td className={rail('none')} colSpan={7}>
                     No corrective actions in this Unit.
@@ -584,7 +738,7 @@ export function DashboardPage() {
                     <td>{audit.auditorName}</td>
                     <td>{audit.auditType.replace(/_/g, ' ')}</td>
                     <td className="gb-data">{summary?.zones.length ?? '—'}</td>
-                    <td className="gb-data">{score3(pct)}</td>
+                    <td className="gb-data">{score2(pct)}</td>
                     <td>
                       <span className={`gb-chip gb-chip--${chipTone(bandOf(pct))}`}>
                         {bandLabel(pct)}
@@ -691,6 +845,12 @@ function DetailPanel({ zone, actions }: { zone: BoardZone; actions: CorrectiveAc
     (section) => section.pct === null && section.na > 0,
   );
 
+  const openFindings = actions.filter((action) => findingStatus(action).tone === 'open');
+  const sortedFindings = [...actions].sort((a, b) => {
+    const byTone = FINDING_ORDER[findingStatus(a).tone] - FINDING_ORDER[findingStatus(b).tone];
+    return byTone !== 0 ? byTone : b.openedAt.localeCompare(a.openedAt);
+  });
+
   return (
     <div className="gb-detail">
       <div className="gb-detail-head">
@@ -754,22 +914,46 @@ function DetailPanel({ zone, actions }: { zone: BoardZone; actions: CorrectiveAc
           </p>
         ) : null}
 
+        {/*
+          Every finding of this zone, not only the open ones.
+
+          The panel used to list open findings alone, so a zone that had fixed everything
+          read identically to one that was never audited — and the work that had been done
+          was invisible on the board that is supposed to show it.
+
+          The rail and the chip carry the same fact, which is the point: colour alone never
+          says whether something is closed (non-negotiable 9), so the row stays readable on
+          a projector, in sunlight, and to a colour-blind reader.
+        */}
         <div className="gb-findings">
-          <span className="gb-label">Open findings · {actions.length}</span>
+          <span className="gb-label">
+            Findings · {openFindings.length} open of {actions.length}
+          </span>
           {actions.length === 0 ? (
-            <p style={{ fontSize: 12.5, margin: '8px 0 0' }}>No open findings in this zone.</p>
+            <p style={{ fontSize: 12.5, margin: '8px 0 0' }}>No findings raised in this zone.</p>
           ) : (
             <ul>
-              {actions.map((action) => (
-                <li
-                  key={action.id}
-                  className={action.scoreAtCapture === 'SCORE_0' ? 'gb-crit' : undefined}
-                >
-                  <i />
-                  {findingTitle(action)}
-                  <span>{Math.floor((Date.now() - Date.parse(action.openedAt)) / DAY)} d</span>
-                </li>
-              ))}
+              {sortedFindings.map((action) => {
+                const state = findingStatus(action);
+                // Age counts to closure for a finished finding, not to today: a finding
+                // closed in three days a month ago took three days, and showing 30 would
+                // make prompt work look like a backlog.
+                const until =
+                  state.tone === 'closed' && action.resolvedAt !== null
+                    ? Date.parse(action.resolvedAt)
+                    : Date.now();
+                return (
+                  <li key={action.id} className={`gb-finding gb-finding--${state.tone}`}>
+                    <i />
+                    <div className="gb-finding-text">
+                      {findingTitle(action)}
+                      {action.scoreAtCapture === 'SCORE_0' ? <b> · captured at 0</b> : null}
+                    </div>
+                    <em>{state.label}</em>
+                    <span>{Math.floor((until - Date.parse(action.openedAt)) / DAY)} d</span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -779,12 +963,12 @@ function DetailPanel({ zone, actions }: { zone: BoardZone; actions: CorrectiveAc
 }
 
 /** §6 "Trend chart": hand-authored SVG, all strokes and fills from tokens. */
-function Trend({ points }: { points: UnitTrend['points'] }) {
+function Trend({ points }: { points: Array<{ period: string; scorePercentage: number | null }> }) {
   const geometry = trendGeometry(points);
   if (!geometry) {
     return (
       <div className="gb-trend" style={{ marginTop: 14 }}>
-        <p className="gb-label">No scored audit in the selected period.</p>
+        <p className="gb-label">No scored audit in the last twelve months.</p>
       </div>
     );
   }
@@ -794,7 +978,7 @@ function Trend({ points }: { points: UnitTrend['points'] }) {
     <div className="gb-trend" style={{ marginTop: 14 }}>
       <div className="gb-legend">
         <span>
-          <i /> Unit composite
+          <i /> Audit score
         </span>
         <span>
           <i className="gb-target" /> Outstanding {TARGET}
@@ -809,7 +993,7 @@ function Trend({ points }: { points: UnitTrend['points'] }) {
       <svg
         viewBox="0 0 720 182"
         role="img"
-        aria-label={`Unit composite score across ${points.length} periods, currently ${score1(current)} against an Outstanding boundary of ${TARGET}`}
+        aria-label={`Score of each of the last ${geometry.points.length} completed audits, most recently ${score1(current)} against an Outstanding boundary of ${TARGET}`}
       >
         <g className="gb-grid-line">
           {geometry.gridY.map((y) => (
@@ -819,6 +1003,11 @@ function Trend({ points }: { points: UnitTrend['points'] }) {
         <line className="gb-target-line" x1={44} y1={geometry.targetY} x2={706} y2={geometry.targetY} />
         <path className="gb-area" d={geometry.area} />
         <path className="gb-line" d={geometry.line} />
+        {/* One marker per audit: the line alone hides how many audits drew it, and a
+            flat run of four reads the same as a single reading without them. */}
+        {geometry.points.slice(0, -1).map((point) => (
+          <circle key={point.label} className="gb-mark" cx={point.x} cy={point.y} r={3.5} />
+        ))}
         <circle className="gb-dot" cx={geometry.end.x} cy={geometry.end.y} r={5} />
         <text className="gb-now" x={geometry.end.x - 6} y={geometry.end.y - 10} textAnchor="end">
           {score1(current)}
@@ -910,6 +1099,43 @@ function actionState(action: CorrectiveAction, now: number): { band: Band; label
   if (action.status === 'NOT_POSSIBLE') return { band: 'none', label: 'Not possible' };
   return { band: 'none', label: action.status === 'REOPENED' ? 'Reopened' : 'Open' };
 }
+
+/**
+ * Open, in flight, or closed — the distinction the zone panel colour-codes.
+ *
+ * Deliberately not `actionState`, which answers a different question: that one is about
+ * *urgency* (overdue, due this week) and drives the register below. A finding can be open
+ * and not yet due, and the panel still has to show it as open.
+ *
+ * `NOT_POSSIBLE` sits with the submitted work rather than with the closed findings: it is
+ * an answer awaiting a reviewer's acceptance, and §7.3 ends it at `VERIFIED` like any
+ * other. Counting it as closed here would show a finding as resolved that nobody has yet
+ * agreed to resolve.
+ */
+function findingStatus(action: CorrectiveAction): {
+  tone: 'open' | 'submitted' | 'closed';
+  label: string;
+} {
+  switch (action.status) {
+    case 'OPEN':
+      return { tone: 'open', label: 'Open' };
+    case 'REOPENED':
+      return { tone: 'open', label: 'Reopened' };
+    case 'ACTION_SUBMITTED':
+      return { tone: 'submitted', label: 'Awaiting review' };
+    case 'NOT_POSSIBLE':
+      return { tone: 'submitted', label: 'Not possible' };
+    case 'VERIFIED':
+      return { tone: 'closed', label: 'Closed' };
+  }
+}
+
+/** Open first, then what is awaiting review, then what is done; newest first within each. */
+const FINDING_ORDER: Record<'open' | 'submitted' | 'closed', number> = {
+  open: 0,
+  submitted: 1,
+  closed: 2,
+};
 
 function findingTitle(action: CorrectiveAction): string {
   return action.questionText ?? action.findingRemark ?? 'Walk-by observation';

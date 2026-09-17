@@ -26,7 +26,7 @@ import { replaceCatalogue } from './catalogue.repository';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
 import { LOCAL_SCHEMA_VERSION } from './migrations';
 import { createNodeExecutor } from './node-executor';
-import { FIXTURE_UNIT as UNIT, FIXTURE_ZONE_A as ZONE_A, catalogue } from './test-fixtures';
+import { FIXTURE_UNIT as UNIT, catalogue } from './test-fixtures';
 
 /**
  * The device's evidence store, against **real SQLite**.
@@ -63,7 +63,7 @@ async function auditWithZone() {
   });
   const auditZoneId = await addLocalZone(database, {
     auditId,
-    zoneId: ZONE_A,
+    zoneNumber: 1,
     sequenceNo: 1,
     checklistVersionId: null,
   });

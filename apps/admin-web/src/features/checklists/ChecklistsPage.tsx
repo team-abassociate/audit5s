@@ -4,6 +4,7 @@ import type {
   ChecklistTemplate,
   ChecklistVersion,
   ChecklistVersionDetail,
+  Industry,
   Page,
 } from '@audit5s/contracts';
 import { S_SECTION_LABELS, S_SECTION_ORDER } from '@audit5s/domain';
@@ -14,6 +15,8 @@ import {
   Card,
   CardHeader,
   ErrorNotice,
+  Field,
+  Select,
   Spinner,
   Table,
   Td,
@@ -35,9 +38,20 @@ export function ChecklistsPage() {
   const [importing, setImporting] = useState(false);
   const [openTemplate, setOpenTemplate] = useState<string | null>(null);
 
+  /** `''` is every sector. A template with no industry appears under any of them (0018). */
+  const [industryId, setIndustryId] = useState('');
+
+  const industries = useQuery({
+    queryKey: ['industries', false],
+    queryFn: () => api.get<Industry[]>('/industries'),
+  });
+
   const templates = useQuery({
-    queryKey: ['checklist-templates'],
-    queryFn: () => api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
+    queryKey: ['checklist-templates', industryId],
+    queryFn: () =>
+      api.get<Page<ChecklistTemplate>>(
+        `/checklist-templates?limit=200${industryId ? `&industryId=${industryId}` : ''}`,
+      ),
   });
 
   if (importing) {
@@ -56,6 +70,27 @@ export function ChecklistsPage() {
             ) : null
           }
         />
+
+        {/* Only worth showing once there is more than one sector to choose between. */}
+        {(industries.data?.length ?? 0) > 1 && (
+          <div className="flex flex-wrap items-end gap-3 border-b border-edge-soft px-4 py-3">
+            <div className="w-64">
+              <Field
+                label="Industry"
+                hint="Templates with no industry are offered to every sector, so they always appear."
+              >
+                <Select value={industryId} onChange={(event) => setIndustryId(event.target.value)}>
+                  <option value="">Every industry</option>
+                  {(industries.data ?? []).map((industry) => (
+                    <option key={industry.id} value={industry.id}>
+                      {industry.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </div>
+        )}
 
         {templates.isLoading && <Spinner />}
         {templates.error && (
@@ -78,6 +113,7 @@ export function ChecklistsPage() {
             <thead>
               <tr>
                 <Th>Department</Th>
+                <Th>Industry</Th>
                 <Th>Code</Th>
                 <Th>Published version</Th>
                 <Th>Status</Th>
@@ -98,6 +134,13 @@ export function ChecklistsPage() {
                       >
                         {template.name}
                       </button>
+                    </Td>
+                    <Td>
+                      {/* "Every industry" rather than a dash: an unlabelled template is
+                          offered everywhere, which is a fact about it, not a gap. */}
+                      {template.industryName ?? (
+                        <span className="text-xs text-ink-3">Every industry</span>
+                      )}
                     </Td>
                     <Td className="font-mono text-xs">{template.code}</Td>
                     <Td>

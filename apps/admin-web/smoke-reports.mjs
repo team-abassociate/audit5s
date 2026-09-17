@@ -106,6 +106,32 @@ await page.route('**/api/v1/**', async (route) => {
     });
   }
   if (path === '/api/v1/audits') return json({ data: [], nextCursor: null });
+  // The Reports page always loads this Unit's Zones — the one-click Unit summary needs
+  // their ids whatever report kind is selected. Unmocked, it fell through to the 404 below
+  // and the console error it logged failed the no-errors assertion.
+  if (path === `/api/v1/units/${ids.unit}/zones`) {
+    return json({
+      data: [
+        {
+          id: '00000000-0000-4000-8000-000000000005',
+          unitId: ids.unit,
+          code: 'Z-07',
+          name: 'Press shop',
+          description: null,
+          departmentHint: null,
+          defaultChecklistTemplateId: null,
+          zoneLeaderId: null,
+          zoneLeaderName: 'Zoe Leader',
+          sortOrder: 1,
+          version: 1,
+          archivedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      nextCursor: null,
+    });
+  }
   if (path === `/api/v1/reports/${ids.report}/tokens`) return json([]);
   if (path === '/api/v1/notifications') return json({ data: [], nextCursor: null, unreadCount: 0 });
   return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });

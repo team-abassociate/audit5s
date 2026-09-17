@@ -43,10 +43,16 @@ const zoneColumns = {
    * how `GET /sync/catalogue` came to cache Zones whose leader had no name. The definer
    * function of 0008 returns the display name alone, scoped to the caller's own Units
    * (DECISIONS.md R-12f).
+   *
+   * Coalesced with `zone.zone_leader_name` (0015): a Zone whose leader has no user account
+   * still has a leader, and the name an auditor typed is who it is. The account is first
+   * because an assigned account outranks anything typed — the same precedence
+   * `app_set_zone_leader_name()` enforces on the way in, so a Zone cannot read one way and
+   * write the other.
    */
   zoneLeaderName: sql<
     string | null
-  >`app_zone_leader_name(${zones.unitId}, ${zones.zoneLeaderId})`,
+  >`COALESCE(app_zone_leader_name(${zones.unitId}, ${zones.zoneLeaderId}), ${zones.zoneLeaderName})`,
   sortOrder: zones.sortOrder,
   version: zones.version,
   archivedAt: zones.archivedAt,

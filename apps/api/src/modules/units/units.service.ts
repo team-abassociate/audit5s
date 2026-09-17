@@ -162,6 +162,10 @@ export function toUnit(row: UnitRow): Unit {
     geofenceRadiusM: row.geofenceRadiusM,
     timezone: row.timezone,
     photoCapPerZone: row.photoCapPerZone,
+    industryId: row.industryId,
+    // Joined only where the repository asks for it; a plain row read leaves it null rather
+    // than pretending the Unit has no sector.
+    industryName: 'industryName' in row ? ((row as { industryName: string | null }).industryName) : null,
     version: row.version,
     archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),

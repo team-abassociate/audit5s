@@ -30,6 +30,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { PermissionsModule } from './modules/roles-permissions/permissions.module';
 import { MembershipsModule } from './modules/unit-memberships/memberships.module';
 import { SyncModule } from './modules/sync/sync.module';
+import { IndustriesModule } from './modules/industries/industries.module';
 import { UnitsModule } from './modules/units/units.module';
 import { UsersModule } from './modules/users/users.module';
 import { ZonesModule } from './modules/zones/zones.module';
@@ -55,6 +56,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     AuditLogModule,
     AuthModule,
     UsersModule,
+    IndustriesModule,
     UnitsModule,
     ZonesModule,
     ChecklistsModule,

@@ -26,6 +26,7 @@ export const RESOURCES = [
   'unit',
   'unit_membership',
   'zone',
+  'industry',
   'checklist_template',
   'checklist_version',
   'checklist_import',

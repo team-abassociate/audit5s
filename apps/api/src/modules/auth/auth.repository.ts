@@ -276,6 +276,46 @@ export class AuthRepository {
     });
   }
 
+  /**
+   * Mints a reset token, superseding any the user already holds (0017).
+   *
+   * Superseding is the point: without it, asking twice leaves two working links, and the
+   * older one is the more likely to have been intercepted — a forwarded mail, a shared
+   * machine, a mailing list that kept a copy.
+   */
+  async issuePasswordReset(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    ipAddress: string | null;
+  }): Promise<void> {
+    await withAuthPhase(this.db, async (tx) => {
+      await tx.execute(
+        sql`SELECT app_issue_password_reset(
+          ${input.userId}::uuid, ${input.tokenHash}, ${input.expiresAt}, ${input.ipAddress}
+        )`,
+      );
+    });
+  }
+
+  /**
+   * Spends a reset token and returns whose it was, or `null` if it is unknown, expired or
+   * already used. The three are one answer on purpose — telling them apart would say
+   * whether a token ever existed.
+   *
+   * Single-statement inside the function (0017), so two requests arriving together cannot
+   * both spend it.
+   */
+  async redeemPasswordReset(tokenHash: string): Promise<string | null> {
+    return withAuthPhase(this.db, async (tx) => {
+      const result = await tx.execute(
+        sql`SELECT app_redeem_password_reset(${tokenHash}) AS user_id`,
+      );
+      const row = result.rows[0] as { user_id: string | null } | undefined;
+      return row?.user_id ?? null;
+    });
+  }
+
   async createOtpChallenge(input: {
     phoneE164: string;
     codeHash: string;

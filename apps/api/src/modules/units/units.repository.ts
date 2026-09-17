@@ -23,6 +23,7 @@ export type UnitPatch = Partial<{
   geofenceRadiusM: number | null;
   timezone: string;
   photoCapPerZone: number;
+  industryId: string | null;
 }>;
 
 @Injectable()
@@ -50,6 +51,7 @@ export class UnitsRepository extends BaseRepository {
           longitude: request.longitude !== undefined ? String(request.longitude) : null,
           geofenceRadiusM: request.geofenceRadiusM ?? 300,
           timezone: request.timezone,
+          industryId: request.industryId ?? null,
           ...(request.photoCapPerZone !== undefined
             ? { photoCapPerZone: request.photoCapPerZone }
             : {}),

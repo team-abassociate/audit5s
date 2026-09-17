@@ -27,6 +27,14 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-16 | Phase 9: dead letters, retention, drain and the PDF clock | Settled |
 | R-17 | Phase 9: how a data-integrity finding reaches a Super Admin | Settled |
 | R-18 | A Super Admin is refused nothing | Settled |
+| R-19 | The auditor names the Zone | Settled |
+| R-20 | Access to the Unit is enough for an external audit | Settled |
+| R-21 | A session has no time limit | Settled |
+| R-22 | Anyone holding a corrective-action link may answer it | Settled |
+| R-23 | An after-photo closes a finding; regenerating picks up the answers | Settled |
+| R-24 | A Coordinator uses the field app too | Settled |
+| R-25 | Removing a user is archiving them | Settled |
+| R-26 | An audit may be assigned to anyone who can conduct one | Settled |
 
 ---
 
@@ -1131,4 +1139,269 @@ code path — **AZ-4 stands**; nothing became a bypass flag. His own inbox keeps
 - **He may verify his own answer.** Submitting and verifying a corrective action were
   separate roles; they now meet in one person when a Super Admin does both. Accepted with
   the rule; every step is still audit-logged.
+
+---
+
+## R-19 — The auditor names the Zone
+
+**Changes `ARCHITECTURE.md` §2.3 (step 8), §2.7 (steps 2 and 4) and the Zones rows of §6.3.**
+Settled 2026-09-15 by the product owner. When a Super Admin assigns a Unit to a Consultant,
+the Consultant opens that Unit and the first thing they do is take a selfie. Next they
+create the Zone: a Zone number from a dropdown of Zone 1 to Zone 100, an optional
+description, and the Zone leader's name. Then they select the department, and that
+department's fifty questions are the ones asked.
+
+That is `brainstorm.md`'s own flow. The build had drifted from it in two ways. The auditor
+could only pick from Zones a Coordinator had already created, so a Unit with no Zones could
+not be audited at all. And the department was never offered: the device pinned the first
+published checklist, alphabetically, to every Zone.
+
+### (a) A Zone number finds the Zone, or adds it
+
+`PUT /audits/{id}/zones/{auditZoneId}` accepts `zoneNumber` (1–100) in place of `zoneId`.
+The server uses that Zone of the audit's Unit — code `Z-07`, as `zoneCodeForNumber` has
+always generated — and adds it, named "Zone 7", if the Unit has never used the number.
+From then on it is master data like any other Zone. It appears on the web Zones page, a
+Coordinator may rename it or assign its leader, and its score history accumulates across
+audits, because `audit_zone.zone_id` still points at one row.
+
+The number travels rather than an id because a device that is offline cannot know the id of
+a Zone that does not exist yet. `zoneId` is still accepted, so payloads queued by an older
+build still sync.
+
+### (b) Narrower than `zone:create`
+
+PART 6 still grants Consultants and Zone Leaders no `zone:create`, and `zone_insert` is
+unchanged. The one new path is `app_ensure_zone_for_audit()` (migration 0014), a
+`SECURITY DEFINER` function in the shape of R-12's and R-14(e)'s. It adds a Zone only to
+the Unit of an open audit the caller is conducting, only by code, and returns nothing
+otherwise. Each addition is written to `audit_log` as `zone.created`, naming the audit that
+added it.
+
+### (c) The leader is a name, not an account
+
+The auditor types the Zone leader's name. It is snapshotted and printed on the reports, and
+it grants nothing (C2 is unchanged). `zoneLeaderSnapshot` in `packages/domain`, used by both
+the server and the device, keeps the Zone's leader account in the snapshot only when the
+typed name is that person's; otherwise the snapshot would print one person and point at
+another.
+
+**Consequence, accepted with the decision.** Corrective actions still route from
+`zone.zone_leader_id` (§5.7). A Zone added by number has no leader account, so nobody can
+answer its nonconformities until a Coordinator or Super Admin assigns a Zone Leader to it.
+Until then its signed links let people read the finding but not answer it (R-14(d)).
+
+### (d) Description on every audit type; department per Zone
+
+The optional description is now honoured on scored audits as well as walk-bys. The
+department is chosen per Zone, and its checklist version is the one that Zone pins (QR-2).
+Nothing else about the questionnaire changes.
+
+### (e) What did not change
+
+- **The selfie gate (§7.1).** The device now asks for the selfie as soon as the Unit is
+  opened, which is where it always sat in the state machine.
+- **D6.** Snapshots are still taken on the first write only.
+- **A walk-by may still name a leader account** (§2.7 step 4); the device no longer offers
+  it, but the API keeps it.
+- **The web app does not conduct audits.** Its audit detail and the reports already print
+  the snapshotted description, leader name and department.
+
+---
+
+## R-20 — Access to the Unit is enough for an external audit
+
+**Changes `ARCHITECTURE.md` §6.3 (`Audit` · create `EXTERNAL_5S`, the Consultant cell).**
+Settled 2026-09-15 by the product owner. The first audit run in the field was refused
+with `ASSIGNMENT_REQUIRED`: the Super Admin had added the Consultant to the Unit but had not
+also created an `AuditAssignment`. Given the choice, the owner chose the flow R-19 describes —
+once a Consultant is added to a Unit, they may run a 5S audit there.
+
+- **The resolver is unchanged:** `assigned_units`. Only the condition "and an active
+  assignment exists" is dropped. A Consultant still cannot audit a Unit they have no
+  membership in.
+- **Assignments still mean something.** When an open assignment exists it is linked to the
+  audit and moves through its statuses with it, so due dates and the assignment board keep
+  working. Without one the audit starts unassigned, as a Super Admin's always has (R-18).
+- **Found alongside it:** the phone dead-lettered the refused audit, and nothing on screen
+  offered to send it again, so everything queued behind it was stuck too. "Sync now"
+  now resets dead letters before syncing — `STACK.md` §5's "N failed — tap to retry" — so
+  once the cause of a refusal is fixed, the work can go.
+
+---
+
+## R-21 — A session has no time limit
+
+**Changes `STACK.md` §2 (Authentication) and `ARCHITECTURE.md` §2.1 step 1.** Settled
+2026-09-15 by the product owner: *"make it unlimited, remove the 30 day limit."*
+
+The web sign-in was reported as too short-lived. Two causes, fixed together:
+
+- **A refresh race, which was the real complaint.** When the 15-minute access token lapsed
+  under several requests at once, each refreshed with the same single-use token; invariant
+  R-1 read the duplicates as theft and revoked the family, so users were signed out about
+  every fifteen minutes. Both clients now share one refresh in flight, and the web holds a
+  Web Lock across tabs.
+- **The 30-day refresh lifetime.** `REFRESH_TOKEN_TTL_DAYS` now defaults to `0`, meaning no
+  limit. Because `refresh_token.expires_at` is `NOT NULL`, "no limit" is stored as
+  9999-12-31 — no migration. A positive value still restores a limit (at most 90 days).
+
+**What did not change.** Refresh tokens are still single-use and rotating, and reuse still
+revokes the whole family (R-1). A session still ends on sign-out, on a password change, and
+when the account is disabled. Access tokens are still 15 minutes, so revoking a Unit or a
+role still takes effect on the next request. The mobile offline unlock (`STACK.md` §5's 7-day
+window without network) is a separate rule and is unchanged.
+
+**Cost, accepted with the decision.** A stolen refresh token no longer expires on its own.
+It is still stopped by the legitimate device's next refresh (reuse detection), by signing
+out, or by a password change.
+
+---
+
+## R-22 — Anyone holding a corrective-action link may answer it
+
+**Changes R-14(d) and R-19(c), and `ARCHITECTURE.md` §10.4's "bound to a Zone Leader".**
+Settled 2026-09-15 by the product owner: *"once he generates the report he will send the
+report via any media to a concerned person who might or might not be in the user list of
+app so any person irrespective of the role assigned should be able to upload the after
+evidence. basically anyone with the report and link can upload corrective action."*
+
+Before this, a link acted as the Zone Leader it was issued to, and a link with none — every
+finding in a Zone the auditor added by number (R-19) — could be read but not answered.
+
+### (a) The link acts as its issuer when it names no Zone Leader
+
+`corrective_action_submission.submitted_by_user_id` is `NOT NULL`, and its RLS insert policy
+requires the acting user to be one who may answer the action. So a link still needs an
+actor, and there are two candidates:
+
+- the **Zone Leader it was issued to**, when there is one and the account is active —
+  unchanged from R-14(d);
+- otherwise the **Super Admin who generated the report** (`report_access_token.created_by_user_id`),
+  who may answer any corrective action (R-18).
+
+No migration and no new RLS policy were needed. Links already issued work at once, because
+every token has always recorded its issuer.
+
+### (b) The typed name is the author
+
+A link's answer now always carries the name the person typed, for both options. The
+`NOT_POSSIBLE` request gains an optional `submittedByName` (a `packages/contracts` change);
+the public route requires it, while a signed-in user may still omit it and have their
+account's name recorded. `submitted_by_user_id` therefore means *on whose authority*;
+`submitted_by_name`, `submitted_via = WEB_TOKEN` and `access_token_id` say who answered and how.
+
+### (c) What did not change
+
+- **The link's reach.** Still `signed_token`: one corrective action, in one Unit, through
+  the three public routes. It never becomes a session. Every use is still recorded.
+- **Review.** Every answer still waits for a Super Admin to verify or reopen it.
+- **Revocation.** A link sent to the wrong person is revoked from the Reports page.
+- A link whose issuer has been disabled, and which names no active Zone Leader, is refused.
+
+**Notification.** A submission through a link is raised with no actor, so the Super Admin is
+told an answer arrived even when the link acted as them.
+
+**Cost, accepted with the decision.** Whoever holds the PDF can answer its findings. The
+control is who the report is sent to, the Super Admin's review, and revoking a link.
+
+---
+
+## R-23 — An after-photo closes a finding; regenerating picks up the answers
+
+**Changes R-13(a), R-14(f), `ARCHITECTURE.md` §2.8 and §7.3.** Settled 2026-09-15 by the
+product owner: *"this after evidence once uploaded by the person should be immediately
+updated and the super admin get the notification and when he clicks on regenerate report he
+get the updated version the one with the after evidence photo."*
+
+### (a) No review step for an after-photo
+
+An Option A answer (a description and a live after-photo) now moves the corrective action
+straight to `VERIFIED`, from `OPEN` or `REOPENED`, on the submitting transaction. Two edges
+are added to the state machine; `submissionTarget('COMPLETED')` is `VERIFIED`. The audit
+rolls on (`PARTIALLY_CLOSED`, `CLOSED`) in the same transaction, as a verification rolls it.
+
+- `resolved_at` is set (the table's CHECK requires it); `verified_by_user_id` stays null,
+  because no person verified it. The attempt carries no review outcome for the same reason.
+- The Super Admin is notified that the item was completed and closed, and may still reopen
+  it with a reason — the `VERIFIED → REOPENED` edge is unchanged. The Unit's Coordinator gets
+  the `CORRECTIVE_ACTION_VERIFIED` notification they had before (§2.8), raised by the
+  closing submission with no actor, since there is no longer a verification to raise it.
+- The audit roll-up runs as the system actor for that one step. Its edges have no human
+  actor (§7.1), and the `audit` row's RLS admits only a Super Admin or the auditor, which a
+  Zone Leader answering in the app is not.
+- **Option B is unchanged.** "Not possible" still waits for a Super Admin to accept or
+  reopen it, because nothing was fixed. Rows already in `ACTION_SUBMITTED` keep their edges
+  and are reviewed as before.
+
+### (b) A Zone report of an answered Zone is the after-evidence report
+
+`generate` and `regenerate` for `INITIAL_ZONE` produce `AFTER_EVIDENCE_ZONE` once any
+corrective action of that audit Zone has an answer, so Regenerate returns the version with
+the after photos. It is still the next version of the same Zone's chain (R-14(f)); the
+earlier versions stay exactly as issued.
+
+---
+
+## R-24 — A Coordinator uses the field app too
+
+**Changes `ARCHITECTURE.md` §1.1 (the Coordinator authenticates on the admin web only).**
+Settled 2026-09-15 by the product owner: *"please solve the coordinator login from mobile …
+so that i can access the coordinator function from the mobile."*
+
+- **Same screens as a Super Admin, narrowed.** A Coordinator gets the management tab set
+  (Overview · Audits · Actions · Units · People). The server already scopes every list to the
+  Coordinator's own Unit (`own_unit`), and each screen hides what `scope.permissions` does not
+  list: no Unit creation, archiving or access grants, no audit assignment or starting, no
+  report generation, no verify or reopen, and only Zone Leaders can be added or managed.
+  Overview shows the Unit's score rather than the organization's.
+- **§6.3 is unchanged.** Nothing is granted that the matrix did not already grant; the phone
+  only stops refusing the role at the door. A hidden control is a courtesy — the API still
+  refuses the request.
+- **No sync.** A Coordinator holds no `sync:*` permission and records nothing offline, so the
+  field app runs no sync cycle for the role; every screen is live server data.
+
+---
+
+## R-25 — Removing a user is archiving them
+
+**Refines D8 for the admin UI.** Asked for 2026-09-16: *"the super admin only has one option
+to revoke access not of delete so i want that the super admin should also have an option to
+delete that user from the system."*
+
+The intent is granted; the word cannot be. Every audit, photograph, submission and audit-log
+row names the person who made it, with `ON DELETE RESTRICT` behind it, so a real delete
+either fails or takes the record with it — and a 5S record that can be erased is not a
+record. D8 says so outright, and it is the invariant the whole schema leans on.
+
+So `user:archive` (Super Admin, `organization`) sets `archived_at` and `DISABLED` in one
+statement and revokes every session and device. The account then leaves every list, every
+picker and every search, exactly as a deletion would look from the outside, while what it
+did stays intact. `POST /users/{id}/archive`, logged as `user.archived`.
+
+- **Not self.** A Super Admin cannot archive their own account, as with `disable`.
+- **Revoke access** stays: it stops sign-in and leaves the person in the list, which is what
+  a suspension is. Archiving is for somebody who has left.
+- **Memberships are left as they are.** They grant nothing to an account that cannot sign in,
+  and cancelling their open assignments is `AA-1`'s path, reached by revoking the membership.
+
+---
+
+## R-26 — An audit may be assigned to anyone who can conduct one
+
+**Changes the Auditor picker of `ARCHITECTURE.md` §2.1 step 10, not invariant AA-1.**
+Asked for 2026-09-16: *"when the super admin is creating a new assignment and choosing the
+auditor it shows the list of only active member in that unit … the super admin should be able
+to choose any user who has been created by super admin."*
+
+AA-1 stands: an assignee with no access to the Unit gets work their device never sees, and
+the server still refuses such an assignment. What changes is that the Super Admin no longer
+has to go and arrange the access first. The picker lists every active Consultant and Zone
+Leader, marks those outside the Unit, and assigning one **grants the membership first, in the
+same action**.
+
+- **The server is unchanged.** Both steps are things a Super Admin may already do; the screen
+  simply stops making them a two-place errand.
+- **M-1 still binds.** A Zone Leader may hold one active Unit, so assigning one to a second
+  Unit is refused — by the database, with its own message, which the form shows as it stands.
 

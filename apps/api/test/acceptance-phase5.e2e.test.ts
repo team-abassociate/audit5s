@@ -179,14 +179,13 @@ describe('Phase 5 acceptance', () => {
     await capture(auditId, null);
 
     const auditZoneIds: string[] = [];
-    for (const [index, zoneId] of zoneIds.slice(0, 3).entries()) {
+    for (const index of [0, 1, 2]) {
       const auditZoneId = await addLocalZone(database, {
         auditId,
-        zoneId,
+        zoneNumber: 51 + index,
         sequenceNo: index + 1,
         checklistVersionId: null,
         zoneDescription: `Observed bay ${index + 1}`,
-        zoneLeaderUserId: world.actors.ZONE_LEADER.userId,
       });
       auditZoneIds.push(auditZoneId);
 
@@ -244,7 +243,7 @@ describe('Phase 5 acceptance', () => {
     await capture(refusedAuditId, null);
     const emptyZoneId = await addLocalZone(database, {
       auditId: refusedAuditId,
-      zoneId: zoneIds[3]!,
+      zoneNumber: 54,
       sequenceNo: 1,
       checklistVersionId: null,
     });

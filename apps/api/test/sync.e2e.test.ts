@@ -85,7 +85,7 @@ async function seedChecklist(): Promise<void> {
 
 let zoneCounter = 40;
 
-/** An open assignment, which `EXTERNAL_5S` creation requires (§8.6, `ASSIGNMENT_REQUIRED`). */
+/** An open assignment, which an `EXTERNAL_5S` audit links to when one exists (R-20). */
 async function assign(): Promise<void> {
   const response = await world.request('POST', `${base}/audit-assignments`, {
     token: world.actors.SUPER_ADMIN.accessToken,

@@ -26,6 +26,30 @@ const timestamps = {
  * migration as a trigger. It is deliberately not expressible here: an ORM-level rule
  * would be advice, and this one has to be a guarantee.
  */
+/**
+ * Sectors (0018): Engineering, Hospital, Warehouse.
+ *
+ * A label on reference data, not a tenant. It decides which checklists a screen offers and
+ * never who may see what — anything that reads `industryId` to make an access decision is
+ * reading it wrong.
+ */
+export const industries = pgTable(
+  'industry',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('industry_code_active_key').on(table.code).where(sql`archived_at IS NULL`),
+    index('industry_sort_idx').on(table.sortOrder, table.name),
+  ],
+);
+
 export const checklistTemplates = pgTable(
   'checklist_template',
   {
@@ -35,6 +59,8 @@ export const checklistTemplates = pgTable(
     name: text('name').notNull(),
     description: text('description'),
     isActive: boolean('is_active').notNull().default(true),
+    /** Which sector offers this template. NULL means every sector (0018). */
+    industryId: uuid('industry_id').references(() => industries.id, { onDelete: 'restrict' }),
     /** Workbook order, so the catalogue reads as the business lists its departments. */
     sortOrder: integer('sort_order').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

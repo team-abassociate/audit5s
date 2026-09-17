@@ -25,6 +25,7 @@ import { listLocalAudits } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { formatDate, formatPct } from '../../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, humanize, isFinished } from '../../lib/labels';
+import { useSession } from '../../lib/session';
 import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
 
 type Board = 'ACTIVE' | 'DONE' | 'ASSIGNED';
@@ -49,22 +50,33 @@ const HEAD: Record<Board, { title: (n: number) => string; description: string; e
   ASSIGNED: {
     title: (n) => `${n} assigned`,
     description: 'Waiting for the consultant to start.',
-    empty: 'Nothing is waiting to be started. Assign an audit with + Audit.',
+    empty: 'Nothing is waiting to be started.',
   },
 };
 
 /**
- * Every audit in the organization, for a Super Admin: what is running, what is finished
- * (with its reports and the correction path), and what is assigned but not started. An
- * audit this phone is running itself sits on top as the one slip.
+ * Every audit in reach — the organization's for a Super Admin, the own Unit's for a Coordinator
+ * (R-24): what is running, what is finished (with its reports and the correction path), and
+ * what is assigned but not started. An audit this phone is running itself sits on top as the
+ * one slip.
  */
 export default function AuditsScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
   const database = useLocalDatabase();
+  const { can } = useSession();
   const [board, setBoard] = useState<Board>('ACTIVE');
   const [adding, setAdding] = useState(false);
+
+  // Only what the role holds: a Coordinator neither assigns nor runs an audit.
+  const newAudit: Array<{ label: string; detail?: string; onPress: () => void }> = [];
+  if (can('audit_assignment', 'create')) {
+    newAudit.push({ label: 'Assign to a consultant', detail: 'They run it on their phone', onPress: () => router.push('/manage/assign') });
+  }
+  if (can('audit', 'create_external')) {
+    newAudit.push({ label: 'Start one myself', detail: 'Pick the Unit, then take the selfie', onPress: () => router.push('/units') });
+  }
 
   const mine = useQuery({ queryKey: ['local', 'audits'], queryFn: () => listLocalAudits(database) });
   const resumable = (mine.data ?? []).find((audit) => audit.status === 'IN_PROGRESS' || audit.status === 'PAUSED');
@@ -177,11 +189,13 @@ export default function AuditsScreen() {
     <Screen>
       <Tabs.Screen
         options={{
-          headerRight: () => (
-            <View style={styles.tools}>
-              <HeaderAction testID="add-audit" title="+ Audit" accessibilityLabel="New audit" onPress={() => setAdding(true)} />
-            </View>
-          ),
+          // R-24: a Coordinator neither assigns nor runs an audit, so there is nothing to add.
+          headerRight: () =>
+            newAudit.length > 0 ? (
+              <View style={styles.tools}>
+                <HeaderAction testID="add-audit" title="+ Audit" accessibilityLabel="New audit" onPress={() => setAdding(true)} />
+              </View>
+            ) : null,
         }}
       />
       {board === 'ASSIGNED' ? (
@@ -205,15 +219,7 @@ export default function AuditsScreen() {
           refreshControl={refresh}
         />
       )}
-      <ActionSheet
-        visible={adding}
-        title="New audit"
-        onClose={() => setAdding(false)}
-        actions={[
-          { label: 'Assign to a consultant', detail: 'They run it on their phone', onPress: () => router.push('/manage/assign') },
-          { label: 'Start one myself', detail: 'Pick the Unit, then take the selfie', onPress: () => router.push('/units') },
-        ]}
-      />
+      <ActionSheet visible={adding} title="New audit" onClose={() => setAdding(false)} actions={newAudit} />
     </Screen>
   );
 }

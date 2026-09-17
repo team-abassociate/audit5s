@@ -1,0 +1,37 @@
+# What an EAS build uploads to Expo. When this file exists EAS ignores .gitignore, so every
+# rule from .gitignore is repeated here first.
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+.expo/
+apps/field-mobile/android/
+apps/field-mobile/ios/
+
+apps/admin-web/dist/
+
+test-results/
+playwright-report/
+
+infra/.local/
+pgdata/
+.data/
+
+.DS_Store
+apps/admin-web/.vite/
+.idea/
+.claude/
+
+# Never leaves this machine: the JWT signing keys, local logs and patches.
+*.pem
+*.key
+*.log
+build-log.txt
+seed-log.txt
+*.patch
