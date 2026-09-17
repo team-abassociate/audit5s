@@ -21,14 +21,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The OCI do-not-touch list (STACK.md §6). Using any of it voids the ~40-minute
-      # migration guarantee, so it fails the build rather than being caught in review.
-      - name: No OCI-specific SDKs or endpoints in application code
+      # The host do-not-touch list (STACK.md §6). Application code must never name the
+      # hosting provider: that is what preserves or voids the ~40-minute migration
+      # guarantee, so it fails the build rather than being caught in review. The Oracle
+      # → Hostinger move of 2026-09-17 changed infra, CI and docs and not one line under
+      # apps/ or packages/ — that is the property this step defends.
+      - name: No hosting-provider SDKs or endpoints in application code
         run: |
-          if grep -rInE 'oci-|oraclecloud\.com|@oracle/' apps/ packages/ \
+          if grep -rInE 'oci-|oraclecloud\.com|@oracle/|hostinger' apps/ packages/ \
                --include='*.ts' --include='*.tsx' --include='*.json' \
                --exclude-dir=node_modules --exclude-dir=dist; then
-            echo "::error::Found a reference to the OCI do-not-touch list (STACK.md §6)."
+            echo "::error::Found a hosting-provider reference (STACK.md §6: the host do-not-touch list)."
             exit 1
           fi
           echo "clean"
@@ -129,14 +132,14 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      # arm64 only: the target is an Oracle Ampere A1. Building amd64 too would double
-      # the build for an architecture nothing runs.
+      # amd64 only: the target is a Hostinger VPS KVM 2 (x86-64). Building arm64 too would
+      # double the build for an architecture nothing runs.
       - name: Build (no push on CI)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infra/docker/api.Dockerfile
-          platforms: linux/arm64
+          platforms: linux/amd64
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -18,7 +18,7 @@ open question to raise, not a gap to fill with invention (see §7).
 
 | File | What it is | How to treat it |
 | --- | --- | --- |
-| `STACK.md` | The Stack Decision Record: every technology choice, the six containers on one Oracle VM, Cloudflare R2/Pages/Tunnel, the "do not add" table, the OCI do-not-touch list, the 12-step build order, operational tripwires. | **Binding on every technology name.** Its §5 rules are non-negotiable. |
+| `STACK.md` | The Stack Decision Record: every technology choice, the six containers on one Hostinger VPS, Cloudflare R2/Pages/Tunnel, the "do not add" table, the host do-not-touch list, the 12-step build order, operational tripwires. | **Binding on every technology name.** Its §5 rules are non-negotiable. |
 | `DECISIONS.md` | Resolutions R-1 … R-5: document precedence, pg-boss as the only enqueue mechanism, scope-resolver enforcement, no encryption at rest on mobile, evidence redaction. | **Binding tie-breaker.** R-5's trigger carve-out and R-3a's index ship in the *first* migration. |
 | `ARCHITECTURE.md` | The approved blueprint: domain model, DB schema, authorization matrix, state machines, REST API, offline sync protocol, reporting pipeline, analytics, security, repo layout, 9-phase roadmap, tests, production checklist. Its body has been swept to match `STACK.md`; the change record sits at the top. | **Binding on every behaviour.** PART 1 settles vocabulary and every contradiction; PART 5 + PART 8 are the implementation contract; PART 9 is the mobile contract; PART 14 is your work plan. |
 | `docs/requirements/architecture-brief.md` | The business brief `ARCHITECTURE.md` was written against (roles, modules, invariants, deliverables). | Authoritative on intent where `ARCHITECTURE.md` is silent. Its technology list is superseded by `STACK.md`. |
@@ -348,7 +348,7 @@ Ask the user when you first need the answer; proceed with the stated default mea
 | # | Question | Default until answered |
 | --- | --- | --- |
 | Q1 | Firebase project for FCM (service-account credentials). | `PushChannel` adapter with a console/log implementation; in-app notifications fully working. WhatsApp/SMS stay interfaces only (`STACK.md`). |
-| Q2 | Oracle Cloud and Cloudflare account access, R2 bucket names, tunnel credentials, GHCR token — needed at `STACK.md` step 3 for `bootstrap.sh` and `deploy.yml`. | Write both against env vars and document every required secret in `infra/README.md`; do not stub a fake provider. |
+| Q2 | Hostinger and Cloudflare account access, R2 bucket names, tunnel credentials, GHCR token — needed at `STACK.md` step 3 for `bootstrap.sh` and `deploy.yml`. | Write both against env vars and document every required secret in `infra/README.md`; do not stub a fake provider. |
 | Q3 | Does the business accept the bootstrap-password-with-forced-reset recommendation (CH-1), or insist on the permanent phone-number password? | Bootstrap + forced reset (the adopted recommendation). |
 | Q4 | Initial Super Admin identity (name, phone, email) for the seed. | Read from env; fail loudly if unset. |
 | Q5 | Organization logo as a vector or high-resolution file (the PDFs embed a raster copy). | Extract the logo from `sample-zone-report.pdf` as a placeholder and flag it. |

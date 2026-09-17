@@ -57,7 +57,7 @@ const RETRYABLE = ['QUEUED', 'RENDERING', 'FAILED'] as const;
  *
  * **Never render inside an HTTP request** (STACK.md §5). `generate` freezes a payload and
  * returns `202`; a headless Chromium started on the request path would put a 1.5 GB
- * process behind a user's Generate button on a 12 GB box, which is how Postgres gets
+ * process behind a user's Generate button on an 8 GB box, which is how Postgres gets
  * OOM-killed.
  *
  * **Regeneration creates a version; nothing overwrites** (RS-1). `regenerate` is the same

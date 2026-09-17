@@ -2,7 +2,7 @@
 # plus the seed, so there is one domain implementation and one deployment artefact
 # (ARCHITECTURE.md PART 13, STACK.md §4).
 #
-# Built for linux/arm64: the target is an Oracle Ampere A1.
+# Built for linux/amd64: the target is a Hostinger VPS KVM 2 (x86-64).
 
 # ---- build ------------------------------------------------------------------
 FROM node:22-alpine AS build

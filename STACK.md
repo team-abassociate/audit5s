@@ -60,13 +60,13 @@ assumption.
 | Object storage | Cloudflare R2 via `@aws-sdk/client-s3`, endpoint from env var |
 | Push | Firebase Cloud Messaging, behind a `PushChannel` adapter |
 | WhatsApp / SMS | `NotificationChannel` interface; not wired at MVP |
-| Compute | Oracle Cloud Ampere A1, 2 OCPU / 12 GB, ap-mumbai-1, Pay-As-You-Go account |
+| Compute | Hostinger VPS KVM 2, 2 vCPU / 8 GB / 100 GB NVMe, x86-64 |
 | Static hosting | Cloudflare Pages (both web apps) |
 | Edge | Cloudflare free plan — DNS, TLS, WAF, rate limiting |
 | Ingress | Cloudflare Tunnel (cloudflared). No public inbound port on the origin. |
 | Backups | pgBackRest → R2: continuous WAL + daily incremental + weekly full, aes-256-cbc |
 | Monitoring | BetterStack free (uptime) + Sentry free (errors) + backup-age alarm |
-| CI/CD | GitHub Actions → buildx linux/arm64 → GHCR → `docker compose pull && up -d` |
+| CI/CD | GitHub Actions → buildx linux/amd64 → GHCR → `docker compose pull && up -d` |
 | Containers | Docker + Docker Compose, six services. **Not Kubernetes.** |
 | Infra as code | `docker-compose.yml` + `bootstrap.sh` in git. No Terraform. |
 
@@ -105,7 +105,7 @@ pure functions.
 
 ## 4. Where things run
 
-| Runs on the Oracle VM (Docker) | Lives in Cloudflare |
+| Runs on the Hostinger VPS (Docker) | Lives in Cloudflare |
 |---|---|
 | PostgreSQL 18 | R2: evidence photos, selfies |
 | NestJS API | R2: generated PDFs |
@@ -116,7 +116,7 @@ pure functions.
 Six containers, `mem_limit` on every one:
 
 ```
-postgres        postgres:18-alpine     4g      volume: pgdata (separate block volume)
+postgres        postgres:18-alpine     2560m   volume: pgdata (NVMe)
 api             ghcr.io/…:sha          768m    node dist/main
 worker-general  ghcr.io/…:sha          768m    node dist/worker.general
 worker-report   ghcr.io/…:sha          1536m   node dist/worker.report
@@ -219,16 +219,22 @@ Each of these has a defined trigger. Absent the trigger, adding it is strictly n
 | Vercel / Netlify | Never — Cloudflare Pages does this free |
 | iOS app | Android is validated with real auditors in a real plant |
 
-### The OCI do-not-touch list
+### The host do-not-touch list
 
-Using any of these voids the ~40-minute migration guarantee. Enforced by a CI grep for
-`oci-`, `oraclecloud.com` and `@oracle/` in `apps/` and `packages/`.
+The VM is cattle (§1), so **application code must never name the hosting provider.** That
+is what keeps a host migration a ~40-minute job instead of a refactor. The Oracle →
+Hostinger move of 2026-09-17 is the proof: it changed `infra/`, CI and these documents, and
+not one line under `apps/` or `packages/`.
 
-**Forbidden:** OCI Object Storage · Vault/KMS · Autonomous Database · Load Balancer · DNS ·
-OKE · Functions · Streaming · Email Delivery · Queue · API Gateway · any `oci-*` SDK or CLI
-call from application code · OCI-flavoured Terraform.
+Enforced by a CI grep and an ESLint `no-restricted-imports` rule for `oci-`,
+`oraclecloud.com`, `@oracle/` and `hostinger` in `apps/` and `packages/`.
 
-**Permitted:** a VM, a block volume, a VCN with a security list. Nothing else.
+**Forbidden from application code:** any provider SDK or CLI call · provider object storage
+· provider Vault/KMS · provider managed database · provider load balancer, DNS, functions,
+streaming, email, queue or API gateway · provider-flavoured Terraform.
+
+**Permitted from the provider:** a VM, a disk, and a firewall. Nothing else. Every durable
+byte lives in Cloudflare R2, which is deliberately not the compute provider.
 
 ---
 
@@ -279,15 +285,23 @@ Raise these to the owner rather than working around them:
 
 ## 9. Facts about the environment
 
-- Oracle silently halved the Always Free ARM allowance (4 OCPU/24 GB → 2 OCPU/12 GB) on
-  2026-06-15 with no announcement. Assume they will act unilaterally again.
-- The account **must** be Pay-As-You-Go with a hard budget alert at ₹100 and ₹500.
-  Always-Free-only instances are reclaimed when 7-day p95 CPU is under 20%; this workload
-  runs under 10%, so on a free-only account reclamation is scheduled, not risky.
-- Hetzner's shared-vCPU plans were unavailable as of 2026-09-04. Migration targets are
-  Netcup (~₹318), Contabo India (~₹399), DigitalOcean Bangalore, or Lightsail Mumbai.
-- Steady-state memory is ~4.0 GB; peak ~6.7 GB of 12 GB. Configure 4 GB of swap so spikes
+- **The host is a Hostinger VPS KVM 2**, not the Oracle Ampere A1 this document was
+  originally sized against (superseded 2026-09-17). Two consequences follow, and they are
+  the reason for every memory number below.
+- **x86-64, not ARM.** Images are built `linux/amd64`. An arm64 image will not run here.
+- **8 GB, not 12 GB.** Ubuntu 26.04.1 LTS reports 7.7 GiB total and 7.4 GiB available at
+  idle (393 MiB for the OS), measured on the host 2026-09-17. Container ceilings total
+  6272m (~6.1 GiB) against that 7.4 GiB, leaving ~1.3 GiB of headroom. Steady-state real allocation is ~2.5 GB;
+  the old "~4.0 GB steady / ~6.7 GB peak" figures counted Postgres page cache, which sits
+  inside the cgroup but is reclaimable. Keep 4 GB of swap and `vm.swappiness=10` so spikes
   degrade instead of OOM-killing Postgres.
+- **2 vCPU is less compute than Oracle's 2 OCPU**, which were physical cores. These are
+  shared threads. `worker-report` (headless Chromium, concurrency 1) is the container that
+  feels it; if renders start hitting the 120s job timeout, raise the timeout before
+  raising concurrency.
+- Migration targets if this host is outgrown: Netcup (~₹318), Contabo India (~₹399),
+  DigitalOcean Bangalore, or Lightsail Mumbai. Hetzner's shared-vCPU plans were
+  unavailable as of 2026-09-04.
 - R2 Class A operations are billed per million and multipart uploads generate more than
   expected. Set `archive_timeout` to 60s (not 5s) and use multipart only above ~8 MB.
 - A quarterly restore drill is mandatory: fresh VM at a different provider, restore using

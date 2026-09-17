@@ -514,7 +514,7 @@ flowchart TB
         WREPORT["worker-report<br/>headless Chromium, concurrency 1"]
     end
 
-    subgraph data["Data — one Oracle VM, Docker"]
+    subgraph data["Data — one Hostinger VPS, Docker"]
         PG[("PostgreSQL 18<br/>single instance, RLS enabled<br/>system of record + pg-boss job tables")]
         R2[("Cloudflare R2<br/>evidence · selfies · reports<br/>pgBackRest repository")]
     end

@@ -5,8 +5,9 @@ import { PASSWORD_REJECTION_MESSAGES } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 
 /**
- * Argon2id, tuned per ARCHITECTURE.md §12.1: m=64MiB, t=3, p=1 — roughly 250 ms on the
- * production Ampere hardware.
+ * Argon2id, tuned per ARCHITECTURE.md §12.1: m=64MiB, t=3, p=1. That was ~250 ms on the
+ * retired Ampere A1; the cost on the current x86-64 host has not been re-measured, and
+ * m=64MiB per concurrent hash is worth watching against the api container's 768m ceiling.
  *
  * These parameters are the security control, not a default to leave alone: a test asserts
  * them, so lowering them to speed up a test suite fails CI rather than silently weakening

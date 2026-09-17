@@ -45,7 +45,7 @@ export class ReportWorker {
           await this.handle(job.data);
         }
       },
-      // Concurrency 1: a second headless Chromium on a 12 GB box is how Postgres gets
+      // Concurrency 1: a second headless Chromium on an 8 GB box is how Postgres gets
       // OOM-killed (STACK.md §5).
       { batchSize: 1 },
     );

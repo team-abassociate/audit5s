@@ -550,8 +550,11 @@ front of every object. Being pure and IO-free, it lives in `domain` beside `snif
 and is tested against hand-built adversarial files.
 
 **The thumbnail uses `jimp`.** A resample needs a real codec, and `jimp` is pure
-JavaScript: no native toolchain, no per-platform prebuilt binaries, and therefore nothing
-that can fail on the `linux/arm64` image the deploy builds for an Ampere A1. `sharp` is
+JavaScript: no native toolchain and no per-platform prebuilt binaries to go wrong in the
+image the deploy builds. (This argument was originally written against `linux/arm64` on an
+Ampere A1, where `sharp`'s prebuilts were the weaker case; the host is now x86-64, so the
+platform half of the reasoning is thinner, and the decision rests on the volume below.)
+`sharp` is
 faster and is the obvious choice at volume; the volume here is ~200 photographs a day
 (`STACK.md` §5 sizes the whole queue at ~200 jobs/day), which is three orders of magnitude
 short of making the difference matter. **The trigger for revisiting it** is the media queue

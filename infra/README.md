@@ -1,6 +1,6 @@
 # Infrastructure
 
-One Oracle Cloud Ampere A1 (2 OCPU / 12 GB, `ap-mumbai-1`), six Docker containers, and
+One Hostinger VPS KVM 2 (2 vCPU / 8 GB / 100 GB NVMe, x86-64), six Docker containers, and
 Cloudflare in front. `STACK.md` is the decision record; this file is the operating manual.
 
 There is **one environment**. Migrations are files in git applied by CI, never
@@ -84,6 +84,7 @@ next use. That is the intended emergency lever.
 | `CLOUDFLARE_TUNNEL_TOKEN` | cloudflared dials out; there is no public inbound port on the origin. |
 | `CORS_ORIGINS` | Comma-separated allow-list. No wildcard. |
 | `API_IMAGE` | GHCR image reference, pinned to a commit SHA rather than `latest`. |
+| `PGBACKREST_IMAGE` | The pgBackRest image. Pinned, for the same reason. |
 
 ### Seed and integrations
 
@@ -93,7 +94,7 @@ next use. That is the intended emergency lever.
 | `SENTRY_DSN` | Optional. |
 | `FCM_SERVICE_ACCOUNT_JSON_B64` | Optional until Phase 6. Absent, the push adapter logs instead of sending (Q1). |
 
-> **Not yet supplied.** Open questions Q2 (Oracle/Cloudflare account access, bucket names,
+> **Not yet supplied.** Open questions Q2 (Hostinger/Cloudflare account access, bucket names,
 > tunnel credentials, GHCR token) and Q5 (a vector logo) are still outstanding. Everything
 > above is written against environment variables so nothing is blocked on them, and no fake
 > provider is stubbed in their place.

@@ -72,9 +72,10 @@ list; this is the subset that most often gets quietly violated.
 - **The "do not add" table** (`STACK.md` §6) — Redis, Kubernetes, Kafka, Turborepo, GraphQL,
   managed auth, SSR, and others. Each has a defined trigger. Absent the trigger, adding it
   is strictly negative. **If a task requires one of these, stop and ask.**
-- **The OCI do-not-touch list** (`STACK.md` §6) — a CI grep for `oci-`, `oraclecloud.com`
-  and `@oracle/` in `apps/` and `packages/` enforces it. Permitted: a VM, a block volume,
-  a VCN with a security list. Nothing else.
+- **The host do-not-touch list** (`STACK.md` §6) — application code never names the
+  hosting provider. A CI grep and an ESLint rule for `oci-`, `oraclecloud.com`, `@oracle/`
+  and `hostinger` in `apps/` and `packages/` enforce it. Permitted from the provider: a VM,
+  a disk, a firewall. Nothing else.
 
 ## Build order
 

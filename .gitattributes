@@ -1,0 +1,15 @@
+# Line endings are normalised in the repository and checked out LF-first.
+#
+# infra/bootstrap.sh and the pgbackrest scripts run on the Linux host, where a CRLF
+# checkout breaks the shebang line. `core.autocrlf` is per-machine and cannot be relied
+# on across clones, so the rule lives here, in the repository, where it binds every one.
+
+* text=auto eol=lf
+
+*.sh          text eol=lf
+crontab       text eol=lf
+*.Dockerfile  text eol=lf
+
+*.png  binary
+*.pdf  binary
+*.xlsx binary

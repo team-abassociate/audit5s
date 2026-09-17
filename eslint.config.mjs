@@ -37,12 +37,16 @@ export default tseslint.config(
       eqeqeq: ['error', 'always'],
       'no-console': ['error', { allow: ['warn', 'error'] }],
       'no-restricted-syntax': ['error', ...drizzleOutsideRepository],
-      // The OCI do-not-touch list (STACK.md §6). CI greps as well; this catches it earlier.
+      // The host do-not-touch list (STACK.md §6). CI greps as well; this catches it earlier.
       'no-restricted-imports': [
         'error',
         {
           patterns: [
-            { group: ['oci-*', '@oracle/*'], message: 'STACK.md §6: the OCI do-not-touch list.' },
+            {
+              group: ['oci-*', '@oracle/*', 'hostinger*', '@hostinger/*'],
+              message:
+                'STACK.md §6: the host do-not-touch list — application code never names the hosting provider.',
+            },
           ],
         },
       ],

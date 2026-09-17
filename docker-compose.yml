@@ -1,7 +1,9 @@
-# The six production services (STACK.md §4). One Oracle Ampere A1, 2 OCPU / 12 GB.
+# The six production services (STACK.md §4). One Hostinger VPS KVM 2, 2 vCPU / 8 GB.
 #
-# Every service carries a mem_limit: steady state is ~4.0 GB and peak ~6.7 GB, and the
-# limits are what keep a runaway report render from taking Postgres down with it.
+# Every service carries a mem_limit. The ceilings total 6272m (~6.1 GiB) against ~7.4 GiB
+# usable on an 8 GB host, and they are what keep a runaway report render from taking
+# Postgres down with it. Steady state is ~2.5 GB of real allocation; most of the rest is
+# reclaimable page cache, which counts against a cgroup but is handed back under pressure.
 #
 # No nginx and no Caddy — Cloudflare terminates TLS and cloudflared dials the api
 # container directly, so there is no public inbound port on the origin.
@@ -39,7 +41,10 @@ services:
   postgres:
     image: postgres:18-alpine
     restart: unless-stopped
-    mem_limit: 4g
+    # 2560m, not 4g: on an 8 GB host the six ceilings must not over-commit the box.
+    # Postgres needs ~600 MB of real allocation; the rest of this is page cache, which
+    # counts against the cgroup but is reclaimable (STACK.md §9).
+    mem_limit: 2560m
     shm_size: 256m
     environment:
       POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
@@ -64,8 +69,21 @@ services:
       - archive_timeout=60
       - -c
       - wal_level=replica
+      # Sized for the 8 GB box rather than left on defaults. effective_cache_size must
+      # describe the cache this cgroup can actually hold (mem_limit minus shared_buffers),
+      # or the planner over-favours index scans against a cache that is not there.
       - -c
-      - max_connections=100
+      - shared_buffers=640MB
+      - -c
+      - effective_cache_size=1920MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=128MB
+      # 40, not 100: the worst case is max_connections x work_mem held in sort memory, and
+      # with 2 vCPU the API pool, the two workers and pg-boss need about 30 between them.
+      - -c
+      - max_connections=40
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_SUPERUSER:-postgres} -d audit5s']
       interval: 10s

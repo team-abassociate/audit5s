@@ -54,8 +54,8 @@ export class ReportsController {
 
   /**
    * `202`, never `200` with a PDF. The render happens in `worker-report`; an HTTP request
-   * that started a headless Chromium would put a 1.5 GB process behind a button on a
-   * 12 GB box (STACK.md §5).
+   * that started a headless Chromium would put a 1.5 GB process behind a button on an
+   * 8 GB box (STACK.md §5).
    */
   @RequirePermission('report', 'generate')
   @Scope({ intent: 'write' })

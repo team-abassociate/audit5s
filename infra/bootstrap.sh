@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# One-shot provisioning for a fresh Oracle Ampere A1 host.
+# One-shot provisioning for a fresh Hostinger VPS KVM 2 host (2 vCPU / 8 GB / NVMe).
 #
 # It is idempotent: running it twice is safe, and that matters because it doubles as the
 # recovery script. The quarterly restore drill (STACK.md §9) rebuilds a host at a
@@ -33,6 +33,12 @@ else
   echo "swap already present"
 fi
 
+# Swap is the shock absorber for worker-report's render spikes, but Postgres must not be
+# paged out to reach it. 10, not the default 60 (STACK.md §9).
+log "Setting vm.swappiness"
+sysctl -w vm.swappiness=10 >/dev/null
+grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
+
 # --- 2. Docker ----------------------------------------------------------------
 log "Installing Docker"
 if ! command -v docker >/dev/null 2>&1; then
@@ -45,15 +51,34 @@ fi
 # --- 3. Firewall --------------------------------------------------------------
 # No public inbound port on the origin: cloudflared dials out, nothing dials in.
 # This is the whole reason there is no nginx and no exposed 443 (STACK.md §4).
+#
+# ufw, not raw iptables. Ubuntu 26.04 dropped `iptables-persistent` (verified on
+# the host 2026-09-17: `apt-cache policy` reports no candidate), so hand-written
+# iptables rules have nothing to save them across a reboot. ufw is in the base
+# image, persists through its own systemd unit, and covers IPv4 and IPv6 in one
+# pass instead of two parallel rule sets that can drift apart.
+#
+# The usual ufw-versus-Docker caveat does not apply here: Docker bypasses ufw
+# only for *published* ports, and docker-compose.yml publishes none. Every
+# container is reachable solely on the compose network, which is the design.
 log "Locking down inbound traffic"
-if command -v iptables >/dev/null 2>&1; then
-  iptables -P INPUT DROP
-  iptables -A INPUT -i lo -j ACCEPT
-  iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-  # SSH stays open; Oracle's own security list is the second layer.
-  iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-  command -v netfilter-persistent >/dev/null 2>&1 && netfilter-persistent save || true
-fi
+
+command -v apt-get >/dev/null 2>&1 || die "This script targets Ubuntu/Debian (STACK.md §9)."
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq ufw >/dev/null
+
+# Staged first, activated last. ufw holds rules until `enable` applies them as a
+# set, so SSH is never briefly denied the way a raw `-P INPUT DROP` does it.
+ufw default deny incoming
+ufw default allow outgoing
+# SSH stays open; Hostinger's own VPS firewall is the second layer.
+ufw allow 22/tcp comment 'ssh'
+ufw --force enable
+
+ufw status verbose
+log "Firewall active and enabled at boot; no inbound port but 22"
 
 # --- 4. Pull and start --------------------------------------------------------
 log "Starting services"
