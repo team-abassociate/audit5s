@@ -10,7 +10,25 @@
       "ES2023"
     ],
     "strictPropertyInitialization": false,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    /*
+     * No declaration emit. This is an application — three entrypoints run as
+     * `node dist/main.js` — and nothing in the workspace imports `@audit5s/api` for its
+     * types, so a `.d.ts` beside every file was output nobody read.
+     *
+     * It was also breaking CI. The `acceptance-phase*.e2e` suites deliberately import
+     * `apps/field-mobile`'s real repositories, so those files compile as part of this
+     * project; their Drizzle types resolve `drizzle-orm/sqlite-core` through
+     * `apps/api/node_modules`, and pnpm gives each package its own copy. Declaration emit
+     * then has to write a type whose only name is a path reaching into another package's
+     * `node_modules`, which is TS2742 — thirty of them, failing `pnpm -r typecheck` before
+     * CI ever reached the migrations. It passed locally only because a hoisted layout
+     * happened to make that path nameable.
+     *
+     * `packages/*` are libraries and keep declarations on; this turns them off only here.
+     */
+    "declaration": false,
+    "declarationMap": false
   },
   "include": [
     "src/**/*.ts",
