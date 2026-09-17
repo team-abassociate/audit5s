@@ -16,9 +16,9 @@
 -- may see. Any future code that reads `industry_id` to decide access is reading it wrong.
 --
 -- Both pointers are nullable, and deliberately so:
---   * A template with no industry is offered everywhere. That is what every existing row
---     becomes at the bottom of this file but one, and it is the honest default for a
---     checklist nobody has classified yet.
+--   * A template with no industry is offered everywhere, and that is the honest default
+--     for a checklist nobody has classified yet. The existing rows are tagged below,
+--     because they are all one sector and saying so is a statement of fact.
 --   * A Unit with no industry is offered everything, which is exactly today's behaviour.
 -- Making either NOT NULL would mean inventing an answer for rows that predate the
 -- question.
@@ -67,24 +67,13 @@ COMMENT ON COLUMN unit.industry_id IS
   'Which sector this Unit operates in, narrowing the checklists its audits offer. NULL '
   'means no narrowing. Never consulted for authorization.';
 
--- --- RLS ---------------------------------------------------------------------
---
--- Read is deliberately broad, exactly as `checklist_template_select` is (D2): the list of
--- sectors carries no Unit-identifying data, every field client caches it offline, and a
--- Consultant has to see the label on the catalogue they are already allowed to read.
--- Writing is a Super Admin's, like every other piece of organization-wide reference data.
-ALTER TABLE industry ENABLE ROW LEVEL SECURITY;
-ALTER TABLE industry FORCE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE ON industry TO audit5s_app;
-
-CREATE POLICY industry_select ON industry FOR SELECT
-  USING (app_actor_id() IS NOT NULL);
-CREATE POLICY industry_insert ON industry FOR INSERT
-  WITH CHECK (app_is_super_admin());
-CREATE POLICY industry_update ON industry FOR UPDATE
-  USING (app_is_super_admin());
-
 -- --- The sector this product already sells to ---------------------------------
+--
+-- **Before RLS is enabled below, and that ordering is load-bearing.** `FORCE ROW LEVEL
+-- SECURITY` applies policies to the table's owner as well, and a migration runs as the
+-- owner with no actor context — so `app_is_super_admin()` is false and `industry_insert`
+-- refuses this row. Seeding first is the fix; the alternative is a definer function for a
+-- statement that runs exactly once.
 --
 -- Named here rather than left to a seed script: every template in the catalogue today is
 -- an engineering department, and a deployment that migrates without this would show an
@@ -105,3 +94,20 @@ ON CONFLICT DO NOTHING;
 UPDATE checklist_template
    SET industry_id = (SELECT id FROM industry WHERE code = 'ENGINEERING')
  WHERE industry_id IS NULL;
+
+-- --- RLS ---------------------------------------------------------------------
+--
+-- Read is deliberately broad, exactly as `checklist_template_select` is (D2): the list of
+-- sectors carries no Unit-identifying data, every field client caches it offline, and a
+-- Consultant has to see the label on the catalogue they are already allowed to read.
+-- Writing is a Super Admin's, like every other piece of organization-wide reference data.
+ALTER TABLE industry ENABLE ROW LEVEL SECURITY;
+ALTER TABLE industry FORCE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE ON industry TO audit5s_app;
+
+CREATE POLICY industry_select ON industry FOR SELECT
+  USING (app_actor_id() IS NOT NULL);
+CREATE POLICY industry_insert ON industry FOR INSERT
+  WITH CHECK (app_is_super_admin());
+CREATE POLICY industry_update ON industry FOR UPDATE
+  USING (app_is_super_admin());
