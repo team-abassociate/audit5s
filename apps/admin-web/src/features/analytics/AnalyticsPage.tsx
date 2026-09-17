@@ -24,7 +24,6 @@ import type {
   ClosureAnalytics,
   CorrectiveAction,
   OrganizationOverview,
-  RecurrentNonconformity,
   Unit,
   UnitSections,
   User,
@@ -191,6 +190,24 @@ function UnitDashboard({ unitId }: { unitId: string }) {
   const [auditId, setAuditId] = useState('');
   const chosen = completed.find((row) => row.audit.id === auditId) ?? completed[completed.length - 1] ?? null;
 
+  /** `''` is the whole audit. A Zone code only means anything inside the audit that covered it. */
+  const [zoneCode, setZoneCode] = useState('');
+
+  /**
+   * The chosen audit's Zones, read here so the Zone picker can sit beside the Audit picker
+   * rather than halfway down the panel. `AuditPanel` issues the identical query, so this
+   * costs one cache read rather than a second request.
+   */
+  const summary = useQuery({
+    queryKey: ['audit', chosen?.audit.id ?? '', 'summary'],
+    queryFn: () => api.get<AuditScoreSummary>(`/audits/${chosen!.audit.id}/summary`),
+    enabled: chosen !== null,
+  });
+  const zones = useMemo(
+    () => (summary.data?.zones ?? []).filter((zone) => zone.status === 'COMPLETED'),
+    [summary.data],
+  );
+
   if (audits.isLoading) return <Spinner label="Loading Unit dashboard…" />;
   if (audits.error) return <ErrorNotice error={audits.error} />;
 
@@ -208,9 +225,30 @@ function UnitDashboard({ unitId }: { unitId: string }) {
               {completed.length > 0 ? (
                 <div className="w-72">
                   <Field label="Audit">
-                    <Select value={chosen?.audit.id ?? ''} onChange={(event) => setAuditId(event.target.value)}>
+                    <Select
+                      value={chosen?.audit.id ?? ''}
+                      onChange={(event) => {
+                        setAuditId(event.target.value);
+                        // The code is only meaningful within the audit that showed it.
+                        setZoneCode('');
+                      }}
+                    >
                       {[...completed].reverse().map((row) => (
                         <option key={row.audit.id} value={row.audit.id}>{auditLabel(row)}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              ) : null}
+              {chosen && zones.length > 0 ? (
+                <div className="w-64">
+                  <Field label="Zone">
+                    <Select value={zoneCode} onChange={(event) => setZoneCode(event.target.value)}>
+                      <option value="">{`Whole audit · ${zones.length} zones`}</option>
+                      {zones.map((zone) => (
+                        <option key={zone.zoneCode} value={zone.zoneCode}>
+                          {`${zone.zoneName} (${zone.zoneCode})`}
+                        </option>
                       ))}
                     </Select>
                   </Field>
@@ -221,7 +259,7 @@ function UnitDashboard({ unitId }: { unitId: string }) {
         />
       </Card>
 
-      {chosen ? <AuditPanel key={chosen.audit.id} row={chosen} /> : null}
+      {chosen ? <AuditPanel key={chosen.audit.id} row={chosen} zoneCode={zoneCode} /> : null}
 
       <ScoreTrendCard audits={scored} />
 
@@ -234,8 +272,12 @@ function UnitDashboard({ unitId }: { unitId: string }) {
  * One audit on its own terms: its score, how many Zones it covered, how many
  * nonconformities it raised, and how many of those are closed — as a count, because
  * "3/5" is what a Coordinator chases, not "60%".
+ *
+ * With `zoneCode` set, the same panel narrows to that one Zone of the same audit: its own
+ * score, its own S-wise breakdown, and only the findings raised in it. Every figure is
+ * still the server's — narrowing only picks a different number the server already sent.
  */
-function AuditPanel({ row }: { row: NumberedAudit }) {
+function AuditPanel({ row, zoneCode }: { row: NumberedAudit; zoneCode: string }) {
   const token = useToken();
   const summary = useQuery({
     queryKey: ['audit', row.audit.id, 'summary'],
@@ -252,19 +294,25 @@ function AuditPanel({ row }: { row: NumberedAudit }) {
   if (!summary.data) return null;
 
   const zones = summary.data.zones.filter((zone) => zone.status === 'COMPLETED');
-  const raised = actions.data ?? [];
+  /** The chosen Zone, or `null` for the whole audit. An unknown code reads as the whole audit. */
+  const zone = zones.find((candidate) => candidate.zoneCode === zoneCode) ?? null;
+
+  const allRaised = actions.data ?? [];
+  const raised = zone ? allRaised.filter((action) => action.zoneCode === zone.zoneCode) : allRaised;
   const closed = raised.filter((action) => action.status === 'VERIFIED').length;
 
+  /** The ranking is the audit's whole point of comparison, so it is never narrowed — the
+      chosen Zone is highlighted within it instead, which is what makes it a ranking. */
   const zoneRows = zones
-    .map((zone) => ({
-      zone: zone.zoneCode,
-      name: zone.zoneName,
-      score: zone.totals.scorePercentage,
-      applicable: zone.totals.applicableQuestions,
-      na: zone.totals.naQuestions,
+    .map((candidate) => ({
+      zone: candidate.zoneCode,
+      name: candidate.zoneName,
+      score: candidate.totals.scorePercentage,
+      applicable: candidate.totals.applicableQuestions,
+      na: candidate.totals.naQuestions,
     }))
     .sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
-  const sectionRows = summary.data.audit.sections.map((section) => ({
+  const sectionRows = (zone ?? summary.data.audit).sections.map((section) => ({
     section: SECTION_LABELS[section.section] ?? section.section,
     score: section.pct,
     raw: section.raw,
@@ -272,11 +320,20 @@ function AuditPanel({ row }: { row: NumberedAudit }) {
     na: section.na,
   }));
 
+  const scope = zone ? `${zone.zoneName} · audit ${row.number}` : `audit ${row.number}`;
+
   return (
     <div className="space-y-4">
       <Kpis values={[
-        ['Audit score', summary.data.scored ? pct(summary.data.audit.totals.scorePercentage) : 'Walk-by'],
-        ['Zones audited', zones.length],
+        [
+          zone ? 'Zone score' : 'Audit score',
+          summary.data.scored
+            ? pct((zone ?? summary.data.audit).totals.scorePercentage)
+            : 'Walk-by',
+        ],
+        zone
+          ? ['Questions scored', zone.totals.applicableQuestions]
+          : ['Zones audited', zones.length],
         ['Nonconformities', raised.length],
         ['Closure', `${closed}/${raised.length}`],
       ]} />
@@ -289,14 +346,24 @@ function AuditPanel({ row }: { row: NumberedAudit }) {
               <XAxis dataKey="zone" stroke={token('--ink-3')} interval={0} />
               <YAxis domain={[0, 100]} stroke={token('--ink-3')} />
               <Tooltip contentStyle={TOOLTIP} />
+              {/* The chosen Zone keeps its band colour — the band is what the colour means
+                  (non-negotiable 7) — and is marked by an ink outline instead, so the
+                  highlight reads without relying on colour at all. */}
               <Bar dataKey="score" name="Score %">
-                {zoneRows.map((zone) => <Cell key={zone.zone} fill={token(BAND_TOKEN[bandOf(zone.score)])} />)}
+                {zoneRows.map((candidate) => (
+                  <Cell
+                    key={candidate.zone}
+                    fill={token(BAND_TOKEN[bandOf(candidate.score)])}
+                    stroke={candidate.zone === zone?.zoneCode ? token('--ink') : undefined}
+                    strokeWidth={candidate.zone === zone?.zoneCode ? 2 : 0}
+                  />
+                ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </DatasetCard>
 
-        <DatasetCard title={`S-wise score · audit ${row.number}`} rows={sectionRows} filename="section-scores.csv">
+        <DatasetCard title={`S-wise score · ${scope}`} rows={sectionRows} filename="section-scores.csv">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={sectionRows} margin={{ bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={token('--edge-soft')} />
@@ -373,16 +440,15 @@ function ScoreTrendCard({ audits }: { audits: NumberedAudit[] }) {
   );
 }
 
-/** The Unit's longer view: where it stands against its last cycle, and what keeps failing. */
+/** The Unit's longer view: where it stands against its last cycle, and how findings close. */
 function UnitContext({ unitId }: { unitId: string }) {
   const token = useToken();
   const sections = useQuery({ queryKey: ['analytics', unitId, 'sections'], queryFn: () => api.get<UnitSections>(`/analytics/units/${unitId}/sections`) });
-  const recurrence = useQuery({ queryKey: ['analytics', unitId, 'recurrence'], queryFn: () => api.get<RecurrentNonconformity[]>(`/analytics/units/${unitId}/nonconformities/recurrent`) });
   const closure = useQuery({ queryKey: ['analytics', unitId, 'closure'], queryFn: () => api.get<ClosureAnalytics>(`/analytics/corrective-actions/closure?unitId=${unitId}`) });
-  if ([sections, recurrence, closure].some((query) => query.isLoading)) return <Spinner label="Loading Unit context…" />;
-  const error = [sections, recurrence, closure].find((query) => query.error)?.error;
+  if ([sections, closure].some((query) => query.isLoading)) return <Spinner label="Loading Unit context…" />;
+  const error = [sections, closure].find((query) => query.error)?.error;
   if (error) return <ErrorNotice error={error} />;
-  if (!sections.data || !recurrence.data || !closure.data) return null;
+  if (!sections.data || !closure.data) return null;
 
   const radarRows = sections.data.radar.map((row) => ({ section: SECTION_LABELS[row.section], current: row.currentScorePercentage, previous: row.previousScorePercentage, samples: row.sampleCount }));
   // A Unit audited once has nothing to compare against, so the second ring is not drawn and
@@ -393,7 +459,6 @@ function UnitContext({ unitId }: { unitId: string }) {
     { stage: 'Submitted', count: closure.data.submitted },
     { stage: 'Verified', count: closure.data.resolved },
   ];
-  const recurrentRows = recurrence.data.map((row) => ({ zone: `${row.zoneCode} · ${row.zoneName}`, section: SECTION_LABELS[row.section], question: row.questionText, failures: row.failureCount, lastSeen: new Date(row.lastSeenAt).toLocaleDateString() }));
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -431,7 +496,6 @@ function UnitContext({ unitId }: { unitId: string }) {
         </ResponsiveContainer>
       </DatasetCard>
 
-      <DatasetCard title="Recurrent nonconformities" rows={recurrentRows} filename="recurrent-nonconformities.csv" />
     </div>
   );
 }

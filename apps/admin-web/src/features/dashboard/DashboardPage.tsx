@@ -77,6 +77,13 @@ export function DashboardPage() {
    * Both are the server's; picking between them is the one thing this control does.
    */
   const [scoreAuditId, setScoreAuditId] = useState('');
+  /**
+   * Which Zone of the chosen audit the score tile reports, `''` meaning the audit as a
+   * whole. Only ever set while an audit is chosen — "Zone A of the weighted period" is not
+   * a figure the server computes and not one this page may invent, so picking an audit is
+   * what makes the Zone control appear at all.
+   */
+  const [scoreZoneCode, setScoreZoneCode] = useState('');
 
   const units = useQuery({
     queryKey: ['units'],
@@ -207,11 +214,36 @@ export function DashboardPage() {
     [audits.data],
   );
   const chosenAudit = scorable.find((audit) => audit.id === scoreAuditId) ?? null;
-  // The audit's own total, as the server recomputed it on completion — not a figure this
-  // page works out, which is the rule the whole board follows (§3).
-  const unitScore = chosenAudit
-    ? chosenAudit.totals.scorePercentage
-    : (overview.data?.score.scorePercentage ?? null);
+
+  /**
+   * The chosen audit's per-Zone breakdown.
+   *
+   * `summaries` above only covers the last five audits, and the Score control lists every
+   * scored audit in the period, so a sixth-newest pick would otherwise have no zones to
+   * offer. Same query key as `summaries` uses, so choosing one of the recent five is served
+   * from cache rather than refetched.
+   */
+  const chosenSummary = useQuery({
+    queryKey: ['audit', scoreAuditId, 'summary'],
+    queryFn: () => api.get<AuditScoreSummary>(`/audits/${scoreAuditId}/summary`),
+    enabled: chosenAudit !== null,
+  });
+
+  /** Only the Zones this audit actually covered, and only those it finished scoring. */
+  const scorableZones = useMemo(
+    () => (chosenSummary.data?.zones ?? []).filter((zone) => zone.status === 'COMPLETED'),
+    [chosenSummary.data],
+  );
+  const chosenZone = scorableZones.find((zone) => zone.zoneCode === scoreZoneCode) ?? null;
+
+  // Every figure here is the server's, recomputed on completion — never one this page works
+  // out, which is the rule the whole board follows (§3). Narrowing from period → audit →
+  // Zone only ever picks a different server-supplied number.
+  const unitScore = chosenZone
+    ? chosenZone.totals.scorePercentage
+    : chosenAudit
+      ? chosenAudit.totals.scorePercentage
+      : (overview.data?.score.scorePercentage ?? null);
 
   const error = [units, overview, ranking, trend, zones, audits, actions].find((query) => query.error)
     ?.error;
@@ -258,7 +290,13 @@ export function DashboardPage() {
           <select
             id="gb-score"
             value={scoreAuditId}
-            onChange={(event) => setScoreAuditId(event.target.value)}
+            onChange={(event) => {
+              setScoreAuditId(event.target.value);
+              // A Zone code is only meaningful within the audit that was showing it. Left
+              // set, picking a second audit would either read a same-coded Zone it never
+              // covered or silently fall back to the audit total.
+              setScoreZoneCode('');
+            }}
           >
             <option value="">Weighted, all audits</option>
             {scorable.map((audit, index) => (
@@ -268,6 +306,34 @@ export function DashboardPage() {
             ))}
           </select>
         </div>
+
+        {/* Only the Zones that audit covered, and only once an audit is chosen. */}
+        {chosenAudit ? (
+          <div className="gb-sel">
+            <label className="gb-label" htmlFor="gb-score-zone">
+              Zone
+            </label>
+            <select
+              id="gb-score-zone"
+              value={scoreZoneCode}
+              onChange={(event) => setScoreZoneCode(event.target.value)}
+              disabled={chosenSummary.isLoading || scorableZones.length === 0}
+            >
+              <option value="">
+                {chosenSummary.isLoading
+                  ? 'Loading zones…'
+                  : scorableZones.length === 0
+                    ? 'No scored zones'
+                    : `Whole audit · ${scorableZones.length} zones`}
+              </option>
+              {scorableZones.map((zone) => (
+                <option key={zone.zoneCode} value={zone.zoneCode}>
+                  {`${zone.zoneName} (${zone.zoneCode})`}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="gb-pill">
           <i />
           Last sync <span className="gb-data">{lastSync(overview.dataUpdatedAt, unitName?.timezone)}</span>
@@ -339,12 +405,14 @@ export function DashboardPage() {
               its own tile beside this one. Only the band word stays, because it is what the
               tile's colour means. */}
           <Kpi
-            label={chosenAudit ? 'Audit score' : 'Unit score'}
+            label={chosenZone ? 'Zone score' : chosenAudit ? 'Audit score' : 'Unit score'}
             value={score2(unitScore)}
             context={
-              chosenAudit
-                ? `${bandLabel(unitScore)} · ${chosenAudit.auditorName} · ${formatDate(chosenAudit.completedAt)}`
-                : bandLabel(unitScore)
+              chosenZone
+                ? `${bandLabel(unitScore)} · ${chosenZone.zoneName} · ${formatDate(chosenAudit!.completedAt)}`
+                : chosenAudit
+                  ? `${bandLabel(unitScore)} · ${chosenAudit.auditorName} · ${formatDate(chosenAudit.completedAt)}`
+                  : bandLabel(unitScore)
             }
             band={bandOf(unitScore)}
           />

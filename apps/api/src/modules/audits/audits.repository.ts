@@ -458,9 +458,11 @@ export class AuditsRepository extends BaseRepository {
           // `zone_leader_name_snapshot` empty on every audit Zone a Consultant added. The
           // definer function returns the display name alone, and only inside the caller's
           // own Units (0008, DECISIONS.md R-12f).
+          // Coalesced with the typed fallback (0015) so a Zone led by someone without an
+          // account snapshots that person's name rather than a NULL.
           zoneLeaderName: sql<
             string | null
-          >`app_zone_leader_name(${zones.unitId}, ${zones.zoneLeaderId})`,
+          >`COALESCE(app_zone_leader_name(${zones.unitId}, ${zones.zoneLeaderId}), ${zones.zoneLeaderName})`,
           archivedAt: zones.archivedAt,
         })
         .from(zones)
@@ -498,6 +500,37 @@ export class AuditsRepository extends BaseRepository {
       `);
       const row = result.rows[0] as { ensured_zone_id: string; was_created: boolean } | undefined;
       return row ? { zoneId: row.ensured_zone_id, created: row.was_created } : null;
+    });
+  }
+
+  /**
+   * The typed Zone leader, written back to the Zone itself (0015).
+   *
+   * Without this the name reached the audit snapshot and nowhere else, so every board kept
+   * reading "Leader unassigned" over an audit that plainly named someone.
+   *
+   * The scope lives in `app_set_zone_leader_name` for the same reason `ensureZoneForAudit`
+   * puts it in the function: `zone_update` admits only a Coordinator or Super Admin, and
+   * the auditor is neither. The function is narrower than that policy — the caller's own
+   * open audit, a Zone of that audit's Unit — and answers NULL rather than raising when it
+   * does not hold.
+   *
+   * Returns the name now effective for the Zone, which is the **account's** name whenever
+   * one is assigned: an assigned Zone Leader is never displaced by a typed string.
+   */
+  async setZoneLeaderName(
+    scope: ScopeContext,
+    input: { auditId: string; zoneId: string; name: string | null },
+  ): Promise<string | null> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const result = await tx.execute(sql<{ effective_name: string | null }>`
+        SELECT app_set_zone_leader_name(
+          ${input.auditId}::uuid, ${input.zoneId}::uuid, ${input.name}
+        ) AS effective_name
+      `);
+      const row = result.rows[0] as { effective_name: string | null } | undefined;
+      return row?.effective_name ?? null;
     });
   }
 

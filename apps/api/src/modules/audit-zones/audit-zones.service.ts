@@ -106,9 +106,37 @@ export class AuditZonesService {
     // A walk-by's leader account (§2.7 step 4) wins; otherwise the typed name (R-19), and
     // failing both, the Zone's own leader.
     const account = await this.resolveWalkByLeader(scope, audit, request);
+
+    /**
+     * The typed name is written back to the Zone before the snapshot is taken (0015).
+     *
+     * Order matters. `zone` was read before this, so it still carries the leader as it was;
+     * writing first and snapshotting the *result* means the audit records the name the Zone
+     * now shows, rather than the two disagreeing by one write.
+     *
+     * The function refuses silently — a closed audit, someone else's audit, a Zone in
+     * another Unit — and a refusal is not an error here. It only means the Zone keeps the
+     * leader it had, which is exactly what the snapshot below then records. The audit is
+     * never blocked over a display field.
+     *
+     * Skipped entirely for a walk-by that resolved a real leader account: that path already
+     * names a user, and `app_set_zone_leader_name` would decline to overwrite one anyway.
+     */
+    let zoneLeaderName = zone?.zoneLeaderName ?? null;
+    if (!account && request.zoneLeaderName?.trim() && zone) {
+      zoneLeaderName = await this.repository.setZoneLeaderName(scope, {
+        auditId,
+        zoneId,
+        name: request.zoneLeaderName,
+      });
+    }
+
     const leader = account
       ? { userId: account.id, name: account.fullName }
-      : zoneLeaderSnapshot(zone, request.zoneLeaderName);
+      : zoneLeaderSnapshot(
+          zone ? { zoneLeaderId: zone.zoneLeaderId, zoneLeaderName } : null,
+          request.zoneLeaderName,
+        );
 
     const snapshot: ZoneSnapshot = {
       zoneCodeSnapshot: zone.code,
