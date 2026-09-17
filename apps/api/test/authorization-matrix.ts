@@ -396,6 +396,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       COORDINATOR: { inScope: DENIED },
       ZONE_LEADER: { inScope: DENIED },
     },
+    coveredBy: 'industries.e2e.test.ts',
   },
   {
     method: 'PATCH',
@@ -407,6 +408,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       COORDINATOR: { inScope: DENIED, outOfScope: DENIED },
       ZONE_LEADER: { inScope: DENIED, outOfScope: DENIED },
     },
+    coveredBy: 'industries.e2e.test.ts',
   },
   {
     method: 'DELETE',
@@ -418,6 +420,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       COORDINATOR: { inScope: DENIED, outOfScope: DENIED },
       ZONE_LEADER: { inScope: DENIED, outOfScope: DENIED },
     },
+    coveredBy: 'industries.e2e.test.ts',
   },
 
   // -------------------------------------------------------------- checklists
