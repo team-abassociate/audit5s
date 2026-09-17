@@ -248,7 +248,13 @@ describe('submitting through the link', () => {
       `${base}/public/corrective-actions/${secret}/submissions`,
       {
         headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
-        body: { option: 'NOT_POSSIBLE', explanation: 'Requires vendor approval; PO raised.' },
+        // R-22: through a signed link the answerer may have no account, so the route
+        // requires them to say who they are. Omitting it is the 422 this once asserted 201 for.
+        body: {
+          option: 'NOT_POSSIBLE',
+          submittedByName: 'R. Deshmukh',
+          explanation: 'Requires vendor approval; PO raised.',
+        },
       },
     );
 

@@ -82,6 +82,7 @@ async function notificationsFor(userId: string, eventId?: string) {
   return rows as Array<{
     id: string;
     event_type: string;
+    title: string;
     body: string;
     deliveries: Array<{ channel: string; status: string; fallback: boolean }>;
   }>;
@@ -97,7 +98,15 @@ describe('fan-out (§4.2)', () => {
     for (const role of ['SUPER_ADMIN', 'COORDINATOR', 'ZONE_LEADER'] as const) {
       const mine = await notificationsFor(world.actors[role].userId, completed.eventId);
       expect(mine, role).toHaveLength(1);
-      expect(mine[0]!.body).toBe('Walk-by audit completed — 2 corrective actions opened.');
+      // The body carries the outcome and the day; the title carries who and where. The
+      // date is the run's own "today", so it is matched by shape rather than pinned — and
+      // `en-IN` writes September as "Sept", which is the platform's locale data, not ours.
+      expect(mine[0]!.body).toMatch(/^Completed on \d{2} \w{3,4} \d{4} — 2 corrective actions opened\.$/);
+      // Who and where, rather than the bare "Audit completed" every one of these used to
+      // carry. The exact names belong to the fixture, so the shape is what is pinned.
+      expect(mine[0]!.title).toContain('walk-by audit');
+      expect(mine[0]!.title).not.toBe('Audit completed');
+      expect(mine[0]!.title).toMatch(/ completed a walk-by audit at /);
     }
     expect(await notificationsFor(world.actors.CONSULTANT.userId, completed.eventId)).toHaveLength(0);
   });

@@ -253,13 +253,20 @@ describe('Phase 6 acceptance', () => {
     );
     expect(told.map((row) => row.resource_id).sort()).toEqual(onDevice.map((action) => action.id).sort());
 
-    // --- Verification closes the audit.
-    for (const action of onDevice) {
+    // --- What closes the audit.
+    //
+    // R-23(a): an Option A answer closed its finding on the submitting transaction, so only
+    // the Option B answers are still waiting for a decision. Verifying the ones that closed
+    // themselves is refused — R-23 removed the review step for them, it did not make it
+    // optional — so the loop accepts exactly the answers that need accepting.
+    const stillOpen = await Promise.all(onDevice.map((action) => detail(action.id)));
+    for (const [index, action] of onDevice.entries()) {
       const verified = await world.request('POST', `${base}/corrective-actions/${action.id}/verify`, {
         token: world.actors.SUPER_ADMIN.accessToken,
         body: {},
       });
-      expect(verified.status, JSON.stringify(verified.body)).toBe(200);
+      const expected = stillOpen[index]!.status === 'NOT_POSSIBLE' ? 200 : 409;
+      expect(verified.status, `${action.id}: ${JSON.stringify(verified.body)}`).toBe(expected);
     }
     const closed = (await world.request('GET', `${base}/audits/${auditId}`, { token: world.actors.SUPER_ADMIN.accessToken }))
       .body as Audit;

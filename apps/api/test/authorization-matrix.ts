@@ -93,6 +93,17 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'POST',
+    path: '/api/v1/auth/reset-password',
+    description:
+      'Completes the emailed link. Public by necessity — the caller cannot sign in, which ' +
+      'is why they are here. The token is the credential, and an invalid, expired or ' +
+      'already-spent one is refused with the same code so it says nothing about which.',
+    public: true,
+    expected: {},
+    coveredBy: 'auth-lifecycle.e2e.test.ts',
+  },
+  {
+    method: 'POST',
     path: '/api/v1/auth/otp/request',
     description: 'OTP scaffold',
     public: true,

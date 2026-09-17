@@ -182,15 +182,23 @@ describe('the five-nonconformity partial-submission scenario (§7.3)', () => {
     }
 
     const afterMonday = await Promise.all(actions.map((action) => detail(action.id)));
+    // R-23(a): an after-photo closes the finding on the submitting transaction — there is
+    // no review step for Option A any more. Option B still waits for a decision, because
+    // nothing was fixed.
     expect(afterMonday.map((action) => action.status)).toEqual([
-      'ACTION_SUBMITTED',
-      'ACTION_SUBMITTED',
+      'VERIFIED',
+      'VERIFIED',
       'NOT_POSSIBLE',
       'OPEN',
       'OPEN',
     ]);
-    // A submission is not a resolution (R-13): nothing is verified, so nothing is closed.
-    expect((await auditStatus(auditId)).status).toBe('CORRECTIVE_ACTION_OPEN');
+    // Closed by the submission, so nobody verified them: `resolved_at` is set because the
+    // table's CHECK requires it, and `verified_by_user_id` stays null because no person did.
+    expect(afterMonday[0]!.resolvedAt).not.toBeNull();
+    expect(afterMonday[0]!.verifiedByUserId).toBeNull();
+    expect(afterMonday[0]!.submissions[0]!.reviewOutcome).toBeNull();
+    // Two of five resolved, so the audit has rolled on but is not finished.
+    expect((await auditStatus(auditId)).status).toBe('PARTIALLY_CLOSED');
 
     // Friday: the other two. Nothing in their write path names items 1–3.
     expect((await submitOptionA(world, leaderToken, actions[3]!)).status).toBe(201);
@@ -208,11 +216,15 @@ describe('the five-nonconformity partial-submission scenario (§7.3)', () => {
       expect(action.submissions).toHaveLength(1);
     }
 
-    // Verification moves the audit: some resolved → PARTIALLY_CLOSED; all → CLOSED.
-    expect((await verify(actions[0]!.id)).status).toBe(200);
+    // Three closed themselves with an after-photo (items 0, 1, 3). What is left needing a
+    // decision is the two Option B answers, and accepting them is what closes the audit.
     expect((await auditStatus(auditId)).status).toBe('PARTIALLY_CLOSED');
-    for (const action of actions.slice(1)) {
-      expect((await verify(action.id)).status).toBe(200);
+    // Verifying something already closed by its own after-photo is not a transition the
+    // state machine defines — R-23 removed the review step, it did not make it optional.
+    expect((await verify(actions[0]!.id)).status).toBe(409);
+
+    for (const index of [2, 4]) {
+      expect((await verify(actions[index]!.id)).status).toBe(200);
     }
     const closed = await auditStatus(auditId);
     expect(closed.status).toBe('CLOSED');

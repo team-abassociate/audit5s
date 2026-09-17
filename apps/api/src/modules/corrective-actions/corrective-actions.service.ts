@@ -296,6 +296,33 @@ export class CorrectiveActionsService {
       if (expectedVersion !== undefined && expectedVersion !== current.version) {
         throw this.versionConflict();
       }
+
+      /*
+       * A review needs something to review.
+       *
+       * The state table alone does not say this any more. R-23 added `OPEN → VERIFIED` and
+       * `REOPENED → VERIFIED` so a Zone Leader's after-photo could close a finding on the
+       * submitting transaction — and `admits()` lets a Super Admin take *every* edge (R-18,
+       * "refused nothing"). Together those two rules handed this endpoint a way to verify a
+       * finding nobody had answered: a nonconformity closed with no evidence that anything
+       * was fixed, rolling its audit on to CLOSED.
+       *
+       * That is the one thing a 5S record must not permit, so the guard is here rather than
+       * in the table: R-23's edges are for a *submission*, and this is not one. Narrowing
+       * the table instead would take the after-photo path away from the Super Admin, who
+       * legitimately answers findings in Units they run.
+       *
+       * `VERIFIED` stays reviewable because reopening a closed finding is the documented
+       * `VERIFIED → REOPENED` edge, and R-23 explicitly kept it.
+       */
+      if (current.status === 'OPEN' || current.status === 'REOPENED') {
+        throw AppError.conflict(
+          'INVALID_STATE_TRANSITION',
+          `corrective_action ${current.status} → ${outcome} is not a transition this state ` +
+            'machine defines: there is no submitted answer to review.',
+        );
+      }
+
       try {
         assertTransition('corrective_action', current.status, outcome, {
           role: scope.actor.role,
