@@ -24,6 +24,7 @@ import { SyncHealthPage } from '@/features/sync/SyncHealthPage';
 import { ChecklistsPage } from '@/features/checklists/ChecklistsPage';
 import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { UnitsPage } from '@/features/units/UnitsPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { SessionProvider, useSession } from '@/lib/session';
@@ -83,6 +84,25 @@ const correctiveActionRoute = createRoute({
   component: function PublicCorrectiveAction() {
     const { token } = correctiveActionRoute.useParams();
     return <PublicCorrectiveActionPage token={token} />;
+  },
+});
+
+/**
+ * The emailed password-reset link (§12.1). Public for the same reason the corrective-action
+ * page is: the person opening it cannot sign in, which is the entire reason they are here.
+ *
+ * The token rides in the query string rather than the path so it stays out of the route
+ * pattern, and so an empty one renders a readable message instead of a 404.
+ */
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password',
+  validateSearch: (search: Record<string, unknown>): { token: string } => ({
+    token: typeof search.token === 'string' ? search.token : '',
+  }),
+  component: function ResetPassword() {
+    const { token } = resetPasswordRoute.useSearch();
+    return <ResetPasswordPage token={token} />;
   },
 });
 
@@ -176,6 +196,7 @@ const auditLogRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   // Outside the gate, deliberately and alone.
   correctiveActionRoute,
+  resetPasswordRoute,
   gatedRoute.addChildren([
     indexRoute,
     dashboardRoute,

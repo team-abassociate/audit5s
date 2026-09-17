@@ -98,6 +98,24 @@ const envSchema = z.object({
    * one setting rather than a per-report argument.
    */
   WEB_APP_URL: z.string().default('http://127.0.0.1:5173'),
+
+  /**
+   * Transactional email, for the password-reset link and nothing else yet.
+   *
+   * An HTTP API rather than SMTP, so there is no mail library in the tree — Node 22's
+   * `fetch` is the whole client. The payload is `{ from, to, subject, text }`, which is
+   * Resend's shape and close enough to Brevo's and Postmark's that a different provider is
+   * a header and a field name, not a rewrite.
+   *
+   * All three are optional together. Absent, the channel reports itself unconfigured and
+   * refuses to send — visibly, rather than dropping a reset on the floor.
+   */
+  EMAIL_API_URL: z.string().optional(),
+  EMAIL_API_KEY: z.string().optional(),
+  /** The `From:` address. Must be a sender the provider has verified, or it will refuse. */
+  EMAIL_FROM: z.string().optional(),
+  /** §12.1: short, because a live password-reset link is a live password. */
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
   /** §10.4: "Default 30 days, configurable per report." */
   REPORT_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /** A report's presigned download. §12.6 caps it at 300 s regardless. */

@@ -2,12 +2,14 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/commo
 import {
   changePasswordRequestSchema,
   forgotPasswordRequestSchema,
+  resetPasswordRequestSchema,
   loginRequestSchema,
   logoutRequestSchema,
   otpRequestSchema,
   otpVerifySchema,
   type ChangePasswordRequest,
   type ForgotPasswordRequest,
+  type ResetPasswordRequest,
   type LoginRequest,
   type LoginResponse,
   type LogoutRequest,
@@ -78,6 +80,19 @@ export class AuthController {
   @HttpCode(HttpStatus.ACCEPTED)
   async forgotPassword(@Body(new ZodValidationPipe(forgotPasswordRequestSchema)) body: ForgotPasswordRequest): Promise<void> {
     await this.auth.forgotPassword(body.loginId);
+  }
+
+  /**
+   * Completes the emailed reset. Public by necessity: the caller cannot log in, which is
+   * the reason they are here.
+   */
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordRequestSchema)) body: ResetPasswordRequest,
+  ): Promise<void> {
+    await this.auth.resetPassword(body.token, body.newPassword);
   }
 
   @Public()
