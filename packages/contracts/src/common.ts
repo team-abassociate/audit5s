@@ -123,6 +123,8 @@ export const ERROR_CODES = [
   'CONFLICT',
   'VERSION_CONFLICT',
   'DUPLICATE_CODE',
+  /** Refused because something still points at it — archiving would strand those rows. */
+  'RESOURCE_IN_USE',
   'DUPLICATE_NAME',
   'IDEMPOTENCY_KEY_REUSE',
   'LOGIN_ID_ALLOCATION_FAILED',

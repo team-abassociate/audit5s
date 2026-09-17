@@ -369,6 +369,57 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     },
   },
 
+  // -------------------------------------------------------------- industries
+  // The same shape as the checklist catalogue below it, and for the same reason: a sector
+  // list carries no Unit-identifying data and labels a catalogue every client already
+  // reads. Writing is a Super Admin's — what sector a business is in is not day-to-day
+  // upkeep, and a Coordinator changing it would silently re-point their plant's auditors
+  // at a different set of checklists.
+  {
+    method: 'GET',
+    path: '/api/v1/industries',
+    description: 'industry:read — the sector list, cached beside the catalogue it labels',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/industries',
+    description: 'industry:create — Super Admin only',
+    expected: {
+      SUPER_ADMIN: { inScope: CREATED },
+      CONSULTANT: { inScope: DENIED },
+      COORDINATOR: { inScope: DENIED },
+      ZONE_LEADER: { inScope: DENIED },
+    },
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/industries/:id',
+    description: 'industry:update — Super Admin only',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: DENIED, outOfScope: DENIED },
+      COORDINATOR: { inScope: DENIED, outOfScope: DENIED },
+      ZONE_LEADER: { inScope: DENIED, outOfScope: DENIED },
+    },
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/industries/:id',
+    description: 'industry:archive — Super Admin only; archives, never deletes (D8)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: DENIED, outOfScope: DENIED },
+      COORDINATOR: { inScope: DENIED, outOfScope: DENIED },
+      ZONE_LEADER: { inScope: DENIED, outOfScope: DENIED },
+    },
+  },
+
   // -------------------------------------------------------------- checklists
   // Organization-wide reference data (D2): read is broad, write is Super Admin only.
   {

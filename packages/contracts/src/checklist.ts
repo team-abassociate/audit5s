@@ -28,6 +28,10 @@ export const checklistTemplateSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   isActive: z.boolean(),
+  /** The sector this template belongs to (0018). `null` means every sector. */
+  industryId: uuidSchema.nullable(),
+  /** Joined for display, so a catalogue list needs no second request. */
+  industryName: z.string().nullable(),
   /** Workbook order (R-6a), so the catalogue lists departments as the business lists them. */
   sortOrder: z.number().int(),
   archivedAt: isoDateTimeSchema.nullable(),
@@ -89,6 +93,14 @@ export type ListChecklistVersionsQuery = z.infer<typeof listChecklistVersionsQue
 
 export const listChecklistTemplatesQuerySchema = paginationQuerySchema.extend({
   includeArchived: booleanQuery(false),
+  /**
+   * Narrow to one sector (0018).
+   *
+   * A template with no industry is **always** included: unclassified means "offered
+   * everywhere", so filtering to Hospital still shows the templates nobody has labelled.
+   * Excluding them would hide the catalogue from every Unit the moment one sector existed.
+   */
+  industryId: uuidSchema.optional(),
 });
 export type ListChecklistTemplatesQuery = z.infer<typeof listChecklistTemplatesQuerySchema>;
 

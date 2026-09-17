@@ -73,6 +73,11 @@ export const units = pgTable(
     /** NULL disables geofencing for the Unit. */
     geofenceRadiusM: integer('geofence_radius_m').default(300),
     timezone: text('timezone').notNull().default('Asia/Kolkata'),
+    /**
+     * Which sector this Unit operates in, narrowing the checklists its audits offer
+     * (0018). NULL narrows nothing, which is every Unit's behaviour before that migration.
+     */
+    industryId: uuid('industry_id'),
     /** CH-5 soft cap. */
     photoCapPerZone: integer('photo_cap_per_zone').notNull().default(30),
     version: integer('version').notNull().default(1),

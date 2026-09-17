@@ -244,6 +244,8 @@ function toTemplate(row: ChecklistTemplateRow): ChecklistTemplate {
     name: row.name,
     description: row.description,
     isActive: row.isActive,
+    industryId: row.industryId,
+    industryName: row.industryName,
     sortOrder: row.sortOrder,
     archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),

@@ -12,6 +12,7 @@ export * from './corrective-action';
 export * from './report';
 export * from './notification';
 export * from './sync';
+export * from './industry';
 export * from './membership';
 export * from './device';
 export * from './audit-log';
