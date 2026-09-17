@@ -23,6 +23,10 @@ export const RECIPIENT_ROLES: Record<NotificationEventType, Role[]> = {
   CORRECTIVE_ACTION_SUBMITTED: ['SUPER_ADMIN'],
   CORRECTIVE_ACTION_VERIFIED: ['COORDINATOR'],
   CORRECTIVE_ACTION_REOPENED: [],
+  // The Zone Leader who owns the work is named by the event. The Coordinator runs the
+  // Unit and is who chases it; the Super Admin sees every Unit's slippage. §7.3 gives the
+  // due date teeth only if somebody is told it has passed.
+  CORRECTIVE_ACTION_OVERDUE: ['SUPER_ADMIN', 'COORDINATOR'],
   SYNC_FAILURE: ['SUPER_ADMIN'],
   CHECKLIST_PUBLISHED: ['SUPER_ADMIN'],
   // §10.2's REPORT_GENERATED. The Super Admin who asked for it is the actor and is never
@@ -43,6 +47,7 @@ export const WHATSAPP_EVENTS: ReadonlySet<NotificationEventType> = new Set([
   'AUDIT_ASSIGNED',
   'AUDIT_COMPLETED',
   'CORRECTIVE_ACTION_REOPENED',
+  'CORRECTIVE_ACTION_OVERDUE',
 ]);
 
 export interface RecipientSwitches {
@@ -154,6 +159,22 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       };
     case 'CORRECTIVE_ACTION_VERIFIED':
       return { title: 'Corrective action verified', body: `${item}${question} was verified.` };
+    case 'CORRECTIVE_ACTION_OVERDUE': {
+      const days = Number(data.daysOverdue ?? 0);
+      const late =
+        days <= 0 ? 'is past its due date' : `is ${days} day${days === 1 ? '' : 's'} past its due date`;
+      const owner = data.assigneeName ? String(data.assigneeName) : null;
+      return {
+        title: owner
+          ? `Overdue: ${item || 'a corrective action'} — ${owner}`
+          : `Overdue: ${item || 'a corrective action'}`,
+        // Says what to do, not only what is wrong. A notice that reports a fact and
+        // proposes nothing is one more thing to feel bad about.
+        body:
+          `${item}${question} ${late}. ` +
+          'Answer it with an after photo, or mark it not possible so it can be reviewed.',
+      };
+    }
     case 'CORRECTIVE_ACTION_REOPENED':
       return {
         title: 'Corrective action reopened',

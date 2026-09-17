@@ -48,6 +48,14 @@ export const correctiveActions = pgTable(
       onDelete: 'restrict',
     }),
     reopenCount: integer('reopen_count').notNull().default(0),
+    /**
+     * When the nightly sweep last announced this action as overdue (0016).
+     *
+     * A *notified* marker, not an *is overdue* flag: whether an action is overdue is
+     * derived from `status` and `dueAt`, and `isOverdue` in `packages/domain` is the one
+     * definition of that. Cleared on reopen, so a reopened action can fall overdue again.
+     */
+    overdueNotifiedAt: timestamp('overdue_notified_at', { withTimezone: true }),
     version: integer('version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

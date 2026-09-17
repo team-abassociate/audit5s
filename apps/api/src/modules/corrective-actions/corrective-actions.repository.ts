@@ -102,6 +102,52 @@ export class CorrectiveActionsRepository extends BaseRepository {
     super(db, resolvers);
   }
 
+  // ------------------------------------------------------------------ overdue sweep
+
+  /**
+   * Claims this Unit's overdue, unannounced actions and marks them announced.
+   *
+   * One statement, because claiming and marking must not be separable: an `UPDATE …
+   * RETURNING` cannot hand the same row to two sweeps, whereas a read followed by a write
+   * can and eventually would — `worker-general` is one process today, and the moment it is
+   * two, the duplicate is a Zone Leader told twice about the same finding.
+   *
+   * It writes before anyone is notified, which is the safe way round. If the emit then
+   * fails, one overdue action goes unannounced and the dashboard still shows it; the other
+   * order risks announcing the same thing every night, and a nightly reminder is one
+   * people filter.
+   */
+  async claimOverdue(scope: ScopeContext, unitId: string, now: Date) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const claimed = await tx
+        .update(correctiveActions)
+        .set({ overdueNotifiedAt: now })
+        .where(
+          and(
+            eq(correctiveActions.unitId, unitId),
+            inArray(correctiveActions.status, ['OPEN', 'REOPENED']),
+            isNull(correctiveActions.overdueNotifiedAt),
+            sql`${correctiveActions.dueAt} IS NOT NULL AND ${correctiveActions.dueAt} < ${now}`,
+            this.scoped(scope, scopeColumns),
+          ),
+        )
+        .returning({ id: correctiveActions.id });
+
+      if (claimed.length === 0) return [];
+
+      // The Zone's code and name live on the audit's snapshot, not on the action, so the
+      // rows a notification needs come from the same projection every other read uses —
+      // in this transaction, so a claim without its message cannot be committed.
+      return this.selectActions(tx).where(
+        inArray(
+          correctiveActions.id,
+          claimed.map((row) => row.id),
+        ),
+      );
+    });
+  }
+
   // -------------------------------------------------------------------------- reads
 
   async findById(scope: ScopeContext, actionId: string) {
@@ -313,7 +359,15 @@ export class CorrectiveActionWork {
       .update(correctiveActions)
       .set({
         ...columns,
-        ...(incrementReopenCount ? { reopenCount: sql`${correctiveActions.reopenCount} + 1` } : {}),
+        ...(incrementReopenCount
+          ? {
+              reopenCount: sql`${correctiveActions.reopenCount} + 1`,
+              // A reopened action gets a fresh chance to run late, so it gets a fresh
+              // chance to be announced (0016). Cleared here, in the same statement as the
+              // status change, so the two can never disagree about which it is.
+              overdueNotifiedAt: null,
+            }
+          : {}),
         version: sql`${correctiveActions.version} + 1`,
       })
       .where(

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CorrectiveActionsController } from './corrective-actions.controller';
 import { CorrectiveActionsRepository } from './corrective-actions.repository';
+import { OverdueActionsWorker } from './overdue.worker';
 import { CorrectiveActionsService } from './corrective-actions.service';
 
 /**
@@ -12,11 +13,11 @@ import { CorrectiveActionsService } from './corrective-actions.service';
  */
 @Module({
   controllers: [CorrectiveActionsController],
-  providers: [CorrectiveActionsService, CorrectiveActionsRepository],
+  providers: [CorrectiveActionsService, CorrectiveActionsRepository, OverdueActionsWorker],
   // The repository is exported alongside the service for the public corrective-action
   // surface (Phase 7), which needs two reads the service does not expose — the before
   // photo's evidence id and the Unit/auditor names the page prints. Both go through the
   // same scope predicate, so this widens nothing.
-  exports: [CorrectiveActionsService, CorrectiveActionsRepository],
+  exports: [CorrectiveActionsService, CorrectiveActionsRepository, OverdueActionsWorker],
 })
 export class CorrectiveActionsModule {}

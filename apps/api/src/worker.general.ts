@@ -9,6 +9,7 @@ import { DeviceReleaseWorker } from './modules/sync/device-release.worker';
 import { NotificationWorker } from './modules/notifications/notification.worker';
 import { StructuredLogger } from './common/observability/logger';
 import { SYSTEM_SCOPE } from './common/auth/system-scope';
+import { OverdueActionsWorker } from './modules/corrective-actions/overdue.worker';
 import { IntegrityWorker } from './modules/maintenance/integrity.worker';
 import {
   AnalyticsRollupWorker,
@@ -45,6 +46,7 @@ async function bootstrap(): Promise<void> {
   const analytics = app.get(AnalyticsRollupWorker);
   await analytics.schedule(queue);
   const integrity = app.get(IntegrityWorker);
+  const overdue = app.get(OverdueActionsWorker);
 
   await queue.work<AnalyticsRollupJob>(QUEUES.maintenanceSweep, async (jobs) => {
     logger.log(`maintenance.sweep: ${jobs.length} job(s)`);
@@ -58,6 +60,10 @@ async function bootstrap(): Promise<void> {
       // deliberately in the same handler: a sweep that raised its own job would be a
       // second schedule to keep in step with this one for no gain.
       await integrity.sweep(SYSTEM_SCOPE, job.data.unitId);
+      // §7.3's due dates, on the same tick and for the same reason: it already exists,
+      // the sweep is idempotent, and a second schedule would only be a second thing to
+      // keep in step with this one.
+      await overdue.sweep(SYSTEM_SCOPE, job.data.unitId);
     }
   });
 
