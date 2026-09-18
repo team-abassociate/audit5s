@@ -3,9 +3,9 @@
 One Hostinger VPS KVM 2 (2 vCPU / 8 GB / 100 GB NVMe, x86-64), six Docker containers, and
 Cloudflare in front. `STACK.md` is the decision record; this file is the operating manual.
 
-There is **one environment**. Migrations are files in git applied by CI, never
-`drizzle-kit push`, and the deploy step takes a pgBackRest snapshot immediately before
-applying them.
+There is **one environment**. Migrations are files in git tested by CI and applied
+on the host by bootstrap, never `drizzle-kit push`. Bootstrap verifies WAL archiving and takes a full pgBackRest snapshot
+before changing roles or applying migrations.
 
 ## Files
 
@@ -14,7 +14,8 @@ applying them.
 | `docker-compose.yml` | The six production services. |
 | `docker-compose.dev.yml` | Local override: exposed ports, a local build, and MinIO standing in for R2. Dev convenience only — nothing in `apps/` or `packages/` names it. |
 | `infra/bootstrap.sh` | Provisions a fresh host. Idempotent, and doubles as the recovery script for the restore drill. |
-| `infra/docker/api.Dockerfile` | The one API image; three entrypoints plus the seed run from it. |
+| `infra/docker/api.Dockerfile` | The API image; three entrypoints plus the seed run from it. |
+| `infra/docker/postgres-pgbackrest.Dockerfile` | One PostgreSQL 18 image with the same pgBackRest binary in the database and backup sidecar. |
 | `infra/sql/00-roles.sql` | Creates or updates `audit5s_owner` and `audit5s_app` on each bootstrap, before migrations. |
 | `infra/pgbackrest/` | Backup configuration, schedule, and the backup-age alarm. |
 
@@ -82,6 +83,7 @@ next use. That is the intended emergency lever.
 | Variable | Notes |
 | --- | --- |
 | `PGBACKREST_CIPHER_PASS` | Backups are encrypted client-side. **Lose this and every backup is unreadable** — it is the single most important string in the password manager. |
+| `PGBACKREST_S3_ENDPOINT` | R2 S3 hostname without `https://` or a path. The API's `R2_ENDPOINT` keeps its URL form. |
 | `BACKUP_HEARTBEAT_URL` | BetterStack heartbeat. Pinged only when the newest backup is under 36 h old; silence raises the alert. |
 
 ### Edge and delivery
@@ -91,7 +93,7 @@ next use. That is the intended emergency lever.
 | `CLOUDFLARE_TUNNEL_TOKEN` | cloudflared dials out; there is no public inbound port on the origin. |
 | `CORS_ORIGINS` | Comma-separated allow-list. No wildcard. |
 | `API_IMAGE` | GHCR image reference, pinned to a commit SHA rather than `latest`. |
-| `PGBACKREST_IMAGE` | The pgBackRest image. Pinned, for the same reason. |
+| PostgreSQL backup image | Built locally from `infra/docker/postgres-pgbackrest.Dockerfile`; both database and backup sidecar use it. |
 
 ### Seed and integrations
 
@@ -120,22 +122,34 @@ The seed creates the Super Admin, writes the PART 6 permission matrix, and impor
 nine checklist templates through the real import pipeline — so it is also the first
 integration test of the importer.
 
-## Restore drill — quarterly, mandatory
+If a migration fails, bootstrap leaves the API, workers and tunnel stopped. The
+pre-migration full backup is the rollback point. Inspect the partial migration
+state and restore that backup with PostgreSQL stopped before reopening the
+tunnel; do not start an older app against a partially migrated schema.
 
-An untested backup is a rumour. Once a quarter, on a **fresh VM at a different provider**,
-restore using only this repository and the password manager:
+## Restore drill - quarterly, mandatory
+
+An untested backup is a rumour. On a fresh VM at a different provider, first
+install Docker, then restore using this repository and the password manager. Keep PostgreSQL stopped while
+pgBackRest writes its data directory:
 
 ```sh
 git clone https://github.com/team-abassociate/audit5s /opt/audit5s && cd /opt/audit5s
 cp .env.example .env && "$EDITOR" .env
-docker compose up -d postgres
-docker compose run --rm pgbackrest pgbackrest --stanza=audit5s restore --delta
-docker compose up -d
+chmod 600 .env
+docker compose --env-file .env build postgres
+docker compose --env-file .env run --rm --no-deps pgbackrest pgbackrest --stanza=audit5s restore
+docker compose --env-file .env up -d postgres pgbackrest
+# verify the restored roles match .env, then start the application and tunnel
+docker compose --env-file .env up -d
 # smoke: sign in, list Units, open an audit, download a report
 ```
 
-Record the wall-clock time. **If it takes more than 60 minutes, fix the runbook**, not the
-expectation. Write the result down; a drill with no written result did not happen.
+Use the credentials and encryption passphrase that belong to the backup. A
+restore writes the role passwords present at backup time; reconcile them with
+the current `.env` before opening the tunnel. Record the wall-clock time and
+the restored backup timestamp. If the drill takes over 60 minutes, fix the
+runbook.
 
 ## Tripwires
 

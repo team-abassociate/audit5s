@@ -12,6 +12,14 @@ name: audit5s
 
 x-api-image: &api-image ${API_IMAGE:-ghcr.io/team-abassociate/audit5s-api:latest}
 
+x-pgbackrest-env: &pgbackrest-env
+  PGBACKREST_REPO1_S3_ENDPOINT: ${PGBACKREST_S3_ENDPOINT}
+  PGBACKREST_REPO1_S3_BUCKET: ${R2_BUCKET_BACKUP}
+  PGBACKREST_REPO1_S3_KEY: ${R2_ACCESS_KEY_ID}
+  PGBACKREST_REPO1_S3_KEY_SECRET: ${R2_SECRET_ACCESS_KEY}
+  PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_CIPHER_PASS}
+  PGBACKREST_PG1_USER: ${POSTGRES_SUPERUSER:-postgres}
+
 x-api-env: &api-env
   NODE_ENV: production
   LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -39,7 +47,10 @@ x-api-env: &api-env
 
 services:
   postgres:
-    image: postgres:18-alpine
+    image: audit5s-postgres-pgbackrest:18
+    build:
+      context: .
+      dockerfile: infra/docker/postgres-pgbackrest.Dockerfile
     restart: unless-stopped
     # 2560m, not 4g: on an 8 GB host the six ceilings must not over-commit the box.
     # Postgres needs ~600 MB of real allocation; the rest of this is page cache, which
@@ -47,6 +58,7 @@ services:
     mem_limit: 2560m
     shm_size: 256m
     environment:
+      <<: *pgbackrest-env
       POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
       POSTGRES_DB: audit5s
@@ -58,6 +70,8 @@ services:
       PGDATA: /var/lib/postgresql/data
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - pgsocket:/var/run/postgresql
+      - ./infra/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
       # Production does not mount infra/sql into initdb.d or expose role passwords to
       # Postgres at startup. bootstrap.sh applies 00-roles.sql after it is ready.
     # The kernel must never pick Postgres as the OOM victim (STACK.md §5).
@@ -70,6 +84,10 @@ services:
       - archive_timeout=60
       - -c
       - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=audit5s archive-push %p
       # Sized for the 8 GB box rather than left on defaults. effective_cache_size must
       # describe the cache this cgroup can actually hold (mem_limit minus shared_buffers),
       # or the planner over-favours index scans against a cache that is not there.
@@ -151,17 +169,20 @@ services:
         condition: service_healthy
 
   pgbackrest:
-    image: ${PGBACKREST_IMAGE:-woblerr/pgbackrest:2.54.2}
+    image: audit5s-postgres-pgbackrest:18
+    build:
+      context: .
+      dockerfile: infra/docker/postgres-pgbackrest.Dockerfile
+    user: postgres
+    command: ['sleep', 'infinity']
     restart: unless-stopped
     mem_limit: 512m
     environment:
-      PGBACKREST_REPO1_S3_KEY: ${R2_ACCESS_KEY_ID}
-      PGBACKREST_REPO1_S3_KEY_SECRET: ${R2_SECRET_ACCESS_KEY}
-      PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_CIPHER_PASS}
+      <<: *pgbackrest-env
     volumes:
       - ./infra/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
       - pgdata:/var/lib/postgresql/data
-      - pgbackrest-log:/var/log/pgbackrest
+      - pgsocket:/var/run/postgresql
     depends_on:
       postgres:
         condition: service_healthy
@@ -178,4 +199,4 @@ volumes:
   pgdata:
     # A separate block volume on the VM, so the database survives rebuilding the host.
     external: false
-  pgbackrest-log:
+  pgsocket:

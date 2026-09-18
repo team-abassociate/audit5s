@@ -125,7 +125,7 @@ jobs:
         run: pnpm --filter @audit5s/api test:e2e
 
   build-image:
-    name: Build API image
+    name: Build images and backup smoke
     runs-on: ubuntu-latest
     needs: [guardrails, verify]
     steps:
@@ -145,3 +145,9 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build PostgreSQL backup image
+        run: docker build -t audit5s-postgres-pgbackrest:18 -f infra/docker/postgres-pgbackrest.Dockerfile .
+
+      - name: Verify WAL archive and full backup
+        run: bash infra/tests/backup-smoke.sh
