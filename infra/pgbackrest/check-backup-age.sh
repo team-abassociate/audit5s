@@ -5,10 +5,12 @@
 set -euo pipefail
 
 MAX_AGE_HOURS="${MAX_BACKUP_AGE_HOURS:-36}"
-HEARTBEAT_URL="${BACKUP_HEARTBEAT_URL:-}"
 COMPOSE_FILE="${COMPOSE_FILE:-/opt/audit5s/docker-compose.yml}"
+ENV_FILE="$(dirname "$COMPOSE_FILE")/.env"
+# Cron has no application environment. Read the URL as data, never source .env.
+HEARTBEAT_URL="${BACKUP_HEARTBEAT_URL:-$(sed -nE 's/^BACKUP_HEARTBEAT_URL=//p' "$ENV_FILE" | head -1)}"
 
-info="$(docker compose -f "$COMPOSE_FILE" exec -T pgbackrest \
+info="$(docker compose -f "$COMPOSE_FILE" --env-file "$(dirname "$COMPOSE_FILE")/.env" exec -T pgbackrest \
   pgbackrest --stanza=audit5s --output=json info 2>/dev/null)" || exit 1
 
 newest="$(printf '%s' "$info" | python3 -c '
@@ -26,4 +28,6 @@ if (( age_hours > MAX_AGE_HOURS )); then
   exit 1
 fi
 
-[[ -n "$HEARTBEAT_URL" ]] && curl -fsS --max-time 10 "$HEARTBEAT_URL" >/dev/null
+if [[ -n "$HEARTBEAT_URL" ]]; then
+  curl -fsS --max-time 10 "$HEARTBEAT_URL" >/dev/null
+fi

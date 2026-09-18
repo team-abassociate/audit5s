@@ -4,10 +4,10 @@
 # periodic base backups.
 
 # Daily incremental at 18:30 UTC (00:00 IST — after the working day in Nashik).
-30 18 * * 1-6 root docker compose -f /opt/audit5s/docker-compose.yml exec -T pgbackrest pgbackrest --stanza=audit5s --type=incr backup
+30 18 * * 1-6 root docker compose -f /opt/audit5s/docker-compose.yml --env-file /opt/audit5s/.env exec -T pgbackrest pgbackrest --stanza=audit5s --type=incr backup
 
 # Weekly full, Sunday 18:30 UTC.
-30 18 * * 0 root docker compose -f /opt/audit5s/docker-compose.yml exec -T pgbackrest pgbackrest --stanza=audit5s --type=full backup
+30 18 * * 0 root docker compose -f /opt/audit5s/docker-compose.yml --env-file /opt/audit5s/.env exec -T pgbackrest pgbackrest --stanza=audit5s --type=full backup
 
 # The backup-age alarm (STACK.md §2). A backup system that fails silently is worse than
 # none, because it is trusted. This pings a BetterStack heartbeat only when the newest
