@@ -53,7 +53,7 @@ fallback('REFRESH_TOKEN_TTL_DAYS', '30');
 fallback('BOOTSTRAP_PASSWORD_TTL_HOURS', '72');
 fallback('PGBOSS_SCHEMA', 'pgboss');
 
-// No R2_ENDPOINT, so StorageModule selects the filesystem driver — the CI path. A fresh
+// No S3_ENDPOINT, so StorageModule selects the filesystem driver — the CI path. A fresh
 // temporary directory per run keeps uploaded fixtures out of the working tree and stops
 // one run's objects from being visible to the next.
 fallback('OBJECT_STORAGE_LOCAL_DIR', mkdtempSync(join(tmpdir(), 'audit5s-objects-')));

@@ -15,7 +15,7 @@ import {
 } from './object-storage';
 
 /**
- * A filesystem adapter, used when no `R2_ENDPOINT` is configured.
+ * A filesystem adapter, used when no `S3_ENDPOINT` is configured.
  *
  * This exists for one reason: the seed imports the nine department checklists **through
  * the real import pipeline** (HANDOFF.md §5.2), and the end-to-end suites run that same
@@ -23,7 +23,7 @@ import {
  * running MinIO to prove that a spreadsheet parses. It is a driver behind the same port,
  * not a stub: it really stores bytes and really reads them back.
  *
- * It is not a production path. `bootstrap.sh` sets `R2_ENDPOINT`, and the startup log
+ * It is not a production path. Production requires `S3_ENDPOINT`, and the startup log
  * says which driver is live so a misconfigured deployment is visible immediately.
  *
  * ---
@@ -52,7 +52,7 @@ import {
  *
  * That is why `presignsOffProcess` is false and why the route path is namespaced with a
  * double underscore — it is meant to be conspicuous in an access log. Setting
- * `R2_ENDPOINT` moves the bytes off the process and this driver is never constructed.
+ * `S3_ENDPOINT` moves the bytes off the process and this driver is never constructed.
  */
 @Injectable()
 export class LocalObjectStorage extends ObjectStorage {

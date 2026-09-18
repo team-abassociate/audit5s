@@ -1,10 +1,8 @@
 /**
  * The object-storage port.
  *
- * Production is Cloudflare R2 through `@aws-sdk/client-s3` with the endpoint in an
- * environment variable (STACK.md §2), which is also what lets a local MinIO stand in
- * without a line of code changing. Nothing in this file, or anything that depends on it,
- * names a provider.
+ * Production uses a private S3-compatible service through `@aws-sdk/client-s3`.
+ * The endpoint stays in configuration so storage can move without changing this port.
  *
  * Phase 4 adds the four verbs the two-phase media commit of §9.4 needs:
  *

@@ -15,20 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=DM+Mono:wght@400;500&display=swap"
     />
     <title>audit5s — 5S Audit Platform</title>
-    <script>
-      /*
-       * Light (the whiteboard) or dark, never the OS preference: the attribute is always
-       * stamped, so the token file's prefers-color-scheme fallback never applies. Stamped
-       * here, before the first paint, rather than after React mounts. Anything else in
-       * storage — a "system" left by an older build — reads as light.
-       */
-      try {
-        var m = localStorage.getItem('gemba-theme');
-        document.documentElement.setAttribute('data-theme', m === 'dark' ? 'dark' : 'light');
-      } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'light');
-      }
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

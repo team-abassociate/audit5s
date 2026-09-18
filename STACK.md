@@ -7,7 +7,8 @@ assumption.
 
 - **Product:** 5S audit platform for industrial facilities (India).
 - **Stage:** Stage 1 — pre-revenue, ≤10 Units, <100 users, ~120 audits/month.
-- **Budget ceiling:** ₹1,000/month total infrastructure. Current design: ~₹136/month.
+- **Budget ceiling:** ₹1,000/month total infrastructure. The VPS is already subscribed;
+  this topology adds no paid storage service.
 - **Source documents:** `ARCHITECTURE.md` (domain model, authorization matrix, state
   machines, sync protocol — authoritative) and this Stack Decision Record (infrastructure
   and technology choices — supersedes `ARCHITECTURE.md` PART 3.1).
@@ -23,10 +24,10 @@ assumption.
 
 ## 1. The two rules that explain every other decision
 
-1. **The VM is cattle, not a pet.** Nothing irreplaceable lives only on the server. Every
-   durable byte — evidence photos, PDFs, database backups — lives in Cloudflare R2. If the
-   VM is destroyed right now, the acceptable loss is *under 5 minutes of database writes
-   and nothing else*.
+1. **The VM is the production data host.** PostgreSQL, private object storage and encrypted
+   pgBackRest backups all use its disk. Included weekly VPS backups provide the only separate
+   copy at launch. A total VPS loss can lose up to one week of changes (R-27); monitor disk
+   use and rehearse full restores before accepting production data.
 2. **Authorization correctness is the dominant risk.** Not performance, not scale. Four
    roles with resource-level scope rules, and an explicit threat model naming IDOR and
    cross-Unit access. Every endpoint is guarded by default; an unguarded endpoint is a bug,
@@ -57,17 +58,16 @@ assumption.
 | PDF reports | Playwright + chrome-headless-shell, dedicated worker, concurrency 1 |
 | Authentication | Custom JWT — Argon2id, 15-min access, rotating single-use refresh with no time limit (`DECISIONS.md` R-21), JTI denylist, device binding, offline unlock |
 | Authorization | Application `ScopeGuard` (canonical) + Postgres RLS (defence-in-depth) |
-| Object storage | Cloudflare R2 via `@aws-sdk/client-s3`, endpoint from env var |
+| Object storage | Single-node MinIO AIStor Free on the VPS, private S3 bucket via `@aws-sdk/client-s3` |
 | Push | Firebase Cloud Messaging, behind a `PushChannel` adapter |
 | WhatsApp / SMS | `NotificationChannel` interface; not wired at MVP |
 | Compute | Hostinger VPS KVM 2, 2 vCPU / 8 GB / 100 GB NVMe, x86-64 |
-| Static hosting | Cloudflare Pages (both web apps) |
-| Edge | Cloudflare free plan — DNS, TLS, WAF, rate limiting |
-| Ingress | Cloudflare Tunnel (cloudflared). No public inbound port on the origin. |
-| Backups | pgBackRest → R2: continuous WAL + daily incremental + weekly full, aes-256-cbc |
+| Static hosting | Caddy serves the Vite SPA on the VPS |
+| Edge and ingress | Registrar DNS → Caddy on ports 80/443, automatic HTTPS; API rate limits remain |
+| Backups | Encrypted pgBackRest POSIX repository on the VPS; included weekly VPS backups are the separate copy |
 | Monitoring | BetterStack free (uptime) + Sentry free (errors) + backup-age alarm |
 | CI/CD | GitHub Actions → buildx linux/amd64 → GHCR → `docker compose pull && up -d` |
-| Containers | Docker + Docker Compose, six services. **Not Kubernetes.** |
+| Containers | Docker + Docker Compose, seven services. **Not Kubernetes.** |
 | Infra as code | `docker-compose.yml` + `bootstrap.sh` in git. No Terraform. |
 
 ---
@@ -105,27 +105,19 @@ pure functions.
 
 ## 4. Where things run
 
-| Runs on the Hostinger VPS (Docker) | Lives in Cloudflare |
-|---|---|
-| PostgreSQL 18 | R2: evidence photos, selfies |
-| NestJS API | R2: generated PDFs |
-| worker-general | R2: pgBackRest repository |
-| worker-report | Pages: both web apps (static bundles) |
-| pgBackRest, cloudflared | — |
-
-Six containers, `mem_limit` on every one:
+All services run on the VPS. Seven containers, `mem_limit` on every one:
 
 ```
-postgres        postgres:18-alpine     2560m   volume: pgdata (NVMe)
+postgres        postgres:18-alpine     2304m   volume: pgdata (NVMe)
 api             ghcr.io/…:sha          768m    node dist/main
-worker-general  ghcr.io/…:sha          768m    node dist/worker.general
+worker-general  ghcr.io/…:sha          512m    node dist/worker.general
 worker-report   ghcr.io/…:sha          1536m   node dist/worker.report
-pgbackrest      pgbackrest:…           512m    cron: WAL + incr/full
-cloudflared     cloudflare/cloudflared 128m
+pgbackrest      pgbackrest:…           384m    volume: backuprepo
+object-storage  quay.io/minio/aistor   768m    volume: objectdata
+caddy           ghcr.io/…:sha          128m    HTTPS, SPA, API and S3 ingress
 ```
 
-No nginx, no Caddy — Cloudflare terminates TLS and cloudflared dials the API container
-directly.
+Caddy is the only public container. The MinIO console and PostgreSQL stay private.
 
 ---
 
@@ -216,12 +208,12 @@ Each of these has a defined trigger. Absent the trigger, adding it is strictly n
 | Managed auth (Clerk/Auth0/Cognito) | Never — offline login rules it out |
 | GraphQL / gRPC | Never at this stage — two clients you own, no service-to-service traffic |
 | Server-side rendering (Next.js) | Never for the admin dashboard — it is login-gated, no SEO, no anonymous first paint |
-| Vercel / Netlify | Never — Cloudflare Pages does this free |
+| Vercel / Netlify | Never — Caddy serves the built SPA on the VPS |
 | iOS app | Android is validated with real auditors in a real plant |
 
 ### The host do-not-touch list
 
-The VM is cattle (§1), so **application code must never name the hosting provider.** That
+Application code must never name the hosting provider. That
 is what keeps a host migration a ~40-minute job instead of a refactor. The Oracle →
 Hostinger move of 2026-09-17 is the proof: it changed `infra/`, CI and these documents, and
 not one line under `apps/` or `packages/`.
@@ -233,8 +225,8 @@ Enforced by a CI grep and an ESLint `no-restricted-imports` rule for `oci-`,
 · provider Vault/KMS · provider managed database · provider load balancer, DNS, functions,
 streaming, email, queue or API gateway · provider-flavoured Terraform.
 
-**Permitted from the provider:** a VM, a disk, and a firewall. Nothing else. Every durable
-byte lives in Cloudflare R2, which is deliberately not the compute provider.
+**Permitted from the provider:** a VM, its disk, firewall, and the included VPS backup
+service (R-27). Application code does not integrate with provider APIs.
 
 ---
 
@@ -261,7 +253,7 @@ byte lives in Cloudflare R2, which is deliberately not the compute provider.
 11. Corrective action flow — token-gated SPA route.
 12. Notifications — FCM behind the adapter.
 
-Infrastructure (`bootstrap.sh`, compose, pgBackRest → R2, the backup-age alarm) is set up
+Infrastructure (`bootstrap.sh`, compose, local pgBackRest, the backup-age alarm) is set up
 alongside step 3, not at the end. **Backups cannot be retrofitted after data loss.**
 
 ---
@@ -290,11 +282,10 @@ Raise these to the owner rather than working around them:
   the reason for every memory number below.
 - **x86-64, not ARM.** Images are built `linux/amd64`. An arm64 image will not run here.
 - **8 GB, not 12 GB.** Ubuntu 26.04.1 LTS reports 7.7 GiB total and 7.4 GiB available at
-  idle (393 MiB for the OS), measured on the host 2026-09-17. Container ceilings total
-  6272m (~6.1 GiB) against that 7.4 GiB, leaving ~1.3 GiB of headroom. Steady-state real allocation is ~2.5 GB;
-  the old "~4.0 GB steady / ~6.7 GB peak" figures counted Postgres page cache, which sits
-  inside the cgroup but is reclaimable. Keep 4 GB of swap and `vm.swappiness=10` so spikes
-  degrade instead of OOM-killing Postgres.
+  idle (393 MiB for the OS), measured on the host 2026-09-17. Seven container ceilings now
+  total 6400m (~6.25 GiB), leaving ~1.15 GiB of headroom at that idle measurement.
+  Keep 4 GB of swap and `vm.swappiness=10`; verify peak memory during simultaneous
+  uploads, backup and report rendering before production use.
 - **2 vCPU is less compute than Oracle's 2 OCPU**, which were physical cores. These are
   shared threads. `worker-report` (headless Chromium, concurrency 1) is the container that
   feels it; if renders start hitting the 120s job timeout, raise the timeout before
@@ -302,11 +293,14 @@ Raise these to the owner rather than working around them:
 - Migration targets if this host is outgrown: Netcup (~₹318), Contabo India (~₹399),
   DigitalOcean Bangalore, or Lightsail Mumbai. Hetzner's shared-vCPU plans were
   unavailable as of 2026-09-04.
-- R2 Class A operations are billed per million and multipart uploads generate more than
-  expected. Set `archive_timeout` to 60s (not 5s) and use multipart only above ~8 MB.
-- A quarterly restore drill is mandatory: fresh VM at a different provider, restore using
-  only git and the password manager, run smoke tests, record wall-clock time. If it takes
-  over 60 minutes, fix the runbook. **An untested backup is a rumour.**
+- A 100 GB disk cannot satisfy seven years of evidence retention indefinitely. Alert at
+  70% use and expand capacity before 80%; do not auto-delete evidence to free space.
+- Included weekly VPS backups are the disaster copy. Local WAL archive timeout remains
+  60s for recoverable database failures; a whole-VPS loss can lose up to a week of data.
+- A quarterly restore drill is mandatory. Restore the local pgBackRest repository into a
+  scratch database and check object files. Rehearse the provider snapshot restore before
+  accepting live data and whenever a spare host is available thereafter. Record the
+  backup timestamp and wall-clock time. **An untested backup is a rumour.**
 
 ---
 

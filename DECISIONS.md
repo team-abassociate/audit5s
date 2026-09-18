@@ -139,7 +139,7 @@ retention policy, a lawful basis and a subject-access/erasure process are requir
 go-live. Invariant E-4 (§5.6) blocks evidence deletion after audit completion, and D8 (§1.4)
 forbids hard deletion outright. Redaction is how both hold at once.
 
-**Erasure is redaction, never deletion.** The R2 object is overwritten with a placeholder; the
+**Erasure is redaction, never deletion.** The private S3 object is overwritten with a placeholder; the
 row, its `checksum_sha256` and the audit trail survive, and the record states plainly that a
 photo was present and was removed.
 
@@ -395,7 +395,7 @@ property the calling code depends on is genuine:
 * the URL expires — `expires` is inside the signature, and a stale link is refused as
   `EXPIRED`, not merely ignored;
 * the signature is the only authority — the route carries no session, so a test that
-  accidentally authenticates the PUT fails the same way it would against R2;
+  accidentally authenticates the PUT fails the same way it would against S3;
 * the PUT's declared content type and byte size are signed, and the route enforces both, so
   an oversized or mistyped body is rejected before `commit` ever runs;
 * the SHA-256 is verified where §9.4 puts it, at `commit`, from a `head()` both drivers
@@ -411,7 +411,7 @@ process rather than going straight to object storage. The port says so out loud 
 hiding it — `presignsOffProcess` is `false` on this driver and `true` on S3 — and the API
 logs a warning at every boot naming the driver, the directory and this decision. The route
 prefix is `__local-object-storage` precisely so that a request to it in an access log from a
-deployed environment is unmistakable; there, `R2_ENDPOINT` is set, the S3 driver is
+deployed environment is unmistakable; there, `S3_ENDPOINT` is set, the S3 driver is
 selected, and the route answers 404.
 
 The signing secret defaults to 32 random bytes per process, so a restart invalidates
@@ -1055,7 +1055,7 @@ need a definition rather than a query:
 
 - **"Evidence rows with no object after 24 h"** is `sync_state <> 'SYNCED'` — the row is
   inserted at intent and only `commit` sets `SYNCED` and `uploaded_at`, so the state
-  already means "no object". It is not a `head()` per row against R2; that would be a
+  already means "no object". It is not a `head()` per row against S3; that would be a
   bucket request per orphan candidate to re-derive what the column records.
 - **"Devices with unsynced data (>48 h)"** cannot be data the server has not received. Its
   one honest proxy is a device that still **owns** an audit in `IN_PROGRESS` or `PAUSED`
@@ -1087,7 +1087,7 @@ the next attempt overwrites it rather than adding a second one; it is bounded, n
 accumulating.
 
 Building the check anyway would mean a `list(prefix)` method on the `ObjectStorage` port,
-an implementation in both drivers, and a nightly `ListObjectsV2` per Unit against R2 — to
+an implementation in both drivers, and a nightly `ListObjectsV2` per Unit against S3 — to
 re-verify a guarantee that `BEFORE DELETE` triggers hold and that has its own tests.
 **Build it when either half of the design above stops being true:** a hard-delete path
 appears, or anything other than the API writes into the bucket.
@@ -1407,4 +1407,28 @@ same action**.
   simply stops making them a two-place errand.
 - **M-1 still binds.** A Zone Leader may hold one active Unit, so assigning one to a second
   Unit is refused — by the database, with its own message, which the form shows as it stands.
+
+---
+
+## R-27 — Self-host the complete production service on the existing VPS
+
+The owner chose to remove Cloudflare entirely and use the already-paid Hostinger KVM 2
+disk for media as well as PostgreSQL. Caddy serves the Vite SPA and terminates HTTPS on
+the VPS. A private, single-node MinIO AIStor Free S3 service stores evidence, reports and
+imports in one bucket; the existing presigned PUT/GET contract remains binding. The
+filesystem driver's API-hosted signed URLs remain development-only.
+
+pgBackRest now writes an encrypted POSIX repository to a separate volume on the same
+VPS. Hostinger's included weekly VPS backup is the only separate copy at launch. The
+owner explicitly accepted that a complete VPS loss can lose up to a week of changes;
+the former less-than-five-minute disaster RPO and four-hour RTO do not apply to this
+topology. A local database failure may still be recovered to the latest archived WAL.
+The weekly copy depends on Hostinger account availability and is not independent
+offsite storage. A second backup destination is required before reinstating the former
+recovery objectives.
+
+The 100 GB disk is a launch capacity, not a relaxation of the seven-year evidence
+retention rule. Alert at 70% use and expand before 80%; do not prune evidence for space.
+The Android field app remains installed on devices, and its release APK is served
+privately from the VPS. Application code still does not name the hosting provider.
 

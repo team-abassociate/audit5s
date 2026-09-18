@@ -151,3 +151,15 @@ jobs:
 
       - name: Verify WAL archive and full backup
         run: bash infra/tests/backup-smoke.sh
+
+      - name: Build production web image
+        run: docker build -t audit5s-web:ci -f infra/docker/web.Dockerfile .
+
+      - name: Validate Caddy and production Compose
+        run: |
+          docker run --rm -v "$PWD/infra/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e APP_HOST=app.example.test -e API_HOSTNAME=api.example.test \
+            -e OBJECTS_HOST=objects.example.test -e ACME_EMAIL=ops@example.test \
+            -e APK_DOWNLOAD_PASSWORD_HASH=dummy audit5s-web:ci \
+            caddy validate --config /etc/caddy/Caddyfile
+          docker compose --env-file .env.example config --quiet

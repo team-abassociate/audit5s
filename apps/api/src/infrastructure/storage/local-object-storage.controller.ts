@@ -15,7 +15,7 @@ import { ObjectStorage } from './object-storage';
  *     that demanded a JWT would be testing a different protocol from the one that ships.
  *   - Every request is verified against the HMAC and the expiry before a byte is read or
  *     written. An unsigned, tampered or stale URL gets 403 and touches no file.
- *   - When `R2_ENDPOINT` is configured this route is dead: the S3 driver is active, its
+ *   - When `S3_ENDPOINT` is configured this route is dead: the S3 driver is active, its
  *     URLs point at the provider, and this returns 404 rather than quietly offering a
  *     second way in.
  *

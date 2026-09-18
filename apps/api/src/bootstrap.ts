@@ -54,7 +54,7 @@ export const MAX_EVIDENCE_BYTES = 15 * 1024 * 1024;
  * A raw-body parser for image uploads.
  *
  * Only the filesystem driver's signed storage route receives these (R-9): with
- * `R2_ENDPOINT` set, an evidence PUT goes to the provider and this parser never fires.
+ * `S3_ENDPOINT` set, an evidence PUT goes to object storage and this parser never fires.
  * The default `bodyLimit` is 1 MB, which would refuse every photograph the phone takes,
  * so the limit is raised to §12.8's cap for these content types **only** — the JSON API
  * keeps its 1 MB body limit, because nothing it accepts is legitimately larger.

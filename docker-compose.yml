@@ -1,44 +1,29 @@
-# The six production services (STACK.md §4). One Hostinger VPS KVM 2, 2 vCPU / 8 GB.
-#
-# Every service carries a mem_limit. The ceilings total 6272m (~6.1 GiB) against ~7.4 GiB
-# usable on an 8 GB host, and they are what keep a runaway report render from taking
-# Postgres down with it. Steady state is ~2.5 GB of real allocation; most of the rest is
-# reclaimable page cache, which counts against a cgroup but is handed back under pressure.
-#
-# No nginx and no Caddy — Cloudflare terminates TLS and cloudflared dials the api
-# container directly, so there is no public inbound port on the origin.
-
+# Production: one VPS, seven containers. Only Caddy publishes public ports.
 name: audit5s
 
 x-api-image: &api-image ${API_IMAGE:-ghcr.io/team-abassociate/audit5s-api:latest}
-
 x-pgbackrest-env: &pgbackrest-env
-  PGBACKREST_REPO1_S3_ENDPOINT: ${PGBACKREST_S3_ENDPOINT}
-  PGBACKREST_REPO1_S3_BUCKET: ${R2_BUCKET_BACKUP}
-  PGBACKREST_REPO1_S3_KEY: ${R2_ACCESS_KEY_ID}
-  PGBACKREST_REPO1_S3_KEY_SECRET: ${R2_SECRET_ACCESS_KEY}
   PGBACKREST_REPO1_CIPHER_PASS: ${PGBACKREST_CIPHER_PASS}
   PGBACKREST_PG1_USER: ${POSTGRES_SUPERUSER:-postgres}
-
 x-api-env: &api-env
   NODE_ENV: production
   LOG_LEVEL: ${LOG_LEVEL:-info}
   DATABASE_URL: ${DATABASE_URL}
   DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+  PGBOSS_POOL_MAX: ${PGBOSS_POOL_MAX:-4}
   JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64}
   JWT_PUBLIC_KEY_B64: ${JWT_PUBLIC_KEY_B64}
   JWT_ISSUER: ${JWT_ISSUER}
-  JWT_AUDIENCE: ${JWT_AUDIENCE}
+  JWT_AUDIENCE: ${JWT_AUDIENCE:-audit5s}
   ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
   REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-0}
   BOOTSTRAP_PASSWORD_TTL_HOURS: ${BOOTSTRAP_PASSWORD_TTL_HOURS:-72}
-  R2_ENDPOINT: ${R2_ENDPOINT}
-  R2_REGION: ${R2_REGION:-auto}
-  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
-  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
-  R2_BUCKET_EVIDENCE: ${R2_BUCKET_EVIDENCE}
-  R2_BUCKET_REPORTS: ${R2_BUCKET_REPORTS}
-  R2_BUCKET_IMPORTS: ${R2_BUCKET_IMPORTS}
+  WEB_APP_URL: https://${APP_HOST}
+  S3_ENDPOINT: https://${OBJECTS_HOST}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+  S3_BUCKET: ${S3_BUCKET:-audit5s-private}
   CHECKLIST_IMPORT_MAX_BYTES: ${CHECKLIST_IMPORT_MAX_BYTES:-10485760}
   CHECKLIST_IMPORT_PREVIEW_TTL_HOURS: ${CHECKLIST_IMPORT_PREVIEW_TTL_HOURS:-24}
   PGBOSS_SCHEMA: ${PGBOSS_SCHEMA:-pgboss}
@@ -52,34 +37,22 @@ services:
       context: .
       dockerfile: infra/docker/postgres-pgbackrest.Dockerfile
     restart: unless-stopped
-    # 2560m, not 4g: on an 8 GB host the six ceilings must not over-commit the box.
-    # Postgres needs ~600 MB of real allocation; the rest of this is page cache, which
-    # counts against the cgroup but is reclaimable (STACK.md §9).
-    mem_limit: 2560m
+    mem_limit: 2304m
     shm_size: 256m
+    oom_score_adj: -500
     environment:
       <<: *pgbackrest-env
       POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
       POSTGRES_DB: audit5s
-      # postgres:18 defaults PGDATA to /var/lib/postgresql/<major>/docker and refuses to
-      # start when a volume is mounted at the old path. This whole topology names
-      # /var/lib/postgresql/data once more, in infra/pgbackrest/pgbackrest.conf
-      # (`pg1-path`), so the data directory is pinned here rather than moved there — one
-      # path for the database, the backup repository and the restore drill.
       PGDATA: /var/lib/postgresql/data
     volumes:
       - pgdata:/var/lib/postgresql/data
       - pgsocket:/var/run/postgresql
+      - backuprepo:/repo
       - ./infra/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
-      # Production does not mount infra/sql into initdb.d or expose role passwords to
-      # Postgres at startup. bootstrap.sh applies 00-roles.sql after it is ready.
-    # The kernel must never pick Postgres as the OOM victim (STACK.md §5).
-    oom_score_adj: -500
     command:
       - postgres
-      # 60s, not 5s: R2 Class A operations are billed per million and a WAL segment
-      # per 5 seconds is a needless bill (STACK.md §9).
       - -c
       - archive_timeout=60
       - -c
@@ -88,19 +61,14 @@ services:
       - archive_mode=on
       - -c
       - archive_command=pgbackrest --stanza=audit5s archive-push %p
-      # Sized for the 8 GB box rather than left on defaults. effective_cache_size must
-      # describe the cache this cgroup can actually hold (mem_limit minus shared_buffers),
-      # or the planner over-favours index scans against a cache that is not there.
       - -c
-      - shared_buffers=640MB
+      - shared_buffers=576MB
       - -c
-      - effective_cache_size=1920MB
+      - effective_cache_size=1728MB
       - -c
       - work_mem=4MB
       - -c
       - maintenance_work_mem=128MB
-      # 40, not 100: the worst case is max_connections x work_mem held in sort memory, and
-      # with 2 vCPU the API pool, the two workers and pg-boss need about 30 between them.
       - -c
       - max_connections=40
     healthcheck:
@@ -109,64 +77,75 @@ services:
       timeout: 5s
       retries: 5
 
+  object-storage:
+    image: ${MINIO_IMAGE:-quay.io/minio/aistor/minio:RELEASE.2026-03-26T21-24-40Z}
+    restart: unless-stopped
+    mem_limit: 768m
+    command: ['minio', 'server', '/data', '--console-address', ':9001', '--license', '/minio.license']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_API_CORS_ALLOW_ORIGIN: https://${APP_HOST}
+    volumes:
+      - objectdata:/data
+      - ./infra/.local/minio.license:/minio.license:ro
+    # Administrative CLI access on the host only. The console is never published.
+    ports:
+      - '127.0.0.1:9000:9000'
+
   api:
     image: *api-image
     restart: unless-stopped
     mem_limit: 768m
-    # Above QueueService's 150s drain timeout, so SIGTERM is answered by the application
-    # finishing its work rather than by the kernel. Docker's default is 10s, which would
-    # SIGKILL a report render every time.
     stop_grace_period: 180s
     command: ['node', 'dist/main.js']
     environment:
       <<: *api-env
       API_PORT: 3000
       API_HOST: 0.0.0.0
-      CORS_ORIGINS: ${CORS_ORIGINS}
+      CORS_ORIGINS: https://${APP_HOST}
     depends_on:
       postgres:
         condition: service_healthy
+      object-storage:
+        condition: service_started
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "fetch(\"http://127.0.0.1:3000/api/v1/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      test: ['CMD-SHELL', 'node -e "fetch(\"http://127.0.0.1:3000/api/v1/health\").then(r=>r.json()).then(h=>process.exit(h.status===\"error\"?1:0)).catch(()=>process.exit(1))"']
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
 
-  # Which queues each worker handles is decided by its entrypoint, not by configuration:
-  # `worker.general.ts` and `worker.report.ts` register their own handlers. The
-  # `WORKER_QUEUES` variable that used to sit here was read by nothing and had drifted —
-  # it named three of worker-general's five queues.
   worker-general:
     image: *api-image
     restart: unless-stopped
     stop_grace_period: 180s
-    mem_limit: 768m
+    mem_limit: 512m
     command: ['node', 'dist/worker.general.js']
     environment:
       <<: *api-env
     depends_on:
       postgres:
         condition: service_healthy
+      object-storage:
+        condition: service_started
 
   worker-report:
     image: *api-image
     restart: unless-stopped
     stop_grace_period: 180s
-    # Playwright with chrome-headless-shell. Concurrency 1 — this is the memory ceiling
-    # of the whole box, and two concurrent renders is how it gets breached.
     mem_limit: 1536m
     shm_size: 256m
     command: ['node', 'dist/worker.report.js']
     environment:
       <<: *api-env
       REPORT_CONCURRENCY: 1
-      # Alpine's Chromium, baked into the image. See infra/docker/api.Dockerfile for why
-      # it is not Playwright's own download.
       CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium-browser
     depends_on:
       postgres:
         condition: service_healthy
+      object-storage:
+        condition: service_started
 
   pgbackrest:
     image: audit5s-postgres-pgbackrest:18
@@ -176,27 +155,48 @@ services:
     user: postgres
     command: ['sleep', 'infinity']
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 384m
     environment:
       <<: *pgbackrest-env
     volumes:
       - ./infra/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
       - pgdata:/var/lib/postgresql/data
       - pgsocket:/var/run/postgresql
+      - backuprepo:/repo
     depends_on:
       postgres:
         condition: service_healthy
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
+  caddy:
+    image: ${WEB_IMAGE:-ghcr.io/team-abassociate/audit5s-web:latest}
     restart: unless-stopped
     mem_limit: 128m
-    command: ['tunnel', '--no-autoupdate', 'run', '--token', '${CLOUDFLARE_TUNNEL_TOKEN}']
+    environment:
+      APP_HOST: ${APP_HOST}
+      API_HOSTNAME: ${API_HOSTNAME}
+      OBJECTS_HOST: ${OBJECTS_HOST}
+      ACME_EMAIL: ${ACME_EMAIL}
+      APK_DOWNLOAD_PASSWORD_HASH: ${APK_DOWNLOAD_PASSWORD_HASH}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - caddydata:/data
+      - caddyconfig:/config
+      - ./infra/.local/releases:/srv/downloads:ro
+      - ./infra/.local/well-known:/srv/.well-known:ro
+    networks:
+      default:
+        aliases:
+          - ${OBJECTS_HOST}
     depends_on:
       - api
+      - object-storage
 
 volumes:
   pgdata:
-    # A separate block volume on the VM, so the database survives rebuilding the host.
-    external: false
   pgsocket:
+  backuprepo:
+  objectdata:
+  caddydata:
+  caddyconfig:

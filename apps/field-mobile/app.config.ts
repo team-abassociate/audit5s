@@ -59,7 +59,7 @@ const config: ExpoConfig = {
          * Deployed behind a real hostname the API is HTTPS end to end, and this goes back to
          * the default — it is here for testing, not for the field.
          */
-        android: { usesCleartextTraffic: true },
+        android: { usesCleartextTraffic: process.env.ALLOW_CLEARTEXT === '1' },
       },
     ],
     'expo-router',
@@ -88,5 +88,14 @@ const config: ExpoConfig = {
   extra: { apiBaseUrl: process.env.API_BASE_URL ?? 'http://10.0.2.2:3000/api/v1', eas: { projectId: '71411439-1202-4ffe-bf53-55ef490216e7', }, },
   experiments: { typedRoutes: true },
 };
+
+if (process.env.APP_DEPLOYMENT === 'production') {
+  if (!/^https:\/\/[^/]+\/api\/v1$/.test(process.env.API_BASE_URL ?? '')) {
+    throw new Error('Production APK requires API_BASE_URL=https://<api-host>/api/v1');
+  }
+  if (!/^[a-z0-9.-]+$/i.test(process.env.WEB_APP_HOST ?? '')) {
+    throw new Error('Production APK requires WEB_APP_HOST');
+  }
+}
 
 export default config;

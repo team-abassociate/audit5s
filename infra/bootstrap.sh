@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# One-shot provisioning for a fresh Hostinger VPS KVM 2 host (2 vCPU / 8 GB / NVMe).
+# One-shot provisioning for the single VPS (2 vCPU / 8 GB / NVMe).
 #
 # It is idempotent: running it twice is safe, and that matters because it doubles as the
 # recovery script. The quarterly restore drill (STACK.md §9) rebuilds a host at a
@@ -49,11 +49,30 @@ done
   die "DATABASE_URL must contain the matching app password and point to postgres:5432/audit5s."
 [[ "$DATABASE_MIGRATION_URL_VALUE" == "postgres://audit5s_owner:$APP_OWNER_PASSWORD@postgres:5432/audit5s" ]] || \
   die "DATABASE_MIGRATION_URL must contain the matching owner password and point to postgres:5432/audit5s."
-BACKUP_ENDPOINT="$(env_value PGBACKREST_S3_ENDPOINT)"
-[[ "$BACKUP_ENDPOINT" =~ ^[A-Za-z0-9.-]+$ ]] ||
-  die "PGBACKREST_S3_ENDPOINT must be a nonempty S3 hostname without a scheme or path."
-for _key in POSTGRES_SUPERUSER_PASSWORD R2_BUCKET_BACKUP R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY PGBACKREST_CIPHER_PASS; do
+for _key in POSTGRES_SUPERUSER_PASSWORD PGBACKREST_CIPHER_PASS \
+  S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY MINIO_ROOT_USER MINIO_ROOT_PASSWORD \
+  APP_HOST API_HOSTNAME OBJECTS_HOST ACME_EMAIL APK_DOWNLOAD_PASSWORD_HASH; do
   [[ -n "$(env_value "$_key")" ]] || die "$_key is empty in .env."
+done
+for _key in APP_HOST API_HOSTNAME OBJECTS_HOST; do
+  [[ "$(env_value "$_key")" =~ ^[a-zA-Z0-9.-]+$ ]] ||
+    die "$_key must be a DNS name without a scheme or path."
+done
+BUCKET="$(env_value S3_BUCKET)"
+[[ "$BUCKET" =~ ^[a-z0-9][a-z0-9.-]{2,62}$ ]] || die "S3_BUCKET is invalid."
+[[ -s infra/.local/minio.license ]] ||
+  die "Place the AIStor Free license at infra/.local/minio.license before bootstrap."
+mkdir -p infra/.local/releases infra/.local/well-known
+for _key in API_IMAGE WEB_IMAGE; do
+  _image="$(env_value "$_key")"
+  [[ "$_image" =~ :[0-9a-f]{40}$ ]] ||
+    die "$_key must use a 40-character commit SHA tag."
+done
+[[ "$(env_value MINIO_ROOT_USER)" != "$(env_value S3_ACCESS_KEY_ID)" ]] ||
+  die "The S3 application user must not be the object-store root user."
+for _key in MINIO_ROOT_USER MINIO_ROOT_PASSWORD; do
+  [[ "$(env_value "$_key")" =~ ^[a-zA-Z0-9._~-]+$ ]] ||
+    die "$_key must use URL-safe characters (openssl rand -hex 32 is suitable)."
 done
 
 # --- 1. Swap ------------------------------------------------------------------
@@ -89,10 +108,10 @@ log "Validating effective container configuration"
 command -v python3 >/dev/null 2>&1 || die "python3 is required for configuration validation."
 export EXPECTED_DATABASE_URL="$DATABASE_URL_VALUE"
 export EXPECTED_SUPERUSER_PASSWORD="$(env_value POSTGRES_SUPERUSER_PASSWORD)"
-export EXPECTED_BACKUP_ENDPOINT="$BACKUP_ENDPOINT"
-export EXPECTED_BACKUP_BUCKET="$(env_value R2_BUCKET_BACKUP)"
-export EXPECTED_BACKUP_KEY="$(env_value R2_ACCESS_KEY_ID)"
-export EXPECTED_BACKUP_SECRET="$(env_value R2_SECRET_ACCESS_KEY)"
+export EXPECTED_S3_ENDPOINT="https://$(env_value OBJECTS_HOST)"
+export EXPECTED_S3_BUCKET="$BUCKET"
+export EXPECTED_S3_KEY="$(env_value S3_ACCESS_KEY_ID)"
+export EXPECTED_S3_SECRET="$(env_value S3_SECRET_ACCESS_KEY)"
 export EXPECTED_BACKUP_CIPHER="$(env_value PGBACKREST_CIPHER_PASS)"
 compose config --format json | python3 -c '
 import json, os, sys
@@ -102,26 +121,26 @@ try:
         ("api", "DATABASE_URL", "EXPECTED_DATABASE_URL"),
         ("postgres", "POSTGRES_PASSWORD", "EXPECTED_SUPERUSER_PASSWORD"),
     ]
-    for service in ("postgres", "pgbackrest"):
+    for service in ("api", "worker-general", "worker-report"):
         checks.extend([
-            (service, "PGBACKREST_REPO1_S3_ENDPOINT", "EXPECTED_BACKUP_ENDPOINT"),
-            (service, "PGBACKREST_REPO1_S3_BUCKET", "EXPECTED_BACKUP_BUCKET"),
-            (service, "PGBACKREST_REPO1_S3_KEY", "EXPECTED_BACKUP_KEY"),
-            (service, "PGBACKREST_REPO1_S3_KEY_SECRET", "EXPECTED_BACKUP_SECRET"),
-            (service, "PGBACKREST_REPO1_CIPHER_PASS", "EXPECTED_BACKUP_CIPHER"),
+            (service, "S3_ENDPOINT", "EXPECTED_S3_ENDPOINT"),
+            (service, "S3_BUCKET", "EXPECTED_S3_BUCKET"),
+            (service, "S3_ACCESS_KEY_ID", "EXPECTED_S3_KEY"),
+            (service, "S3_SECRET_ACCESS_KEY", "EXPECTED_S3_SECRET"),
         ])
+    for service in ("postgres", "pgbackrest"):
+        checks.append((service, "PGBACKREST_REPO1_CIPHER_PASS", "EXPECTED_BACKUP_CIPHER"))
     if any(services[s]["environment"].get(k) != os.environ[e] for s, k, e in checks):
         raise ValueError()
 except (KeyError, ValueError, TypeError):
     sys.exit("Effective Compose configuration differs from .env.")
 ' || die "Container configuration validation failed."
 unset EXPECTED_DATABASE_URL EXPECTED_SUPERUSER_PASSWORD
-unset EXPECTED_BACKUP_ENDPOINT EXPECTED_BACKUP_BUCKET EXPECTED_BACKUP_KEY
-unset EXPECTED_BACKUP_SECRET EXPECTED_BACKUP_CIPHER
+unset EXPECTED_S3_ENDPOINT EXPECTED_S3_BUCKET EXPECTED_S3_KEY
+unset EXPECTED_S3_SECRET EXPECTED_BACKUP_CIPHER
 
 # --- 3. Firewall --------------------------------------------------------------
-# No public inbound port on the origin: cloudflared dials out, nothing dials in.
-# This is the whole reason there is no nginx and no exposed 443 (STACK.md §4).
+# Caddy terminates HTTPS directly on the VPS. Object storage and PostgreSQL are private.
 #
 # ufw, not raw iptables. Ubuntu 26.04 dropped `iptables-persistent` (verified on
 # the host 2026-09-17: `apt-cache policy` reports no candidate), so hand-written
@@ -129,9 +148,8 @@ unset EXPECTED_BACKUP_SECRET EXPECTED_BACKUP_CIPHER
 # image, persists through its own systemd unit, and covers IPv4 and IPv6 in one
 # pass instead of two parallel rule sets that can drift apart.
 #
-# The usual ufw-versus-Docker caveat does not apply here: Docker bypasses ufw
-# only for *published* ports, and docker-compose.yml publishes none. Every
-# container is reachable solely on the compose network, which is the design.
+# Docker publishes only Caddy's 80/443 and object storage on 127.0.0.1:9000.
+# The provider firewall must mirror the public 22/80/443 allowlist.
 log "Locking down inbound traffic"
 
 command -v apt-get >/dev/null 2>&1 || die "This script targets Ubuntu/Debian (STACK.md §9)."
@@ -146,16 +164,58 @@ ufw default deny incoming
 ufw default allow outgoing
 # SSH stays open; Hostinger's own VPS firewall is the second layer.
 ufw allow 22/tcp comment 'ssh'
+ufw allow 80/tcp comment 'caddy-http'
+ufw allow 443/tcp comment 'caddy-https'
 ufw --force enable
 
 ufw status verbose
-log "Firewall active and enabled at boot; no inbound port but 22"
+log "Firewall active and enabled at boot; public ports are 22, 80 and 443"
 
 # --- 4. Pull and start --------------------------------------------------------
 log "Starting PostgreSQL"
 compose pull --ignore-buildable
 compose build postgres
-compose stop cloudflared api worker-general worker-report
+compose stop caddy api worker-general worker-report
+log "Starting private object storage"
+compose up -d --no-deps object-storage
+for _ in $(seq 1 60); do
+  curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1 && break
+  sleep 2
+done
+curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null ||
+  die "Object storage did not become ready."
+
+log "Configuring private bucket and application S3 user"
+if ! command -v mc >/dev/null 2>&1; then
+  _mc_tmp="$(mktemp)"
+  curl -fsSL https://dl.min.io/aistor/mc/release/linux-amd64/mc -o "$_mc_tmp"
+  _mc_expected="$(curl -fsSL https://dl.min.io/aistor/mc/release/linux-amd64/mc.sha256sum | awk '{print $1}')"
+  [[ "$_mc_expected" =~ ^[0-9a-f]{64}$ ]] || die "Invalid AIStor CLI checksum response."
+  [[ "$(sha256sum "$_mc_tmp" | awk '{print $1}')" == "$_mc_expected" ]] ||
+    die "AIStor CLI checksum mismatch."
+  install -m 0755 "$_mc_tmp" /usr/local/bin/mc
+  rm -f "$_mc_tmp"
+fi
+export MC_HOST_audit5s="http://$(env_value MINIO_ROOT_USER):$(env_value MINIO_ROOT_PASSWORD)@127.0.0.1:9000"
+_policy="$(mktemp)"
+_cors="$(mktemp)"
+chmod 600 "$_policy" "$_cors"
+trap 'rm -f "$_policy" "$_cors"' EXIT
+cat > "$_policy" <<POLICY
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:PutObject"],"Resource":["arn:aws:s3:::$BUCKET/*"]}]}
+POLICY
+cat > "$_cors" <<CORS
+<CORSConfiguration><CORSRule><AllowedOrigin>https://$(env_value APP_HOST)</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>
+CORS
+mc mb --ignore-existing "audit5s/$BUCKET"
+mc admin policy create audit5s audit5s-app "$_policy"
+mc admin user add audit5s "$(env_value S3_ACCESS_KEY_ID)" "$(env_value S3_SECRET_ACCESS_KEY)"
+mc admin policy attach audit5s audit5s-app --user "$(env_value S3_ACCESS_KEY_ID)"
+mc cors set "audit5s/$BUCKET" "$_cors"
+rm -f "$_policy" "$_cors"
+trap - EXIT
+unset MC_HOST_audit5s
+
 compose up -d --no-deps postgres
 
 log "Waiting for PostgreSQL"

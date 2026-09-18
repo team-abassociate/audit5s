@@ -35,7 +35,8 @@ export interface RateLimitResult {
  * ARCHITECTURE.md §12.11 specified Redis; STACK.md §6 forbids it, and the deployment is a
  * single API container (STACK.md §4), so an in-process window is exact rather than an
  * approximation of a shared one. Two things make that acceptable rather than a shortcut:
- * Cloudflare's WAF rate-limits at the edge in front of this, and the security-critical
+ * Caddy limits public exposure to the guarded API and this service handles application
+ * rate limits. The security-critical
  * limit — failed logins per login ID — is counted from the `login_attempt` table instead,
  * so it survives a restart and cannot be reset by bouncing the process.
  *

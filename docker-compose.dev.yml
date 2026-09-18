@@ -1,22 +1,15 @@
-# Local development override.
-#
-# It runs the same PostgreSQL 18 as production and adds MinIO as an S3-compatible
-# stand-in for R2. That is a dev convenience only, permitted because `R2_ENDPOINT` is an
-# environment variable: nothing in apps/ or packages/ references MinIO by name, so this
-# is not a second production dependency (HANDOFF.md §5.2).
-#
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
+# Local development uses the signed filesystem storage driver. This volume is shared by
+# the API and both workers so report and evidence reads see the uploaded bytes.
 services:
   postgres:
+    # The production archive target is disabled with its backup sidecar in development.
+    command: !override ['postgres', '-c', 'archive_mode=off']
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     environment:
-      POSTGRES_SUPERUSER_PASSWORD: postgres
       POSTGRES_PASSWORD: postgres
       APP_OWNER_PASSWORD: ${APP_OWNER_PASSWORD:?Set APP_OWNER_PASSWORD in .env}
       APP_PASSWORD: ${APP_PASSWORD:?Set APP_PASSWORD in .env}
-    # Fresh local volumes still need roles before the host runs migrations.
     volumes:
       - ./infra/sql/00-roles.sql:/docker-entrypoint-initdb.d/00-roles.sql:ro
 
@@ -26,51 +19,63 @@ services:
       dockerfile: infra/docker/api.Dockerfile
     image: audit5s-api:dev
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     environment:
       NODE_ENV: development
       LOG_LEVEL: debug
       CORS_ORIGINS: http://localhost:5173
+      S3_ENDPOINT: ''
+      OBJECT_STORAGE_LOCAL_DIR: /data/objects
+      OBJECT_STORAGE_PUBLIC_URL: http://127.0.0.1:3000/api/v1
+      OBJECT_STORAGE_SIGNING_SECRET: audit5s-development-signing-secret
+    volumes:
+      - devobjects:/data/objects
+    depends_on: !override
+      postgres:
+        condition: service_healthy
 
   worker-general:
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
     image: audit5s-api:dev
+    environment:
+      NODE_ENV: development
+      S3_ENDPOINT: ''
+      OBJECT_STORAGE_LOCAL_DIR: /data/objects
+      OBJECT_STORAGE_PUBLIC_URL: http://127.0.0.1:3000/api/v1
+      OBJECT_STORAGE_SIGNING_SECRET: audit5s-development-signing-secret
+    volumes:
+      - devobjects:/data/objects
+    depends_on: !override
+      postgres:
+        condition: service_healthy
 
   worker-report:
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
     image: audit5s-api:dev
-
-  # Not part of the production topology. Present so evidence upload and report storage
-  # can be exercised locally without a Cloudflare account.
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    mem_limit: 512m
-    command: ['server', '/data', '--console-address', ':9001']
     environment:
-      MINIO_ROOT_USER: audit5s
-      MINIO_ROOT_PASSWORD: audit5s-dev-secret
-    ports:
-      - '9000:9000'
-      - '9001:9001'
+      NODE_ENV: development
+      S3_ENDPOINT: ''
+      OBJECT_STORAGE_LOCAL_DIR: /data/objects
+      OBJECT_STORAGE_PUBLIC_URL: http://127.0.0.1:3000/api/v1
+      OBJECT_STORAGE_SIGNING_SECRET: audit5s-development-signing-secret
     volumes:
-      - miniodata:/data
+      - devobjects:/data/objects
+    depends_on: !override
+      postgres:
+        condition: service_healthy
 
-  # Neither belongs in a local stack: there is no tunnel to run and no repository to
-  # back up to. Scaled to zero rather than deleted, so the file stays a pure override.
-  cloudflared:
-    deploy:
-      replicas: 0
-    profiles: ['never']
+  object-storage:
+    profiles: ['production-only']
+
+  caddy:
+    profiles: ['production-only']
 
   pgbackrest:
-    deploy:
-      replicas: 0
-    profiles: ['never']
+    profiles: ['production-only']
 
 volumes:
-  miniodata:
+  devobjects:

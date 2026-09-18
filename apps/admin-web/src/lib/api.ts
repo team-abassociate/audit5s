@@ -65,7 +65,7 @@ export function setSession(next: Session | null): void {
   session = next;
   if (next) {
     // Web uses storage here rather than httpOnly cookies because the API is on another
-    // origin behind Cloudflare and this is a login-gated internal tool. The compensating
+    // origin behind the reverse proxy and this is a login-gated internal tool. The compensating
     // controls are the 15-minute access token and rotating refresh (§12.3).
     localStorage.setItem('audit5s.session', JSON.stringify(next));
   } else {

@@ -1085,7 +1085,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       'DECISIONS.md R-9 — the filesystem driver’s presigned PUT. Public by design: a ' +
       'presigned URL carries its own authority, which is the whole point of §5 having the ' +
       'device upload without an API session. Authorization is the HMAC and the expiry, ' +
-      'verified before a byte is touched; with R2_ENDPOINT set this route answers 404',
+      'verified before a byte is touched; with S3_ENDPOINT set this route answers 404',
     public: true,
     expected: {},
     coveredBy: 'evidence.e2e.test.ts',

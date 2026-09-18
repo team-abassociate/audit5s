@@ -14,9 +14,10 @@
 > wins on any behaviour.** Resolutions R-1 … R-11 live in [`DECISIONS.md`](./DECISIONS.md) and
 > are binding.
 >
-> **The body of this document has been swept to match** — every section below now states the
-> current choice, so no section needs to be read against this table. It is kept as the record
-> of what changed and why, for anyone reading an older copy or wondering why a decision moved.
+> **R-27 deployment change (2026-09-18):** the Cloudflare topology diagrams, provider names,
+> edge controls and old recovery targets below are historical. The active deployment
+> contract is `STACK.md` §2, §4 and §9 plus `DECISIONS.md` R-27. Domain behaviour,
+> authorization, signed media URLs and seven-year evidence retention still bind.
 >
 > | Previously | Now | Sections rewritten |
 > | --- | --- | --- |
@@ -27,8 +28,8 @@
 > | Separate `corrective-action-web` client | A token-gated route inside `admin-web` | §3.1, §13 |
 > | PostgreSQL 16 + read replica | PostgreSQL 18, single instance, no replica | §3.1 |
 > | Five workers (notification · report · analytics · media · import) | Two: `worker-general` and `worker-report` | §3.1, §4 |
-> | Generic S3-compatible object storage | Cloudflare R2 via `@aws-sdk/client-s3` | §3.1, §5.6 |
-> | Managed backups + PITR | Self-hosted pgBackRest → R2 (RPO < 5 min unchanged) | §16 |
+> | Generic S3-compatible object storage | Private single-node S3 service on the VPS via `@aws-sdk/client-s3` (R-27) | §3.1, §5.6 |
+> | Managed backups + PITR | Encrypted local pgBackRest plus included weekly VPS backups (R-27) | §16 |
 > | WhatsApp BSP + SMS gateway wired at MVP | `NotificationChannel` interface defined; in-app + FCM only at MVP. No channel wired. | §2.8, §14 Phase 6 |
 > | react-native-vision-camera | `expo-camera` (R-11). The only case where `STACK.md` lost a technology name: the row was stale, not a decision. | §12.10 (unchanged — it already named `expo-camera`), `STACK.md` §2 |
 > | SQLCipher on mobile | Not used (R-4) | §14 Phase 4 |
@@ -43,7 +44,7 @@
 > | Queues (§3.1, §10, §11) | pg-boss on the same PostgreSQL |
 > | Idempotency fast path (§5.9, §8.2) | Postgres only — the `idempotency_key` table, 48 h |
 > | `jti` denylist / refresh revocation (§12.1) | A Postgres table, checked on the auth path |
-> | Rate limiting (§12.6) | Cloudflare edge rules. The API does not rate-limit itself. |
+> | Rate limiting (§12.6) | API in-process limits plus persistent login-attempt lockout; Caddy terminates HTTPS. |
 > | Analytics cache (§11) | None at MVP — the `metric_daily_*` rollup tables are the cache |
 >
 > Two additions from `DECISIONS.md`, now folded into §5.2 and §5.6: the `unit_membership`
@@ -3138,9 +3139,9 @@ business data.
 
 | | |
 | --- | --- |
-| **Database** | Managed automated daily backups + PITR with ≥30-day retention. **RPO ≤5 min, RTO ≤4 h.** |
-| **Object storage** | Versioning enabled (protects against accidental overwrite/delete); cross-region replication for evidence and reports |
-| **Restore testing** | **Quarterly, mandatory, into a scratch environment, with a written result.** An untested backup is not a backup — this is a release-blocking item in PART 16 |
+| **Database** | Encrypted local pgBackRest repository, continuous WAL archive, daily incremental and weekly full backups. Included weekly VPS backups are the separate copy. **Total-VPS loss may lose up to one week of changes (R-27).** |
+| **Object storage** | Private single-node bucket on the same VPS disk, included in the weekly VPS backup. No automatic hard deletion of retained evidence. |
+| **Restore testing** | **Quarterly local restore into a scratch environment, with a written result; provider snapshot restore rehearsed before live data.** A full provider restore needs a spare host or a maintenance window after launch. |
 | **Deletion protection** | No hard-delete path for audit data (D8); soft-delete of evidence is audit-logged and the object is retained through its lifecycle window |
 | **Export** | Per-Unit data export (JSON + media manifest) for portability and legal requests |
 
@@ -3530,10 +3531,10 @@ and each has a structural answer in the design.
 - [ ] Outbox dispatcher lag alert
 
 ## 16.5 Backups and restore
-- [ ] Automated daily backups + PITR, ≥30-day retention
-- [ ] S3 versioning and cross-region replication for evidence and reports
-- [ ] **Quarterly restore rehearsal into a scratch environment, with a written result** — release-blocking
-- [ ] Documented RPO (≤5 min) and RTO (≤4 h), agreed with the business
+- [ ] Encrypted local pgBackRest with continuous WAL, daily incremental and weekly full backups
+- [ ] Included weekly VPS backup enabled and checked in the provider dashboard
+- [ ] **Quarterly local restore rehearsal into a scratch environment, with a written result** — release-blocking
+- [ ] Provider snapshot restore rehearsed before live data; documented complete-VPS loss of up to one week (R-27)
 - [ ] Per-Unit export path tested
 
 ## 16.6 Migrations

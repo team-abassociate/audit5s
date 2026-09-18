@@ -13,7 +13,7 @@ This file records the position. **Two values below are defaults pending a decisi
 `DECISIONS.md` R-5 settles the apparent conflict between D8 (audit data is never
 hard-deleted) and an erasure request:
 
-- The R2 object is overwritten with a placeholder.
+- The private S3 object is overwritten with a placeholder.
 - The `evidence` row survives, along with its `checksum_sha256` and the audit trail.
 - `redacted_at`, `redacted_by_user_id` and `redaction_reason` record what happened.
 - Reports render the item as a placeholder captioned "Photo removed".

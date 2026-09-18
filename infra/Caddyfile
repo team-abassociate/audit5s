@@ -1,0 +1,45 @@
+{
+  email {$ACME_EMAIL}
+}
+
+{$APP_HOST} {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://{$OBJECTS_HOST}; connect-src 'self' https://{$OBJECTS_HOST}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+  }
+
+  handle /api/* {
+    reverse_proxy api:3000
+  }
+
+  handle /downloads/* {
+    basic_auth {
+      auditor {$APK_DOWNLOAD_PASSWORD_HASH}
+    }
+    root * /srv
+    file_server
+  }
+
+  handle /.well-known/* {
+    root * /srv
+    file_server
+  }
+
+  handle {
+    root * /srv
+    try_files {path} /index.html
+    file_server
+  }
+}
+
+{$API_HOSTNAME} {
+  reverse_proxy api:3000
+}
+
+{$OBJECTS_HOST} {
+  # SigV4 includes the Host, path and query. Do not rewrite any of them.
+  reverse_proxy object-storage:9000
+}

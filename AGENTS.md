@@ -10,8 +10,8 @@ working on this repository at once.
 `audit5s` — a 5S audit platform for industrial facilities in India: an admin web portal,
 an offline-first Android field app, and a NestJS/PostgreSQL backend.
 
-**Stage: specification.** There is no application code yet. The repository currently holds
-four documents and nothing else. The first code to be written is build step 1 below.
+**Stage: implementation.** The API, web portal, Android field app and infrastructure
+scaffolding are present. Read the current tree rather than assuming a build step is empty.
 
 ## The documents, and which one wins
 
@@ -75,7 +75,7 @@ list; this is the subset that most often gets quietly violated.
 - **The host do-not-touch list** (`STACK.md` §6) — application code never names the
   hosting provider. A CI grep and an ESLint rule for `oci-`, `oraclecloud.com`, `@oracle/`
   and `hostinger` in `apps/` and `packages/` enforce it. Permitted from the provider: a VM,
-  a disk, a firewall. Nothing else.
+  its disk, firewall, and included VPS backup service (R-27). Nothing else.
 
 ## Build order
 

@@ -37,12 +37,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     /*
-     * A corrective-action link is opened on a Zone Leader's phone, through a Cloudflare
-     * quick tunnel to this server (`cloudflared tunnel --url http://localhost:5173`). Vite
-     * refuses a Host it does not know, so the tunnel's domain is let in, and `/api` is
-     * passed to the API on the same origin — the page then needs no second public address
-     * for the API. 127.0.0.1, not localhost: Node resolves localhost to ::1 first, and the
-     * API listens on IPv4.
+     * For local development, `/api` is passed to the API on the same origin.
+     * 127.0.0.1 avoids a localhost IPv6 mismatch with the IPv4 API listener.
      */
     /*
      * Also served on the LAN, so a phone on the same Wi-Fi can open a corrective-action
@@ -52,8 +48,7 @@ export default defineConfig({
      */
     host: true,
     https,
-    allowedHosts: ['.trycloudflare.com'],
     proxy: { '/api': 'http://127.0.0.1:3000' },
   },
-  build: { outDir: 'dist', sourcemap: true },
+  build: { outDir: 'dist', sourcemap: false },
 });

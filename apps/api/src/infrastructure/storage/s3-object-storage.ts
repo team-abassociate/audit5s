@@ -28,10 +28,9 @@ export interface S3StorageConfig {
 }
 
 /**
- * The production adapter: any S3-compatible endpoint, which is R2 in the deployed
- * environment and MinIO in `docker-compose.dev.yml`.
+ * The production adapter: any S3-compatible endpoint, including the VPS object store.
  *
- * `forcePathStyle` because R2 and MinIO both address buckets by path rather than by
+ * `forcePathStyle` because the object store addresses buckets by path rather than by
  * virtual host, and the alternative fails at request time rather than at startup.
  */
 @Injectable()

@@ -55,17 +55,14 @@ const envSchema = z.object({
   BOOTSTRAP_PASSWORD_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(72),
 
   /**
-   * Object storage. The endpoint is a variable precisely so R2, MinIO or any other
-   * S3-compatible target needs no code change (STACK.md §2). Leaving it unset selects the
-   * filesystem driver, which is the development and CI path — see StorageModule.
+   * Production uses a private S3-compatible service. Development and CI may omit the
+   * endpoint to select the filesystem driver; production validation below forbids that.
    */
-  R2_ENDPOINT: z.string().optional(),
-  R2_REGION: z.string().default('auto'),
-  R2_ACCESS_KEY_ID: z.string().optional(),
-  R2_SECRET_ACCESS_KEY: z.string().optional(),
-  R2_BUCKET_EVIDENCE: z.string().default('audit5s-evidence'),
-  R2_BUCKET_REPORTS: z.string().default('audit5s-reports'),
-  R2_BUCKET_IMPORTS: z.string().default('audit5s-imports'),
+  S3_ENDPOINT: z.string().optional(),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_BUCKET: z.string().default('audit5s-private'),
   OBJECT_STORAGE_LOCAL_DIR: z.string().default('.data/object-storage'),
   /**
    * Where the filesystem driver's presigned URLs point (R-9). Absolute, because a device
@@ -171,6 +168,22 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       .map((issue) => `  ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${detail}`);
+  }
+
+  if (parsed.data.NODE_ENV === 'production') {
+    const { S3_ENDPOINT, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY } = parsed.data;
+    if (!S3_ENDPOINT || !S3_ACCESS_KEY_ID || !S3_SECRET_ACCESS_KEY) {
+      throw new Error('Production requires S3_ENDPOINT and S3 credentials.');
+    }
+    let endpoint: URL;
+    try {
+      endpoint = new URL(S3_ENDPOINT);
+    } catch {
+      throw new Error('Production S3_ENDPOINT must be an HTTPS URL.');
+    }
+    if (endpoint.protocol !== 'https:' || endpoint.pathname !== '/' || endpoint.search || endpoint.hash) {
+      throw new Error('Production S3_ENDPOINT must be an HTTPS origin without a path.');
+    }
   }
 
   const { JWT_PRIVATE_KEY_B64, JWT_PUBLIC_KEY_B64, ...rest } = parsed.data;
