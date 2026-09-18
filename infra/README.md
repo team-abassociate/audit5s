@@ -15,7 +15,7 @@ applying them.
 | `docker-compose.dev.yml` | Local override: exposed ports, a local build, and MinIO standing in for R2. Dev convenience only — nothing in `apps/` or `packages/` names it. |
 | `infra/bootstrap.sh` | Provisions a fresh host. Idempotent, and doubles as the recovery script for the restore drill. |
 | `infra/docker/api.Dockerfile` | The one API image; three entrypoints plus the seed run from it. |
-| `infra/sql/00-roles.sql` | Creates `audit5s_owner` and `audit5s_app`. Runs once, as a superuser, before the first migration. |
+| `infra/sql/00-roles.sql` | Creates or updates `audit5s_owner` and `audit5s_app` on each bootstrap, before migrations. |
 | `infra/pgbackrest/` | Backup configuration, schedule, and the backup-age alarm. |
 
 ## Required secrets
@@ -32,6 +32,13 @@ copy of this table.
 | `POSTGRES_SUPERUSER_PASSWORD` | Postgres superuser. Used by bootstrap and psql only. |
 | `DATABASE_URL` | The **application** role `audit5s_app`. Not the owner: it must not bypass RLS, and it holds no UPDATE/DELETE on the append-only tables. |
 | `DATABASE_MIGRATION_URL` | The **owner** role `audit5s_owner`. Used by migrations and the seed, never by the API. |
+| `APP_OWNER_PASSWORD` | The `audit5s_owner` password, given separately so `00-roles.sql` can create the role with it. Must equal the password inside `DATABASE_MIGRATION_URL`; `bootstrap.sh` refuses to run otherwise. |
+| `APP_PASSWORD` | The `audit5s_app` password, same arrangement against `DATABASE_URL`. |
+
+> **Both URLs name the host `postgres`, not `localhost`.** Every consumer runs inside a
+> container on the compose network, where `localhost` is the container itself. `bootstrap.sh`
+> validates both complete URLs before changing the host. Use letters, digits, period,
+> underscore, tilde or hyphen in the two role passwords; generate one with `openssl rand -hex 32`.
 
 ### JWT (RS256)
 
@@ -106,7 +113,7 @@ git clone https://github.com/team-abassociate/audit5s /opt/audit5s
 cd /opt/audit5s
 cp .env.example .env && "$EDITOR" .env     # fill in from the password manager
 sudo ./infra/bootstrap.sh
-docker compose run --rm api node dist/seed.js
+docker compose run --rm -e DATABASE_MIGRATION_URL api node dist/seed.js
 ```
 
 The seed creates the Super Admin, writes the PART 6 permission matrix, and imports the

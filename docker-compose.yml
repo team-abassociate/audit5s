@@ -58,7 +58,8 @@ services:
       PGDATA: /var/lib/postgresql/data
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./infra/sql:/docker-entrypoint-initdb.d:ro
+      # Production does not mount infra/sql into initdb.d or expose role passwords to
+      # Postgres at startup. bootstrap.sh applies 00-roles.sql after it is ready.
     # The kernel must never pick Postgres as the OOM victim (STACK.md §5).
     oom_score_adj: -500
     command:

@@ -86,8 +86,10 @@ jobs:
       - name: Create database roles
         env:
           PGPASSWORD: postgres
+          APP_OWNER_PASSWORD: audit5s_owner
+          APP_PASSWORD: audit5s_app
         run: |
-          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -f infra/sql/00-roles.sql
+          psql -h 127.0.0.1 -U postgres -d audit5s -v ON_ERROR_STOP=1 -f infra/sql/00-roles.sql
           # Two databases: the API end-to-end suite truncates and reseeds, so sharing one
           # with the schema tests would make both flaky the moment they overlapped.
           psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
