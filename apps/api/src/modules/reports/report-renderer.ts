@@ -210,7 +210,11 @@ export function freezePdfDates(pdf: Buffer, generatedAt: string): Buffer {
     /\/(CreationDate|ModDate) \(D:\d{14}[+-]\d{2}'\d{2}'\)/g,
     (_match, field: string) => `/${field} (${frozen})`,
   );
-  return Buffer.from(rewritten, 'latin1');
+  const normalized = rewritten.replace(
+    /\/ID\s*\[<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\]/g,
+    '/ID [<00000000000000000000000000000000><00000000000000000000000000000000>]',
+  );
+  return Buffer.from(normalized, 'latin1');
 }
 
 /** An ISO instant as a PDF date string, always UTC and always the same 23 characters. */
