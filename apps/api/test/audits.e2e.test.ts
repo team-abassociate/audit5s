@@ -206,7 +206,7 @@ function fiftyAnswers(): ResponseValue[] {
 }
 
 describe('assignments', () => {
-  it('refuses an assignee with no ACTIVE membership in the Unit (AA-1)', async () => {
+  it('grants a Consultant temporary Unit access through the assignment', async () => {
     const response = await world.request('POST', `${base}/audit-assignments`, {
       token: asSuperAdmin(),
       body: {
@@ -215,8 +215,36 @@ describe('assignments', () => {
         auditType: 'EXTERNAL_5S',
       },
     });
-    expect(response.status).toBe(422);
-    expect((response.body as { code: string }).code).toBe('VALIDATION_FAILED');
+    expect(response.status).toBe(201);
+
+    const catalogue = await world.request('GET', `${base}/sync/catalogue`, {
+      token: consultantToken,
+    });
+    expect(catalogue.status).toBe(200);
+    const body = catalogue.body as {
+      units: Array<{ id: string }>;
+      zones: Array<{ unitId: string }>;
+      assignments: AuditAssignment[];
+    };
+    expect(body.units.map((unit) => unit.id)).toContain(world.unitB);
+    expect(body.zones.some((zone) => zone.unitId === world.unitB)).toBe(true);
+    expect(body.assignments.map((assignment) => assignment.id)).toContain(
+      (response.body as AuditAssignment).id,
+    );
+
+    const cancelled = await world.request(
+      'POST',
+      `${base}/audit-assignments/${(response.body as AuditAssignment).id}/cancel`,
+      { token: asSuperAdmin(), body: { reason: 'Temporary access test complete' } },
+    );
+    expect(cancelled.status).toBe(200);
+
+    const after = await world.request('GET', `${base}/sync/catalogue`, {
+      token: consultantToken,
+    });
+    expect(
+      (after.body as { units: Array<{ id: string }> }).units.map((unit) => unit.id),
+    ).not.toContain(world.unitB);
   });
 
   it('shows a Consultant only their own assignments (own_record, "assignee only")', async () => {

@@ -20,6 +20,26 @@ afterAll(async () => {
 });
 
 describe('login-ID allocation (§12.2)', () => {
+  it('creates a Consultant independently, without a Unit membership', async () => {
+    const response = await world.request('POST', `${base}/users`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+      body: {
+        fullName: 'Independent Consultant',
+        phone: '+919000000400',
+        role: 'CONSULTANT',
+      },
+    });
+    expect(response.status).toBe(201);
+
+    const userId = (response.body as { user: { id: string } }).user.id;
+    const memberships = await world.request(
+      'GET',
+      `${base}/memberships?userId=${userId}&limit=200`,
+      { token: world.actors.SUPER_ADMIN.accessToken },
+    );
+    expect((memberships.body as { data: unknown[] }).data).toEqual([]);
+  });
+
   it('derives the ID from the name and the last four digits of the phone', async () => {
     const response = await world.request('POST', `${base}/users`, {
       token: world.actors.SUPER_ADMIN.accessToken,

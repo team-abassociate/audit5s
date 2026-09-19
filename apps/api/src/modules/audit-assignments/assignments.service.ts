@@ -16,10 +16,8 @@ import { AssignmentsRepository, type AssignmentRow } from './assignments.reposit
 /**
  * Audit assignments (§5.5, PART 6 `audit_assignment:*`).
  *
- * Only a Super Admin creates or cancels one. The interesting rule is AA-1: revoking a
- * membership later must **cancel** the assignment rather than delete it, and it must emit
- * `UNIT_ACCESS_REVOKED` so the device drops it from the catalogue. Both live here so the
- * membership module calls one method rather than reimplementing the rule.
+ * Only a Super Admin creates or cancels one. For a Consultant, an open assignment is also
+ * the temporary Unit-access grant. Zone Leaders remain tied to their permanent Unit.
  */
 @Injectable()
 export class AssignmentsService {
@@ -39,11 +37,21 @@ export class AssignmentsService {
       throw AppError.notFound('No such Unit');
     }
 
-    // Invariant AA-1, at creation: assigning an audit to someone with no access to the
-    // Unit produces a task they cannot open, and a device that never sees it.
-    if (!(await this.repository.isActiveMember(scope, request.auditorUserId, request.unitId))) {
-      throw AppError.validation('The assignee is not an active member of this Unit', [
-        { field: 'auditorUserId', message: 'No ACTIVE membership in this Unit' },
+    const auditor = await this.repository.findActiveAuditor(scope, request.auditorUserId);
+    if (!auditor) {
+      throw AppError.validation('The assignee is not an active auditor', [
+        { field: 'auditorUserId', message: 'Choose an active Consultant or Zone Leader' },
+      ]);
+    }
+
+    // Consultants are independent of Units: this assignment itself grants temporary
+    // access. Zone Leaders remain permanent Unit roles and may only audit their own Unit.
+    if (
+      auditor.role === 'ZONE_LEADER' &&
+      !(await this.repository.isActiveMember(scope, request.auditorUserId, request.unitId))
+    ) {
+      throw AppError.validation('The Zone Leader is not an active member of this Unit', [
+        { field: 'auditorUserId', message: 'Choose a Zone Leader from this Unit' },
       ]);
     }
 

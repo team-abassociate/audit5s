@@ -52,10 +52,11 @@ export class UsersService {
       unitId = actor.activeUnitId;
     }
 
-    if (request.role !== 'SUPER_ADMIN' && !unitId) {
-      // A scoped role with no Unit has no scope at all and could see nothing.
+    if ((request.role === 'COORDINATOR' || request.role === 'ZONE_LEADER') && !unitId) {
+      // These are permanent Unit roles. Consultants are organization-level people whose
+      // temporary Unit access comes from an open audit assignment.
       throw AppError.validation('unitId is required for this role', [
-        { field: 'unitId', message: 'Required for every role except SUPER_ADMIN' },
+        { field: 'unitId', message: 'Required for Coordinators and Zone Leaders' },
       ]);
     }
 

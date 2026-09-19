@@ -43,10 +43,9 @@ export const createUserRequestSchema = z.object({
   email: optional(emailSchema),
   role: roleSchema,
   /**
-   * Optional at the type level, required by the service for every role except SUPER_ADMIN:
-   * a Consultant, Coordinator or Zone Leader with no Unit has no scope and could see
-   * nothing. A Coordinator creating a user may only create ZONE_LEADERs, and the unit is
-   * taken from their own membership rather than the body (AZ-2).
+   * Consultants are independent of Units and may omit this. It is required for the two
+   * permanent Unit roles (Coordinator and Zone Leader). A Coordinator creating a user may
+   * only create ZONE_LEADERs, and the unit is taken from their own membership (AZ-2).
    */
   unitId: optional(uuidSchema),
 });

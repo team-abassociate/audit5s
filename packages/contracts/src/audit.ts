@@ -74,8 +74,8 @@ export const auditAssignmentSchema = z.object({
 export type AuditAssignment = z.infer<typeof auditAssignmentSchema>;
 
 /**
- * Invariant AA-1 is checked by the service, not expressible here: the assignee must hold an
- * ACTIVE membership in `unitId` at creation.
+ * Eligibility is checked by the service: an active Consultant receives temporary Unit
+ * access from this assignment; a Zone Leader must already belong to the Unit.
  */
 export const createAuditAssignmentRequestSchema = z.object({
   unitId: uuidSchema,
