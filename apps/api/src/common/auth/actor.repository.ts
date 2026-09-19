@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
-import { unitMemberships, users, revokedAccessTokens, type Database } from '@audit5s/db';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  auditAssignments,
+  unitMemberships,
+  users,
+  revokedAccessTokens,
+  type Database,
+} from '@audit5s/db';
 import type { ActorContext } from '@audit5s/domain';
 import type { Role, UserStatus } from '@audit5s/contracts';
 import { DATABASE } from '../../infrastructure/database/database.module';
@@ -52,6 +58,8 @@ export class ActorRepository {
         return null;
       }
 
+      await tx.execute(sql`SELECT set_config('app.actor_role', ${user.role}, true)`);
+
       const memberships = await tx
         .select({ unitId: unitMemberships.unitId, role: unitMemberships.role })
         .from(unitMemberships)
@@ -64,7 +72,29 @@ export class ActorRepository {
           ),
         );
 
-      const unitIds = memberships.map((m) => m.unitId);
+      // A Consultant is independent of the Unit master. An open audit assignment is the
+      // temporary access grant that lets the existing APK fetch the Unit, its Zones and the
+      // task in one catalogue response. Permanent memberships remain valid when explicitly
+      // granted, and remain the sole source of scope for Coordinator / Zone Leader roles.
+      const assignedUnits =
+        user.role === 'CONSULTANT'
+          ? await tx
+              .select({ unitId: auditAssignments.unitId })
+              .from(auditAssignments)
+              .where(
+                and(
+                  eq(auditAssignments.auditorUserId, userId),
+                  inArray(auditAssignments.status, ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS']),
+                ),
+              )
+          : [];
+
+      const unitIds = [
+        ...new Set([
+          ...memberships.map((membership) => membership.unitId),
+          ...assignedUnits.map((assignment) => assignment.unitId),
+        ]),
+      ];
 
       return {
         actor: {

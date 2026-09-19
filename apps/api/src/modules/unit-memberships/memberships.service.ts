@@ -130,10 +130,16 @@ export class MembershipsService {
     // still reach the rest of the application.
     await this.auth.revokeAllUserTokens(membership.userId);
 
-    // Invariant AA-1: open assignments for this Unit are **cancelled**, never deleted, so
-    // the record of what was asked for outlives the access to do it. The device drops them
-    // on its next catalogue sync, because the catalogue carries only open ones.
-    await this.assignments.cancelForRevokedMembership(scope, membership.userId, membership.unitId);
+    // A Consultant's audit assignment is now an independent, temporary access grant, so
+    // removing an optional permanent membership must not cancel their assigned work.
+    // Permanent Unit roles still lose incompatible open work with their membership.
+    if (membership.role !== 'CONSULTANT') {
+      await this.assignments.cancelForRevokedMembership(
+        scope,
+        membership.userId,
+        membership.unitId,
+      );
+    }
 
     await this.auditLog.record({
       action: membership.role === 'CONSULTANT' ? 'consultant.revoked' : 'coordinator.revoked',
@@ -175,4 +181,3 @@ function toDetail(row: Row): MembershipDetail {
     unitName: row.unitName,
   };
 }
-

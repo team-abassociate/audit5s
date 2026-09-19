@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import {
   auditAssignments,
   unitMemberships,
@@ -228,7 +228,7 @@ export class AssignmentsRepository extends BaseRepository {
     });
   }
 
-  /** Whether the assignee holds an ACTIVE membership in the Unit — invariant AA-1. */
+  /** Whether a permanent Unit role holds an ACTIVE membership in the Unit. */
   async isActiveMember(scope: ScopeContext, userId: string, unitId: string): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
@@ -244,6 +244,26 @@ export class AssignmentsRepository extends BaseRepository {
         )
         .limit(1);
       return row !== undefined;
+    });
+  }
+
+  /** The assignment endpoint accepts only active people who can conduct an audit. */
+  async findActiveAuditor(scope: ScopeContext, userId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .select({ id: users.id, role: users.role })
+        .from(users)
+        .where(
+          and(
+            eq(users.id, userId),
+            eq(users.status, 'ACTIVE'),
+            isNull(users.archivedAt),
+            inArray(users.role, ['CONSULTANT', 'ZONE_LEADER']),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
     });
   }
 }

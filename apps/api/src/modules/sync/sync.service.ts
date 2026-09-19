@@ -17,8 +17,8 @@ import { ZonesRepository } from '../zones/zones.repository';
  *
  * The catalogue is assembled through the same scoped repositories the HTTP endpoints use,
  * so a Consultant's catalogue contains exactly the Units their `assigned_units` resolver
- * admits and a Zone Leader's exactly their `own_unit`. A device cannot widen it, and a
- * revoked membership shrinks it on the next sync rather than at token expiry.
+ * admits (open assignments plus optional memberships), and a Zone Leader's exactly their
+ * `own_unit`. A device cannot widen it, and cancelling an assignment shrinks it on sync.
  *
  * Checklists are the exception, and deliberately so: they are organization-wide reference
  * data with no Unit in them (D2), so every role gets the whole published catalogue.

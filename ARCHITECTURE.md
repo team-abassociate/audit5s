@@ -123,7 +123,7 @@ role value.
 | Role | Enum value | Tenancy | Population | Authenticates on |
 | --- | --- | --- | --- | --- |
 | Super Admin | `SUPER_ADMIN` | Organization-wide | Very few (2–10) | Admin web |
-| Consultant | `CONSULTANT` | Many Units, via active membership | Tens | Field mobile (primary), admin web (read-only history) |
+| Consultant | `CONSULTANT` | Independent master; temporary Unit access via open audit assignment (or optional explicit membership) | Tens | Field mobile (primary), admin web (read-only history) |
 | Coordinator | `COORDINATOR` | Exactly one Unit | One or two per Unit | Admin web |
 | Zone Leader | `ZONE_LEADER` | Exactly one Unit | Tens per Unit | Field mobile + corrective-action web |
 | System | — | — | — | Queue workers, schedulers. Acts with an explicit `system` actor in audit logs, never with a borrowed user identity. |
@@ -310,12 +310,12 @@ are the acceptance-test scripts for PART 14; QA should be able to execute them v
 | 1 | Logs in with password + (optional) TOTP | Issues access JWT (15 min) + refresh token (rotating, no time limit — `DECISIONS.md` R-21) | `AuditLog: auth.login` |
 | 2 | Creates a Unit (name, code, address, lat/lng, geofence radius, timezone) | Validates unique `code`; radius default 300 m | `Unit` row; `AuditLog: unit.created` |
 | 3 | Creates a Consultant (name, phone, email) | Generates login ID `RA3210` (PART 12.2), hashes bootstrap credential, sets `must_reset_password` | `User`; `AuditLog: user.created`; notification `USER_CREATED` (WhatsApp: credentials + reset link) |
-| 4 | Assigns Consultant → one or many Units | Creates `UnitMembership(role=CONSULTANT, active)` per Unit | Event `UNIT_ASSIGNED` → notification to Consultant |
+| 4 | Optionally grants a Consultant permanent access to one or many Units | Creates `UnitMembership(role=CONSULTANT, active)` per Unit; not required for audit assignment | Event `UNIT_ASSIGNED` → notification to Consultant |
 | 5 | Creates a Coordinator and assigns to exactly one Unit | Rejects a second active Coordinator membership for the same user | `UnitMembership(role=COORDINATOR)`; event `UNIT_ASSIGNED` |
 | 6 | Imports the department checklist Excel | Upload → parse → **validation report + preview** (no writes yet) | `ChecklistImportJob(status=PREVIEW)` |
 | 7 | Confirms the import | Creates `ChecklistVersion(status=DRAFT)` + 50 `ChecklistQuestion` rows | `AuditLog: checklist.imported` |
 | 8 | Publishes the version | Version becomes `PUBLISHED`; previous active version becomes `SUPERSEDED`; questions are frozen | Mobile clients pick it up on next catalogue sync |
-| 9 | Creates an audit assignment (Unit + Consultant + type + due date + optional Zone hints) | Validates the Consultant has an **active** membership for that Unit | `AuditAssignment(status=ASSIGNED)`; event `AUDIT_ASSIGNED` |
+| 9 | Creates an audit assignment (Unit + Consultant + type + due date + optional Zone hints) | Validates an active Consultant; the assignment grants temporary access to the Unit | `AuditAssignment(status=ASSIGNED)`; event `AUDIT_ASSIGNED` |
 | 10 | Watches the live board | Sees assignments, in-progress audits, sync health, suspicious-location flags | Read model only |
 | 11 | Reviews a completed audit and generates the **Initial Zone Report** | Enqueues a render job; worker freezes a payload and renders a PDF | `ReportSnapshot(v1)`; event `REPORT_GENERATED`; `AuditLog: report.generated` |
 | 12 | Shares the report with the Unit | Report contains a signed **"View / Submit Corrective Action"** link per nonconformity | `ReportAccessToken` rows minted with expiry |
@@ -969,9 +969,10 @@ provenance of a version back to the file it came from.
 
 Indexes: `(auditor_user_id, status, due_at)`; `(unit_id, status)`; `(status, due_at)`.
 
-> **Invariant AA-1.** At creation, the assignee must hold an `ACTIVE` `UnitMembership` for
-> `unit_id`. Revoking that membership later does **not** delete the assignment — it moves it
-> to `CANCELLED` and emits `UNIT_ACCESS_REVOKED` so the device drops it from its catalogue.
+> **Invariant AA-1 (revised by R-28).** An active Consultant needs no `UnitMembership`:
+> the open assignment itself grants temporary access to `unit_id`. A Zone Leader must hold
+> an `ACTIVE` membership for that Unit. Cancelling or completing a Consultant assignment
+> removes its temporary grant; no assignment is deleted.
 
 ### `audit`
 
@@ -1687,7 +1688,7 @@ list endpoints and single-row endpoints share one definition and cannot diverge.
 | --- | --- | --- |
 | `organization` | `TRUE` | Super Admin |
 | `own_unit` | `resource.unit_id = (SELECT unit_id FROM unit_membership WHERE user_id = :actor AND status='ACTIVE' LIMIT 1)` | Coordinator, Zone Leader |
-| `assigned_units` | `resource.unit_id IN (SELECT unit_id FROM unit_membership WHERE user_id = :actor AND status='ACTIVE' AND now() BETWEEN valid_from AND COALESCE(valid_to,'infinity'))` | Consultant |
+| `assigned_units` | `resource.unit_id` is in the Consultant's active memberships **or** open audit assignments (`ASSIGNED`, `ACCEPTED`, `IN_PROGRESS`) | Consultant |
 | `own_audits` | `audit.auditor_user_id = :actor` | Consultant, Zone Leader |
 | `own_record` | `user.id = :actor` | All |
 | `assigned_actions` | `corrective_action.assigned_zone_leader_user_id = :actor OR corrective_action.unit_id = :actorUnit` | Zone Leader |

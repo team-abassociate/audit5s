@@ -547,7 +547,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   {
     method: 'POST',
     path: '/api/v1/audit-assignments',
-    description: 'audit_assignment:create — SUPER_ADMIN only; AA-1 checks the membership',
+    description: 'audit_assignment:create — SUPER_ADMIN only; assignment grants Consultant access',
     expected: { SUPER_ADMIN: { inScope: CREATED } },
     coveredBy: 'audits.e2e.test.ts',
   },

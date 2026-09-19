@@ -493,10 +493,14 @@ export function CreateUserForm({
     handleSubmit,
     reset,
     control,
+    watch,
     formState: { errors },
   } = useForm<CreateUserRequest>({
     defaultValues: { role: fixedRole ?? (isCoordinator ? 'ZONE_LEADER' : 'CONSULTANT') },
+    shouldUnregister: true,
   });
+  const selectedRole = fixedRole ?? watch('role');
+  const requiresUnit = selectedRole === 'COORDINATOR' || selectedRole === 'ZONE_LEADER';
 
   const units = useQuery({
     queryKey: ['units'],
@@ -505,12 +509,18 @@ export function CreateUserForm({
   });
 
   const create = useMutation({
-    mutationFn: (body: CreateUserRequest) =>
-      api.post<CreateUserResponse>('/users', {
-        ...body,
+    mutationFn: (body: CreateUserRequest) => {
+      const { unitId: selectedUnitId, ...person } = body;
+      return api.post<CreateUserResponse>('/users', {
+        ...person,
         ...(fixedRole ? { role: fixedRole } : {}),
-        ...(fixedUnitId ? { unitId: fixedUnitId } : {}),
-      }),
+        ...(fixedUnitId
+          ? { unitId: fixedUnitId }
+          : requiresUnit && selectedUnitId
+            ? { unitId: selectedUnitId }
+            : {}),
+      });
+    },
     onSuccess: async (response) => {
       await queryClient.invalidateQueries({ queryKey: ['users'] });
       reset();
@@ -567,11 +577,12 @@ export function CreateUserForm({
         </Field>
       )}
 
-      {!isCoordinator && !fixedUnitId && (
-        <Field label="Unit" hint="Required for every role except Super Admin">
+      {!isCoordinator && !fixedUnitId && requiresUnit && (
+        <Field label="Unit" hint="Required for Coordinators and Zone Leaders" error={errors.unitId?.message}>
           <Controller
             control={control}
             name="unitId"
+            rules={{ required: 'Choose a Unit' }}
             render={({ field }) => (
               <Combobox
                 value={field.value ?? ''}

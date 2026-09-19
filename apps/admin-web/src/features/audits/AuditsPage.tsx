@@ -293,10 +293,8 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
     queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
   });
 
-  // Everybody who can conduct an audit, not only this Unit's members (R-26). AA-1 still
-  // holds — an assignee with no access to the Unit gets a task their device never sees — so
-  // assigning outside the Unit grants that access as part of the same action, rather than
-  // refusing at the last step and leaving the Super Admin to go and fix it elsewhere.
+  // Consultants are an independent master list: the assignment grants temporary access to
+  // its Unit. Zone Leaders remain Unit-specific, so only leaders of the selected Unit appear.
   const people = useQuery({
     queryKey: ['users', 'auditors'],
     queryFn: () => api.get<Page<User>>('/users?limit=200&status=ACTIVE'),
@@ -308,28 +306,22 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
       api.get<Page<MembershipDetail>>(`/memberships?unitId=${unitId}&status=ACTIVE&limit=200`),
   });
 
-  const auditors = (people.data?.data ?? []).filter(
-    (user) => user.role === 'CONSULTANT' || user.role === 'ZONE_LEADER',
-  );
   const memberIds = new Set((members.data?.data ?? []).map((membership) => membership.userId));
-  const chosen = auditors.find((user) => user.id === auditorUserId) ?? null;
-  const needsAccess = chosen !== null && unitId !== '' && !memberIds.has(chosen.id);
+  const auditors = (people.data?.data ?? []).filter(
+    (user) =>
+      user.role === 'CONSULTANT' ||
+      (user.role === 'ZONE_LEADER' && memberIds.has(user.id)),
+  );
 
   const create = useMutation({
-    mutationFn: async () => {
-      if (needsAccess) {
-        // M-1 allows a Zone Leader one active Unit, so this is where the server may refuse.
-        // Its sentence is the one worth showing, rather than a guess made here.
-        await api.post(`/units/${unitId}/memberships`, { userId: auditorUserId });
-      }
-      return api.post<AuditAssignment>('/audit-assignments', {
+    mutationFn: () =>
+      api.post<AuditAssignment>('/audit-assignments', {
         unitId,
         auditorUserId,
         auditType,
         ...(dueAt ? { dueAt: new Date(dueAt).toISOString() } : {}),
         ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
-      });
-    },
+      }),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['audit-assignments'] }),
@@ -361,11 +353,7 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
 
         <Field
           label="Auditor"
-          hint={
-            needsAccess
-              ? 'Not a member of this Unit — assigning gives them access to it.'
-              : 'Any active Consultant or Zone Leader, in this Unit or not.'
-          }
+          hint="Any active Consultant, or a Zone Leader who belongs to this Unit."
         >
           <Select
             value={auditorUserId}
@@ -376,8 +364,7 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
             <option value="">Choose an auditor…</option>
             {auditors.map((user) => (
               <option key={user.id} value={user.id}>
-                {user.fullName} ({user.loginId})
-                {memberIds.has(user.id) ? '' : ' — not in this Unit'}
+                {user.fullName} ({user.loginId}) — {user.role === 'CONSULTANT' ? 'Consultant' : 'Zone Leader'}
               </option>
             ))}
           </Select>

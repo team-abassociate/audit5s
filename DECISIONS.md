@@ -1432,3 +1432,24 @@ retention rule. Alert at 70% use and expand before 80%; do not prune evidence fo
 The Android field app remains installed on devices, and its release APK is served
 privately from the VPS. Application code still does not name the hosting provider.
 
+---
+
+## R-28 — Consultants and Units are independent masters
+
+**Replaces AA-1 for Consultants and supersedes R-26's automatic membership grant.**
+Settled 2026-09-19 by the product owner: Consultants must be maintained as a separate list
+from Units, and creating or assigning a Consultant must not manufacture a permanent Unit
+membership.
+
+- A Consultant may be created with no `unit_id` and no `UnitMembership`.
+- Creating an open `AuditAssignment` for a Consultant grants temporary access to that
+  assignment's Unit. The existing catalogue response remains unchanged: it contains the
+  Unit, Zones, assignment and checklists the released APK already understands.
+- Cancelling or completing the assignment removes that temporary grant. Explicit permanent
+  Consultant memberships remain supported, but revoking one does not cancel an otherwise
+  valid audit assignment.
+- Coordinator and Zone Leader tenancy is unchanged. Those roles still require a permanent
+  Unit membership; a Zone Leader may only be assigned an audit in their own Unit.
+- The field app already pulls its catalogue when the Units screen opens. A fresh login or
+  app relaunch therefore needs no manual Catalogue Sync; refreshing while the app remains
+  open still uses the existing pull-to-refresh control.
