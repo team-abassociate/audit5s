@@ -127,7 +127,7 @@ export class AuthRepository {
   }): Promise<{ registered: boolean; transferredFromUserId: string | null }> {
     return withAuthPhase(this.db, async (tx) => {
       const [existing] = await tx
-        .select({ userId: devices.userId })
+        .select({ userId: devices.userId, platform: devices.platform })
         .from(devices)
         .where(eq(devices.id, input.deviceId))
         .limit(1);
@@ -141,12 +141,17 @@ export class AuthRepository {
         return { registered: false, transferredFromUserId: null };
       }
 
+      // `ON CONFLICT DO UPDATE` still forms the candidate row, and `platform` is NOT NULL,
+      // so a re-login that reports none has to carry the stored one through the VALUES
+      // clause rather than a null the constraint would reject before seeing the conflict.
+      const platform = input.platform ?? existing!.platform;
+
       await tx
         .insert(devices)
         .values({
           id: input.deviceId,
           userId: input.userId,
-          platform: input.platform!,
+          platform,
           model: input.model ?? null,
           osVersion: input.osVersion ?? null,
           appVersion: input.appVersion ?? null,
@@ -158,7 +163,7 @@ export class AuthRepository {
           set: {
             // Only what this login actually reported. A re-login that sends no metadata
             // must not blank the model and OS the first one recorded.
-            ...(input.platform ? { platform: input.platform } : {}),
+            platform,
             ...(input.model !== undefined ? { model: input.model } : {}),
             ...(input.osVersion !== undefined ? { osVersion: input.osVersion } : {}),
             ...(input.appVersion !== undefined ? { appVersion: input.appVersion } : {}),
