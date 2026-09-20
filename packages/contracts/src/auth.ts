@@ -39,20 +39,7 @@ export const loginRequestSchema = z.object({
   osVersion: z.string().max(60).optional(),
   appVersion: z.string().max(60).optional(),
   location: capturedLocationSchema.optional(),
-  })
-  /**
-   * The two travel together or not at all.
-   *
-   * `refresh_token.device_id` references `device`, and the device row is only written when
-   * both a `deviceId` and a `platform` arrive — while the session was bound to `deviceId`
-   * either way. An id without a platform therefore issued a token pointing at a device
-   * that was never registered, and the insert failed the foreign key: a well-formed
-   * request answered with a 500. Refused here instead, with a sentence a client can act on.
-   */
-  .refine((request) => !request.deviceId || request.platform !== undefined, {
-    path: ['platform'],
-    message: 'platform is required when deviceId is sent',
-  });
+});
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
 /** The authenticated user as every client sees it. Never carries a hash or a phone password. */

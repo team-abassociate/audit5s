@@ -101,7 +101,12 @@ export class AuthRepository {
   async upsertDevice(input: {
     deviceId: string;
     userId: string;
-    platform: string;
+    /**
+     * Sent the first time a device signs in, and optional afterwards: a re-login from a
+     * phone already on file needs no metadata. `null` against an unknown id is the one
+     * combination that cannot be honoured, and it is reported rather than guessed at.
+     */
+    platform: string | null;
     model?: string | null;
     osVersion?: string | null;
     appVersion?: string | null;
@@ -119,7 +124,7 @@ export class AuthRepository {
      * `POST /audits/{id}/release-device`. That is why this is reported rather than
      * swallowed: the caller audit-logs it.
      */
-  }): Promise<{ transferredFromUserId: string | null }> {
+  }): Promise<{ registered: boolean; transferredFromUserId: string | null }> {
     return withAuthPhase(this.db, async (tx) => {
       const [existing] = await tx
         .select({ userId: devices.userId })
@@ -127,12 +132,21 @@ export class AuthRepository {
         .where(eq(devices.id, input.deviceId))
         .limit(1);
 
+      // A new device with no platform cannot be written: the column is NOT NULL with a
+      // two-value CHECK, and guessing would put a fiction in the device inventory. The
+      // caller refuses the login instead — binding a session to it would only move the
+      // failure to `refresh_token.device_id`, which references this table, and answer a
+      // well-formed request with a foreign-key 500.
+      if (!existing && !input.platform) {
+        return { registered: false, transferredFromUserId: null };
+      }
+
       await tx
         .insert(devices)
         .values({
           id: input.deviceId,
           userId: input.userId,
-          platform: input.platform,
+          platform: input.platform!,
           model: input.model ?? null,
           osVersion: input.osVersion ?? null,
           appVersion: input.appVersion ?? null,
@@ -142,9 +156,12 @@ export class AuthRepository {
         .onConflictDoUpdate({
           target: devices.id,
           set: {
-            model: input.model ?? null,
-            osVersion: input.osVersion ?? null,
-            appVersion: input.appVersion ?? null,
+            // Only what this login actually reported. A re-login that sends no metadata
+            // must not blank the model and OS the first one recorded.
+            ...(input.platform ? { platform: input.platform } : {}),
+            ...(input.model !== undefined ? { model: input.model } : {}),
+            ...(input.osVersion !== undefined ? { osVersion: input.osVersion } : {}),
+            ...(input.appVersion !== undefined ? { appVersion: input.appVersion } : {}),
             ...(input.pushToken ? { pushToken: input.pushToken } : {}),
             lastSeenAt: sql`now()`,
             revokedAt: null,
@@ -155,6 +172,7 @@ export class AuthRepository {
         });
 
       return {
+        registered: true,
         transferredFromUserId:
           existing && existing.userId !== input.userId ? existing.userId : null,
       };
