@@ -1453,3 +1453,98 @@ membership.
 - The field app already pulls its catalogue when the Units screen opens. A fresh login or
   app relaunch therefore needs no manual Catalogue Sync; refreshing while the app remains
   open still uses the existing pull-to-refresh control.
+
+## R-29 — One Zone, one open audit
+
+**Settled 2026-09-20 by the product owner**, after R-28 made it routine for one Unit to be
+assigned to two Consultants: if two people are auditing the same Unit at the same time,
+they must not be able to audit the same Zone.
+
+- A Zone is **claimed** by an audit from the moment that audit's first write of it, and
+  stays claimed until the audit completes or is cancelled. `audit_zone.audit_open` carries
+  the claim; only the database writes it.
+- A claimed Zone cannot be added to another audit of that Unit. `audit_zone`'s BEFORE
+  INSERT trigger is the control (migration 0021) and a partial unique index closes the
+  concurrent-insert window. Both refuse with `ZONE_LOCKED_BY_ANOTHER_AUDIT`.
+- Finishing a Zone does **not** release it. A Consultant who completed Zone 1 this morning
+  has audited it today; a second reading the same day is the duplicate this prevents.
+- `GET /audits/{auditId}/zone-locks` tells a device which Zones are taken, and by whom, so
+  the picker greys them out. It is a courtesy. The device is offline by design and a claim
+  may be made hours after it last saw the server, so a refusal must survive arriving in a
+  sync batch three days late — where it becomes a quarantined item with a readable reason
+  (§9.5), never a silent second score.
+- This does not relax D7. One device still owns one audit; this is about two audits.
+
+## R-30 — An auditor may correct their own completed audit
+
+**Settled 2026-09-20 by the product owner**, after the Review button was found to be
+saving corrections that never reached anyone: a Consultant who finds a wrong mark in an
+audit they conducted must be able to fix it themselves, not queue behind a Super Admin.
+
+**A-2 is not relaxed.** The invariant was never "only a Super Admin may change a completed
+audit" — it is "a completed audit changes only through a door that records who changed
+what, from what, to what, and why". R-30 widens who holds a key to that door; it does not
+prop the door open.
+
+- `audit:edit_after_completion` is granted to `CONSULTANT` with the **`own_audits`**
+  resolver. Their own audits, never a colleague's — a Consultant handed another auditor's
+  completed audit gets a 404, like any other out-of-scope read (AZ-3).
+- The route is unchanged: `PATCH /audits/{id}/post-completion`, justification required
+  (≥10 characters), and one `audit.changed_after_completion` log entry per override
+  carrying the before and the after. The actor on that entry is now sometimes a Consultant.
+- The database carve-out `app_post_completion_override()` widens to match (migration 0022):
+  the flag plus *either* Super Admin *or* the auditor of the audit the transaction named.
+  `app.post_completion_audit_id` is that name, set by `inOverrideTransaction` alongside the
+  flag; both are transaction-local. The trigger re-derives the auditor from
+  `audit.auditor_user_id` rather than trusting the application.
+- The field app carries it offline. A correction is the sync operation `audit:override`,
+  one outbox row per audit, merged by response id so a second correction cannot discard the
+  first. It is **not** `question_response:upsert`: that write is refused on a completed
+  audit and carries no reason to log.
+- What an override still does **not** do is reclassify evidence or reopen the corrective
+  actions materialised at completion. A mark corrected from 0 to 2 leaves its nonconformity
+  photograph and that photograph's action where they are, for a person to decide. This was
+  already true of the Super Admin path and is unchanged here; revisit it if the flow proves
+  to need it.
+
+## R-31 — A correction cascades to the corrective actions
+
+**Settled 2026-09-20 by the product owner**, completing R-30. A mark does not sit alone: a
+photograph filed under a 0 is a nonconformity, a nonconformity is a corrective action, and
+somebody is being chased for it. Correcting the 0 to a 2 and leaving the action open asks a
+Zone Leader to go and fix something that, on the record, is no longer wrong.
+
+A post-completion override now carries its consequences, on its own transaction:
+
+1. **The photograph is reclassified.** E-2 has always done this when an answer changed; it
+   now does it after completion too, inside A-2's carve-out.
+2. **A finding that appeared gets an action.** `materialize` already skipped evidence that
+   had one (`ON CONFLICT (evidence_id) DO NOTHING`), so running it again opens exactly what
+   is missing. Its due date runs from the correction, not from the audit's completion — an
+   action raised today and already overdue is one nobody could have answered in time.
+3. **A finding that went is WITHDRAWN**, a sixth corrective-action status.
+4. **The audit rolls up** through §7.1's edges, as every other path does.
+
+**Withdrawn is not verified.** VERIFIED means somebody fixed it, or said why they could not
+and was believed. WITHDRAWN means there was nothing to fix. Both set `resolved_at` — the
+column means "settled" and now has two ways to get there — and both count as settled for
+the roll-up, because neither asks anything of anyone. They are kept apart everywhere a
+closure *rate* is computed: `closed_nc` and the average closure time count VERIFIED alone,
+or the number would measure how often an auditor mistypes.
+
+- There is no `VERIFIED → WITHDRAWN`. Somebody went and fixed that one and somebody checked
+  it; the mark being wrong afterwards does not unmake the work.
+- The withdrawal edges have **no actor** — the system takes them. There is no "withdraw"
+  button, because a finding you may dismiss without correcting the mark behind it is a
+  finding you may dismiss. `reason_given` is still required, and it is the override's own
+  justification.
+- The cascade runs as the system for the same reason, which needed `corrective_action`'s
+  INSERT policy widened to admit a Super Admin (migration 0024). Previously it admitted only
+  the audit's auditor, which was every caller it had until now.
+- Two notification events, `CORRECTIVE_ACTION_OPENED` and `CORRECTIVE_ACTION_WITHDRAWN`,
+  both naming the auditor whose correction caused them. A finding raised on an audit
+  everyone was told was finished, and a finding withdrawn from under someone who was
+  planning a walk to the Zone, are both things people have to hear about.
+- A withdrawn action leaves the device catalogue and the report: `listUnverified` asks for
+  "not settled" rather than "not VERIFIED", and the report builds its nonconformities from
+  the photographs' classification, which the cascade has already corrected.

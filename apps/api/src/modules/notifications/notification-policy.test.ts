@@ -74,6 +74,73 @@ describe('notification policy (§5.9)', () => {
     expect(firstExternalChannel('CORRECTIVE_ACTION_SUBMITTED', { whatsappEnabled: true, smsEnabled: true })).toBeNull();
   });
 
+  it('names the audit and the auditor a submitted corrective action answers', () => {
+    const { title } = renderNotification(
+      job('CORRECTIVE_ACTION_SUBMITTED', {
+        zoneCode: '3',
+        zoneName: 'Press',
+        questionNo: 12,
+        option: 'COMPLETED',
+        attemptNo: 1,
+        auditType: 'EXTERNAL_5S',
+        auditorName: 'Priya Nair',
+      }),
+    );
+    // Four Consultants in three plants produce a run of otherwise identical notices.
+    expect(title).toContain('Priya Nair');
+    expect(title).toContain('external 5s audit');
+  });
+
+  it('renders a submitted corrective action stored before the auditor was on the event', () => {
+    const { title } = renderNotification(
+      job('CORRECTIVE_ACTION_SUBMITTED', { zoneCode: '3', zoneName: 'Press', option: 'COMPLETED' }),
+    );
+    expect(title).toBe('Corrective action submitted');
+    expect(title).not.toMatch(/undefined|null/);
+  });
+
+  it('tells the Zone Leader to stop when a finding is withdrawn (R-31)', () => {
+    const { title, body } = renderNotification(
+      job('CORRECTIVE_ACTION_WITHDRAWN', {
+        zoneCode: '3',
+        zoneName: 'Press',
+        questionNo: 12,
+        auditType: 'EXTERNAL_5S',
+        auditorName: 'Priya Nair',
+      }),
+    );
+    expect(title).toBe('Corrective action withdrawn');
+    // The useful sentence is "you owe nothing", not "a status changed": somebody with this
+    // on their list has been planning a walk to the Zone.
+    expect(body).toContain('no longer a nonconformity');
+    expect(body).toContain('Priya Nair');
+    expect(body).toContain('Nothing is owed');
+  });
+
+  it('names a finding raised after the audit was already finished (R-31)', () => {
+    const { title, body } = renderNotification(
+      job('CORRECTIVE_ACTION_OPENED', {
+        zoneCode: '4',
+        zoneName: 'Assembly',
+        questionNo: 7,
+        auditType: 'EXTERNAL_5S',
+        auditorName: 'Priya Nair',
+        value: 'SCORE_0',
+      }),
+    );
+    expect(title).toContain('Priya Nair');
+    expect(body).toContain('Zone 4 — Assembly, Q7');
+    expect(body).toContain('SCORE_0');
+  });
+
+  it('renders both R-31 events without the auditor, for an older stored row', () => {
+    for (const type of ['CORRECTIVE_ACTION_OPENED', 'CORRECTIVE_ACTION_WITHDRAWN'] as const) {
+      const { title, body } = renderNotification(job(type, { zoneCode: '1', zoneName: 'Press' }));
+      expect(title).not.toMatch(/undefined|null/);
+      expect(body).not.toMatch(/undefined|null/);
+    }
+  });
+
   it('says which item a corrective-action message is about', () => {
     const { body } = renderNotification(
       job('CORRECTIVE_ACTION_SUBMITTED', { zoneCode: '3', zoneName: 'Press', questionNo: 12, option: 'COMPLETED', attemptNo: 2 }),

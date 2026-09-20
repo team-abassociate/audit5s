@@ -7,8 +7,10 @@ import {
   type AuditDetail,
   type AuditScoreSummary,
   type AuditZone,
+  type CorrectiveAction,
   type Page,
   type ResponseValue,
+  type ZoneLocksResponse,
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
 import {
@@ -39,6 +41,9 @@ const base = API_BASE_PATH;
 function resetLimits(): void {
   world.app.get(RateLimitService).reset();
 }
+
+/** The Consultant the harness creates. R-29's refusal names whoever holds the Zone. */
+const CONSULTANT_NAME = 'Cara Consult';
 
 const CONSULTANT_DEVICE = '01930000-0000-7000-8000-00000000d001';
 const OTHER_DEVICE = '01930000-0000-7000-8000-00000000d002';
@@ -759,6 +764,89 @@ describe('finishing a Zone and an audit', () => {
     ]);
   });
 
+  /**
+   * The Review button's bug, in the terms the product owner reported it: a Consultant
+   * changed a score on a finished Zone, saved, and every screen but their own kept the old
+   * number. PART 6 allows the write until the audit is completed — what was missing was
+   * the recomputation, because the materialised scores are written on the Zone's
+   * completion edge and that edge does not fire twice.
+   */
+  it('rescores a finished Zone when a review changes an answer', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-63', 'Reviewed zone');
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+
+    const values = fiftyAnswers();
+    await answer(consultantToken, auditZoneId, values);
+    const finished = await world.request(
+      'POST',
+      `${base}/audits/${auditId}/zones/${auditZoneId}/complete`,
+      { token: consultantToken, body: {} },
+    );
+    expect(finished.status, JSON.stringify(finished.body)).toBe(200);
+    const before = (finished.body as AuditZone).totals;
+
+    // Question 1 was SCORE_0 in the pattern; the auditor reviews it and marks it a 2.
+    expect(values[0]).toBe('SCORE_0');
+    const revised = await world.request(
+      'PUT',
+      `${base}/audit-zones/${auditZoneId}/responses/${randomUUID()}`,
+      {
+        token: consultantToken,
+        body: {
+          checklistQuestionId: questionIds[0],
+          value: 'SCORE_2',
+          answeredAt: new Date().toISOString(),
+        },
+      },
+    );
+    expect(revised.status, JSON.stringify(revised.body)).toBe(200);
+
+    const expected = scoreZone(
+      values.map((value, index) => ({
+        section: S_SECTION_ORDER[Math.floor(index / 10)]!,
+        value: index === 0 ? ('SCORE_2' as ResponseValue) : value,
+      })),
+    );
+    expect(expected.totals.rawScore).toBe(before.rawScore + 2);
+
+    // `GET /audits/{id}` reads the **stored** columns, which is exactly what the Unit
+    // board, analytics and the PDF read. Before the fix these still held `before`.
+    const detail = await world.request('GET', `${base}/audits/${auditId}`, {
+      token: consultantToken,
+    });
+    expect(detail.status).toBe(200);
+    const storedZone = (detail.body as AuditDetail).zones.find((z) => z.id === auditZoneId)!;
+    expect(storedZone.totals.rawScore).toBe(expected.totals.rawScore);
+    expect(storedZone.totals.scorePercentage).toBe(expected.totals.scorePercentage);
+    expect((detail.body as AuditDetail).totals.scorePercentage).toBe(
+      expected.totals.scorePercentage,
+    );
+
+    // The materialised per-S rows move with it: the report's radar reads these.
+    const firstSection = storedZone.sections.find(
+      (section) => section.section === S_SECTION_ORDER[0],
+    )!;
+    expect(firstSection.pct).toBe(expected.sections[0]!.scorePercentage);
+
+    // The Zone stays finished through a review — reopening it is a Super Admin's edge.
+    expect(storedZone.status).toBe('COMPLETED');
+
+    // Pressing Submit again is the device's next item, and it must not undo any of this.
+    const resubmitted = await world.request(
+      'POST',
+      `${base}/audits/${auditId}/zones/${auditZoneId}/complete`,
+      { token: consultantToken, body: {} },
+    );
+    expect(resubmitted.status).toBe(200);
+    expect((resubmitted.body as AuditZone).totals.rawScore).toBe(expected.totals.rawScore);
+  });
+
   it('closes the audit to further answers once completed (A-2)', async () => {
     const { auditZoneId } = await completedAudit('Z-42', 'Frozen zone');
 
@@ -973,6 +1061,142 @@ describe('snapshot isolation (D6)', () => {
   });
 });
 
+describe('one Zone, one open audit (R-29)', () => {
+  /**
+   * The case the product owner named: one Unit, two auditors, the same morning. The
+   * Consultant takes Zone 1; the Zone Leader running their own CROSS_5S must not be able
+   * to take it too, and must be told who has it rather than getting a bare conflict.
+   */
+  it('refuses a Zone another open audit of the Unit is already holding', async () => {
+    const zoneId = await createZone('Z-60', 'Contested zone');
+    await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: (await assign(world.actors.CONSULTANT.userId)).id,
+    });
+
+    const secondAuditId = randomUUID();
+    const created = await world.request('POST', `${base}/audits`, {
+      token: leaderToken,
+      body: {
+        id: secondAuditId,
+        auditType: 'CROSS_5S',
+        unitId: world.unitA,
+        checklistVersionId: versionId,
+        deviceId: LEADER_DEVICE,
+      },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    await captureEvidence(world, {
+      token: leaderToken,
+      evidenceId: randomUUID(),
+      auditId: secondAuditId,
+      kind: 'AUDITOR_SELFIE',
+      deviceId: LEADER_DEVICE,
+    });
+    await world.request('POST', `${base}/audits/${secondAuditId}/start`, {
+      token: leaderToken,
+      body: { deviceId: LEADER_DEVICE },
+    });
+
+    const taken = await world.request(
+      'PUT',
+      `${base}/audits/${secondAuditId}/zones/${randomUUID()}`,
+      {
+        token: leaderToken,
+        body: { zoneId, sequenceNo: 1, checklistVersionId: versionId },
+      },
+    );
+    expect(taken.status, JSON.stringify(taken.body)).toBe(409);
+    const problem = taken.body as { code: string; detail?: string };
+    expect(problem.code).toBe('ZONE_LOCKED_BY_ANOTHER_AUDIT');
+    // The sentence has to be actionable to someone standing in the plant, so it names
+    // both the Zone and the colleague already in it.
+    expect(problem.detail).toContain('Z-60');
+    expect(problem.detail).toContain(CONSULTANT_NAME);
+
+    // And the picker can see it coming, rather than learning from the refusal.
+    const locks = await world.request('GET', `${base}/audits/${secondAuditId}/zone-locks`, {
+      token: leaderToken,
+    });
+    expect(locks.status).toBe(200);
+    const body = locks.body as ZoneLocksResponse;
+    const lock = body.locks.find((candidate) => candidate.zoneId === zoneId);
+    expect(lock).toBeDefined();
+    expect(lock!.zoneCode).toBe('Z-60');
+    expect(lock!.auditorName).toBe(CONSULTANT_NAME);
+  });
+
+  it('does not report the audit’s own Zones as locked', async () => {
+    const zoneId = await createZone('Z-61', 'My own zone');
+    const { auditId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: (await assign(world.actors.CONSULTANT.userId)).id,
+    });
+
+    const locks = await world.request('GET', `${base}/audits/${auditId}/zone-locks`, {
+      token: consultantToken,
+    });
+    expect(locks.status).toBe(200);
+    expect((locks.body as ZoneLocksResponse).locks.map((lock) => lock.zoneId)).not.toContain(
+      zoneId,
+    );
+  });
+
+  it('releases the Zone when the audit holding it is cancelled', async () => {
+    const zoneId = await createZone('Z-62', 'Released zone');
+    const { auditId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: (await assign(world.actors.CONSULTANT.userId)).id,
+    });
+
+    const secondAuditId = randomUUID();
+    await world.request('POST', `${base}/audits`, {
+      token: leaderToken,
+      body: {
+        id: secondAuditId,
+        auditType: 'CROSS_5S',
+        unitId: world.unitA,
+        checklistVersionId: versionId,
+        deviceId: LEADER_DEVICE,
+      },
+    });
+    await captureEvidence(world, {
+      token: leaderToken,
+      evidenceId: randomUUID(),
+      auditId: secondAuditId,
+      kind: 'AUDITOR_SELFIE',
+      deviceId: LEADER_DEVICE,
+    });
+    await world.request('POST', `${base}/audits/${secondAuditId}/start`, {
+      token: leaderToken,
+      body: { deviceId: LEADER_DEVICE },
+    });
+
+    const cancelled = await world.request('POST', `${base}/audits/${auditId}/cancel`, {
+      token: asSuperAdmin(),
+      body: { reason: 'The auditor was called away' },
+    });
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+
+    // A-1 keeps every row of the cancelled audit; what it does not keep is the claim.
+    const retaken = await world.request(
+      'PUT',
+      `${base}/audits/${secondAuditId}/zones/${randomUUID()}`,
+      {
+        token: leaderToken,
+        body: { zoneId, sequenceNo: 1, checklistVersionId: versionId },
+      },
+    );
+    expect(retaken.status, JSON.stringify(retaken.body)).toBe(200);
+  });
+});
+
 describe('the post-completion override (A-2)', () => {
   it('changes an answer, rescores, and writes the audit-log entry with before and after', async () => {
     const { auditId, auditZoneId, expectedPercentage } = await completedAudit('Z-49', 'Override zone');
@@ -1038,18 +1262,246 @@ describe('the post-completion override (A-2)', () => {
     expect(response.status).toBe(409);
   });
 
-  it('is closed to everyone but a Super Admin', async () => {
-    const { auditId } = await completedAudit('Z-51', 'Closed override');
-    const response = await world.request('PATCH', `${base}/audits/${auditId}/post-completion`, {
+  /**
+   * R-30. The product owner settled that an auditor may correct an audit they conducted,
+   * and this is the whole of what that means: the same door, the same justification, the
+   * same audit-log entry — with the Consultant's own name on it.
+   */
+  it('lets the auditor correct their own completed audit, with the reason logged', async () => {
+    const { auditId, auditZoneId, expectedPercentage } = await completedAudit('Z-51', 'Own correction');
+
+    const detail = await world.request('GET', `${base}/audits/${auditId}`, {
+      token: consultantToken,
+    });
+    const zone = (detail.body as AuditDetail).zones.find((z) => z.id === auditZoneId)!;
+    const wrong = zone.responses.find((response) => response.value === 'SCORE_0')!;
+
+    const corrected = await world.request('PATCH', `${base}/audits/${auditId}/post-completion`, {
       token: consultantToken,
       body: {
-        justification: 'The auditor would like to change their own answer',
-        changes: { zoneRemark: { auditZoneId: randomUUID(), remark: 'x' } },
+        justification: 'I marked the rack unlabelled; the label was on the far side.',
+        changes: { responses: [{ responseId: wrong.id, value: 'SCORE_2' }] },
       },
     });
-    expect(response.status).toBe(403);
+    expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
+
+    // The stored score moved, which is the half the trigger had to be widened for: the
+    // recompute runs inside the carve-out, on rows A-2 has frozen.
+    const after = (corrected.body as AuditDetail).zones.find((z) => z.id === auditZoneId)!;
+    expect(after.totals.scorePercentage).not.toBe(expectedPercentage);
+    expect(after.responses.find((response) => response.id === wrong.id)!.value).toBe('SCORE_2');
+
+    // And it is on the record, under the Consultant's own name.
+    const logged = await world.request(
+      'GET',
+      `${base}/audit-logs?action=audit.changed_after_completion&resourceId=${auditId}`,
+      { token: asSuperAdmin() },
+    );
+    const entries = (logged.body as Page<{ actorUserId: string; before: unknown; after: unknown }>)
+      .data;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.actorUserId).toBe(world.actors.CONSULTANT.userId);
+    expect(JSON.stringify(entries[0]!.before)).toContain('SCORE_0');
+    expect(JSON.stringify(entries[0]!.after)).toContain('the far side');
+  });
+
+  /**
+   * R-31: a corrected mark does not stop at the response row.
+   *
+   * The case the product owner asked for, both ways round in one audit — a finding that
+   * goes away and a finding that appears — because the cascade has to do both or it has
+   * only moved the problem.
+   */
+  it('withdraws a finding the correction removed and raises one it created', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-66', 'Cascade zone');
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+
+    const values = fiftyAnswers();
+    // The pattern the suite uses everywhere: Q1 is a 0, Q2 is a 2. One of each is the
+    // whole point of this test.
+    expect(values[0]).toBe('SCORE_0');
+    expect(values[1]).toBe('SCORE_2');
+    await answer(consultantToken, auditZoneId, values);
+
+    const answered = await world.request('GET', `${base}/audits/${auditId}`, {
+      token: consultantToken,
+    });
+    const responses = (answered.body as AuditDetail).zones.find((z) => z.id === auditZoneId)!
+      .responses;
+    const wrongZero = responses.find((response) => response.globalOrder === 1)!;
+    const wrongTwo = responses.find((response) => response.globalOrder === 2)!;
+
+    // A photograph under each. The server classifies from the linked response (E-1), so
+    // one is a nonconformity and one is not — no classification is sent from here.
+    const zeroPhoto = await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId: randomUUID(),
+      auditId,
+      auditZoneId,
+      questionResponseId: wrongZero.id,
+      kind: 'QUESTION_EVIDENCE',
+      deviceId: CONSULTANT_DEVICE,
+    });
+    const twoPhoto = await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId: randomUUID(),
+      auditId,
+      auditZoneId,
+      questionResponseId: wrongTwo.id,
+      kind: 'QUESTION_EVIDENCE',
+      deviceId: CONSULTANT_DEVICE,
+    });
+
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    const completed = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(completed.status, JSON.stringify(completed.body)).toBe(200);
+    expect((completed.body as Audit).status).toBe('CORRECTIVE_ACTION_OPEN');
+
+    const before = await listActions(auditId);
+    expect(before).toHaveLength(1);
+    expect(before[0]!.evidenceId).toBe(zeroPhoto.evidenceId);
+    expect(before[0]!.status).toBe('OPEN');
+
+    // The correction: the 0 was wrong, and so was the 2.
+    const corrected = await world.request('PATCH', `${base}/audits/${auditId}/post-completion`, {
+      token: consultantToken,
+      body: {
+        justification: 'Q1 was labelled after all; Q2’s guard was missing and I marked it 2.',
+        changes: {
+          responses: [
+            { responseId: wrongZero.id, value: 'SCORE_2' },
+            { responseId: wrongTwo.id, value: 'SCORE_0' },
+          ],
+        },
+      },
+    });
+    expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
+
+    const after = await listActions(auditId);
+    expect(after).toHaveLength(2);
+
+    // The finding that went: withdrawn, not verified. Nobody fixed anything.
+    const gone = after.find((action) => action.evidenceId === zeroPhoto.evidenceId)!;
+    expect(gone.status).toBe('WITHDRAWN');
+    expect(gone.resolvedAt).not.toBeNull();
+
+    // The finding that appeared: a real, answerable action with a due date in the future.
+    const raised = after.find((action) => action.evidenceId === twoPhoto.evidenceId)!;
+    expect(raised.status).toBe('OPEN');
+    expect(raised.questionGlobalOrder).toBe(2);
+    expect(Date.parse(raised.dueAt!)).toBeGreaterThan(Date.now());
+
+    // One settled of two, so §2.8 puts the audit between open and closed.
+    expect((corrected.body as AuditDetail).status).toBe('PARTIALLY_CLOSED');
+
+    // E-2, after completion as well as before it: the photographs were refiled, which is
+    // what keeps them out of the wrong section of the report.
+    const photos = await world.request('GET', `${base}/audits/${auditId}/evidence`, {
+      token: consultantToken,
+    });
+    const byId = new Map(
+      (photos.body as Page<{ id: string; classification: string }>).data.map((row) => [
+        row.id,
+        row.classification,
+      ]),
+    );
+    expect(byId.get(zeroPhoto.evidenceId)).toBe('GOOD');
+    expect(byId.get(twoPhoto.evidenceId)).toBe('NONCONFORMITY');
+  });
+
+  it('refuses a Consultant an audit somebody else conducted', async () => {
+    // The Zone Leader's own CROSS_5S in the same Unit. `own_audits` is what keeps the two
+    // apart, and AZ-3 makes the refusal a 404 rather than a 403 — being told "forbidden"
+    // would confirm the audit exists.
+    const zoneId = await createZone('Z-64', 'Somebody else’s zone');
+    const leaderAuditId = randomUUID();
+    await world.request('POST', `${base}/audits`, {
+      token: leaderToken,
+      body: {
+        id: leaderAuditId,
+        auditType: 'CROSS_5S',
+        unitId: world.unitA,
+        checklistVersionId: versionId,
+        deviceId: LEADER_DEVICE,
+      },
+    });
+    await captureEvidence(world, {
+      token: leaderToken,
+      evidenceId: randomUUID(),
+      auditId: leaderAuditId,
+      kind: 'AUDITOR_SELFIE',
+      deviceId: LEADER_DEVICE,
+    });
+    await world.request('POST', `${base}/audits/${leaderAuditId}/start`, {
+      token: leaderToken,
+      body: { deviceId: LEADER_DEVICE },
+    });
+    const leaderZoneId = randomUUID();
+    await world.request('PUT', `${base}/audits/${leaderAuditId}/zones/${leaderZoneId}`, {
+      token: leaderToken,
+      body: { zoneId, sequenceNo: 1, checklistVersionId: versionId },
+    });
+    await answer(leaderToken, leaderZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${leaderAuditId}/zones/${leaderZoneId}/complete`, {
+      token: leaderToken,
+      body: {},
+    });
+    await world.request('POST', `${base}/audits/${leaderAuditId}/complete`, {
+      token: leaderToken,
+      body: {},
+    });
+
+    const response = await world.request(
+      'PATCH',
+      `${base}/audits/${leaderAuditId}/post-completion`,
+      {
+        token: consultantToken,
+        body: {
+          justification: 'Correcting a colleague’s audit, which is not mine to correct',
+          changes: { zoneRemark: { auditZoneId: leaderZoneId, remark: 'x' } },
+        },
+      },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('is closed to a Coordinator and a Zone Leader', async () => {
+    const { auditId } = await completedAudit('Z-65', 'Not theirs to change');
+    for (const role of ['COORDINATOR', 'ZONE_LEADER'] as const) {
+      const response = await world.request('PATCH', `${base}/audits/${auditId}/post-completion`, {
+        token: world.actors[role].accessToken,
+        body: {
+          justification: 'A role that holds no grant for this at all',
+          changes: { zoneRemark: { auditZoneId: randomUUID(), remark: 'x' } },
+        },
+      });
+      expect(response.status, `${role}: ${JSON.stringify(response.body)}`).toBe(403);
+    }
   });
 });
+
+/** This audit's corrective actions, in open order, as the Super Admin sees them. */
+async function listActions(auditId: string): Promise<CorrectiveAction[]> {
+  const response = await world.request(
+    'GET',
+    `${base}/corrective-actions?auditId=${auditId}&limit=100`,
+    { token: asSuperAdmin() },
+  );
+  expect(response.status, JSON.stringify(response.body)).toBe(200);
+  return (response.body as Page<CorrectiveAction>).data;
+}
 
 /** A completed one-Zone audit, answered with the fifty-value pattern. */
 async function completedAudit(code: string, name: string) {

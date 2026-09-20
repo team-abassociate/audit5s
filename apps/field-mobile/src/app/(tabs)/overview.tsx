@@ -31,8 +31,26 @@ import {
 import { api } from '../../lib/api';
 import { formatDate, formatPct } from '../../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS } from '../../lib/labels';
-import { useSession } from '../../lib/session';
+import { FieldOverview } from '../../components/field-overview';
+import { managesOnPhone, useSession } from '../../lib/session';
 import { bandOf, createThemedStyles } from '../../lib/theme';
+
+/**
+ * The Overview tab, which is two screens wearing one route.
+ *
+ * A Super Admin or Coordinator gets the management board below. A Consultant or Zone
+ * Leader gets `FieldOverview` — the same first question asked of a different person: not
+ * "is the organization running" but "what am I in the middle of". They are different
+ * enough that sharing a body would be a screen of branches, and alike enough that they
+ * belong on one tab: it is the place you land, whoever you are.
+ *
+ * One route rather than two also keeps the navigation honest — `/overview` resolves for
+ * every signed-in role, so nothing that links to it has to know who is holding the phone.
+ */
+export default function OverviewScreen() {
+  const { scope } = useSession();
+  return managesOnPhone(scope?.role) ? <ManagementOverview /> : <FieldOverview />;
+}
 
 /**
  * The management board on a phone: the three counts that say whether things are running, the
@@ -45,7 +63,7 @@ import { bandOf, createThemedStyles } from '../../lib/theme';
  * This is management, not field work, so it is live server data. It says so when it cannot
  * load rather than showing zeros.
  */
-export default function OverviewScreen() {
+function ManagementOverview() {
   const styles = useStyles();
   const router = useRouter();
   const { scope, can } = useSession();

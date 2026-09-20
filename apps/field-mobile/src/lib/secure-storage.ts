@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { isThemePreference, type ThemePreference } from './theme-choice';
 
 /**
  * Credential storage, backed by the Android Keystore (STACK.md §2).
@@ -13,6 +14,7 @@ const KEYS = {
   session: 'audit5s.session',
   deviceId: 'audit5s.deviceId',
   serverAddress: 'audit5s.serverAddress',
+  themePreference: 'audit5s.themePreference',
 } as const;
 
 export interface StoredSession {
@@ -81,6 +83,31 @@ export async function saveServerAddress(value: string | null): Promise<void> {
     return;
   }
   await writeString(KEYS.serverAddress, value);
+}
+
+/**
+ * The theme the person chose, remembered for this install.
+ *
+ * It sits here beside the server address for that entry's own reason: it is per-install
+ * configuration rather than business data, and clearing the app's data should forget it
+ * along with everything else. Not in SQLite, because the local database is tagged to one
+ * signed-in user (§9.7) and a display preference belongs to the handset, not the account —
+ * the auditor who picks dark once should not have to pick it again after a logout.
+ *
+ * An unreadable or unrecognised value is no preference at all, which means the default.
+ */
+export async function loadThemePreference(): Promise<ThemePreference | null> {
+  const stored = await readString(KEYS.themePreference);
+  return isThemePreference(stored) ? stored : null;
+}
+
+export async function saveThemePreference(value: ThemePreference): Promise<void> {
+  try {
+    await writeString(KEYS.themePreference, value);
+  } catch {
+    // A keystore that refuses the write still leaves the person the theme they chose for
+    // this session. A display setting is not worth an error dialog.
+  }
 }
 
 /**

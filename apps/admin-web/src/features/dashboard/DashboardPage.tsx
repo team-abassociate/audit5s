@@ -1127,6 +1127,10 @@ function findingStatus(action: CorrectiveAction): {
       return { tone: 'submitted', label: 'Not possible' };
     case 'VERIFIED':
       return { tone: 'closed', label: 'Closed' };
+    case 'WITHDRAWN':
+      // Settled, so it sorts with the closed findings — but labelled for what it is. R-31:
+      // the auditor corrected the mark, and nobody fixed anything.
+      return { tone: 'closed', label: 'Withdrawn' };
   }
 }
 

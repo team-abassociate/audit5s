@@ -16,6 +16,7 @@ import type {
   ReleaseDeviceRequest,
   ResumeAuditRequest,
   StartAuditRequest,
+  ZoneLocksResponse,
 } from '@audit5s/contracts';
 import {
   assertTransition,
@@ -30,11 +31,13 @@ import {
 } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { scopeFor } from '../../common/auth/scope-for';
+import type { Transaction } from '@audit5s/db';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import type { AnalyticsRefreshJob } from '../analytics/analytics-rollup.worker';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
+import { EvidenceService } from '../evidence/evidence.service';
 import { getRequestContext } from '../../common/observability/request-context';
 import { UnitsRepository } from '../units/units.repository';
 import { AssignmentsRepository } from '../audit-assignments/assignments.repository';
@@ -75,6 +78,9 @@ export class AuditsService {
     private readonly events: DomainEvents,
     private readonly correctiveActions: CorrectiveActionsService,
     private readonly queue: QueueService,
+    // R-31: a corrected mark reclassifies the photograph filed under it, on the override's
+    // own transaction. `AuditZonesService` already holds this for E-2 before completion.
+    private readonly evidence: EvidenceService,
   ) {}
 
   // ------------------------------------------------------------------------ create
@@ -223,6 +229,25 @@ export class AuditsService {
           status: zone.status,
         };
       }),
+    };
+  }
+
+  /**
+   * `GET /audits/{id}/zone-locks` (R-29) — the Zones of this audit's Unit that another
+   * open audit is holding, so the picker can grey them out and say who has them.
+   *
+   * A courtesy, not the control. The device is offline by design: it may have started this
+   * audit before the other one existed, and it will have to hear the refusal from the sync
+   * batch either way. What this prevents is the *avoidable* case — an auditor who is
+   * online, standing in a plant, about to spend forty minutes re-auditing a Zone their
+   * colleague is already in.
+   */
+  async zoneLocks(scope: ScopeContext, auditId: string): Promise<ZoneLocksResponse> {
+    const audit = await this.mustFind(scope, auditId);
+    return {
+      auditId,
+      unitId: audit.unitId,
+      locks: await this.repository.listZoneLocks(scope, auditId),
     };
   }
 
@@ -636,6 +661,11 @@ export class AuditsService {
    * writes the `AuditLog` entry with before and after. Without an endpoint like this the
    * override happens in someone's psql session and leaves no trail at all, which is the
    * outcome the invariant exists to prevent.
+   *
+   * R-30 widened who may call it — a Super Admin for any audit, a Consultant for one they
+   * conducted — and nothing in this method had to change for that. The grant decides who
+   * arrives; `mustFind` under the `own_audits` resolver decides which audits they find;
+   * the justification and the log entry are required of both.
    */
   async postCompletionOverride(
     scope: ScopeContext,
@@ -696,22 +726,43 @@ export class AuditsService {
       after.responses = afterValues;
     }
 
-    await this.repository.applyPostCompletionOverride(scope, {
-      auditId,
-      unitId: audit.unitId,
-      ...(request.changes.reopenAuditZoneId
-        ? { reopenAuditZoneId: request.changes.reopenAuditZoneId }
-        : {}),
-      ...(request.changes.zoneRemark ? { zoneRemark: request.changes.zoneRemark } : {}),
-      responses: responseChanges.map((change) => ({
-        responseId: change.responseId,
-        value: change.value,
-        remark: change.remark ?? null,
-      })),
-      before,
-      after: { ...after, justification: request.justification },
-      requestId: getRequestContext()?.requestId ?? 'post-completion-override',
-    });
+    /**
+     * R-31: a corrected mark does not stop at the response row.
+     *
+     * The photograph filed under it is reclassified (E-2, which has always done this
+     * before completion and now does it after), and the corrective actions follow — one
+     * raised where a finding has appeared, one withdrawn where a finding has gone. All of
+     * it on the override's own transaction, so a correction and its consequences commit
+     * together or not at all.
+     */
+    await this.repository.applyPostCompletionOverride(
+      scope,
+      {
+        auditId,
+        unitId: audit.unitId,
+        ...(request.changes.reopenAuditZoneId
+          ? { reopenAuditZoneId: request.changes.reopenAuditZoneId }
+          : {}),
+        ...(request.changes.zoneRemark ? { zoneRemark: request.changes.zoneRemark } : {}),
+        responses: responseChanges.map((change) => ({
+          responseId: change.responseId,
+          value: change.value,
+          remark: change.remark ?? null,
+        })),
+        before,
+        after: { ...after, justification: request.justification },
+        requestId: getRequestContext()?.requestId ?? 'post-completion-override',
+      },
+      responseChanges.length === 0
+        ? undefined
+        : async (tx) => {
+            for (const change of responseChanges) {
+              await this.evidence.reclassifyForResponseOn(tx, change.responseId, change.value);
+            }
+            const cascaded = await this.correctiveActions.cascadeAfterCorrection(tx, scope, auditId);
+            await this.announceCascade(tx, scope, audit, cascaded);
+          },
+    );
 
     // Scores are recomputed under the same carve-out, because the audit is still frozen.
     if (responseChanges.length > 0) {
@@ -719,6 +770,64 @@ export class AuditsService {
     }
 
     return this.detail(scope, auditId);
+  }
+
+  /**
+   * Tells the people a cascade moved work for (R-31).
+   *
+   * On the override's own transaction, which is R-2 without an exception: the notification
+   * exists exactly when the finding it announces does. A Zone Leader told to go and fix
+   * something that rolled back would be the worse half of the bug this whole cascade
+   * exists to close — and a new finding nobody was told about is the other half.
+   *
+   * A-2's carve-out is open on this transaction, and a `pg_boss` job row is untouched by
+   * it: the carve-out is read by the freeze triggers on the audit tables and by nothing
+   * else.
+   */
+  private async announceCascade(
+    tx: Transaction,
+    scope: ScopeContext,
+    audit: AuditRow,
+    cascaded: Awaited<ReturnType<CorrectiveActionsService['cascadeAfterCorrection']>>,
+  ): Promise<void> {
+    for (const action of cascaded.opened) {
+      await this.events.emit(tx, {
+        type: 'CORRECTIVE_ACTION_OPENED',
+        actorUserId: scope.actor.userId,
+        unitId: audit.unitId,
+        resourceType: 'corrective_action',
+        resourceId: action.id,
+        userIds: action.assignedZoneLeaderUserId ? [action.assignedZoneLeaderUserId] : [],
+        data: {
+          auditId: audit.id,
+          auditType: audit.auditType,
+          auditorName: audit.auditorName,
+          zoneCode: action.zoneCode,
+          zoneName: action.zoneName,
+          questionNo: action.questionGlobalOrder,
+          value: action.scoreAtCapture,
+        },
+      });
+    }
+
+    for (const action of cascaded.withdrawn) {
+      await this.events.emit(tx, {
+        type: 'CORRECTIVE_ACTION_WITHDRAWN',
+        actorUserId: scope.actor.userId,
+        unitId: audit.unitId,
+        resourceType: 'corrective_action',
+        resourceId: action.id,
+        userIds: action.assignedZoneLeaderUserId ? [action.assignedZoneLeaderUserId] : [],
+        data: { auditId: audit.id, auditType: audit.auditType, auditorName: audit.auditorName },
+      });
+    }
+
+    if (cascaded.opened.length > 0 || cascaded.withdrawn.length > 0) {
+      this.logger.log(
+        `override on audit ${audit.id}: ${cascaded.opened.length} corrective action(s) opened, ` +
+          `${cascaded.withdrawn.length} withdrawn; audit is ${cascaded.auditStatus} (R-31)`,
+      );
+    }
   }
 
   /** Recomputes and persists scores on a frozen audit, inside the A-2 carve-out. */

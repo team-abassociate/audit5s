@@ -286,12 +286,22 @@ export async function saveLocalResponse(
       },
     });
 
-  // The Zone moves off DRAFT on the first answer, and the cursor follows the last one, so
-  // an abort a moment later resumes exactly here (§9.8).
+  /**
+   * The Zone moves off DRAFT on the first answer, and the cursor follows the last one, so
+   * an abort a moment later resumes exactly here (§9.8).
+   *
+   * A Zone already COMPLETED keeps that status. Revising a finished Zone from the Review
+   * button is allowed until the audit itself is finished, and the server treats it exactly
+   * this way — it rescores the audit and leaves the Zone finished. Reopening it here
+   * instead put the device a status out of step with the server and, worse, disabled
+   * "Finish audit" until the auditor found their way back to a Submit button five pages
+   * down. `COMPLETED → IN_PROGRESS` is a Super Admin's reopen (§7.2), not a side effect of
+   * correcting a mark.
+   */
   await database
     .update(localAuditZones)
     .set({
-      status: 'IN_PROGRESS',
+      status: sql`CASE WHEN ${localAuditZones.status} = 'COMPLETED' THEN 'COMPLETED' ELSE 'IN_PROGRESS' END`,
       startedAt: sql`COALESCE(${localAuditZones.startedAt}, ${now})`,
       resumeQuestionId: input.checklistQuestionId,
       clientUpdatedAt: now,
@@ -484,6 +494,98 @@ export async function completeLocalAudit(
   await enqueue(database, 'audit', auditId, 'complete', { completedAt: now });
 }
 
+/**
+ * A correction to an audit that is already finished (R-30, A-2).
+ *
+ * The auditor who conducted an audit may fix a mark on it afterwards, and this is the only
+ * way the device sends one. It is deliberately **not** `saveLocalResponse`: that enqueues a
+ * `question_response:upsert`, which a completed audit refuses — in the service, and again
+ * in the trigger — and which carries no reason to write to the audit log. The correction
+ * rides `PATCH /audits/{id}/post-completion` instead, the same door the web override uses.
+ *
+ * Two writes, in the order that makes an interruption harmless:
+ *
+ *   1. The local response row, so the screen and the device's own scoring show the mark the
+ *      auditor just chose rather than waiting on a round trip.
+ *   2. One outbox row per audit, merged. A second correction to the same audit updates the
+ *      same row — the outbox coalesces on `(entity_type, entity_id, operation)` and would
+ *      otherwise *replace* the payload, losing the first correction. So the pending payload
+ *      is read, merged by response id, and written back.
+ *
+ * The justification is the latest one given: corrections made in one sitting share a
+ * reason, and the server logs it with the before and after of every change it carries.
+ */
+export async function applyLocalOverride(
+  database: LocalDatabase,
+  input: {
+    auditId: string;
+    responseId: string;
+    value: ResponseValue;
+    remark?: string | null;
+    justification: string;
+  },
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  await database
+    .update(localQuestionResponses)
+    .set({
+      value: input.value,
+      numericScore: numericScoreFor(input.value),
+      remark: input.remark ?? null,
+      clientUpdatedAt: now,
+    })
+    .where(eq(localQuestionResponses.id, input.responseId));
+
+  const [pending] = await database
+    .select({ payload: outbox.payload })
+    .from(outbox)
+    .where(
+      and(
+        eq(outbox.entityType, 'audit'),
+        eq(outbox.entityId, input.auditId),
+        eq(outbox.operation, 'override'),
+      ),
+    )
+    .limit(1);
+
+  const queued = readOverridePayload(pending?.payload);
+  const merged = queued.filter((change) => change.responseId !== input.responseId);
+  merged.push({
+    responseId: input.responseId,
+    value: input.value,
+    ...(input.remark === undefined ? {} : { remark: input.remark }),
+  });
+
+  await enqueue(database, 'audit', input.auditId, 'override', {
+    justification: input.justification,
+    changes: { responses: merged },
+  });
+}
+
+interface OverrideChange {
+  responseId: string;
+  value: ResponseValue;
+  remark?: string | null;
+}
+
+/**
+ * The corrections already queued for this audit.
+ *
+ * A payload that will not parse is treated as no corrections rather than throwing. The row
+ * is the device's own JSON and should always read, but a correction refused because an
+ * older build wrote a shape this one cannot understand would be a correction lost for good
+ * — and the merge below rewrites the row completely anyway.
+ */
+function readOverridePayload(payload: string | undefined): OverrideChange[] {
+  if (!payload) return [];
+  try {
+    const parsed = JSON.parse(payload) as { changes?: { responses?: OverrideChange[] } };
+    return parsed.changes?.responses ?? [];
+  } catch {
+    return [];
+  }
+}
+
 // ------------------------------------------------------------------------------ reads
 
 export function getLocalAudit(database: LocalDatabase, auditId: string) {
@@ -498,6 +600,74 @@ export function listLocalAudits(database: LocalDatabase) {
     .from(audits)
     .leftJoin(units, eq(units.id, audits.unitId))
     .orderBy(sql`${audits.clientUpdatedAt} DESC`);
+}
+
+/** The statuses an audit can be resumed from — everything before it is finished. */
+const RESUMABLE = ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'] as const;
+
+export interface ResumableAudit {
+  id: string;
+  unitId: string;
+  unitName: string | null;
+  auditType: string;
+  status: string;
+  startedAt: string | null;
+  pausedAt: string | null;
+  pauseReason: string | null;
+  clientUpdatedAt: string;
+  resumeAuditZoneId: string | null;
+  zonesTotal: number;
+  zonesFinished: number;
+}
+
+/**
+ * The Overview tab's question: what is this auditor in the middle of?
+ *
+ * Read from SQLite like everything else on a field screen, and deliberately *not* from
+ * `GET /audits?active=true`. An audit paused in a plant with no signal is in progress on
+ * this device whatever the server has heard, and the point of the screen is to get back
+ * into it — which is a local operation from first tap to last (§9.8).
+ *
+ * The Zone counts come from a second query rather than a grouped join: there are a handful
+ * of rows, and the plain version is the one that stays right when the schema moves.
+ */
+export async function listResumableAudits(database: LocalDatabase): Promise<ResumableAudit[]> {
+  const rows = await database
+    .select({ ...getTableColumns(audits), unitName: units.name })
+    .from(audits)
+    .leftJoin(units, eq(units.id, audits.unitId))
+    .where(inArray(audits.status, [...RESUMABLE]))
+    .orderBy(sql`${audits.clientUpdatedAt} DESC`);
+
+  if (rows.length === 0) return [];
+
+  const zoneRows = await database
+    .select({ auditId: localAuditZones.auditId, status: localAuditZones.status })
+    .from(localAuditZones)
+    .where(
+      inArray(
+        localAuditZones.auditId,
+        rows.map((row) => row.id),
+      ),
+    );
+
+  return rows.map((row) => {
+    const mine = zoneRows.filter((zone) => zone.auditId === row.id);
+    return {
+      id: row.id,
+      unitId: row.unitId,
+      unitName: row.unitName,
+      auditType: row.auditType,
+      status: row.status,
+      startedAt: row.startedAt,
+      pausedAt: row.pausedAt,
+      pauseReason: row.pauseReason,
+      clientUpdatedAt: row.clientUpdatedAt,
+      resumeAuditZoneId: row.resumeAuditZoneId,
+      zonesTotal: mine.length,
+      zonesFinished: mine.filter((zone) => zone.status === 'COMPLETED').length,
+    };
+  });
 }
 
 export function listLocalAuditZones(database: LocalDatabase, auditId: string) {

@@ -185,6 +185,15 @@ export const auditZones = pgTable(
     rawScore: integer('raw_score').notNull().default(0),
     maxScore: integer('max_score').notNull().default(0),
 
+    /**
+     * R-29's lock, derived from `audit.status` and written only by 0021's triggers.
+     *
+     * A Zone is claimed while the audit holding it is open, so a second audit of the same
+     * Unit cannot take it. Listed here because Drizzle selects the table's columns by
+     * name; nothing in the application ever sets it.
+     */
+    auditOpen: boolean('audit_open').notNull().default(true),
+
     resumeQuestionId: uuid('resume_question_id').references(() => checklistQuestions.id, {
       onDelete: 'restrict',
     }),
@@ -199,6 +208,10 @@ export const auditZones = pgTable(
     uniqueIndex('audit_zone_sequence_key').on(table.auditId, table.sequenceNo),
     index('audit_zone_zone_completed_idx').on(table.zoneId, table.completedAt),
     index('audit_zone_audit_status_idx').on(table.auditId, table.status),
+    // R-29. Partial, so a Zone is unique only among the audits still holding it.
+    uniqueIndex('audit_zone_claimed_by_open_audit')
+      .on(table.zoneId)
+      .where(sql`audit_open`),
   ],
 );
 

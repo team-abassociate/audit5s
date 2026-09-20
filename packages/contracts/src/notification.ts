@@ -25,6 +25,10 @@ export const NOTIFICATION_EVENT_TYPES = [
   'CORRECTIVE_ACTION_SUBMITTED',
   'CORRECTIVE_ACTION_VERIFIED',
   'CORRECTIVE_ACTION_REOPENED',
+  /** R-31: a correction to a completed audit raised a new finding. */
+  'CORRECTIVE_ACTION_OPENED',
+  /** R-31: a correction to a completed audit took a finding away. */
+  'CORRECTIVE_ACTION_WITHDRAWN',
   'CORRECTIVE_ACTION_OVERDUE',
   'SYNC_FAILURE',
   'CHECKLIST_PUBLISHED',

@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from '@audit5s/contracts';
+import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN, type ZoneLock, type ZoneLocksResponse } from '@audit5s/contracts';
 import { zoneCodeChoices, zoneCodeForNumber, zoneDisplayLabel } from '@audit5s/domain';
 import {
   ActionBar,
@@ -36,9 +36,35 @@ import {
   listLocalZones as listCatalogueZones,
 } from '../../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
+import { api } from '../../../lib/api';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 
 type CatalogueZone = Awaited<ReturnType<typeof listCatalogueZones>>[number];
+
+/**
+ * What has been typed for one Zone but not yet saved.
+ *
+ * Kept per Zone number rather than in three fields shared by the form, because the form is
+ * reused for every Zone in the audit and the fields are *about* the Zone. Choosing Zone 4
+ * after typing Zone 1's leader used to leave Zone 1's leader on screen, where the next tap
+ * would have saved it against Zone 4 — a wrong name on a report, from a silent default.
+ * Now each Zone keeps its own draft: switching away puts it down, switching back picks it
+ * up, and a Zone nobody has typed anything for starts empty.
+ */
+interface ZoneDraft {
+  description: string;
+  leaderName: string;
+  versionId: string | null;
+}
+
+const EMPTY_DRAFT: ZoneDraft = { description: '', leaderName: '', versionId: null };
+
+/** The slot for what is typed before any Zone is chosen; it follows the first choice. */
+const NO_ZONE = -1;
+
+function isEmptyDraft(draft: ZoneDraft): boolean {
+  return draft.description.trim() === '' && draft.leaderName.trim() === '' && !draft.versionId;
+}
 
 /**
  * The Zones of one audit: what has been done, what is next, and the way back in.
@@ -60,11 +86,17 @@ export default function AuditZonesScreen() {
   const router = useRouter();
 
   const [zoneNumber, setZoneNumber] = useState<number | null>(null);
-  const [description, setDescription] = useState('');
-  const [leaderName, setLeaderName] = useState('');
-  const [versionId, setVersionId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, ZoneDraft>>({});
   const [picking, setPicking] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+
+  const draftKey = zoneNumber ?? NO_ZONE;
+  const draft = drafts[draftKey] ?? EMPTY_DRAFT;
+  const editDraft = (change: Partial<ZoneDraft>) =>
+    setDrafts((current) => ({
+      ...current,
+      [draftKey]: { ...(current[draftKey] ?? EMPTY_DRAFT), ...change },
+    }));
 
   const audit = useQuery({
     queryKey: ['local', 'audit', auditId],
@@ -92,24 +124,49 @@ export default function AuditZonesScreen() {
     queryFn: () => resumeCursor(database, auditId),
   });
 
+  /**
+   * R-29: the Zones another open audit of this Unit is already holding.
+   *
+   * The one query on this screen that needs the network, and the only one allowed to fail
+   * quietly. A Unit assigned to two Consultants can have both of them in the plant at once,
+   * and a Zone one of them is auditing is a Zone the other must not audit too. The server
+   * refuses it whenever the item reaches it; this read is what lets the picker say so
+   * before forty minutes of questions rather than after.
+   *
+   * Offline it simply returns nothing and the picker shows no locks — the app does not stop
+   * working because a courtesy could not be fetched, and the refusal still arrives on sync
+   * with the work intact.
+   */
+  const zoneLocks = useQuery({
+    queryKey: ['audits', auditId, 'zone-locks'],
+    queryFn: () => api.get<ZoneLocksResponse>(`/audits/${auditId}/zone-locks`),
+    enabled: audit.data?.status === 'IN_PROGRESS' || audit.data?.status === 'READY',
+    retry: false,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
   const walkBy = audit.data?.auditType === 'WALK_BY';
 
   const addZone = useMutation({
-    mutationFn: (input: { zoneNumber: number; checklistVersionId: string | null }) =>
+    mutationFn: (input: { zoneNumber: number; draft: ZoneDraft }) =>
       addLocalZone(database, {
         auditId,
         zoneNumber: input.zoneNumber,
         sequenceNo: (auditZones.data?.length ?? 0) + 1,
-        checklistVersionId: input.checklistVersionId,
-        zoneDescription: description,
-        zoneLeaderName: leaderName,
+        checklistVersionId: walkBy ? null : input.draft.versionId,
+        zoneDescription: input.draft.description,
+        zoneLeaderName: input.draft.leaderName,
       }),
-    onSuccess: async (auditZoneId) => {
+    onSuccess: async (auditZoneId, input) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
+      // The Zone is in the audit now, so its draft has nowhere left to go back to.
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[input.zoneNumber];
+        return next;
+      });
       setZoneNumber(null);
-      setDescription('');
-      setLeaderName('');
-      setVersionId(null);
       setShowErrors(false);
       router.push({
         pathname: walkBy ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
@@ -134,10 +191,33 @@ export default function AuditZonesScreen() {
     },
   });
 
-  const abort = useMutation({
-    mutationFn: () => pauseLocalAudit(database, auditId, 'Aborted by auditor'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
+  /**
+   * Leaving the audit, in the two senses an auditor means it (N7).
+   *
+   * Both save and both pause — nothing on this screen discards anything, and the only
+   * status that voids an audit is a Super Admin's cancellation (A-1). What differs is the
+   * reason recorded on the pause, which rides the outbox to the Super Admin's
+   * notification: a break for lunch and an audit called off are not the same event, and
+   * before this the app could only report the second.
+   */
+  const leave = useMutation({
+    mutationFn: (reason: string | null) => pauseLocalAudit(database, auditId, reason),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['local'] });
+      router.back();
+    },
   });
+
+  const confirmAbort = () =>
+    Alert.alert(
+      'Abort this audit?',
+      'Everything you have recorded is kept on this device and synced as usual. The audit ' +
+        'is paused and the Super Admin is told it was aborted. You can still reopen it.',
+      [
+        { text: 'Keep auditing', style: 'cancel' },
+        { text: 'Abort', style: 'destructive', onPress: () => leave.mutate('Aborted by auditor') },
+      ],
+    );
 
   const finish = useMutation({
     mutationFn: () => completeLocalAudit(database, auditId),
@@ -162,37 +242,60 @@ export default function AuditZonesScreen() {
 
   const finished = zonesInAudit.filter((zone) => zone.status === 'COMPLETED').length;
   const canFinish = allComplete && audit.data?.status !== 'COMPLETED';
-  const canAbort = audit.data?.status === 'IN_PROGRESS';
+  // Both ways of leaving need an audit that is actually running; a paused one has already
+  // been left, and the Resume slip above is what it offers instead.
+  const canPause = audit.data?.status === 'IN_PROGRESS';
 
   const selected = zoneNumber === null ? null : byCode.get(zoneCodeForNumber(zoneNumber));
+  const lockedByCode = new Map((zoneLocks.data?.locks ?? []).map((lock) => [lock.zoneCode, lock]));
+  const lockOnSelection = zoneNumber === null ? null : lockedByCode.get(zoneCodeForNumber(zoneNumber));
   const errors = {
     zone: zoneNumber === null ? 'Choose the Zone' : null,
-    leader: leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
-    department: !walkBy && !versionId ? 'Choose the department' : null,
+    leader: draft.leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
+    department: !walkBy && !draft.versionId ? 'Choose the department' : null,
   };
 
-  // A number the Unit already uses brings what the catalogue knows about it, without
-  // overwriting anything the auditor has already typed.
+  /**
+   * Choosing a Zone puts down the draft of the one being left and picks up that Zone's own.
+   *
+   * A Zone chosen for the first time starts from what the Unit's catalogue knows about it —
+   * its description, its leader, its usual department — because those are facts about *this*
+   * Zone rather than leftovers from the last one. What was typed before any Zone was chosen
+   * follows the first choice rather than being thrown away, and never overwrites the
+   * catalogue's answer for a Zone chosen later.
+   */
   const chooseZone = (number: number) => {
+    setDrafts((current) => {
+      if (current[number]) return current;
+
+      const known = byCode.get(zoneCodeForNumber(number));
+      const carried = current[NO_ZONE];
+      const carry = carried && !isEmptyDraft(carried) ? carried : null;
+      const template = known?.defaultChecklistTemplateId
+        ? (versions.data ?? []).find(
+            (version) => version.templateId === known.defaultChecklistTemplateId,
+          )
+        : undefined;
+
+      const next = { ...current };
+      delete next[NO_ZONE];
+      next[number] = {
+        description: carry?.description.trim() ? carry.description : (known?.description ?? ''),
+        leaderName: carry?.leaderName.trim() ? carry.leaderName : (known?.zoneLeaderName ?? ''),
+        versionId: carry?.versionId ?? template?.id ?? null,
+      };
+      return next;
+    });
     setZoneNumber(number);
-    const known = byCode.get(zoneCodeForNumber(number));
-    if (!known) return;
-    if (description.trim() === '' && known.description) setDescription(known.description);
-    if (leaderName.trim() === '' && known.zoneLeaderName) setLeaderName(known.zoneLeaderName);
-    if (!versionId && known.defaultChecklistTemplateId) {
-      const match = (versions.data ?? []).find(
-        (version) => version.templateId === known.defaultChecklistTemplateId,
-      );
-      if (match) setVersionId(match.id);
-    }
+    setShowErrors(false);
   };
 
   const submit = () => {
-    if (zoneNumber === null || errors.leader || errors.department) {
+    if (zoneNumber === null || errors.leader || errors.department || lockOnSelection) {
       setShowErrors(true);
       return;
     }
-    addZone.mutate({ zoneNumber, checklistVersionId: walkBy ? null : versionId });
+    addZone.mutate({ zoneNumber, draft });
   };
 
   return (
@@ -287,11 +390,22 @@ export default function AuditZonesScreen() {
                 </Pressable>
                 {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
 
+                {/* R-29, said before the questions rather than after them. */}
+                {lockOnSelection ? (
+                  <Slip title="That Zone is taken">
+                    <SlipText>
+                      {lockOnSelection.auditorName} is auditing Zone {lockOnSelection.zoneCode} —{' '}
+                      {lockOnSelection.zoneName} in another audit of this Unit. Choose a
+                      different Zone; nothing you have recorded is lost.
+                    </SlipText>
+                  </Slip>
+                ) : null}
+
                 <Field
                   label="Zone description (optional)"
                   multiline
-                  value={description}
-                  onChangeText={setDescription}
+                  value={draft.description}
+                  onChangeText={(value) => editDraft({ description: value })}
                   placeholder="What this Zone covers"
                   containerStyle={styles.gapAbove}
                 />
@@ -299,8 +413,8 @@ export default function AuditZonesScreen() {
                 <Field
                   testID="zone-leader-name"
                   label="Zone Leader’s name"
-                  value={leaderName}
-                  onChangeText={setLeaderName}
+                  value={draft.leaderName}
+                  onChangeText={(value) => editDraft({ leaderName: value })}
                   placeholder="Full name"
                   autoCapitalize="words"
                   error={showErrors && errors.leader ? errors.leader : undefined}
@@ -315,8 +429,8 @@ export default function AuditZonesScreen() {
                         label: version.templateName,
                         detail: `${version.totalQuestions} questions`,
                       }))}
-                      value={versionId}
-                      onChange={setVersionId}
+                      value={draft.versionId}
+                      onChange={(value) => editDraft({ versionId: value })}
                       empty="No department checklists on this device yet. Pull down on Units to refresh."
                     />
                     {showErrors && errors.department ? (
@@ -344,14 +458,41 @@ export default function AuditZonesScreen() {
         }
       />
 
-      {canFinish || canAbort ? (
-        <ActionBar>
-          {canFinish ? (
-            <Button title="Finish audit" busy={finish.isPending} onPress={() => finish.mutate()} />
+      {/*
+        Three ways out, side by side, because they are alternatives rather than one action
+        with a fallback: put it down for now, call it off, or declare it finished. Stacking
+        them made the middle one look like a lesser version of the one above it, and
+        "Abort — save and pause" was one button trying to be two.
+      */}
+      {canFinish || canPause ? (
+        <ActionBar row>
+          {canPause ? (
+            <Button
+              title="Save & pause"
+              variant="secondary"
+              busy={leave.isPending && leave.variables === null}
+              onPress={() => leave.mutate(null)}
+            />
           ) : null}
-          {canAbort ? (
-            <Button title="Abort — save and pause" variant="secondary" onPress={() => abort.mutate()} />
+          {canPause ? (
+            <Button
+              title="Abort"
+              variant="danger"
+              busy={leave.isPending && leave.variables !== null}
+              onPress={confirmAbort}
+            />
           ) : null}
+          {/*
+            Present from the first Zone, and inert until every Zone is finished — the rule
+            §7.1 already enforces. A button that appears only at the end hides what the end
+            *is*; one that is visibly not yet available says it.
+          */}
+          <Button
+            title="Finish audit"
+            disabled={!canFinish}
+            busy={finish.isPending}
+            onPress={() => finish.mutate()}
+          />
         </ActionBar>
       ) : null}
 
@@ -359,6 +500,7 @@ export default function AuditZonesScreen() {
         visible={picking}
         usedCodes={usedCodes}
         byCode={byCode}
+        lockedByCode={lockedByCode}
         onPick={chooseZone}
         onClose={() => setPicking(false)}
       />
@@ -367,19 +509,25 @@ export default function AuditZonesScreen() {
 }
 
 /**
- * The Zone 1…100 dropdown: a ruled sheet from the bottom edge, within thumb reach. A Zone
- * already in this audit reads "Already in this audit" and cannot be chosen again (§5.5).
+ * The Zone 1…100 dropdown: a ruled sheet from the bottom edge, within thumb reach.
+ *
+ * Two kinds of Zone cannot be chosen, and the row says which it is rather than only going
+ * grey. One is already in this audit (§5.5). The other is in somebody else's open audit of
+ * this Unit (R-29) — that row names the auditor holding it, because "taken" with no name
+ * is the kind of refusal that ends in a phone call to the office.
  */
 function ZonePicker({
   visible,
   usedCodes,
   byCode,
+  lockedByCode,
   onPick,
   onClose,
 }: {
   visible: boolean;
   usedCodes: ReadonlySet<string>;
   byCode: ReadonlyMap<string, CatalogueZone>;
+  lockedByCode: ReadonlyMap<string, ZoneLock>;
   onPick: (zoneNumber: number) => void;
   onClose: () => void;
 }) {
@@ -399,7 +547,9 @@ function ZonePicker({
           style={styles.sheetList}
           initialNumToRender={20}
           renderItem={({ item }) => {
-            const taken = usedCodes.has(item.code);
+            const inThisAudit = usedCodes.has(item.code);
+            const lock = lockedByCode.get(item.code);
+            const taken = inThisAudit || lock !== undefined;
             const known = byCode.get(item.code);
             return (
               <Pressable
@@ -415,8 +565,10 @@ function ZonePicker({
                 <Text style={[styles.sheetLabel, taken && styles.sheetLabelTaken]}>
                   {known ? zoneDisplayLabel(known.code, known.name) : `Zone ${item.number}`}
                 </Text>
-                {taken ? (
+                {inThisAudit ? (
                   <Text style={styles.sheetDetail}>Already in this audit</Text>
+                ) : lock ? (
+                  <Text style={styles.sheetDetail}>Being audited by {lock.auditorName}</Text>
                 ) : known?.zoneLeaderName ? (
                   <Text style={styles.sheetDetail}>Leader {known.zoneLeaderName}</Text>
                 ) : null}

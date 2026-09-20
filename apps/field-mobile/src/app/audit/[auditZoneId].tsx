@@ -26,6 +26,8 @@ import {
   Screen,
   SectionHead,
   SectionRows,
+  Slip,
+  SlipText,
   StatusBand,
 } from '../../components/ui';
 import { CameraCapture } from '../../components/camera-capture';
@@ -45,7 +47,9 @@ import {
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import {
+  applyLocalOverride,
   completeLocalZone,
+  getLocalAudit,
   getLocalAuditZone,
   listQuestionsWithAnswers,
   pauseLocalAudit,
@@ -55,6 +59,7 @@ import {
 } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { formatPct } from '../../lib/format';
+import { isFinished } from '../../lib/labels';
 import { useSync } from '../../lib/sync/provider';
 import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
 
@@ -62,6 +67,9 @@ import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
 const PAGE_SIZE = 10;
 /** An answer reaches the server this long after the last tap, so a page of taps is one push. */
 const SYNC_DEBOUNCE_MS = 1_500;
+
+/** `postCompletionOverrideRequestSchema`'s floor, so the server never refuses what was typed. */
+const MIN_JUSTIFICATION = 10;
 
 type Row = Awaited<ReturnType<typeof listQuestionsWithAnswers>>[number];
 
@@ -93,10 +101,34 @@ export default function QuestionnaireScreen() {
   const [cameraFor, setCameraFor] = useState<Row | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [showMissing, setShowMissing] = useState(false);
+  /**
+   * R-30's correction mode, on a finished audit.
+   *
+   * `null` is the ordinary read-only state. A string — the justification — is the auditor
+   * having said why, which is what unlocks the marks. It is deliberately not a boolean:
+   * A-2's door does not open without a reason, and holding the reason *as* the unlocked
+   * state means there is no path through this screen that corrects a mark without one.
+   */
+  const [correcting, setCorrecting] = useState<string | null>(null);
+  const [reasonDraft, setReasonDraft] = useState('');
 
   const zone = useQuery({
     queryKey: ['local', 'audit-zone', auditZoneId],
     queryFn: async () => (await getLocalAuditZone(database, auditZoneId))[0] ?? null,
+  });
+
+  /**
+   * The audit this Zone belongs to, for one question: may the answers still be changed?
+   *
+   * PART 6 permits a revision until the **audit** is COMPLETED — a finished Zone may be
+   * reopened from the Review button and re-answered, and the server rescores when it is.
+   * Once the audit itself is finished, A-2 closes it to everyone but a Super Admin, and
+   * this screen has to stop offering what the server will refuse.
+   */
+  const audit = useQuery({
+    enabled: Boolean(zone.data?.auditId),
+    queryKey: ['local', 'audit', zone.data?.auditId],
+    queryFn: async () => (await getLocalAudit(database, zone.data!.auditId))[0] ?? null,
   });
 
   const questions = useQuery({
@@ -162,6 +194,32 @@ export default function QuestionnaireScreen() {
       // own transaction; doing it here means the count under the question is right *before*
       // the sync.
       await reclassifyLocalEvidence(database, responseId, input.value);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['local'] });
+      scheduleSync();
+    },
+  });
+
+  /**
+   * A correction to a finished audit (R-30). It queues an override rather than an answer.
+   *
+   * A response that has no id on the device has never been to the server, which cannot
+   * happen on an audit that completed — but the override addresses changes *by response
+   * id*, so the guard is here rather than as an assumption.
+   */
+  const correct = useMutation({
+    mutationFn: async (input: { row: Row; value: ResponseValue; remark: string | null }) => {
+      if (!input.row.responseId) {
+        throw new Error('This question has no saved answer to correct.');
+      }
+      await applyLocalOverride(database, {
+        auditId: zone.data!.auditId,
+        responseId: input.row.responseId,
+        value: input.value,
+        remark: input.remark,
+        justification: correcting ?? '',
+      });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
@@ -255,7 +313,10 @@ export default function QuestionnaireScreen() {
     return () => subscription.remove();
   }, [cameraFor, page, goTo]);
 
-  if (zone.isLoading || questions.isLoading) {
+  // The audit joins the wait: until its status is known the screen cannot say whether the
+  // answers may be changed, and guessing "yes" for a frame is a tap that queues a write the
+  // server will refuse.
+  if (zone.isLoading || questions.isLoading || audit.isLoading) {
     return (
       <Screen style={styles.centered}>
         <ActivityIndicator color={theme.color.ink} />
@@ -295,7 +356,28 @@ export default function QuestionnaireScreen() {
   const photosFor = (row: Row) =>
     row.responseId ? zonePhotos.filter((photo) => photo.questionResponseId === row.responseId) : [];
   const previewPhoto = previewId ? (zonePhotos.find((photo) => photo.id === previewId) ?? null) : null;
-  const editable = zone.data.status !== 'COMPLETED';
+  /**
+   * Whether anything on this screen may still be changed.
+   *
+   * It is the **audit's** status, not the Zone's. A finished Zone inside an open audit is
+   * exactly the case the Review button exists for, and it was editable all along — what
+   * was missing was the server rescoring afterwards, which it now does. A Zone of a
+   * finished audit is a different thing: every write to it is refused (A-2), and an app
+   * that accepted the tap anyway saved a score into an outbox item the server would throw
+   * out. The auditor saw the new number, nobody else ever did, and nothing said so.
+   */
+  const auditOpen = audit.data
+    ? !isFinished(audit.data.status) && audit.data.status !== 'CANCELLED'
+    : false;
+  /**
+   * R-30: a finished audit is correctable by the auditor who conducted it, through A-2's
+   * override — and every audit in this device's store is one this device's user conducted
+   * (§9.7 ties the database to the signed-in user). A cancelled audit is not: it was
+   * voided, and correcting a void is not a thing to offer.
+   */
+  const correctable = Boolean(audit.data) && audit.data!.status !== 'CANCELLED' && !auditOpen;
+  const editable = auditOpen || correcting !== null;
+  const reviewingFinishedZone = auditOpen && zone.data.status === 'COMPLETED';
 
   const submit = () => {
     const firstMissing = rows.findIndex((row) => valueOf(row) === null);
@@ -312,13 +394,14 @@ export default function QuestionnaireScreen() {
       <Stack.Screen
         options={{
           title,
-          headerRight: () => (
-            <HeaderAction
-              title="Pause"
-              accessibilityLabel="Pause the audit. Your answers stay saved on this device."
-              onPress={() => pause.mutate()}
-            />
-          ),
+          headerRight: () =>
+            auditOpen ? (
+              <HeaderAction
+                title="Pause"
+                accessibilityLabel="Pause the audit. Your answers stay saved on this device."
+                onPress={() => pause.mutate()}
+              />
+            ) : null,
         }}
       />
 
@@ -358,6 +441,61 @@ export default function QuestionnaireScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View>
+            {/*
+              Two states worth naming, and neither used to be named at all. A finished
+              audit is read-only and says who can reopen it; a finished Zone in an open
+              audit is editable and says what makes the change count.
+            */}
+            {correcting !== null ? (
+              <Slip title="Correcting a finished audit">
+                <SlipText>
+                  Every mark you change is sent with your reason and written to the audit
+                  log, with what it was and what you made it (A-2). The score is recomputed
+                  for the dashboard and the report.
+                </SlipText>
+                <View style={styles.slipAction}>
+                  <Button
+                    title="Done correcting"
+                    variant="secondary"
+                    onPress={() => {
+                      setCorrecting(null);
+                      setReasonDraft('');
+                    }}
+                  />
+                </View>
+              </Slip>
+            ) : !auditOpen ? (
+              <Slip title="This audit is finished">
+                <SlipText>
+                  The marks below are the record. You may still correct one you got wrong —
+                  it is logged with your reason, and nothing is overwritten quietly (A-2).
+                </SlipText>
+                {correctable ? (
+                  <View style={styles.slipAction}>
+                    <Field
+                      label="Why the correction is needed"
+                      multiline
+                      placeholder="What was wrong with the mark, in your words"
+                      value={reasonDraft}
+                      onChangeText={setReasonDraft}
+                      hint="At least ten characters. It is written to the audit log."
+                    />
+                    <Button
+                      title="Correct a mark"
+                      disabled={reasonDraft.trim().length < MIN_JUSTIFICATION}
+                      onPress={() => setCorrecting(reasonDraft.trim())}
+                    />
+                  </View>
+                ) : null}
+              </Slip>
+            ) : reviewingFinishedZone ? (
+              <Slip title="Reviewing a finished Zone">
+                <SlipText>
+                  Change any answer you need to, then press Submit again. The score is
+                  recomputed and the Zone counts as finished once more.
+                </SlipText>
+              </Slip>
+            ) : null}
             <MarkingScheme />
             {showMissing && unanswered > 0 ? (
               <ErrorBanner
@@ -373,13 +511,20 @@ export default function QuestionnaireScreen() {
             photos={photosFor(item)}
             onPreview={setPreviewId}
             missing={showMissing && valueOf(item) === null}
+            readOnly={!editable}
+            canPhoto={auditOpen}
             onAnswer={(value, remark) => {
               setPicked((current) => ({ ...current, [item.questionId]: value }));
-              save.mutate({ row: item, value, remark });
+              // The same tap, two doors: an open audit takes an answer, a finished one
+              // takes a logged correction (R-30).
+              if (correcting !== null) correct.mutate({ row: item, value, remark });
+              else save.mutate({ row: item, value, remark });
             }}
             onRemark={(remark) => {
               const value = valueOf(item);
-              if (value) save.mutate({ row: item, value, remark });
+              if (!value) return;
+              if (correcting !== null) correct.mutate({ row: item, value, remark });
+              else save.mutate({ row: item, value, remark });
             }}
             onPhoto={() => setCameraFor(item)}
           />
@@ -418,16 +563,29 @@ export default function QuestionnaireScreen() {
             />
           </View>
           <View style={styles.navButton}>
-            {lastPage ? (
-              <Button title="Submit" busy={finish.isPending} onPress={submit} testID="submit-zone" />
-            ) : (
+            {!lastPage ? (
               <Button title="Next" onPress={() => goTo(page + 1)} testID="next-page" />
+            ) : auditOpen ? (
+              <Button
+                // The word changes because the act does: the first pass finishes the Zone,
+                // a review commits the revision and rescores it.
+                title={reviewingFinishedZone ? 'Save changes' : 'Submit'}
+                busy={finish.isPending}
+                onPress={submit}
+                testID="submit-zone"
+              />
+            ) : (
+              <Button
+                title={correcting !== null ? 'Done' : 'Close'}
+                variant="secondary"
+                onPress={() => router.back()}
+              />
             )}
           </View>
         </View>
       </ActionBar>
 
-      <PhotoPreview photo={previewPhoto} editable={editable} onClose={() => setPreviewId(null)} />
+      <PhotoPreview photo={previewPhoto} editable={auditOpen} onClose={() => setPreviewId(null)} />
 
       {/* Over the questions, not instead of them. Swapping the list out for the camera
           unmounted it and threw its scroll position away, so coming back from a photograph
@@ -477,6 +635,8 @@ function QuestionCard({
   photos,
   onPreview,
   missing,
+  readOnly,
+  canPhoto,
   onAnswer,
   onRemark,
   onPhoto,
@@ -486,6 +646,17 @@ function QuestionCard({
   photos: readonly LocalPhoto[];
   onPreview: (evidenceId: string) => void;
   missing: boolean;
+  /** The marks are locked: a finished audit nobody has opened a correction on (A-2). */
+  readOnly: boolean;
+  /**
+   * Whether a photograph may still be taken for this question.
+   *
+   * Not the same as `!readOnly`, and the difference matters. A correction under R-30
+   * changes marks and remarks through the override, which carries neither evidence nor an
+   * upload intent — and a completed audit refuses a new `evidence` row anyway. So the
+   * camera closes when the audit does, even while the marks are open for correction.
+   */
+  canPhoto: boolean;
   onAnswer: (value: ResponseValue, remark: string | null) => void;
   onRemark: (remark: string | null) => void;
   onPhoto: () => void;
@@ -509,6 +680,7 @@ function QuestionCard({
         <ResponseChips
           value={value}
           allowsNa={row.allowsNa === 1}
+          readOnly={readOnly}
           onChange={(next) => onAnswer(next, remark.trim() || null)}
         />
         {missing ? <Text style={styles.missing}>Answer required</Text> : null}
@@ -527,12 +699,14 @@ function QuestionCard({
             {remarkOpen ? 'Hide remark' : remark ? 'Edit remark' : 'Add remark'}
           </Text>
         </Pressable>
-        <Button
-          title="Take photo"
-          variant="secondary"
-          accessibilityLabel={`Take a photograph for question ${row.globalOrder}`}
-          onPress={onPhoto}
-        />
+        {canPhoto ? (
+          <Button
+            title="Take photo"
+            variant="secondary"
+            accessibilityLabel={`Take a photograph for question ${row.globalOrder}`}
+            onPress={onPhoto}
+          />
+        ) : null}
       </View>
 
       {/* Tap a thumbnail to preview it, flag it for the summary, or delete it. */}
@@ -542,6 +716,7 @@ function QuestionCard({
         <Field
           label="Remark"
           multiline
+          editable={!readOnly}
           placeholder="What you saw, in your words"
           value={remark}
           onChangeText={setRemark}
@@ -603,6 +778,7 @@ function ScoreCard({
 }
 
 const useStyles = createThemedStyles((theme) => ({
+  slipAction: { marginTop: theme.space.sm, gap: theme.space.sm },
   centered: { alignItems: 'center', justifyContent: 'center' },
   list: { paddingTop: theme.space.md, paddingBottom: theme.space.lg },
   // The top counterpart of `ActionBar`: bleeds to the screen edges, ruled off in 2px ink.

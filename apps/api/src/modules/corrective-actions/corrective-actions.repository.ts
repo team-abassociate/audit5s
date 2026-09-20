@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, ne, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   audits,
@@ -66,6 +66,11 @@ const actionColumns = {
   version: correctiveActions.version,
   auditType: audits.auditType,
   auditStatus: audits.status,
+  auditorUserId: audits.auditorUserId,
+  // Through 0010's narrow definer function, for the same reason the Zone Leader's name is:
+  // a Zone Leader holding a signed link cannot read the Consultant's `user` row, and an
+  // inner join would empty their page rather than the column.
+  auditorName: sql<string | null>`app_audit_auditor_name(${correctiveActions.auditId})`,
   auditCompletedAt: audits.completedAt,
   zoneCode: auditZones.zoneCodeSnapshot,
   zoneName: auditZones.zoneNameSnapshot,
@@ -182,12 +187,25 @@ export class CorrectiveActionsRepository extends BaseRepository {
     });
   }
 
-  /** §8.11's "open corrective actions": everything of the actor's scope not yet VERIFIED. */
+  /**
+   * §8.11's "open corrective actions": everything of the actor's scope still outstanding.
+   *
+   * Written as "not settled" rather than "not VERIFIED" since R-31. A withdrawn finding is
+   * as done as a verified one — the mark it rested on was corrected — and shipping it to a
+   * Zone Leader's device would put a job on their list that the server would refuse and
+   * that nobody wanted doing.
+   */
   async listUnverified(scope: ScopeContext) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       return this.selectActions(tx)
-        .where(this.scoped(scope, scopeColumns, ne(correctiveActions.status, 'VERIFIED')))
+        .where(
+          this.scoped(
+            scope,
+            scopeColumns,
+            notInArray(correctiveActions.status, ['VERIFIED', 'WITHDRAWN']),
+          ),
+        )
         .orderBy(asc(correctiveActions.id));
     });
   }
@@ -444,6 +462,64 @@ export class CorrectiveActionWork {
   }
 
   /** The audit's status and every one of its actions' — all the rollup needs. */
+  /**
+   * R-31: the actions of this audit whose finding has gone.
+   *
+   * "Gone" is the photograph no longer being a live nonconformity — reclassified because
+   * the mark was corrected, or soft-deleted. Read before the write rather than updated in
+   * one statement so each row's current status can be put through `assertTransition`: this
+   * is a state change like any other, and the one place in the system that may take it is
+   * still required to ask the table whether it may.
+   */
+  async findWithdrawableActions(
+    auditId: string,
+  ): Promise<Array<{ id: string; status: CorrectiveActionStatus; assignedZoneLeaderUserId: string | null }>> {
+    return this.tx
+      .select({
+        id: correctiveActions.id,
+        status: correctiveActions.status,
+        assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,
+      })
+      .from(correctiveActions)
+      .innerJoin(evidence, eq(evidence.id, correctiveActions.evidenceId))
+      .where(
+        and(
+          eq(correctiveActions.auditId, auditId),
+          // VERIFIED is absent on purpose: somebody fixed that one and somebody checked it.
+          // The mark being wrong afterwards does not unmake the work (R-31).
+          inArray(correctiveActions.status, ['OPEN', 'REOPENED', 'ACTION_SUBMITTED', 'NOT_POSSIBLE']),
+          sql`(${evidence.classification} <> 'NONCONFORMITY' OR ${evidence.deletedAt} IS NOT NULL)`,
+        ),
+      );
+  }
+
+  /** Withdraws the named actions. `resolved_at` is set: settled, though never fixed. */
+  async withdraw(actionIds: readonly string[], at: Date): Promise<void> {
+    if (actionIds.length === 0) return;
+    await this.tx
+      .update(correctiveActions)
+      .set({
+        status: 'WITHDRAWN',
+        resolvedAt: at,
+        version: sql`${correctiveActions.version} + 1`,
+      })
+      .where(inArray(correctiveActions.id, [...actionIds]));
+  }
+
+  /**
+   * The findings of this audit that have appeared since it was completed, as rows the
+   * caller can name in a notification.
+   *
+   * `materialize` returns only what it inserted, which is what this needs — but it returns
+   * ids alone, and somebody has to be told *what* was raised.
+   */
+  async describeActions(actionIds: readonly string[]) {
+    if (actionIds.length === 0) return [];
+    return this.repository
+      .selectActions(this.tx)
+      .where(inArray(correctiveActions.id, [...actionIds]));
+  }
+
   async rollupFacts(auditId: string): Promise<{ auditStatus: AuditStatus; actions: CorrectiveActionStatus[] }> {
     const [audit] = await this.tx
       .select({ status: audits.status })

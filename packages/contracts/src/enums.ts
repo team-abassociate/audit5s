@@ -94,6 +94,18 @@ export const CORRECTIVE_ACTION_STATUSES = [
   'NOT_POSSIBLE',
   'VERIFIED',
   'REOPENED',
+  /**
+   * The finding it answered is gone (R-31).
+   *
+   * An auditor corrected the mark this action rests on — a 0 that should have been a 2 —
+   * so the photograph is no longer a nonconformity and there is nothing to fix. It is
+   * deliberately not `VERIFIED`: nobody fixed anything, and a closure rate that counted
+   * withdrawn findings as fixed would be measuring the auditor's typing.
+   *
+   * The row is kept, like every other row here. An action that was raised and withdrawn is
+   * part of the audit's history even though it asks nothing of anyone.
+   */
+  'WITHDRAWN',
 ] as const;
 export const correctiveActionStatusSchema = z.enum(CORRECTIVE_ACTION_STATUSES);
 export type CorrectiveActionStatus = z.infer<typeof correctiveActionStatusSchema>;

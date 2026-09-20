@@ -46,6 +46,8 @@ function action(overrides: Partial<CorrectiveAction> = {}): CorrectiveAction {
     reopenCount: 0,
     version: 1,
     auditType: 'WALK_BY',
+    auditorUserId: 'aaaaaaaa-0000-4000-8000-000000000001',
+    auditorName: 'Cara Consult',
     zoneCode: '1',
     zoneName: 'Press',
     section: null,

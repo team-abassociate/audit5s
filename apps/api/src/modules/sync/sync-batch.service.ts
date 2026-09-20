@@ -13,6 +13,7 @@ import {
   createAuditRequestSchema,
   patchEvidenceRequestSchema,
   pauseAuditRequestSchema,
+  postCompletionOverrideRequestSchema,
   resumeAuditRequestSchema,
   submitCorrectiveActionRequestSchema,
   uploadIntentRequestSchema,
@@ -342,6 +343,25 @@ export class SyncBatchService {
         return audit.version;
       }
 
+      /**
+       * R-30: an auditor's correction to an audit they already finished, authored offline.
+       *
+       * It goes through `AuditsService.postCompletionOverride` — the same method the web's
+       * override form calls — rather than touching a response directly, which is the whole
+       * point. A-2's guarantee is that a completed audit changes only where the change is
+       * logged with its justification, and routing the device's correction through the one
+       * service that writes that entry is how the sync path inherits the rule instead of
+       * needing its own copy of it (AZ-5).
+       *
+       * `ensureStarted` is deliberately absent: the audit is finished, its device lock was
+       * released on completion, and a correction is not a claim to conduct it again.
+       */
+      case 'audit:override': {
+        const body = postCompletionOverrideRequestSchema.parse(item.payload);
+        const audit = await this.audits.postCompletionOverride(scope, item.entityId, body);
+        return audit.version;
+      }
+
       case 'audit_zone:upsert': {
         const body = upsertAuditZoneRequestSchema.parse(item.payload);
         const auditId = this.requireString(item.payload, 'auditId');
@@ -474,8 +494,20 @@ export class SyncBatchService {
       (item.entityType === 'audit' && item.operation !== 'upsert') ||
       item.entityType === 'audit_zone'
     ) {
-      // A `complete` or `pause` for an audit that has not been created yet.
+      // A `complete`, `pause` or `override` for an audit that has not been created yet.
       if (item.entityType === 'audit') parents.push(['audit', item.entityId]);
+    }
+
+    if (item.entityType === 'audit' && item.operation === 'override') {
+      // R-30: every response the correction names has to be on the server already. A
+      // device that finished an audit offline and corrected it before syncing has both in
+      // one batch, and the responses sort ahead — but a torn queue must wait rather than
+      // quarantine a correction for rows that are on their way.
+      const changes = (item.payload as { changes?: { responses?: Array<{ responseId?: string }> } })
+        .changes;
+      for (const change of changes?.responses ?? []) {
+        parents.push(['question_response', change.responseId ?? null]);
+      }
     }
 
     for (const [kind, id] of parents) {

@@ -54,6 +54,10 @@ const OPERATION_PHASE: Record<SyncOperation, number> = {
   pause: PHASE.LIFECYCLE,
   resume: PHASE.LIFECYCLE,
   complete: PHASE.FINALIZE,
+  // Last of all (R-30). An override addresses an audit that is already COMPLETED, so
+  // anything else in the same batch — the answers, the Zone completions, the audit's own
+  // completion — has to land before the correction to them makes sense.
+  override: PHASE.FINALIZE,
 };
 
 /** Ordering within the structure phase, where two operations touch the same entity. */
@@ -69,6 +73,9 @@ const STRUCTURE_OPERATION_RANK: Record<SyncOperation, number> = {
   pause: 0,
   resume: 1,
   complete: 0,
+  // After `complete` on the same audit: correcting an audit this batch is also finishing
+  // only works in that order.
+  override: 1,
 };
 
 export interface OrderableSyncItem {

@@ -1,4 +1,4 @@
-import { memo, useState, type ReactNode } from 'react';
+import { Children, memo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -444,10 +444,28 @@ export function HeaderAction({
  * The bottom-anchored action area: the primary action within thumb reach, ruled off in ink
  * and clear of the gesture bar. It bleeds to the screen edges through `Screen`'s padding.
  */
-export function ActionBar({ children }: { children: ReactNode }) {
+/**
+ * The bar of actions pinned to the bottom edge.
+ *
+ * `row` lays them side by side in equal shares, for the case where the choices are
+ * alternatives rather than a primary action with an escape hatch below it — three ways to
+ * leave an audit, say. Stacked is still the default: a single full-width button is easier
+ * to hit with a gloved thumb, and two stacked read in priority order.
+ */
+export function ActionBar({ children, row }: { children: ReactNode; row?: boolean }) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
-  return <View style={[styles.actionBar, { paddingBottom: 14 + insets.bottom }]}>{children}</View>;
+  return (
+    <View style={[styles.actionBar, row && styles.actionBarRow, { paddingBottom: 14 + insets.bottom }]}>
+      {row
+        ? Children.map(children, (child) =>
+            child === null || child === undefined || child === false ? null : (
+              <View style={styles.actionBarCell}>{child}</View>
+            ),
+          )
+        : children}
+    </View>
+  );
 }
 
 export function Field({
@@ -1044,6 +1062,10 @@ const useStyles = createThemedStyles((theme) => ({
     borderTopWidth: 2,
     borderTopColor: theme.color.edge,
   },
+  actionBarRow: { flexDirection: 'row', alignItems: 'stretch', gap: theme.space.xs },
+  // Equal shares, and `minWidth: 0` so a long label wraps inside its cell instead of
+  // pushing the others off the screen.
+  actionBarCell: { flex: 1, minWidth: 0 },
   field: { marginBottom: theme.space.md },
   focusRing: { margin: -4, padding: 2, borderWidth: 2, borderColor: 'transparent' },
   input: {

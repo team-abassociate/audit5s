@@ -22,6 +22,7 @@ import {
   sniffImageType,
   type ScopeContext,
 } from '@audit5s/domain';
+import type { Transaction } from '@audit5s/db';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { CONFIG, type AppConfig } from '../../config/env';
@@ -600,6 +601,22 @@ export class EvidenceService {
     value: Parameters<EvidenceRepository['reclassifyForResponse']>[2],
   ): Promise<number> {
     return this.repository.reclassifyForResponse(scope, responseId, value);
+  }
+
+  /**
+   * E-2 on a transaction the caller holds — R-31's post-completion cascade.
+   *
+   * The audit is frozen by then, so the write is only permitted inside A-2's carve-out,
+   * and the carve-out belongs to the transaction the override opened. There is no scope
+   * predicate here for the same reason: the caller has already resolved the audit under
+   * `audit:edit_after_completion` and is correcting a response of it.
+   */
+  async reclassifyForResponseOn(
+    tx: Transaction,
+    responseId: string,
+    value: Parameters<EvidenceRepository['reclassifyForResponseOn']>[2],
+  ): Promise<number> {
+    return this.repository.reclassifyForResponseOn(tx, responseId, value);
   }
 
   /** The §7.2 walk-by guard: "≥1 non-deleted evidence row". */

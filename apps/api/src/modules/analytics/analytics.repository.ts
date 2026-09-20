@@ -514,6 +514,19 @@ export class AnalyticsRepository extends BaseRepository {
         scoredAudits.map((row) => scorePart(row.rawScore ?? 0, row.maxScore ?? 0)),
       );
 
+      /**
+       * `resolved_at` means "settled", and R-31 gave it a second way to happen: a finding
+       * withdrawn because the auditor corrected the mark it rested on.
+       *
+       * `open_nc` takes both — a withdrawn finding stops being outstanding the moment it is
+       * withdrawn, which is exactly what the column is asked for.
+       *
+       * `closed_nc` and the average closure time take VERIFIED alone. Nobody closed a
+       * withdrawn finding: counting it would make the closure rate a measure of how often
+       * an auditor mistypes, and the average would be dragged toward zero by findings that
+       * cost nobody a minute. The two numbers answer different questions and only one of
+       * them is about work.
+       */
       const [actionMetrics] = await tx
         .select({
           openNc: sql<number>`count(*) FILTER (
@@ -522,9 +535,11 @@ export class AnalyticsRepository extends BaseRepository {
           )::int`,
           closedNc: sql<number>`count(*) FILTER (
             WHERE ${correctiveActions.resolvedAt} >= ${start} AND ${correctiveActions.resolvedAt} < ${end}
+              AND ${correctiveActions.status} <> 'WITHDRAWN'
           )::int`,
           avgClosureHours: sql<string | null>`avg(extract(epoch FROM (${correctiveActions.resolvedAt} - ${correctiveActions.openedAt})) / 3600)
-            FILTER (WHERE ${correctiveActions.resolvedAt} >= ${start} AND ${correctiveActions.resolvedAt} < ${end})`,
+            FILTER (WHERE ${correctiveActions.resolvedAt} >= ${start} AND ${correctiveActions.resolvedAt} < ${end}
+                      AND ${correctiveActions.status} <> 'WITHDRAWN')`,
         })
         .from(correctiveActions)
         .where(this.scoped(scope, { unitId: correctiveActions.unitId }, eq(correctiveActions.unitId, unitId)));

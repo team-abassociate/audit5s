@@ -181,5 +181,9 @@ export function statusLabel(action: LocalAction): string {
       return 'Not possible';
     case 'VERIFIED':
       return 'Verified';
+    case 'WITHDRAWN':
+      // R-31: the auditor corrected the mark this rested on, so there is nothing to do.
+      // Said plainly, because a Zone Leader who walked to the Zone deserves to know why.
+      return 'Withdrawn';
   }
 }

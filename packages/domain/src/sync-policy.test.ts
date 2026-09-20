@@ -313,6 +313,26 @@ describe('the patch operation Phase 5 added', () => {
   });
 });
 
+describe('the override operation R-30 added', () => {
+  it('sends after the completion of the audit it corrects', () => {
+    // A device that finished an audit offline and then corrected a mark has both in one
+    // batch. The correction addresses a COMPLETED audit, so the completion has to land
+    // first or the override arrives at an audit that is not yet frozen.
+    const sorted = sortSyncItems([
+      { entityType: 'audit', operation: 'override' },
+      { entityType: 'audit', operation: 'complete' },
+      { entityType: 'audit_zone', operation: 'complete' },
+      { entityType: 'question_response', operation: 'upsert' },
+    ]);
+    expect(sorted.map((entry) => `${entry.entityType}:${entry.operation}`)).toEqual([
+      'question_response:upsert',
+      'audit_zone:complete',
+      'audit:complete',
+      'audit:override',
+    ]);
+  });
+});
+
 describe('the submit operation Phase 6 added', () => {
   it('follows the commit of the after-photo it cites', () => {
     const sorted = sortSyncItems([
