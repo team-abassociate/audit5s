@@ -632,6 +632,20 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'audits.e2e.test.ts',
   },
   {
+    method: 'GET',
+    path: '/api/v1/audits/:auditId/zone-locks',
+    description:
+      'audit:read — R-29’s picker read: which Zones of this Unit another open audit ' +
+      'holds, and who is running it. It says nothing else about that audit',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
     method: 'POST',
     path: '/api/v1/audits/:auditId/start',
     description: 'audit:update — claims the single-writer lock; a second device gets 409 (D7)',
@@ -694,8 +708,14 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   {
     method: 'PATCH',
     path: '/api/v1/audits/:auditId/post-completion',
-    description: 'audit:edit_after_completion — A-2’s only door, always audit-logged',
-    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    description:
+      'audit:edit_after_completion — A-2’s only door, always audit-logged. R-30 gives it a ' +
+      'second key: a Consultant may correct an audit they conducted (own_audits), and is ' +
+      'refused a colleague’s exactly as any other out-of-scope read is',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+    },
     coveredBy: 'audits.e2e.test.ts',
   },
   {

@@ -126,6 +126,98 @@ export class CorrectiveActionsService {
     };
   }
 
+  /**
+   * R-31: what a correction to a completed audit does to its findings.
+   *
+   * R-30 let an auditor fix a mark after the fact. A mark is not alone — the photograph
+   * filed under it carries a classification, and a nonconformity carries a corrective
+   * action somebody is being chased for. Correcting a 0 to a 2 and leaving that action
+   * open asks a Zone Leader to go and fix something that is, on the record, not wrong.
+   *
+   * So the cascade, in the order the data depends on:
+   *
+   *   1. **Opened.** `materialize` selects every live NONCONFORMITY of the audit and skips
+   *      the ones that already have an action (`ON CONFLICT (evidence_id) DO NOTHING`), so
+   *      running it again is exactly "open what is missing". A 2 corrected down to a 0 has
+   *      become a finding and gets one.
+   *   2. **Withdrawn.** An action whose photograph is no longer a live nonconformity is
+   *      withdrawn — not verified, because nobody fixed anything.
+   *   3. **Rolled up.** The audit follows its actions to CORRECTIVE_ACTION_OPEN,
+   *      PARTIALLY_CLOSED or CLOSED, through the same §7.1 edges every other path uses.
+   *
+   * The caller supplies the transaction, and it must be the one A-2's carve-out was opened
+   * on: every write here lands on rows of a frozen audit.
+   *
+   * It runs as the system for the same reason the ordinary roll-up does: these edges have
+   * no human actor. The auditor acted on an *answer*; that a finding appeared or vanished
+   * is the consequence, and giving it a human actor would imply a button that dismisses a
+   * finding without correcting the mark behind it.
+   */
+  async cascadeAfterCorrection(
+    tx: Transaction,
+    scope: ScopeContext,
+    auditId: string,
+  ): Promise<{
+    opened: CorrectiveAction[];
+    withdrawn: Array<{ id: string; assignedZoneLeaderUserId: string | null }>;
+    auditStatus: AuditStatus;
+  }> {
+    const unit = this.repository.within(tx, scope);
+    const at = new Date();
+    const days = this.config.CORRECTIVE_ACTION_DUE_DAYS;
+
+    /**
+     * The whole cascade runs as the system, in one block.
+     *
+     * Not a privilege shortcut — it is what the actor actually is. `corrective_action`'s
+     * RLS admits its Unit's people and the audit's auditor for the acts those roles
+     * perform; none of them is performing this one. The auditor changed an answer, and
+     * these rows moved as a consequence, which is the same footing the audit roll-up has
+     * stood on since R-23.
+     *
+     * One block rather than three, because `asSystem` restores the *caller's* actor in its
+     * `finally`: nesting one inside another would drop back to the real actor halfway
+     * through and refuse the next statement for reasons no reader would enjoy finding.
+     */
+    return unit.asSystem(async () => {
+      // Dated from now, not from the audit's completion: an action raised today and
+      // already overdue would be an action nobody could ever have answered in time.
+      const created = await unit.materialize(
+        auditId,
+        days > 0 ? new Date(at.getTime() + days * 86_400_000) : null,
+      );
+
+      const withdrawable = await unit.findWithdrawableActions(auditId);
+      for (const action of withdrawable) {
+        try {
+          assertTransition('corrective_action', action.status, 'WITHDRAWN', {
+            role: null,
+            // The override's justification. The endpoint required one before any of this ran.
+            satisfied: ['reason_given'],
+          });
+        } catch (error) {
+          throw asAppError(error);
+        }
+      }
+      await unit.withdraw(
+        withdrawable.map((action) => action.id),
+        at,
+      );
+
+      const opened = await unit.describeActions(created.map((action) => action.id));
+      const auditStatus = await this.rollup(unit, auditId, null);
+
+      return {
+        opened: opened.map(toCorrectiveAction),
+        withdrawn: withdrawable.map((action) => ({
+          id: action.id,
+          assignedZoneLeaderUserId: action.assignedZoneLeaderUserId,
+        })),
+        auditStatus,
+      };
+    });
+  }
+
   // ------------------------------------------------------------------------- submit
 
   /**
@@ -501,6 +593,11 @@ function describe(action: CorrectiveActionRow) {
     zoneCode: action.zoneCode,
     zoneName: action.zoneName,
     questionNo: action.questionGlobalOrder,
+    // Which audit this came out of, in the only terms a Super Admin reading a notification
+    // has: the kind of audit and who conducted it. The id alone answers the question only
+    // to somebody willing to go and look it up.
+    auditType: action.auditType,
+    auditorName: action.auditorName,
   };
 }
 
@@ -524,6 +621,8 @@ export function toCorrectiveAction(row: CorrectiveActionRow): CorrectiveAction {
     reopenCount: row.reopenCount,
     version: row.version,
     auditType: row.auditType,
+    auditorUserId: row.auditorUserId,
+    auditorName: row.auditorName,
     zoneCode: row.zoneCode,
     zoneName: row.zoneName,
     section: row.section,

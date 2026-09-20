@@ -4,6 +4,7 @@ import { assertTransition, isAuditCompleted, numericScoreFor, type ScopeContext 
 import { AppError } from '../../common/errors';
 import { asAppError } from '../audit-assignments/assignments.service';
 import { AuditsRepository } from '../audits/audits.repository';
+import { ScoringService } from '../audits/scoring.service';
 import { toQuestionResponse } from '../audits/audits.service';
 import { EvidenceService } from '../evidence/evidence.service';
 
@@ -28,6 +29,7 @@ export class ResponsesService {
   constructor(
     private readonly repository: AuditsRepository,
     private readonly evidence: EvidenceService,
+    private readonly scoring: ScoringService,
   ) {}
 
   async upsert(
@@ -138,6 +140,30 @@ export class ResponsesService {
       this.logger.log(
         `response ${storedId} changed to ${request.value}: reclassified ${reclassified} photo(s) (E-2)`,
       );
+    }
+
+    /**
+     * Revising a Zone that is already finished rescores the audit here.
+     *
+     * PART 6 permits this write until the **audit** is completed — "device owner; audit
+     * must not be COMPLETED" — so an auditor may reopen a finished Zone from the Review
+     * button and change an answer. The materialised scores were written on that Zone's
+     * completion edge, and that edge does not fire twice: without this, the answer changed
+     * and `audit_zone.score_percentage`, its five `audit_zone_section_score` rows and
+     * `audit.total_score` all kept the figure from before the review.
+     *
+     * Every downstream reader takes those columns — the Unit board, analytics and the PDF
+     * — so the effect was an audit whose answers and whose score disagreed everywhere
+     * except `GET /audits/{id}/summary`, which recomputes. The scorer is the same pure
+     * function on both sides of that disagreement, so there was never a second opinion to
+     * reconcile: one of the two was simply stale.
+     *
+     * Only for a Zone already COMPLETED. While it is IN_PROGRESS the scores are not
+     * written yet, and recomputing on all fifty answers would be forty-nine writes of a
+     * number nothing reads.
+     */
+    if (zone.status === 'COMPLETED') {
+      await this.scoring.recompute(scope, zone.auditId);
     }
 
     const responses = await this.repository.listResponses(scope, zone.auditId);

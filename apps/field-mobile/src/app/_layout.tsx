@@ -11,14 +11,14 @@ import { Archivo_900Black } from '@expo-google-fonts/archivo/900Black';
 import { DMMono_400Regular } from '@expo-google-fonts/dm-mono/400Regular';
 import { DMMono_500Medium } from '@expo-google-fonts/dm-mono/500Medium';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LocalDatabaseProvider } from '../lib/db/provider';
-import { managesOnPhone, SessionProvider, useSession } from '../lib/session';
+import { SessionProvider, useSession } from '../lib/session';
 import { SyncProvider } from '../lib/sync/provider';
 import { SyncStatusBar } from '../components/sync-status-bar';
 import { HeaderTitle } from '../components/ui';
+import { ThemedStatusBar, ThemeProvider } from '../lib/theme-provider';
 import { useTheme } from '../lib/theme';
 
 const queryClient = new QueryClient({
@@ -44,9 +44,7 @@ const queryClient = new QueryClient({
 function AuthGate() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { status, scope } = useSession();
-  // R-24: a Coordinator's home is Overview too, like a Super Admin's.
-  const isSuperAdmin = managesOnPhone(scope?.role);
+  const { status } = useSession();
   const segments = useSegments();
   const router = useRouter();
 
@@ -79,12 +77,14 @@ function AuthGate() {
     } else if (status === 'must-reset' && group !== 'reset-password') {
       router.replace('/reset-password');
     } else if (status === 'ready' && !insideApp) {
-      router.replace(isSuperAdmin ? '/overview' : '/');
-    } else if (status === 'ready' && isSuperAdmin && group === '(tabs)' && segments.length === 1) {
-      // The field Units tab is the app's root route; a Super Admin's home is Overview.
+      router.replace('/overview');
+    } else if (status === 'ready' && group === '(tabs)' && segments.length === 1) {
+      // The field Units tab is the app's root route, and nobody's home any more: every
+      // role lands on Overview, which is their own version of it (R-24, and the field
+      // Overview beside it).
       router.replace('/overview');
     }
-  }, [status, segments, router, isSuperAdmin]);
+  }, [status, segments, router]);
 
   if (status === 'loading') {
     return (
@@ -140,16 +140,19 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <LocalDatabaseProvider>
-          <SessionProvider>
-            <SyncProvider>
-              <StatusBar style="auto" />
-              <AuthGate />
-            </SyncProvider>
-          </SessionProvider>
-        </LocalDatabaseProvider>
-      </QueryClientProvider>
+      {/* Outermost of the app's own providers: every screen below reads the palette. */}
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <LocalDatabaseProvider>
+            <SessionProvider>
+              <SyncProvider>
+                <ThemedStatusBar />
+                <AuthGate />
+              </SyncProvider>
+            </SessionProvider>
+          </LocalDatabaseProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

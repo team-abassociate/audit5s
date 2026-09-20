@@ -215,6 +215,27 @@ export const CORRECTIVE_ACTION_TRANSITIONS: readonly Transition<CorrectiveAction
   { from: 'REOPENED', to: 'ACTION_SUBMITTED', actors: ['ZONE_LEADER'] },
   { from: 'REOPENED', to: 'NOT_POSSIBLE', actors: ['ZONE_LEADER'], guards: ['reason_given'] },
   { from: 'VERIFIED', to: 'REOPENED', actors: ['SUPER_ADMIN'], guards: ['reason_given'] },
+
+  /**
+   * R-31: the finding was withdrawn because the mark it rested on was corrected.
+   *
+   * No actors, which in this table means the **system** takes it: nobody acts on the
+   * corrective action itself. Somebody corrected an answer three tables away, through A-2's
+   * logged override, and this is the consequence. Giving it a human actor would invite a
+   * "withdraw" button, and a finding you may dismiss without correcting the mark behind it
+   * is a finding you may dismiss.
+   *
+   * `reason_given` all the same: the override's justification is the reason, and the edge
+   * says so rather than letting a caller take it with nothing recorded.
+   *
+   * There is no `VERIFIED → WITHDRAWN`. Somebody went and fixed that one and somebody
+   * verified it; the mark being wrong afterwards does not unmake the work, and erasing it
+   * would be the one outcome nobody involved would recognise.
+   */
+  { from: 'OPEN', to: 'WITHDRAWN', actors: [], guards: ['reason_given'] },
+  { from: 'REOPENED', to: 'WITHDRAWN', actors: [], guards: ['reason_given'] },
+  { from: 'ACTION_SUBMITTED', to: 'WITHDRAWN', actors: [], guards: ['reason_given'] },
+  { from: 'NOT_POSSIBLE', to: 'WITHDRAWN', actors: [], guards: ['reason_given'] },
 ];
 
 const TABLES = {

@@ -3,6 +3,7 @@ import type { ResponseValue } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
 import {
   addLocalZone,
+  applyLocalOverride,
   completeLocalAudit,
   completeLocalZone,
   createLocalAudit,
@@ -10,6 +11,7 @@ import {
   listLocalAudits,
   listOutbox,
   listQuestionsWithAnswers,
+  listResumableAudits,
   pauseLocalAudit,
   pendingOutboxCount,
   resumeCursor,
@@ -402,6 +404,160 @@ describe('abort and resume (N7, §9.8)', () => {
     expect(pause).toBeDefined();
     expect(JSON.parse(pause!.payload)).toMatchObject({ resumeAuditZoneId: auditZoneId });
     expect(await pendingOutboxCount(database)).toBe(queued.length);
+  });
+});
+
+describe('reviewing a finished Zone', () => {
+  it('records the new answer, rescores, and leaves the Zone finished', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    const questions = await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await completeLocalZone(database, auditZoneId);
+
+    const before = await scoreLocalZone(database, auditZoneId);
+    const [finishedZone] = await getLocalAuditZone(database, auditZoneId);
+    expect(finishedZone?.status).toBe('COMPLETED');
+
+    // The Review button, and a mark corrected: question 1 was SCORE_0 in the pattern.
+    const first = questions[0]!;
+    await saveLocalResponse(database, {
+      auditZoneId,
+      auditId,
+      checklistQuestionId: first.questionId,
+      section: first.section as (typeof S_SECTION_ORDER)[number],
+      globalOrder: first.globalOrder,
+      value: 'SCORE_2',
+    });
+
+    const after = await scoreLocalZone(database, auditZoneId);
+    expect(after.totals.rawScore).toBe(before.totals.rawScore + 2);
+
+    // The Zone stays finished. Reopening it here would put the device out of step with the
+    // server — which keeps it COMPLETED and rescores — and would block "Finish audit"
+    // until the auditor found a Submit button five pages down.
+    const [reviewed] = await getLocalAuditZone(database, auditZoneId);
+    expect(reviewed?.status).toBe('COMPLETED');
+
+    // And the revision is queued, so the server rescores what everyone else reads.
+    const queued = await listOutbox(database);
+    expect(queued.some((item) => item.entityType === 'question_response')).toBe(true);
+  });
+});
+
+describe('correcting a finished audit (R-30)', () => {
+  it('queues one override per audit, merging every correction and the reason', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await completeLocalZone(database, auditZoneId);
+    await completeLocalAudit(database, auditId);
+
+    const rows = await listQuestionsWithAnswers(database, auditZoneId, VERSION);
+    const first = rows[0]!;
+    const second = rows[1]!;
+    expect(first.responseId).toBeTruthy();
+
+    await applyLocalOverride(database, {
+      auditId,
+      responseId: first.responseId!,
+      value: 'SCORE_2',
+      justification: 'Marked 0 in error; the rack was in fact labelled.',
+    });
+
+    // The local row moves at once, so the screen and the device's own scoring agree.
+    const afterFirst = await listQuestionsWithAnswers(database, auditZoneId, VERSION);
+    expect(afterFirst[0]!.value).toBe('SCORE_2');
+
+    await applyLocalOverride(database, {
+      auditId,
+      responseId: second.responseId!,
+      value: 'SCORE_0',
+      justification: 'Marked 0 in error; the rack was in fact labelled. Also Q2.',
+    });
+
+    // One row, not two: the outbox coalesces on (entity, id, operation), so a merge is the
+    // only thing standing between the second correction and the loss of the first.
+    const queued = await listOutbox(database);
+    const overrides = queued.filter((item) => item.operation === 'override');
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0]!.entityType).toBe('audit');
+    expect(overrides[0]!.entityId).toBe(auditId);
+
+    const payload = JSON.parse(overrides[0]!.payload) as {
+      justification: string;
+      changes: { responses: Array<{ responseId: string; value: string }> };
+    };
+    expect(payload.justification).toContain('Also Q2');
+    expect(payload.changes.responses).toHaveLength(2);
+    expect(payload.changes.responses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ responseId: first.responseId, value: 'SCORE_2' }),
+        expect.objectContaining({ responseId: second.responseId, value: 'SCORE_0' }),
+      ]),
+    );
+
+    // And nothing went out as an ordinary answer, which a completed audit would refuse.
+    expect(
+      queued.some(
+        (item) => item.entityType === 'question_response' && item.operation === 'upsert',
+      ),
+    ).toBe(true);
+    const responseItems = queued.filter((item) => item.entityType === 'question_response');
+    expect(responseItems.every((item) => item.operation === 'upsert')).toBe(true);
+  });
+
+  it('corrects the same mark twice without queueing it twice', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await completeLocalZone(database, auditZoneId);
+    await completeLocalAudit(database, auditId);
+
+    const rows = await listQuestionsWithAnswers(database, auditZoneId, VERSION);
+    const target = rows[0]!.responseId!;
+
+    await applyLocalOverride(database, { auditId, responseId: target, value: 'SCORE_1', justification: 'First thought.' });
+    await applyLocalOverride(database, { auditId, responseId: target, value: 'SCORE_2', justification: 'Second thought.' });
+
+    const overrides = (await listOutbox(database)).filter((item) => item.operation === 'override');
+    const payload = JSON.parse(overrides[0]!.payload) as {
+      changes: { responses: Array<{ responseId: string; value: string }> };
+    };
+    expect(payload.changes.responses).toHaveLength(1);
+    expect(payload.changes.responses[0]!.value).toBe('SCORE_2');
+  });
+});
+
+describe('the Overview tab’s resumable audits', () => {
+  it('lists an audit in progress with its Zone counts, and drops it once finished', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+
+    const before = await listResumableAudits(database);
+    expect(before).toHaveLength(1);
+    expect(before[0]).toMatchObject({
+      id: auditId,
+      unitName: 'Nashik Plant',
+      status: 'IN_PROGRESS',
+      zonesTotal: 1,
+      zonesFinished: 0,
+      resumeAuditZoneId: auditZoneId,
+    });
+
+    await completeLocalZone(database, auditZoneId);
+    const midway = await listResumableAudits(database);
+    expect(midway[0]).toMatchObject({ zonesTotal: 1, zonesFinished: 1 });
+
+    // A finished audit is History's, not Overview's: the screen answers "what am I in the
+    // middle of", and an audit that is over is not an answer to it.
+    await completeLocalAudit(database, auditId);
+    expect(await listResumableAudits(database)).toEqual([]);
+  });
+
+  it('keeps a paused audit, with the reason the abort recorded', async () => {
+    const { auditId } = await startAudit();
+    await pauseLocalAudit(database, auditId, 'Aborted by auditor');
+
+    const open = await listResumableAudits(database);
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ status: 'PAUSED', pauseReason: 'Aborted by auditor' });
   });
 });
 

@@ -11,12 +11,13 @@ env:
 - extendedWaitUntil:
     visible: "Sync now"
     timeout: 60000
-# Tabs go back to Units, the first route.
+# Tabs open on Overview; the Units list is one tap away.
 - runFlow:
     when:
       notVisible: "Unit A"
     commands:
       - back
+      - tapOn: "Units"
 - tapOn: "Unit A"
 - waitForAnimationToEnd
 - takeScreenshot: unit-zones

@@ -195,6 +195,13 @@ export const OUTBOX_OPERATIONS = [
   'delete',
   'commit',
   'submit',
+  /**
+   * A-2's override, queued (R-30). One row per audit, carrying every correction made to it
+   * and the reason given — the outbox coalesces on `(entity_type, entity_id, operation)`,
+   * so a second correction to the same audit merges into the same row rather than racing
+   * it.
+   */
+  'override',
 ] as const;
 export type OutboxOperation = (typeof OUTBOX_OPERATIONS)[number];
 

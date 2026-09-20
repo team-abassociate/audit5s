@@ -1,4 +1,4 @@
-# Sign in and walk the three tabs, screenshotting each for design review.
+# Sign in and walk a field role's four tabs, screenshotting each for design review.
 #
 #   LOGIN_ID=SA0101 PASSWORD=... maestro test .maestro/tabs.yaml
 #
@@ -27,6 +27,9 @@ env:
 - extendedWaitUntil:
     visible: "Sync now"
     timeout: 60000
+# Every role now lands on Overview; a field role's version of it is the resume screen.
+- takeScreenshot: tab-overview
+- tapOn: "Units"
 - takeScreenshot: tab-units
 - tapOn: "History"
 - assertVisible: "Audits on this device"

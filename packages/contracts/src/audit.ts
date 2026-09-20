@@ -257,6 +257,39 @@ export const questionResponseSchema = z.object({
 });
 export type QuestionResponse = z.infer<typeof questionResponseSchema>;
 
+/**
+ * `GET /audits/{auditId}/zone-locks` — the Zones of this audit's Unit that another open
+ * audit is already holding (R-29).
+ *
+ * A Unit may be assigned to two Consultants who walk it on the same morning. Nothing in
+ * the schema stopped both of them from auditing Zone 1, and two independent scores for one
+ * Zone on one day is not a disagreement the report can render — it is a duplicate. So a
+ * Zone claimed by an open audit is claimed until that audit completes, is cancelled, or
+ * releases it.
+ *
+ * The lock is a read the picker uses to grey a row out. It is a courtesy, not the control:
+ * `audit_zone`'s trigger is the control, and it refuses the insert whether it arrives over
+ * HTTP or through a sync batch pushed three days later.
+ */
+export const zoneLockSchema = z.object({
+  zoneId: uuidSchema,
+  /** `Z01`… — what the picker matches on, since a device may not know the Zone's id. */
+  zoneCode: z.string(),
+  zoneName: z.string(),
+  /** The audit holding it. Never this audit — the response excludes the caller's own. */
+  auditId: uuidSchema,
+  auditorName: z.string(),
+  auditStatus: auditStatusSchema,
+});
+export type ZoneLock = z.infer<typeof zoneLockSchema>;
+
+export const zoneLocksResponseSchema = z.object({
+  auditId: uuidSchema,
+  unitId: uuidSchema,
+  locks: z.array(zoneLockSchema),
+});
+export type ZoneLocksResponse = z.infer<typeof zoneLocksResponseSchema>;
+
 /** `GET /audits/{id}` — the audit with its Zones and their responses. */
 export const auditDetailSchema = auditSchema.extend({
   zones: z.array(auditZoneSchema.extend({ responses: z.array(questionResponseSchema) })),

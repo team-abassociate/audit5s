@@ -13,16 +13,23 @@ import { createThemedStyles, useTheme } from '../lib/theme';
  * `NA` is hidden when the question forbids it: a question with `allows_na = false` has no
  * "not applicable" answer, and offering one only to refuse it later is the kind of small
  * dishonesty that wastes a walk across a plant.
+ *
+ * `readOnly` is the same principle one level up: on a finished audit the answers may not be
+ * changed by anyone but a Super Admin (A-2), so the chips show what was marked and do not
+ * pretend to accept a new one. A tap that saves a score the server will refuse is worse
+ * than no tap — it looks like it worked.
  */
 const ORDER: ResponseValue[] = ['SCORE_2', 'SCORE_1', 'SCORE_0', 'NA'];
 
 export function ResponseChips({
   value,
   allowsNa,
+  readOnly,
   onChange,
 }: {
   value: ResponseValue | null;
   allowsNa: boolean;
+  readOnly?: boolean;
   onChange: (value: ResponseValue) => void;
 }) {
   const styles = useStyles();
@@ -38,14 +45,18 @@ export function ResponseChips({
           <Pressable
             key={option}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
+            accessibilityState={{ checked: selected, disabled: Boolean(readOnly) }}
             accessibilityLabel={`${marks}, ${token.label}`}
+            disabled={readOnly}
             onPress={() => onChange(option)}
             style={({ pressed }) => [
               styles.chip,
               { borderColor: color },
               selected && { backgroundColor: color },
-              pressed && styles.pressed,
+              // Unselected marks fade out; the one that was given stays at full strength,
+              // because reading it back is the whole purpose of the read-only screen.
+              readOnly && !selected && styles.chipInert,
+              pressed && !readOnly && styles.pressed,
             ]}
           >
             <Text style={[styles.marks, { color: selected ? theme.color.board : color }]}>{marks}</Text>
@@ -74,6 +85,7 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     backgroundColor: theme.color.tile,
   },
+  chipInert: { opacity: 0.45, borderStyle: 'dashed' },
   pressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
   marks: { fontFamily: theme.family.black, fontSize: 20, fontVariant: ['tabular-nums'] },
 }));

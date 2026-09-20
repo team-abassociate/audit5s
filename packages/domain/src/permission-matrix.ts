@@ -427,10 +427,30 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: { SUPER_ADMIN: org },
   },
   {
+    /**
+     * A-2's only door, and since R-30 it has two keys.
+     *
+     * The Super Admin may correct any audit. A Consultant may correct **their own**, which
+     * is what `own_audits` says and the reason this is not simply widened to a role: an
+     * auditor revising the marks they recorded is the case the product owner asked for; an
+     * auditor revising a colleague's completed audit is not, and the resolver is what keeps
+     * those apart.
+     *
+     * A-2 itself is unchanged. This is still the only path, it still requires a
+     * justification, and it still writes an `audit.changed_after_completion` entry with the
+     * before and the after. What R-30 settled is who may walk through it, not whether the
+     * door records who did.
+     */
     resource: 'audit',
     action: 'edit_after_completion',
     description: 'Override a completed audit; always written to the audit log',
-    grants: { SUPER_ADMIN: org },
+    grants: {
+      SUPER_ADMIN: org,
+      CONSULTANT: {
+        resolver: 'own_audits',
+        condition: 'the actor conducted this audit; justification required and logged (R-30)',
+      },
+    },
   },
   {
     // §9.5 Layer 1's force-release. A Super Admin only: breaking another device's

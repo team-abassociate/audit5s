@@ -101,6 +101,17 @@ export const SYNC_OPERATIONS = [
   'patch',
   /** A corrective-action submission (§9.2's trigger list). Inserts one attempt, never two. */
   'submit',
+  /**
+   * A-2's override, authored offline (R-30).
+   *
+   * An auditor correcting a mark on an audit they already finished cannot send it as
+   * `question_response:upsert` — that write is refused on a completed audit, by the
+   * service and by the trigger, and it carries no justification to log. This operation is
+   * the same `PATCH /audits/{id}/post-completion` the web uses, queued: the device holds
+   * the corrections and the reason until there is a connection, and the server applies
+   * them through the one door that writes an audit-log entry with the before and after.
+   */
+  'override',
 ] as const;
 export const syncOperationSchema = z.enum(SYNC_OPERATIONS);
 export type SyncOperation = z.infer<typeof syncOperationSchema>;

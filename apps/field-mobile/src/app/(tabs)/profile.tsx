@@ -9,6 +9,7 @@ import {
   Card,
   CardHeader,
   Chip,
+  ChoiceList,
   Data,
   ErrorBanner,
   LedgerRow,
@@ -24,11 +25,18 @@ import { ROLE_LABELS } from '../../lib/labels';
 import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
 import { checkLogoutGate } from '../../lib/sync/status';
-import { createThemedStyles } from '../../lib/theme';
+import {
+  createThemedStyles,
+  THEME_LABELS,
+  THEME_PREFERENCES,
+  useThemeChoice,
+  type ThemePreference,
+} from '../../lib/theme';
 
 export default function ProfileScreen() {
   const styles = useStyles();
   const { user, scope, signOut } = useSession();
+  const theme = useThemeChoice();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   // Named `pushWork` rather than `sync`: this screen already has a `sync` mutation for the
@@ -137,6 +145,30 @@ export default function ProfileScreen() {
             label="Last sign-in"
             value={user.lastLoginAt ? formatDateTime(user.lastLoginAt) : '—'}
             last
+          />
+        </Card>
+
+        {/*
+          The theme, on the screen the initials in the top-left corner open. Light is the
+          app's default whatever the phone is set to; this is where that is overridden, and
+          the choice outlives a sign-out because it belongs to the handset.
+        */}
+        <Card>
+          <CardHeader
+            title="Appearance"
+            description="Light is the default. Dark is for a dim store room; System follows the phone."
+          />
+          <ChoiceList<ThemePreference>
+            options={THEME_PREFERENCES.map((preference) => ({
+              value: preference,
+              label: THEME_LABELS[preference],
+              detail:
+                preference === 'system'
+                  ? `Currently ${theme.scheme === 'dark' ? 'dark' : 'light'}`
+                  : null,
+            }))}
+            value={theme.preference}
+            onChange={theme.choose}
           />
         </Card>
 

@@ -41,6 +41,19 @@ export const correctiveActionSchema = z.object({
 
   // What the item *is*, from the audit's own snapshots (D6), so no screen joins for it.
   auditType: auditTypeSchema,
+  /**
+   * Who conducted the audit that raised this item.
+   *
+   * A Super Admin reading a list of corrective actions is reading findings from several
+   * auditors at once, and "which audit is this from" is the first question they ask of any
+   * of them. The audit's id answers it only to someone willing to go and look it up.
+   *
+   * The name comes from the same narrow definer function the public page uses, so a Zone
+   * Leader holding a signed link — who cannot read the Consultant's `user` row — still
+   * gets a name rather than an empty column. Null only when that read finds nothing.
+   */
+  auditorUserId: uuidSchema,
+  auditorName: z.string().nullable(),
   zoneCode: z.string(),
   zoneName: z.string(),
   section: sSectionSchema.nullable(),

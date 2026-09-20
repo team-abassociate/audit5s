@@ -32,6 +32,7 @@ import {
   type PostCompletionOverrideRequest,
   type ResumeAuditRequest,
   type StartAuditRequest,
+  type ZoneLocksResponse,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import {
@@ -134,6 +135,23 @@ export class AuditsController {
     return this.audits.summary(scope, auditId);
   }
 
+  /**
+   * R-29's picker read: which Zones of this Unit another open audit already holds.
+   *
+   * `audit:read` rather than a cell of its own — it says no more about the other audit
+   * than that it exists and who is running it, and the definer function behind it answers
+   * only for an audit the caller may already read.
+   */
+  @RequirePermission('audit', 'read')
+  @Scope({ param: 'auditId', intent: 'read' })
+  @Get(':auditId/zone-locks')
+  zoneLocks(
+    @CurrentScope() scope: ScopeContext,
+    @Param('auditId', ParseUUIDPipe) auditId: string,
+  ): Promise<ZoneLocksResponse> {
+    return this.audits.zoneLocks(scope, auditId);
+  }
+
   @RequirePermission('audit', 'update')
   @Scope({ param: 'auditId', intent: 'write' })
   @Post(':auditId/start')
@@ -215,7 +233,13 @@ export class AuditsController {
     return this.audits.releaseDevice(scope, auditId, body);
   }
 
-  /** A-2's only door. Writes `audit.changed_after_completion` with before and after. */
+  /**
+   * A-2's only door. Writes `audit.changed_after_completion` with before and after.
+   *
+   * Two keys since R-30: a Super Admin for any audit, a Consultant for one they conducted.
+   * The permission is unchanged — what changed is the matrix cell behind it, so the guard
+   * chain decides this exactly as it decides everything else.
+   */
   @RequirePermission('audit', 'edit_after_completion')
   @Scope({ param: 'auditId', intent: 'write' })
   @Patch(':auditId/post-completion')

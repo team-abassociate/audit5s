@@ -23,6 +23,17 @@ export const RECIPIENT_ROLES: Record<NotificationEventType, Role[]> = {
   CORRECTIVE_ACTION_SUBMITTED: ['SUPER_ADMIN'],
   CORRECTIVE_ACTION_VERIFIED: ['COORDINATOR'],
   CORRECTIVE_ACTION_REOPENED: [],
+  /**
+   * R-31. Both reach the Zone Leader the event names, and the Super Admin who has to know
+   * that a completed audit's findings moved after the fact.
+   *
+   * The Coordinator is on the opened one and not the withdrawn one: they run the Unit and
+   * chase what is outstanding, so a new finding is theirs to chase and one that evaporated
+   * is not theirs to do anything about. The person who *was* chasing it is told, because
+   * they are the one who might otherwise walk to the Zone.
+   */
+  CORRECTIVE_ACTION_OPENED: ['SUPER_ADMIN', 'COORDINATOR'],
+  CORRECTIVE_ACTION_WITHDRAWN: ['SUPER_ADMIN'],
   // The Zone Leader who owns the work is named by the event. The Coordinator runs the
   // Unit and is who chases it; the Super Admin sees every Unit's slippage. §7.3 gives the
   // due date teeth only if somebody is told it has passed.
@@ -147,9 +158,15 @@ export function renderNotification(event: DomainEventJob): { title: string; body
         body: `Completed${when} — ${outcome}.`,
       };
     }
-    case 'CORRECTIVE_ACTION_SUBMITTED':
+    case 'CORRECTIVE_ACTION_SUBMITTED': {
+      // Which audit raised it, and who conducted that audit. A Super Admin with four
+      // Consultants in three plants gets a run of notifications that are otherwise
+      // identical down to the Zone number, and the first thing they need is whose finding
+      // this answers. Both parts are optional: an event emitted before this renders the
+      // same sentence without them.
+      const from = data.auditorName ? ` — from ${auditType.toLowerCase()} by ${String(data.auditorName)}` : '';
       return {
-        title: 'Corrective action submitted',
+        title: `Corrective action submitted${from}`,
         // R-23: an after-photo closes the item at once; "not possible" still needs a decision.
         body:
           `${item}${question}: ` +
@@ -157,8 +174,36 @@ export function renderNotification(event: DomainEventJob): { title: string; body
             ? `marked not possible (attempt ${String(data.attemptNo ?? 1)}). Accept or reopen it.`
             : `completed with an after photo (attempt ${String(data.attemptNo ?? 1)}) and closed. Regenerate the report to include it.`),
       };
+    }
     case 'CORRECTIVE_ACTION_VERIFIED':
       return { title: 'Corrective action verified', body: `${item}${question} was verified.` };
+    case 'CORRECTIVE_ACTION_OPENED': {
+      // Raised *after* the audit was finished, which is the only thing that distinguishes
+      // it from the batch AUDIT_COMPLETED announced — and the reason it needs saying at
+      // all. Somebody now owes work on an audit they had been told was over.
+      const who = data.auditorName ? String(data.auditorName) : null;
+      return {
+        title: who
+          ? `New corrective action after ${who} corrected an audit`
+          : 'New corrective action on a completed audit',
+        body:
+          `${item}${question} is now a nonconformity: the mark was corrected to ` +
+          `${String(data.value ?? 'a lower score')}. ` +
+          'Answer it with an after photo, or mark it not possible.',
+      };
+    }
+    case 'CORRECTIVE_ACTION_WITHDRAWN': {
+      const who = data.auditorName ? String(data.auditorName) : null;
+      return {
+        title: 'Corrective action withdrawn',
+        // Says the thing the recipient most needs: stop. A Zone Leader with this item on
+        // their list has been planning a walk to the Zone.
+        body:
+          `${item}${question} is no longer a nonconformity` +
+          (who ? ` — ${who} corrected the mark it rested on` : '') +
+          '. Nothing is owed on it, and the audit’s score has been recomputed.',
+      };
+    }
     case 'CORRECTIVE_ACTION_OVERDUE': {
       const days = Number(data.daysOverdue ?? 0);
       const late =

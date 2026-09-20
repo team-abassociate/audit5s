@@ -19,6 +19,7 @@ import {
 } from '@audit5s/db';
 import { numericScoreFor, type ScopeContext } from '@audit5s/domain';
 import type {
+  AuditStatus,
   AuditType,
   ListAuditsQuery,
   LocationProvider,
@@ -504,6 +505,77 @@ export class AuditsRepository extends BaseRepository {
   }
 
   /**
+   * R-29: the Zones of this audit's Unit that another open audit is already holding.
+   *
+   * Through `app_zone_locks_for_audit` (0021) for the reason every lock read needs a
+   * definer function: RLS hides another Consultant's audit from this one, and a lock check
+   * that cannot see the lock reports the Zone as free. The function carries its own scope
+   * — an audit the caller may see, and that audit's Unit only — and returns no rows for
+   * anything else.
+   */
+  async listZoneLocks(
+    scope: ScopeContext,
+    auditId: string,
+  ): Promise<
+    Array<{
+      zoneId: string;
+      zoneCode: string;
+      zoneName: string;
+      auditId: string;
+      auditorName: string;
+      auditStatus: AuditStatus;
+    }>
+  > {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const result = await tx.execute(sql`
+        SELECT lock_zone_id, lock_zone_code, lock_zone_name,
+               lock_audit_id, lock_auditor_name, lock_audit_status
+        FROM app_zone_locks_for_audit(${auditId}::uuid)
+      `);
+      return (
+        result.rows as Array<{
+          lock_zone_id: string;
+          lock_zone_code: string;
+          lock_zone_name: string;
+          lock_audit_id: string;
+          lock_auditor_name: string;
+          lock_audit_status: AuditStatus;
+        }>
+      ).map((row) => ({
+        zoneId: row.lock_zone_id,
+        zoneCode: row.lock_zone_code,
+        zoneName: row.lock_zone_name,
+        auditId: row.lock_audit_id,
+        auditorName: row.lock_auditor_name,
+        auditStatus: row.lock_audit_status,
+      }));
+    });
+  }
+
+  /**
+   * The audit holding this Zone, if another one of the same Unit does (0021).
+   *
+   * Read before the insert so the refusal can name the auditor. The trigger refuses it
+   * regardless — this is what turns "unique violation" into a sentence an auditor standing
+   * in the Zone can act on.
+   */
+  async zoneClaimedByOtherAudit(
+    scope: ScopeContext,
+    zoneId: string,
+    auditId: string,
+  ): Promise<string | null> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const result = await tx.execute(sql`
+        SELECT app_zone_claimed_by_other_audit(${zoneId}::uuid, ${auditId}::uuid) AS holder
+      `);
+      const row = result.rows[0] as { holder: string | null } | undefined;
+      return row?.holder ?? null;
+    });
+  }
+
+  /**
    * The typed Zone leader, written back to the Zone itself (0015).
    *
    * Without this the name reached the audit snapshot and nowhere else, so every board kept
@@ -808,7 +880,8 @@ export class AuditsRepository extends BaseRepository {
    * statements in which one lands and the other does not.
    *
    * The flag alone is not a way in: `app_post_completion_override()` additionally requires
-   * the actor to be a Super Admin, so a lower-privileged caller setting it changes nothing.
+   * the actor to be a Super Admin, or — since R-30 — the auditor of the audit this
+   * transaction names. A caller who set the flag and nothing else changes nothing.
    */
   async applyPostCompletionOverride(
     scope: ScopeContext,
@@ -822,8 +895,17 @@ export class AuditsRepository extends BaseRepository {
       after: unknown;
       requestId: string;
     },
+    /**
+     * R-31's cascade, run on this same transaction before the log entry is written.
+     *
+     * A callback rather than a second call from the service, because every consequence of
+     * a correction has to commit with the correction. A reclassified photograph and a
+     * withdrawn finding that landed while the response change rolled back would describe
+     * an audit that never existed.
+     */
+    cascade?: (tx: Transaction) => Promise<void>,
   ): Promise<void> {
-    await this.inOverrideTransaction(scope, async (tx) => {
+    await this.inOverrideTransaction(scope, input.auditId, async (tx) => {
       if (input.reopenAuditZoneId) {
         await tx
           .update(auditZones)
@@ -848,6 +930,8 @@ export class AuditsRepository extends BaseRepository {
           })
           .where(eq(questionResponses.id, change.responseId));
       }
+
+      await cascade?.(tx);
 
       await tx.insert(auditLogs).values({
         actorUserId: scope.actor.userId,
@@ -878,16 +962,28 @@ export class AuditsRepository extends BaseRepository {
       }>;
     },
   ): Promise<void> {
-    await this.inOverrideTransaction(scope, (tx) => this.writeScoresOn(tx, auditId, input));
+    await this.inOverrideTransaction(scope, auditId, (tx) => this.writeScoresOn(tx, auditId, input));
   }
 
+  /**
+   * The A-2 carve-out, opened for one audit and one transaction.
+   *
+   * Two settings, both `set_config(..., true)` so they are transaction-local and cannot
+   * outlive the work or follow a connection back into the pool. The flag opens the
+   * carve-out; the audit id says **which** audit it is open for, which is what lets the
+   * trigger admit an auditor correcting their own audit (R-30) without admitting them to
+   * anyone else's. The database re-checks that from `audit.auditor_user_id` rather than
+   * taking the application's word for it.
+   */
   private async inOverrideTransaction<T>(
     scope: ScopeContext,
+    auditId: string,
     work: (tx: Transaction) => Promise<T>,
   ): Promise<T> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       await tx.execute(sql`SELECT set_config('app.post_completion_override', 'on', true)`);
+      await tx.execute(sql`SELECT set_config('app.post_completion_audit_id', ${auditId}, true)`);
       return work(tx);
     });
   }

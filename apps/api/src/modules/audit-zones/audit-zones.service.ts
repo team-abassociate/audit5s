@@ -66,6 +66,21 @@ export class AuditZonesService {
     // write resolves one — and, for a Zone number the Unit has never used, adds it.
     const zoneId = existing?.zoneId ?? (await this.resolveZone(scope, audit, auditId, request));
 
+    // Two refusals a first write can earn, both decided here rather than left to whichever
+    // unique index the insert happens to hit first. A later write of a Zone this audit
+    // already holds is neither: it is the ordinary upsert, checked against its own row.
+    if (!existing) {
+      const alreadyInAudit = await this.repository.listZones(scope, auditId);
+      if (alreadyInAudit.some((zone) => zone.zoneId === zoneId)) {
+        throw AppError.conflict(
+          'ZONE_ALREADY_IN_AUDIT',
+          'This Zone is already part of this audit. A Zone appears at most once per audit.',
+        );
+      }
+      // R-29: a Zone another open audit of this Unit is holding.
+      await this.assertZoneNotClaimed(scope, auditId, zoneId);
+    }
+
     const zone = await this.repository.readZoneSnapshot(scope, zoneId);
     if (!zone) {
       throw AppError.notFound('No such Zone');
@@ -169,6 +184,15 @@ export class AuditZonesService {
       if (isUniqueViolation(error, 'audit_zone_sequence_key')) {
         throw AppError.conflict('CONFLICT', 'Another Zone already holds that position');
       }
+      // R-29's trigger, or the partial unique index behind it when two devices claimed the
+      // Zone in the same instant. Both name the same constraint, so both read the same way.
+      if (isUniqueViolation(error, 'audit_zone_claimed_by_open_audit')) {
+        throw AppError.conflict(
+          'ZONE_LOCKED_BY_ANOTHER_AUDIT',
+          'Another audit of this Unit is already covering this Zone. Choose a different ' +
+            'Zone; nothing you have recorded is lost.',
+        );
+      }
       throw error;
     }
 
@@ -206,7 +230,22 @@ export class AuditZonesService {
     }
 
     if (zone.status === 'COMPLETED') {
-      // Idempotent: a retried finish returns the Zone rather than raising.
+      /**
+       * Idempotent: a retried finish returns the Zone rather than raising.
+       *
+       * It is not always a *retry*, though, and that is why it rescores. An auditor who
+       * reviewed a finished Zone, changed an answer and pressed Submit again sends exactly
+       * this item, and the early return used to make it a no-op — leaving the answer
+       * changed and the score that everything downstream reads untouched.
+       *
+       * `recompute` is the same call the real edge below makes and reads the responses as
+       * they now stand, so a genuine retry writes back the numbers that are already there.
+       * Skipped once the audit itself is finished: those rows are frozen by A-2, and
+       * rescoring them is the trigger's refusal rather than a correction.
+       */
+      if (!isAuditCompleted(audit.status) && audit.status !== 'CANCELLED') {
+        await this.scoring.recompute(scope, auditId);
+      }
       return this.get(scope, auditZoneId);
     }
 
@@ -321,6 +360,42 @@ export class AuditZonesService {
       });
     }
     return ensured.zoneId;
+  }
+
+  /**
+   * R-29: one Zone, one open audit.
+   *
+   * A Unit assigned to two Consultants (R-28) can have two audits running on one morning,
+   * and before this the schema let both of them cover Zone 1 — two independent scores for
+   * one Zone on one day, which a report cannot render as anything but a duplicate.
+   *
+   * The refusal names the auditor holding it, because the auditor reading it is standing
+   * in a plant and the useful next step is to walk to a different Zone, or to ask the
+   * colleague whose name this is. The database refuses it either way; this is the sentence
+   * that makes the refusal actionable rather than mysterious.
+   */
+  private async assertZoneNotClaimed(
+    scope: ScopeContext,
+    auditId: string,
+    zoneId: string,
+  ): Promise<void> {
+    const holder = await this.repository.zoneClaimedByOtherAudit(scope, zoneId, auditId);
+    if (!holder) {
+      return;
+    }
+
+    const locks = await this.repository.listZoneLocks(scope, auditId);
+    const lock = locks.find((candidate) => candidate.zoneId === zoneId);
+
+    throw AppError.conflict(
+      'ZONE_LOCKED_BY_ANOTHER_AUDIT',
+      lock
+        ? `Zone ${lock.zoneCode} — ${lock.zoneName} is already being audited by ` +
+          `${lock.auditorName} in another audit of this Unit. Choose a different Zone; ` +
+          'nothing you have recorded is lost.'
+        : 'Another audit of this Unit is already covering this Zone. Choose a different ' +
+          'Zone; nothing you have recorded is lost.',
+    );
   }
 
   /**

@@ -454,20 +454,37 @@ export class EvidenceRepository extends BaseRepository {
     responseId: string,
     value: ResponseValue,
   ): Promise<number> {
-    const classification = classifyScore(value);
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const rows = await tx
-        .update(evidence)
-        .set({
-          classification,
-          scoreAtCapture: value,
-          ...(classification === 'NEUTRAL' ? { isSummaryFlagged: false } : {}),
-        })
-        .where(and(eq(evidence.questionResponseId, responseId), isNull(evidence.deletedAt)))
-        .returning({ id: evidence.id });
-      return rows.length;
+      return this.reclassifyForResponseOn(tx, responseId, value);
     });
+  }
+
+  /**
+   * The same write, on a transaction the caller already holds.
+   *
+   * R-31 needs it: correcting a mark on a completed audit reclassifies the photograph
+   * filed under it, and that write is only permitted inside A-2's carve-out — which is a
+   * property of the *transaction* the override opened. Reaching for a new one here would
+   * land outside the carve-out and be refused by the freeze trigger, which is exactly the
+   * bug this shape prevents.
+   */
+  async reclassifyForResponseOn(
+    tx: Transaction,
+    responseId: string,
+    value: ResponseValue,
+  ): Promise<number> {
+    const classification = classifyScore(value);
+    const rows = await tx
+      .update(evidence)
+      .set({
+        classification,
+        scoreAtCapture: value,
+        ...(classification === 'NEUTRAL' ? { isSummaryFlagged: false } : {}),
+      })
+      .where(and(eq(evidence.questionResponseId, responseId), isNull(evidence.deletedAt)))
+      .returning({ id: evidence.id });
+    return rows.length;
   }
 
   /**

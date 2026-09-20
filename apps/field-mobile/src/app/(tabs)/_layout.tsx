@@ -7,8 +7,10 @@ import { useTheme } from '../../lib/theme';
 /**
  * The bottom tabs, by role.
  *
- * - **Consultant, Zone Leader:** Units · History · Profile — exactly N1, and an auditor
- *   holding a phone in a plant is not browsing.
+ * - **Consultant, Zone Leader:** Overview · Units · History · Profile. Overview is where
+ *   the phone opens: an auditor who paused in Zone 3 yesterday wants the way back into it,
+ *   not a list of Units to search. The other three stay exactly as N1 has them, and an
+ *   auditor holding a phone in a plant is still not browsing.
  * - **Super Admin and Coordinator (R-24):** Overview · Audits · Actions · Units · People — the
  *   admin web's rail (Unit board, Audits, Corrective actions, Units & zones, Users & roles) at
  *   five, as the product owner settled on 2026-09-13. A Coordinator sees their own Unit only,
@@ -35,7 +37,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      initialRouteName={admin ? 'overview' : 'index'}
+      initialRouteName="overview"
       screenOptions={{
         headerStyle: { backgroundColor: theme.color.tile2 },
         headerTintColor: theme.color.ink,
@@ -71,7 +73,8 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: theme.color.ink3,
       }}
     >
-      <Tabs.Screen name="overview" options={{ title: 'Overview', tabBarIcon: icon('▦'), ...shownTo(admin) }} />
+      {/* The one tab every role gets; the screen behind it differs (see `overview.tsx`). */}
+      <Tabs.Screen name="overview" options={{ title: 'Overview', tabBarIcon: icon('▦') }} />
       <Tabs.Screen name="audits" options={{ title: 'Audits', tabBarIcon: icon('◷'), ...shownTo(admin) }} />
       <Tabs.Screen name="review" options={{ title: 'Actions', tabBarIcon: icon('⚑'), ...shownTo(admin) }} />
       <Tabs.Screen name="units" options={{ title: 'Units', tabBarIcon: icon('▣'), ...shownTo(admin) }} />

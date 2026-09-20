@@ -45,6 +45,8 @@ const EVENT_LABEL: Record<NotificationEventType, string> = {
   CORRECTIVE_ACTION_SUBMITTED: 'Corrective action',
   CORRECTIVE_ACTION_VERIFIED: 'Corrective action',
   CORRECTIVE_ACTION_REOPENED: 'Corrective action',
+  CORRECTIVE_ACTION_OPENED: 'Corrective action',
+  CORRECTIVE_ACTION_WITHDRAWN: 'Corrective action',
   CORRECTIVE_ACTION_OVERDUE: 'Overdue',
   SYNC_FAILURE: 'Sync',
   CHECKLIST_PUBLISHED: 'Checklist',

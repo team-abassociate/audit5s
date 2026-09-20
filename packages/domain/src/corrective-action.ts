@@ -11,11 +11,29 @@ import { AUDIT_TRANSITIONS, type Transition } from './state-machine';
 
 export type RollupStatus = 'CORRECTIVE_ACTION_OPEN' | 'PARTIALLY_CLOSED' | 'CLOSED';
 
-/** §2.8: open while none is resolved, partially closed while some are, closed when all are. */
+/**
+ * Whether an action still asks something of somebody.
+ *
+ * VERIFIED is §5.7's `resolved_at` — fixed, or an accepted "not possible". WITHDRAWN is
+ * R-31's: the mark it rested on was corrected, so the finding is gone. They are settled in
+ * opposite senses and the difference matters everywhere a closure *rate* is computed — but
+ * for the question "does this audit still have work outstanding", both are no.
+ */
+export function isSettled(status: CorrectiveActionStatus): boolean {
+  return status === 'VERIFIED' || status === 'WITHDRAWN';
+}
+
+/**
+ * §2.8: open while none is resolved, partially closed while some are, closed when all are.
+ *
+ * An audit whose every finding was withdrawn is CLOSED, and an audit with no actions at all
+ * has always been CLOSED by the same line — `settled === actions.length` is vacuously true
+ * for an empty list, which is how §7.1's "completed with no nonconformities" works.
+ */
 export function rollupAuditStatus(actions: readonly CorrectiveActionStatus[]): RollupStatus {
-  const verified = actions.filter((status) => status === 'VERIFIED').length;
-  if (verified === actions.length) return 'CLOSED';
-  return verified > 0 ? 'PARTIALLY_CLOSED' : 'CORRECTIVE_ACTION_OPEN';
+  const settled = actions.filter(isSettled).length;
+  if (settled === actions.length) return 'CLOSED';
+  return settled > 0 ? 'PARTIALLY_CLOSED' : 'CORRECTIVE_ACTION_OPEN';
 }
 
 export const COMPLETED_AUDIT_STATUSES: readonly AuditStatus[] = [

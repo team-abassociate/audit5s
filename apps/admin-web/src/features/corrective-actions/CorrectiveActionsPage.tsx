@@ -323,7 +323,14 @@ function auditHeading(sample: CorrectiveAction, number: number | undefined): str
     ? new Date(sample.auditCompletedAt).toLocaleDateString()
     : 'not completed';
   const kind = sample.auditType.replace(/_/g, ' ').toLowerCase();
-  return number === undefined ? `${kind} · ${when}` : `Audit ${number} · ${kind} · ${when}`;
+  // The auditor's name, because the question asked of every finding in this list is which
+  // audit it came out of — and a date and a kind do not answer that when two Consultants
+  // audited the same Unit the same week. Omitted rather than faked when the read that
+  // resolves it found nothing.
+  const who = sample.auditorName ? ` · ${sample.auditorName}` : '';
+  return number === undefined
+    ? `${kind} · ${when}${who}`
+    : `Audit ${number} · ${kind} · ${when}${who}`;
 }
 
 function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => void }) {
@@ -382,6 +389,8 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
             <dd>
               <StatusBadge status={action.status} />
             </dd>
+            <dt>Auditor</dt>
+            <dd>{action.auditorName ?? '—'}</dd>
             <dt>Assigned</dt>
             <dd>{action.assignedZoneLeaderName ?? '—'}</dd>
             <dt>Due</dt>
@@ -546,4 +555,7 @@ const STATUS_LABEL: Record<CorrectiveActionStatus, string> = {
   NOT_POSSIBLE: 'Not possible',
   VERIFIED: 'Verified',
   REOPENED: 'Reopened',
+  // R-31: the mark it rested on was corrected, so there was never anything to fix. Not
+  // "Closed" — nobody did any work, and a reader scanning this column should see that.
+  WITHDRAWN: 'Withdrawn',
 };

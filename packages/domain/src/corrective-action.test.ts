@@ -3,6 +3,7 @@ import {
   awaitsResponse,
   awaitsReview,
   isOverdue,
+  isSettled,
   rollupAuditStatus,
   rollupPath,
   submissionTarget,
@@ -26,6 +27,62 @@ describe('audit rollup (§2.8)', () => {
 
   it('closes once every action is verified', () => {
     expect(rollupAuditStatus(['VERIFIED', 'VERIFIED'])).toBe('CLOSED');
+  });
+
+  /**
+   * R-31. A withdrawn finding is settled in the opposite sense to a verified one — nobody
+   * fixed it, there was nothing to fix — but the audit is asking nothing of anyone either
+   * way, and that is the only question this rollup answers.
+   */
+  it('counts a withdrawn finding as settled', () => {
+    expect(rollupAuditStatus(['WITHDRAWN'])).toBe('CLOSED');
+    expect(rollupAuditStatus(['WITHDRAWN', 'VERIFIED'])).toBe('CLOSED');
+    expect(rollupAuditStatus(['WITHDRAWN', 'OPEN'])).toBe('PARTIALLY_CLOSED');
+  });
+
+  it('keeps settled and fixed apart, because only one of them is work', () => {
+    expect(isSettled('VERIFIED')).toBe(true);
+    expect(isSettled('WITHDRAWN')).toBe(true);
+    expect(isSettled('OPEN')).toBe(false);
+    expect(isSettled('ACTION_SUBMITTED')).toBe(false);
+    // Neither a to-do nor a review: nobody is waiting on a withdrawn finding.
+    expect(awaitsResponse('WITHDRAWN')).toBe(false);
+    expect(awaitsReview('WITHDRAWN')).toBe(false);
+    expect(isOverdue('WITHDRAWN', '2020-01-01T00:00:00.000Z', Date.now())).toBe(false);
+  });
+
+  /** The edges R-31 adds are the system's, and VERIFIED is deliberately not among them. */
+  it('withdraws from every unsettled status, and never from VERIFIED', () => {
+    for (const from of ['OPEN', 'REOPENED', 'ACTION_SUBMITTED', 'NOT_POSSIBLE'] as const) {
+      expect(
+        canTransition('corrective_action', from, 'WITHDRAWN', {
+          role: null,
+          satisfied: ['reason_given'],
+        }).allowed,
+      ).toBe(true);
+    }
+
+    // Somebody fixed that one and somebody checked it; the mark being wrong afterwards
+    // does not unmake the work.
+    expect(
+      canTransition('corrective_action', 'VERIFIED', 'WITHDRAWN', {
+        role: null,
+        satisfied: ['reason_given'],
+      }).allowed,
+    ).toBe(false);
+
+    // No human actor: there is no "withdraw" button, only a corrected mark.
+    expect(
+      canTransition('corrective_action', 'OPEN', 'WITHDRAWN', {
+        role: 'SUPER_ADMIN',
+        satisfied: ['reason_given'],
+      }).allowed,
+    ).toBe(false);
+
+    // And never without the override's justification behind it.
+    expect(
+      canTransition('corrective_action', 'OPEN', 'WITHDRAWN', { role: null }).allowed,
+    ).toBe(false);
   });
 });
 
