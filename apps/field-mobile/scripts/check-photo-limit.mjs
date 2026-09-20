@@ -1,11 +1,12 @@
 // Run with Node 22.13+; validates actual migration SQL without Expo dependencies.
-const { DatabaseSync } = require('node:sqlite');
-const { stripTypeScriptTypes } = require('node:module');
-const { readFileSync } = require('node:fs');
-const { runInNewContext } = require('node:vm');
-const assert = require('node:assert/strict');
-const path = require('node:path');
-const base = path.join(__dirname, '../src/lib/db');
+import { DatabaseSync } from 'node:sqlite';
+import { stripTypeScriptTypes } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const base = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/db');
 const ctx = {};
 for (const file of ['photo-limit.ts', 'migrations.ts']) {
   let code = stripTypeScriptTypes(readFileSync(path.join(base, file), 'utf8'));
@@ -33,4 +34,4 @@ db.exec("UPDATE evidence SET deleted_at='now' WHERE id='p0'");
 add.run('replacement','QUESTION_EVIDENCE','a','zone','q50');
 assert.throws(()=>add.run('replacement26','QUESTION_EVIDENCE','a','zone','q50'),/25-photo/);
 db.close();
-console.log('PASS: 25 allowed; 26th blocked across questions/kinds; separate Zones; deletion/replacement; synced count; selfie/after exclusions; upgrade preserves existing photos.');
+process.stdout.write('PASS: 25 allowed; 26th blocked across questions/kinds; separate Zones; deletion/replacement; synced count; selfie/after exclusions; upgrade preserves existing photos.\n');
