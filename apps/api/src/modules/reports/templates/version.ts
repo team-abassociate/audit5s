@@ -9,7 +9,14 @@
  * so changing the layout without acknowledging it fails there rather than in front of a
  * customer holding two reports that should have matched.
  */
-export const TEMPLATE_VERSION = '1.0.0';
+/*
+ * 1.1.0 — the corrective-action link became a scannable block (QR code, the address in
+ * full, and the whole card as the tap target) instead of a line of 7.5 pt text. A report
+ * re-rendered under this version will not match a 1.0.0 document byte for byte, which is
+ * what the bump is for: the two are meant to differ, and the snapshot records which one
+ * a reader is holding.
+ */
+export const TEMPLATE_VERSION = '1.1.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

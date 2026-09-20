@@ -6,6 +6,7 @@ import type {
   ReportZone,
 } from './payload-types';
 import {
+  CorrectiveActionLink,
   Footer,
   Header,
   MetaCell,
@@ -263,9 +264,7 @@ function NonconformityRow({
         </div>
         {item.remark ? <div className="photo-remark">{item.remark}</div> : null}
         {item.correctiveActionUrl ? (
-          <a className="cta" href={item.correctiveActionUrl}>
-            View / Submit Corrective Action ▸
-          </a>
+          <CorrectiveActionLink url={item.correctiveActionUrl} />
         ) : null}
       </div>
       {after ? <Outcome item={item} resolve={resolve} /> : <div className="nc-placeholder" />}

@@ -373,17 +373,91 @@ tbody tr.total-row, tbody tr.total-row td {
 .badge-verified { color: #1B7F4B; background: #E2F4E9; }
 .badge-not-possible { color: #B3261E; background: #FCE7E5; }
 .badge-pending { color: #BE7D0F; background: #FDF3DB; }
+/*
+ * The corrective-action link.
+ *
+ * This was a 7.5 pt line of text, and Chromium duly gave it a link annotation 15 pt tall.
+ * Fitted to a phone screen that is a target about ten pixels high, which is why the link
+ * "worked on a computer" and did nothing in a hand. The whole card is the anchor now:
+ * display: flex on an <a>, so the annotation Chromium emits covers the QR code, both
+ * lines of label and the address. Measured off the printed page, the annotation went from
+ * 139 x 15 pt to 252 x 71 pt: about seven times the area, and 25 mm tall rather than 5.
+ *
+ * It is laid out with flex rather than the grid used elsewhere on the page for one
+ * reason: WeasyPrint's flex support is the more complete of the two, and STACK.md §8's
+ * tripwire has to stay a renderer swap.
+ */
 .cta {
-  display: inline-block;
-  margin-top: 4px;
-  padding: 3px 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 5px;
+  padding: 5px 6px;
   border: 1.25px solid ${brand.accent};
   background: #FFFFFF;
   color: ${brand.accent} !important;
+  text-decoration: none;
+  /* A link split across a page break loses half its tap target and half its symbol. */
+  break-inside: avoid;
+}
+/*
+ * 22 mm, and the size is arithmetic rather than taste.
+ *
+ * A 43-character base64url secret on a real hostname is about 76 characters, which at
+ * error-correction level M encodes to a version-5 symbol: 37 modules, 45 with the quiet
+ * zone. At 22 mm that is a 0.49 mm module. The working floor for a phone camera reading a
+ * printed page at arm's length is around 0.4 mm, so 19 mm (0.42 mm) would have scanned on
+ * a good day and not on a photocopy — and these reports are printed and written on by
+ * hand. The cost is 3 mm per nonconformity down the document, which is the right trade.
+ *
+ * Scanned off a screen this is comfortable either way; it is the paper case that sets it.
+ */
+.cta-qr {
+  flex: 0 0 auto;
+  width: 22mm;
+  height: 22mm;
+  /*
+   * Ink, not the accent the rest of the block inherits. A scanner binarises a grayscale
+   * conversion, and the accent red lands at about 31% luminance against the quiet zone's
+   * white — readable, but ink is near-black and leaves the margin where it costs nothing.
+   * The border and the label stay accent, so the block still reads as the one structural
+   * use of that colour. The path picks this up through currentColor.
+   */
+  color: ${brand.ink};
+}
+.cta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.cta-label {
   font-size: 7.5pt;
   font-weight: 700;
   letter-spacing: 0.02em;
-  text-decoration: none;
+}
+.cta-hint {
+  font-size: 6.5pt;
+  font-weight: 400;
+  color: ${brand.inkSoft};
+}
+/*
+ * The address, printed so a reader whose viewer drops the annotation can still reach it.
+ * break-all because a base64url secret contains no spaces: without it the line runs
+ * past the card and is clipped, which is the failure this whole block exists to remove.
+ *
+ * Set in the page's own family rather than a monospace one. Monospace would read better
+ * if anyone were going to transcribe it, and nobody transcribes 43 random characters —
+ * this line is here to be selected and copied, and the note at the head of this file about
+ * not introducing a second typeface still applies.
+ */
+.cta-url {
+  margin-top: 2px;
+  font-size: 6pt;
+  line-height: 1.25;
+  color: ${brand.inkSoft};
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .redacted {
   display: flex;

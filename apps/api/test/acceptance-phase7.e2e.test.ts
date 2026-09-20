@@ -118,7 +118,11 @@ describe('Phase 7 acceptance', () => {
       // `class="nc-answer"` rather than `nc-answer`: the stylesheet is in the same
       // document and declares the rule, so the bare string would always be present.
       expect(v1Html).not.toContain('class="nc-answer"');
-      expect(v1Html).toContain('View / Submit Corrective Action');
+      // The link, in all three forms a phone might have to find it by: the anchor, the
+      // QR code, and the address printed as text.
+      expect(v1Html).toContain('Scan or tap');
+      expect(v1Html).toContain('class="cta-qr"');
+      expect(v1Html).toContain('class="cta-url"');
 
       const v1GoodBlock = goodBlockOf(v1Html);
       const v1Bytes = await downloadBytes(v1.id);
