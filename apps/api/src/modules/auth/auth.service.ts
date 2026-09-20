@@ -94,15 +94,49 @@ export class AuthService {
 
     await this.repository.applySuccessfulLogin(user.id, rehashed);
 
-    if (request.deviceId && request.platform) {
-      await this.repository.upsertDevice({
+    if (request.deviceId) {
+      // Runs for every login that names a device, not only one carrying a platform: a
+      // re-login from a known phone still moves `last_seen_at`, and still hands the
+      // handset over when it is somebody else signing in on it.
+      const { registered, transferredFromUserId } = await this.repository.upsertDevice({
         deviceId: request.deviceId,
         userId: user.id,
-        platform: request.platform,
-        model: request.model ?? null,
-        osVersion: request.osVersion ?? null,
-        appVersion: request.appVersion ?? null,
+        platform: request.platform ?? null,
+        model: request.model,
+        osVersion: request.osVersion,
+        appVersion: request.appVersion,
       });
+
+      if (!registered) {
+        // A device nobody has registered, described by a login that did not say what it
+        // is. The session would be bound to it regardless, and `refresh_token.device_id`
+        // references `device` — so this used to be a foreign-key 500 on a well-formed
+        // request. It is the client's to fix, and now says so.
+        throw AppError.validation('This device has not been registered', [
+          {
+            field: 'platform',
+            message: 'Send platform the first time a device signs in',
+          },
+        ]);
+      }
+
+      // A shared handset changing hands is not routine, even though it is permitted: the
+      // previous owner's unsynced work on that phone stops being reachable from it, and an
+      // audit still locked to the device now needs a Super Admin's release. Recorded so
+      // that is a fact somebody can find, rather than something inferred afterwards from a
+      // device list that only ever shows the current owner.
+      if (transferredFromUserId) {
+        await this.auditLog.recordSafely(
+          {
+            action: 'device.transferred',
+            resourceType: 'device',
+            resourceId: request.deviceId,
+            before: { userId: transferredFromUserId },
+            after: { userId: user.id },
+          },
+          `${user.fullName} (${user.loginId})`,
+        );
+      }
     }
 
     await this.repository.recordLoginAttempt({

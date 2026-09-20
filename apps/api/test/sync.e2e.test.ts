@@ -318,6 +318,11 @@ describe('§9.3 — per-item results', () => {
     );
     expect(conflict.status).toBe(200);
     expect((conflict.body as SyncConflict).incomingPayload).toMatchObject({ value: 'SCORE_9' });
+
+    // 0020: the refusal is kept on the row, not only in the container log. Without this a
+    // Super Admin reads "Payload could not be read" over a payload that looks well formed
+    // and has no way to tell which rule refused it.
+    expect((conflict.body as SyncConflict).detail).toMatch(/value/i);
   });
 
   it('answers RETRY_AFTER_PARENT for a child whose parent is not there yet', async () => {

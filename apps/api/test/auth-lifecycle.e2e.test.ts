@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '@audit5s/contracts';
-import { startWorld, stopWorld, type TestWorld } from './harness';
+import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 
 /**
@@ -86,6 +86,58 @@ describe('login', () => {
     expect(statuses.slice(0, 5).every((s) => s === 401)).toBe(true);
     expect(statuses.at(-1)).toBe(429);
     resetLimits();
+  });
+});
+
+describe('a shared handset', () => {
+  const SHARED_DEVICE = '01930000-0000-7000-8000-0000000005a1';
+
+  it('follows whoever last signed in on it, and says so in the audit log', async () => {
+    resetLimits();
+
+    // A device id is minted per install and kept on the phone, so two auditors using one
+    // handset present the same id. The upsert used to leave `user_id` alone: the phone
+    // stayed with whoever logged in first, and every audit the second one started was
+    // refused for a device that was not theirs, with the work quarantined behind it.
+    await loginFromDevice(world, world.actors.CONSULTANT, SHARED_DEVICE);
+    const first = await world.owner.query(`SELECT user_id FROM device WHERE id = $1`, [
+      SHARED_DEVICE,
+    ]);
+    expect(first.rows[0].user_id).toBe(world.actors.CONSULTANT.userId);
+
+    resetLimits();
+    await loginFromDevice(world, world.actors.ZONE_LEADER, SHARED_DEVICE);
+
+    const second = await world.owner.query(
+      `SELECT user_id, revoked_at FROM device WHERE id = $1`,
+      [SHARED_DEVICE],
+    );
+    expect(second.rows).toHaveLength(1);
+    expect(second.rows[0].user_id).toBe(world.actors.ZONE_LEADER.userId);
+    expect(second.rows[0].revoked_at).toBeNull();
+
+    // Recorded, because the previous owner's unsynced work on that phone stops being
+    // reachable from it and an audit still locked to it now needs a Super Admin release.
+    const { rows } = await world.owner.query(
+      `SELECT before, after FROM audit_log
+       WHERE action = 'device.transferred' AND resource_id = $1`,
+      [SHARED_DEVICE],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].before).toMatchObject({ userId: world.actors.CONSULTANT.userId });
+    expect(rows[0].after).toMatchObject({ userId: world.actors.ZONE_LEADER.userId });
+  });
+
+  it('records no transfer when the same person signs in again', async () => {
+    resetLimits();
+    await loginFromDevice(world, world.actors.ZONE_LEADER, SHARED_DEVICE);
+
+    const { rows } = await world.owner.query(
+      `SELECT COUNT(*)::int AS n FROM audit_log
+       WHERE action = 'device.transferred' AND resource_id = $1`,
+      [SHARED_DEVICE],
+    );
+    expect(rows[0].n).toBe(1);
   });
 });
 

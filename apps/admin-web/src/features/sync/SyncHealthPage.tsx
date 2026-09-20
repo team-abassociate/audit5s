@@ -186,6 +186,18 @@ function ConflictRow({
         <tr>
           <td colSpan={5} className="bg-board px-4 py-4">
             <div className="space-y-4">
+              {conflict.detail && (
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
+                    Why it was held
+                  </h4>
+                  {/* The server's own sentence. `reason` is the category; this is the rule
+                      that actually refused the item, and before 0020 it reached the
+                      container log and nowhere a Super Admin could read it. */}
+                  <p className="mt-1 text-sm text-ink">{conflict.detail}</p>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
                   What the device sent

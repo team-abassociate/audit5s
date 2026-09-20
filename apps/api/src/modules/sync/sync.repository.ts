@@ -145,6 +145,8 @@ export class SyncRepository extends BaseRepository {
       entityType: string;
       entityId: string;
       reason: string;
+      /** The refusal in the server's words, so Sync Health can show it (0020). */
+      detail: string | null;
       incomingPayload: unknown;
       existingPayload: unknown | null;
       batchId: string;
@@ -167,6 +169,7 @@ export class SyncRepository extends BaseRepository {
         entityType: input.entityType,
         entityId: input.entityId,
         reason: input.reason,
+        detail: input.detail,
         incomingPayload: input.incomingPayload,
         existingPayload: input.existingPayload,
         batchId: input.batchId,
@@ -196,6 +199,7 @@ export class SyncRepository extends BaseRepository {
           entityType: syncConflicts.entityType,
           entityId: syncConflicts.entityId,
           reason: syncConflicts.reason,
+          detail: syncConflicts.detail,
           incomingPayload: syncConflicts.incomingPayload,
           existingPayload: syncConflicts.existingPayload,
           resolvedAt: syncConflicts.resolvedAt,
@@ -223,6 +227,7 @@ export class SyncRepository extends BaseRepository {
           entityType: syncConflicts.entityType,
           entityId: syncConflicts.entityId,
           reason: syncConflicts.reason,
+          detail: syncConflicts.detail,
           incomingPayload: syncConflicts.incomingPayload,
           existingPayload: syncConflicts.existingPayload,
           resolvedAt: syncConflicts.resolvedAt,

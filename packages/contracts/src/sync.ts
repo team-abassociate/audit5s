@@ -232,6 +232,12 @@ export const syncConflictSchema = z.object({
   entityType: z.string(),
   entityId: uuidSchema,
   reason: syncConflictReasonSchema,
+  /**
+   * The refusal in the server's own words — the sentence `classifyFailure` used to send
+   * only to the log. `reason` is the category a Super Admin filters on; this is what tells
+   * them an unregistered device from a duplicated id. Null for rows held before 0020.
+   */
+  detail: z.string().nullable(),
   incomingPayload: z.record(z.string(), z.unknown()),
   existingPayload: z.record(z.string(), z.unknown()).nullable(),
   resolvedAt: isoDateTimeSchema.nullable(),

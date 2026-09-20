@@ -12,12 +12,14 @@ import {
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
 import {
+  FIXTURE_PASSWORD,
   captureEvidence,
   loginFromDevice,
   startWorld,
   stopWorld,
   type TestWorld,
 } from './harness';
+import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 
 /**
  * The audit engine (PART 14, Phase 3 tests row).
@@ -32,6 +34,12 @@ let world: TestWorld;
 const base = API_BASE_PATH;
 
 /** The Consultant's device and the Zone Leader's, so D7 has two writers to arbitrate. */
+/** Rate limits are per-process and per login ID: a suite that signs in repeatedly would
+ *  otherwise trip §12.11's lockout on itself, which is the control working, not a flake. */
+function resetLimits(): void {
+  world.app.get(RateLimitService).reset();
+}
+
 const CONSULTANT_DEVICE = '01930000-0000-7000-8000-00000000d001';
 const OTHER_DEVICE = '01930000-0000-7000-8000-00000000d002';
 const LEADER_DEVICE = '01930000-0000-7000-8000-00000000d003';
@@ -355,6 +363,80 @@ describe('creating an audit', () => {
       },
     });
     expect(response.status).toBe(403);
+  });
+
+  it('refuses a first login that names a device without saying what it is', async () => {
+    // `refresh_token.device_id` references `device`, and the row is only written when a
+    // platform arrives — so an unknown id with no platform issued a token pointing at a
+    // device that does not exist, and the insert broke the foreign key. A well-formed
+    // request answered 500. It is a 422 naming the missing field now, and it is what
+    // holds the invariant the audit path leans on: a session is never bound to a device
+    // with no row behind it.
+    resetLimits();
+    const login = await world.request('POST', `${base}/auth/login`, {
+      body: {
+        loginId: world.actors.CONSULTANT.loginId,
+        password: FIXTURE_PASSWORD,
+        deviceId: randomUUID(),
+      },
+    });
+
+    expect(login.status, JSON.stringify(login.body)).toBe(422);
+    expect(JSON.stringify(login.body)).toMatch(/platform/i);
+  });
+
+  it('still lets a known device sign in again without repeating its metadata', async () => {
+    // The other half, and the one the Phase 1 acceptance walk relies on: after the first
+    // login has registered the phone, a re-login carries the id alone. The model recorded
+    // the first time must survive it.
+    const known = randomUUID();
+    resetLimits();
+    await loginFromDevice(world, world.actors.CONSULTANT, known);
+
+    resetLimits();
+    const again = await world.request('POST', `${base}/auth/login`, {
+      body: {
+        loginId: world.actors.CONSULTANT.loginId,
+        password: FIXTURE_PASSWORD,
+        deviceId: known,
+      },
+    });
+
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    const { rows } = await world.owner.query(
+      `SELECT model, platform FROM device WHERE id = $1`,
+      [known],
+    );
+    expect(rows[0].model).toBe('Pixel 8');
+    expect(rows[0].platform).toBe('android');
+  });
+
+  it('refuses the previous holder of a handset once somebody else signs in on it', async () => {
+    // The handover is allowed at login, and this is its other half: the session the
+    // previous holder still carries names a device that is no longer theirs. This is the
+    // only way `requireOwnDevice` can fail — a session is never bound to a device that
+    // was never registered — and it now says so rather than "Unknown device".
+    const handset = randomUUID();
+    resetLimits();
+    const staleToken = await loginFromDevice(world, world.actors.CONSULTANT, handset);
+    resetLimits();
+    await loginFromDevice(world, world.actors.ZONE_LEADER, handset);
+
+    const response = await world.request('POST', `${base}/audits`, {
+      token: staleToken,
+      body: {
+        id: randomUUID(),
+        auditType: 'EXTERNAL_5S',
+        unitId: world.unitA,
+        deviceId: handset,
+      },
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
+    expect(JSON.stringify(response.body)).toMatch(/another user|revoked/i);
+
+    const { rows } = await world.owner.query(`SELECT user_id FROM device WHERE id = $1`, [handset]);
+    expect(rows[0].user_id).toBe(world.actors.ZONE_LEADER.userId);
   });
 
   it('returns the existing audit when the same client id is posted twice (§8.6 (a))', async () => {

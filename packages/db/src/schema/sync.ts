@@ -91,6 +91,8 @@ export const syncConflicts = pgTable(
     entityId: uuid('entity_id').notNull(),
     /** Text, not an enum: a diagnostic record, so a sixth reason needs no migration. */
     reason: text('reason').notNull(),
+    /** Why the server refused it, in its own words. Null for rows quarantined before 0020. */
+    detail: text('detail'),
     incomingPayload: jsonb('incoming_payload').notNull(),
     existingPayload: jsonb('existing_payload'),
     batchId: uuid('batch_id'),

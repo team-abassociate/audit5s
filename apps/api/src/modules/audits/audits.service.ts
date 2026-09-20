@@ -121,11 +121,7 @@ export class AuditsService {
     const assignmentId = await this.resolveAssignment(scope, request);
     const deviceId = this.requireDevice(scope, request.deviceId);
 
-    if (!(await this.repository.isOwnDevice(scope, deviceId))) {
-      throw AppError.validation('Unknown device', [
-        { field: 'deviceId', message: 'Register the device before starting an audit' },
-      ]);
-    }
+    await this.requireOwnDevice(scope, deviceId);
 
     // §7.1: an auditor who has already captured their selfie is READY; otherwise the
     // audit waits at ASSIGNED until one arrives.
@@ -783,6 +779,32 @@ export class AuditsService {
       throw AppError.notFound('No such audit');
     }
     return audit;
+  }
+
+  /**
+   * Whether this actor may conduct an audit on `deviceId`.
+   *
+   * There is exactly one way to fail this, and it is worth naming because the old message
+   * — "Unknown device" — suggested a different one. A session cannot be bound to a device
+   * that was never registered: `refresh_token.device_id` references `device`, so such a
+   * login is refused outright, and `requireDevice` then makes the token's id the only one
+   * a request may use. The row therefore always exists. What it may not be is *this*
+   * actor's, and since login hands a handset to whoever signs in on it, that means the
+   * phone moved on while this session did not.
+   */
+  private async requireOwnDevice(scope: ScopeContext, deviceId: string): Promise<void> {
+    if (await this.repository.isOwnDevice(scope, deviceId)) {
+      return;
+    }
+
+    throw AppError.validation('This device belongs to another account', [
+      {
+        field: 'deviceId',
+        message:
+          'Somebody else has since signed in on this device, or it has been revoked. ' +
+          'Sign in again to continue on it.',
+      },
+    ]);
   }
 
   /**
