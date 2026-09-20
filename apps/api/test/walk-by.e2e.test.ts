@@ -326,6 +326,15 @@ describe('R-19 — the auditor names the Zone by number', () => {
     );
     expect(logged).toEqual([{ actor_user_id: world.actors.CONSULTANT.userId }]);
 
+    // R-29 claims a Zone while the audit holding it is open, and what this test is about
+    // is the *master data*: the next audit naming Zone 88 finds the row rather than
+    // creating a second one. So the first walk-by lets go of it before the next one asks.
+    const released = await world.request('POST', `${base}/audits/${auditId}/cancel`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+      body: { reason: 'Finished with this Zone for the purposes of the next audit' },
+    });
+    expect(released.status, JSON.stringify(released.body)).toBe(200);
+
     const secondAuditId = await startWalkBy();
     const again = await world.request(
       'PUT',
