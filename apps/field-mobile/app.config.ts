@@ -8,9 +8,10 @@ import type { ExpoConfig } from 'expo/config';
  * `expo-constants`, so a device build points at the deployed API without a code change.
  */
 const config: ExpoConfig = {
-  name: 'audit5s Field',
+  name: 'Leanstack',
   slug: 'audit5s-field',
   version: '0.1.0',
+  icon: './assets/audit5s-logo.png',
   orientation: 'portrait',
   scheme: 'audit5s',
   userInterfaceStyle: 'automatic',

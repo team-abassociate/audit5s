@@ -1548,3 +1548,19 @@ or the number would measure how often an auditor mistypes.
 - A withdrawn action leaves the device catalogue and the report: `listUnverified` asks for
   "not settled" rather than "not VERIFIED", and the report builds its nonconformities from
   the photographs' classification, which the cascade has already corrected.
+
+
+## R-32 — Field app: 25 audit photographs per Zone
+
+Settled 2026-09-20 by the owner. The updated Android app permits at most 25 active
+question-evidence or walk-by photographs per audit Zone, shared across all five Ss
+and all 50 questions. This replaces the field app's former configurable soft-cap
+expectation. Auditor selfies and corrective-action after-photos are separate.
+
+The camera checks capacity before taking a picture; SQLite also rejects a 26th insert
+atomically. Deleted photos do not count; synced photos still count. At the limit,
+the app asks the auditor to remove an existing photo before taking another. Existing
+photos are never automatically deleted. Unfinished Zones already above the limit
+must be reduced to 25 before submission. Completed historical audits are preserved.
+This is enforced in the updated field app; older APKs and the API are unchanged so
+already queued evidence can still sync without being quarantined by a new server cap.

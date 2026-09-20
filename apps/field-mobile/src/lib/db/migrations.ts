@@ -1,3 +1,4 @@
+import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE } from './photo-limit';
 /**
  * Forward-only local migrations, keyed on SQLite's own `user_version` (§9.1).
  *
@@ -207,6 +208,21 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
        )`,
       `CREATE INDEX IF NOT EXISTS idx_corrective_submission_action
          ON corrective_submission (corrective_action_id)`,
+    ],
+  },
+  {
+    version: 5,
+    statements: [
+      // Atomic guard against simultaneous shutter callbacks. Existing evidence is preserved.
+      `CREATE TRIGGER IF NOT EXISTS evidence_zone_photo_limit
+       BEFORE INSERT ON evidence
+       WHEN NEW.deleted_at IS NULL
+         AND NEW.kind IN ('QUESTION_EVIDENCE', 'WALK_BY_PHOTO')
+         AND NEW.audit_zone_id IS NOT NULL
+         AND (SELECT COUNT(*) FROM evidence
+              WHERE audit_zone_id = NEW.audit_zone_id AND deleted_at IS NULL
+                AND kind IN ('QUESTION_EVIDENCE', 'WALK_BY_PHOTO')) >= ${ZONE_PHOTO_LIMIT}
+       BEGIN SELECT RAISE(ABORT, '${ZONE_PHOTO_LIMIT_MESSAGE}'); END`,
     ],
   },
 ];

@@ -9,6 +9,7 @@ import {
   localQuestionResponses,
   outbox,
 } from './schema';
+import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from './photo-limit';
 import { enqueue, uuidv7 } from './audit.repository';
 
 /**
@@ -62,11 +63,29 @@ export interface CaptureEvidenceInput {
   now?: string;
 }
 
+export async function assertZonePhotoLimitForCompletion(database: LocalDatabase, auditZoneId: string): Promise<void> {
+  const photos = await listLocalEvidenceForZone(database, auditZoneId);
+  const count = photos.filter((photo) => isZoneAuditPhoto(photo.kind)).length;
+  if (count > ZONE_PHOTO_LIMIT) {
+    throw new Error(`This Zone has ${count} photos. Remove ${count - ZONE_PHOTO_LIMIT} photos before submitting (maximum 25).`);
+  }
+}
+
+export async function assertZonePhotoCapacity(database: LocalDatabase, auditZoneId: string): Promise<void> {
+  const photos = await listLocalEvidenceForZone(database, auditZoneId);
+  if (photos.filter((photo) => isZoneAuditPhoto(photo.kind)).length >= ZONE_PHOTO_LIMIT) {
+    throw new Error(ZONE_PHOTO_LIMIT_MESSAGE);
+  }
+}
+
 /** Captures a photograph. Returns the id the server will share (D12). */
 export async function captureLocalEvidence(
   database: LocalDatabase,
   input: CaptureEvidenceInput,
 ): Promise<string> {
+  if (input.auditZoneId && isZoneAuditPhoto(input.kind)) {
+    await assertZonePhotoCapacity(database, input.auditZoneId);
+  }
   const id = input.id ?? uuidv7();
   const now = input.now ?? new Date().toISOString();
 
