@@ -12,12 +12,14 @@ import {
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
 import {
+  FIXTURE_PASSWORD,
   captureEvidence,
   loginFromDevice,
   startWorld,
   stopWorld,
   type TestWorld,
 } from './harness';
+import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 
 /**
  * The audit engine (PART 14, Phase 3 tests row).
@@ -32,6 +34,12 @@ let world: TestWorld;
 const base = API_BASE_PATH;
 
 /** The Consultant's device and the Zone Leader's, so D7 has two writers to arbitrate. */
+/** Rate limits are per-process and per login ID: a suite that signs in repeatedly would
+ *  otherwise trip §12.11's lockout on itself, which is the control working, not a flake. */
+function resetLimits(): void {
+  world.app.get(RateLimitService).reset();
+}
+
 const CONSULTANT_DEVICE = '01930000-0000-7000-8000-00000000d001';
 const OTHER_DEVICE = '01930000-0000-7000-8000-00000000d002';
 const LEADER_DEVICE = '01930000-0000-7000-8000-00000000d003';
@@ -357,18 +365,29 @@ describe('creating an audit', () => {
     expect(response.status).toBe(403);
   });
 
-  it('adopts an unregistered device rather than quarantining the audit on it', async () => {
-    // The regression this covers: a device id lives in the same keystore as the session,
-    // and `getDeviceId()` cannot tell "no id yet" from "the keystore failed to read". A
-    // keystore fault therefore mints a fresh id under a session that is still valid, so
-    // §8.11's registration — which only runs at login — never sees it. Refusing the audit
-    // spent an auditor's day on a bookkeeping row.
+  it('adopts a device the session is bound to but nobody ever registered', async () => {
+    // `deviceId` and `platform` are independently optional on login, and the device is only
+    // upserted when *both* arrive — while the token is bound to `deviceId` regardless. A
+    // client that sends the id without the platform therefore holds a session naming a
+    // device the server has no row for, and every audit it starts used to be refused for
+    // it. `requireDevice` makes the token's id the only one usable, so this is the shape
+    // that reaches `claimDevice` with nothing registered behind it.
     const unregistered = randomUUID();
+    resetLimits();
+    const login = await world.request('POST', `${base}/auth/login`, {
+      body: {
+        loginId: world.actors.CONSULTANT.loginId,
+        password: FIXTURE_PASSWORD,
+        deviceId: unregistered,
+      },
+    });
+    expect(login.status, JSON.stringify(login.body)).toBe(200);
+
     const before = await world.owner.query(`SELECT 1 FROM device WHERE id = $1`, [unregistered]);
     expect(before.rows).toHaveLength(0);
 
     const response = await world.request('POST', `${base}/audits`, {
-      token: consultantToken,
+      token: (login.body as { accessToken: string }).accessToken,
       body: {
         id: randomUUID(),
         auditType: 'EXTERNAL_5S',
@@ -380,9 +399,8 @@ describe('creating an audit', () => {
     expect(response.status, JSON.stringify(response.body)).toBe(201);
     expect((response.body as Audit).owningDeviceId).toBe(unregistered);
 
-    // Adopted for the auditor who used it, not left dangling.
     const { rows } = await world.owner.query(
-      `SELECT user_id, platform, revoked_at FROM device WHERE id = $1`,
+      `SELECT user_id, revoked_at FROM device WHERE id = $1`,
       [unregistered],
     );
     expect(rows).toHaveLength(1);
@@ -390,28 +408,31 @@ describe('creating an audit', () => {
     expect(rows[0].revoked_at).toBeNull();
   });
 
-  it('still refuses a device id that belongs to another user, and says which', async () => {
-    // `adopt` is `onConflictDoNothing`, so a taken id is never reassigned by whoever
-    // asserts it — device ids are client-generated, and accepting this would let any phone
-    // claim any id. The refusal stays; what changed is that it now names the cause.
-    const leadersDevice = LEADER_DEVICE;
+  it('refuses the previous holder of a handset once somebody else signs in on it', async () => {
+    // The handover is allowed at login, and this is its other half: the session the
+    // previous holder still carries names a device that is no longer theirs. `adopt` is
+    // `onConflictDoNothing`, so it cannot take the row back, and the refusal stands —
+    // naming the cause rather than the old, shared "Unknown device".
+    const handset = randomUUID();
+    resetLimits();
+    const staleToken = await loginFromDevice(world, world.actors.CONSULTANT, handset);
+    resetLimits();
+    await loginFromDevice(world, world.actors.ZONE_LEADER, handset);
+
     const response = await world.request('POST', `${base}/audits`, {
-      token: consultantToken,
+      token: staleToken,
       body: {
         id: randomUUID(),
         auditType: 'EXTERNAL_5S',
         unitId: world.unitA,
-        deviceId: leadersDevice,
+        deviceId: handset,
       },
     });
 
-    expect(response.status).toBe(422);
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
     expect(JSON.stringify(response.body)).toMatch(/another user|revoked/i);
 
-    // And the other user's row is untouched.
-    const { rows } = await world.owner.query(`SELECT user_id FROM device WHERE id = $1`, [
-      leadersDevice,
-    ]);
+    const { rows } = await world.owner.query(`SELECT user_id FROM device WHERE id = $1`, [handset]);
     expect(rows[0].user_id).toBe(world.actors.ZONE_LEADER.userId);
   });
 
