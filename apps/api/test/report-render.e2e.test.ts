@@ -111,9 +111,21 @@ function describePdfDifference(a: Buffer, b: Buffer): string {
       buffer.subarray(Math.max(0, at - 24), Math.min(buffer.length, at + 24)).toString('latin1'),
     );
 
+  // The census that separates "the same objects, written differently" from "one document
+  // has an object the other does not". The fixture draws one JPEG's bytes as six separate
+  // images, so whether Skia collapses them into a single shared XObject decides both the
+  // image count and every object number after it.
+  const census = (buffer: Buffer) => {
+    const text = buffer.toString('latin1');
+    const count = (pattern: RegExp) => (text.match(pattern) ?? []).length;
+    return `${count(/\d+ 0 obj/g)} objects, ${count(/\/Subtype\s*\/Image/g)} images, ${count(/\/Subtype\s*\/(Type1|TrueType|Type0|CIDFontType[02])/g)} fonts`;
+  };
+
   return [
     `lengths ${a.length} vs ${b.length}, first difference at byte ${at}`,
     owner ? `inside object ${owner[1]} (starts at ${objectStart})${kind ? ` — ${kind}` : ''}` : 'before any object header',
+    `a: ${census(a)}`,
+    `b: ${census(b)}`,
     `a: ${window(a)}`,
     `b: ${window(b)}`,
   ].join('\n');
