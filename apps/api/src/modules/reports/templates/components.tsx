@@ -414,14 +414,7 @@ export function Photo({ photo, resolve }: { photo: ReportPhoto; resolve: ImageRe
   if (!source) {
     return <div className="redacted">Photo unavailable</div>;
   }
-  // `decoding="sync"` is load-bearing, not a hint about smoothness. The same photograph is
-  // drawn several times in one report — a Zone's nonconformity reappears in the summary's
-  // flagged block — and Skia shares one image XObject between draws only when they resolve
-  // to the same decoded image. Asynchronous decoding made that a race: the document
-  // usually carried one shared object and sometimes two, which renumbered every object
-  // after it and broke R-14's byte stability (PART 15.7). Decoding before paint removes
-  // the race without JavaScript, which the print context does not enable.
-  return <img src={source} alt="" decoding="sync" loading="eager" />;
+  return <img src={source} alt="" />;
 }
 
 export function round(value: number): number {
