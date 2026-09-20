@@ -47,6 +47,12 @@ export const AUDIT_LOG_ACTIONS = [
   'unit.updated',
   'unit.archived',
   'device.revoked',
+  /**
+   * A handset changed hands: somebody signed in on a device registered to another user,
+   * and login moved it to them. Recorded because it is the moment the previous owner's
+   * unsynced work on that phone stops being reachable from it.
+   */
+  'device.transferred',
   'sync_conflict.resolved',
 ] as const;
 export const auditLogActionSchema = z.enum(AUDIT_LOG_ACTIONS);

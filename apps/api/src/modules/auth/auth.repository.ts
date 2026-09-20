@@ -106,8 +106,27 @@ export class AuthRepository {
     osVersion?: string | null;
     appVersion?: string | null;
     pushToken?: string | null;
-  }): Promise<void> {
-    await withAuthPhase(this.db, async (tx) => {
+    /**
+     * The user this device belonged to before this login, when that was somebody else.
+     * A handset is physical and its id is per-install, not per-user: signing in on it is
+     * the act of taking it over, and it is the only moment anybody proves they hold the
+     * credentials *on that device*. Before this, the upsert left `user_id` alone, so a
+     * shared phone stayed with whoever logged in first and every audit the second auditor
+     * started was refused for a device that was not theirs.
+     *
+     * The previous owner's unsynced work on the phone stops being reachable from it, and
+     * any audit still locked to this device is released the documented way, through
+     * `POST /audits/{id}/release-device`. That is why this is reported rather than
+     * swallowed: the caller audit-logs it.
+     */
+  }): Promise<{ transferredFromUserId: string | null }> {
+    return withAuthPhase(this.db, async (tx) => {
+      const [existing] = await tx
+        .select({ userId: devices.userId })
+        .from(devices)
+        .where(eq(devices.id, input.deviceId))
+        .limit(1);
+
       await tx
         .insert(devices)
         .values({
@@ -129,8 +148,16 @@ export class AuthRepository {
             ...(input.pushToken ? { pushToken: input.pushToken } : {}),
             lastSeenAt: sql`now()`,
             revokedAt: null,
+            // The handover itself. Deliberately unconditional: a device row follows the
+            // account that last signed in on the hardware.
+            userId: input.userId,
           },
         });
+
+      return {
+        transferredFromUserId:
+          existing && existing.userId !== input.userId ? existing.userId : null,
+      };
     });
   }
 

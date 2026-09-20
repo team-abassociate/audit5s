@@ -95,7 +95,7 @@ export class AuthService {
     await this.repository.applySuccessfulLogin(user.id, rehashed);
 
     if (request.deviceId && request.platform) {
-      await this.repository.upsertDevice({
+      const { transferredFromUserId } = await this.repository.upsertDevice({
         deviceId: request.deviceId,
         userId: user.id,
         platform: request.platform,
@@ -103,6 +103,24 @@ export class AuthService {
         osVersion: request.osVersion ?? null,
         appVersion: request.appVersion ?? null,
       });
+
+      // A shared handset changing hands is not routine, even though it is permitted: the
+      // previous owner's unsynced work on that phone stops being reachable from it, and an
+      // audit still locked to the device now needs a Super Admin's release. Recorded so
+      // that is a fact somebody can find, rather than something inferred afterwards from a
+      // device list that only ever shows the current owner.
+      if (transferredFromUserId) {
+        await this.auditLog.recordSafely(
+          {
+            action: 'device.transferred',
+            resourceType: 'device',
+            resourceId: request.deviceId,
+            before: { userId: transferredFromUserId },
+            after: { userId: user.id },
+          },
+          `${user.fullName} (${user.loginId})`,
+        );
+      }
     }
 
     await this.repository.recordLoginAttempt({
