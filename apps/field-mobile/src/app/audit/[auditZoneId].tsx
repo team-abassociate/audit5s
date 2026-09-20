@@ -39,11 +39,14 @@ import {
 } from '../../components/evidence-photos';
 import { ResponseChips } from '../../components/response-chips';
 import {
+  assertZonePhotoCapacity,
+  assertZonePhotoLimitForCompletion,
   captureLocalEvidence,
   listLocalEvidenceForZone,
   reclassifyLocalEvidence,
   responseIdFor,
 } from '../../lib/db/evidence.repository';
+import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import {
@@ -230,6 +233,7 @@ export default function QuestionnaireScreen() {
   const finish = useMutation({
     mutationFn: async () => {
       await saveZoneRemark(database, auditZoneId, zoneRemarkDraft.trim() || null);
+      await assertZonePhotoLimitForCompletion(database, auditZoneId);
       await completeLocalZone(database, auditZoneId);
     },
     onSuccess: async () => {
@@ -353,6 +357,7 @@ export default function QuestionnaireScreen() {
   const unanswered = rows.length - answered;
   const section = pageRows[0]?.section as SSection | undefined;
   const zonePhotos = photos.data ?? [];
+  const zonePhotoCount = zonePhotos.filter((photo) => isZoneAuditPhoto(photo.kind)).length;
   const photosFor = (row: Row) =>
     row.responseId ? zonePhotos.filter((photo) => photo.questionResponseId === row.responseId) : [];
   const previewPhoto = previewId ? (zonePhotos.find((photo) => photo.id === previewId) ?? null) : null;
@@ -496,6 +501,16 @@ export default function QuestionnaireScreen() {
                 </SlipText>
               </Slip>
             ) : null}
+            <Muted>{zonePhotoCount} / {ZONE_PHOTO_LIMIT} photos in this Zone — shared across all 50 questions.</Muted>
+            {auditOpen && zonePhotoCount >= ZONE_PHOTO_LIMIT ? (
+              <Card>
+                <ErrorBanner message={zonePhotoCount > ZONE_PHOTO_LIMIT
+                  ? `This Zone has ${zonePhotoCount} photos. Remove ${zonePhotoCount - ZONE_PHOTO_LIMIT} to meet the 25-photo limit. Remove another to take a new photo.`
+                  : ZONE_PHOTO_LIMIT_MESSAGE} />
+                <Muted>Tap a photo below, then Delete photo. No photos are removed automatically.</Muted>
+                <PhotoThumbs photos={zonePhotos} onOpen={setPreviewId} />
+              </Card>
+            ) : null}
             <MarkingScheme />
             {showMissing && unanswered > 0 ? (
               <ErrorBanner
@@ -512,7 +527,7 @@ export default function QuestionnaireScreen() {
             onPreview={setPreviewId}
             missing={showMissing && valueOf(item) === null}
             readOnly={!editable}
-            canPhoto={auditOpen}
+            canPhoto={auditOpen && photos.isSuccess && zonePhotoCount < ZONE_PHOTO_LIMIT}
             onAnswer={(value, remark) => {
               setPicked((current) => ({ ...current, [item.questionId]: value }));
               // The same tap, two doors: an open audit takes an answer, a finished one
@@ -593,6 +608,7 @@ export default function QuestionnaireScreen() {
       {cameraFor ? (
         <View style={styles.cameraLayer}>
           <CameraCapture
+            beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
             prompt={`Photograph for question ${cameraFor.globalOrder}`}
             onCaptured={async (image) => {
               await capture.mutateAsync(image);

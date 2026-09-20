@@ -17,6 +17,9 @@
     },
     "vps": {
       "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
       "environment": "production",
       "autoIncrement": true,
       "env": {

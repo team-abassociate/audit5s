@@ -25,6 +25,7 @@ import {
   Screen,
   SectionHead,
 } from '../../components/ui';
+import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import {
@@ -33,6 +34,8 @@ import {
   saveZoneRemark,
 } from '../../lib/db/audit.repository';
 import {
+  assertZonePhotoCapacity,
+  assertZonePhotoLimitForCompletion,
   captureLocalEvidence,
   deleteLocalEvidence,
   listLocalEvidenceForZone,
@@ -105,6 +108,7 @@ export default function WalkByScreen() {
         throw new Error('Take at least one photograph before finishing this Zone.');
       }
       await saveZoneRemark(database, auditZoneId, zoneRemark.trim() || null);
+      await assertZonePhotoLimitForCompletion(database, auditZoneId);
       await completeLocalZone(database, auditZoneId);
     },
     onSuccess: async () => {
@@ -124,6 +128,7 @@ export default function WalkByScreen() {
   if (cameraOpen) {
     return (
       <CameraCapture
+            beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
         prompt={`Capture a ${classificationLabel(classification).toLowerCase()} observation`}
         onCaptured={(image) => capture.mutateAsync(image)}
         onCancel={() => setCameraOpen(false)}
@@ -133,7 +138,7 @@ export default function WalkByScreen() {
 
   const editable = zone.data.status !== 'COMPLETED';
   const title = zoneDisplayLabel(zone.data.zoneCodeSnapshot, zone.data.zoneNameSnapshot);
-  const count = photos.data?.length ?? 0;
+  const count = (photos.data ?? []).filter((photo) => isZoneAuditPhoto(photo.kind)).length;
 
   return (
     <Screen>
@@ -156,7 +161,9 @@ export default function WalkByScreen() {
             />
             <View style={styles.stack}>
               <ClassificationChoices value={classification} onChange={setClassification} />
-              <Button title={count ? 'Take another photo' : 'Open camera'} onPress={() => setCameraOpen(true)} />
+              <ErrorBanner message={count >= ZONE_PHOTO_LIMIT ? ZONE_PHOTO_LIMIT_MESSAGE : null} />
+              <Muted>{count} / {ZONE_PHOTO_LIMIT} photos. Use Delete photo below to free a space.</Muted>
+              <Button disabled={!photos.isSuccess || count >= ZONE_PHOTO_LIMIT} title={count ? 'Take another photo' : 'Open camera'} onPress={() => setCameraOpen(true)} />
             </View>
           </Card>
         ) : null}

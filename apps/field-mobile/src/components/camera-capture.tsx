@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
 import { Button } from './ui';
 import { processCapturedPhoto, type ProcessedImage } from '../lib/capture/media';
+import { ZONE_PHOTO_LIMIT_MESSAGE } from '../lib/db/photo-limit';
 import { gemba, gembaFonts } from '../lib/gemba';
 
 /**
@@ -30,14 +31,16 @@ export interface CameraCaptureProps {
   facing?: CameraType;
   /** Shown above the shutter — "Take your selfie", "Photograph the nonconformity". */
   prompt: string;
+  beforeCapture?: () => Promise<void>;
   onCaptured: (image: ProcessedImage) => void | Promise<void>;
   onCancel: () => void;
 }
 
-export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }: CameraCaptureProps) {
+export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, beforeCapture }: CameraCaptureProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const taking = useRef(false);
   const camera = useRef<CameraView>(null);
 
   if (!permission) {
@@ -63,10 +66,12 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }:
   }
 
   const take = async () => {
-    if (busy) return;
+    if (taking.current) return;
+    taking.current = true;
     setBusy(true);
     setError(null);
     try {
+      await beforeCapture?.();
       const photo = await camera.current?.takePictureAsync({ skipProcessing: false });
       if (!photo?.uri) return;
       // Downscaled, EXIF-stripped and hashed before anything else sees it (§9.4).
@@ -75,8 +80,10 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel }:
       // Said on the screen the auditor is looking at, never an unhandled rejection: nothing
       // was saved, so the honest words are "try again".
       console.error('capture failed', cause);
-      setError('The photograph was not saved. Try again.');
+      setError(cause instanceof Error && cause.message.includes(ZONE_PHOTO_LIMIT_MESSAGE)
+        ? ZONE_PHOTO_LIMIT_MESSAGE : 'The photograph was not saved. Try again.');
     } finally {
+      taking.current = false;
       setBusy(false);
     }
   };
