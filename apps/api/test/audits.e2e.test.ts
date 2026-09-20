@@ -357,6 +357,64 @@ describe('creating an audit', () => {
     expect(response.status).toBe(403);
   });
 
+  it('adopts an unregistered device rather than quarantining the audit on it', async () => {
+    // The regression this covers: a device id lives in the same keystore as the session,
+    // and `getDeviceId()` cannot tell "no id yet" from "the keystore failed to read". A
+    // keystore fault therefore mints a fresh id under a session that is still valid, so
+    // §8.11's registration — which only runs at login — never sees it. Refusing the audit
+    // spent an auditor's day on a bookkeeping row.
+    const unregistered = randomUUID();
+    const before = await world.owner.query(`SELECT 1 FROM device WHERE id = $1`, [unregistered]);
+    expect(before.rows).toHaveLength(0);
+
+    const response = await world.request('POST', `${base}/audits`, {
+      token: consultantToken,
+      body: {
+        id: randomUUID(),
+        auditType: 'EXTERNAL_5S',
+        unitId: world.unitA,
+        deviceId: unregistered,
+      },
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    expect((response.body as Audit).owningDeviceId).toBe(unregistered);
+
+    // Adopted for the auditor who used it, not left dangling.
+    const { rows } = await world.owner.query(
+      `SELECT user_id, platform, revoked_at FROM device WHERE id = $1`,
+      [unregistered],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].user_id).toBe(world.actors.CONSULTANT.userId);
+    expect(rows[0].revoked_at).toBeNull();
+  });
+
+  it('still refuses a device id that belongs to another user, and says which', async () => {
+    // `adopt` is `onConflictDoNothing`, so a taken id is never reassigned by whoever
+    // asserts it — device ids are client-generated, and accepting this would let any phone
+    // claim any id. The refusal stays; what changed is that it now names the cause.
+    const leadersDevice = LEADER_DEVICE;
+    const response = await world.request('POST', `${base}/audits`, {
+      token: consultantToken,
+      body: {
+        id: randomUUID(),
+        auditType: 'EXTERNAL_5S',
+        unitId: world.unitA,
+        deviceId: leadersDevice,
+      },
+    });
+
+    expect(response.status).toBe(422);
+    expect(JSON.stringify(response.body)).toMatch(/another user|revoked/i);
+
+    // And the other user's row is untouched.
+    const { rows } = await world.owner.query(`SELECT user_id FROM device WHERE id = $1`, [
+      leadersDevice,
+    ]);
+    expect(rows[0].user_id).toBe(world.actors.ZONE_LEADER.userId);
+  });
+
   it('returns the existing audit when the same client id is posted twice (§8.6 (a))', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
     const auditId = randomUUID();

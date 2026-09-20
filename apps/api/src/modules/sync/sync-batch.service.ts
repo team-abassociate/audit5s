@@ -235,6 +235,11 @@ export class SyncBatchService {
   ): Promise<SyncBatchResult> {
     const code = error instanceof AppError ? error.code : null;
     const reason = QUARANTINE_REASONS[code ?? ''] ?? null;
+    // Built once, for the row as well as the log. `reason` is the category a Super Admin
+    // filters on; this is the sentence that tells them which rule actually refused the
+    // item, and until 0020 it reached the log and nothing else.
+    const errors = this.describe(error);
+    const detail = errors.join('; ');
 
     if (reason) {
       // §9.5's `AUDIT_ALREADY_COMPLETED` carve-out: a byte-identical late item is a
@@ -249,13 +254,14 @@ export class SyncBatchService {
         entityType: item.entityType,
         entityId: item.entityId,
         reason,
+        detail,
         incomingPayload: item.payload,
         existingPayload: await this.snapshotExisting(scope, item),
         batchId,
       });
 
       this.logger.warn(
-        `quarantined ${item.entityType} ${item.entityId} from device ${deviceId}: ${reason}`,
+        `quarantined ${item.entityType} ${item.entityId} from device ${deviceId}: ${reason} (${detail})`,
       );
 
       return { ...base, status: 'CONFLICT', reason, conflictId, resolution: 'QUARANTINED' };
@@ -264,19 +270,19 @@ export class SyncBatchService {
     // Everything else is a malformed or unacceptable payload. It is **still** quarantined:
     // §9.5's list includes `VALIDATION_FAILED` precisely so a client bug costs a
     // diagnosis rather than a day's field work.
-    const errors = this.describe(error);
     const conflictId = await this.repository.quarantine(scope, {
       deviceId,
       entityType: item.entityType,
       entityId: item.entityId,
       reason: 'VALIDATION_FAILED',
+      detail,
       incomingPayload: item.payload,
       existingPayload: null,
       batchId,
     });
 
     this.logger.warn(
-      `rejected ${item.entityType} ${item.entityId} from device ${deviceId}: ${errors.join('; ')}`,
+      `rejected ${item.entityType} ${item.entityId} from device ${deviceId}: ${detail}`,
     );
 
     return {

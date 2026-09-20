@@ -155,6 +155,7 @@ export function toSyncConflict(row: SyncConflictRow): SyncConflict {
     entityType: row.entityType,
     entityId: row.entityId,
     reason: row.reason as SyncConflictReason,
+    detail: row.detail,
     incomingPayload: (row.incomingPayload ?? {}) as Record<string, unknown>,
     existingPayload: (row.existingPayload ?? null) as Record<string, unknown> | null,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,

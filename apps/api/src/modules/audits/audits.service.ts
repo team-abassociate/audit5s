@@ -38,6 +38,7 @@ import { CorrectiveActionsService } from '../corrective-actions/corrective-actio
 import { getRequestContext } from '../../common/observability/request-context';
 import { UnitsRepository } from '../units/units.repository';
 import { AssignmentsRepository } from '../audit-assignments/assignments.repository';
+import { DevicesRepository } from '../devices/devices.repository';
 import { asAppError } from '../audit-assignments/assignments.service';
 import {
   AuditsRepository,
@@ -75,6 +76,7 @@ export class AuditsService {
     private readonly events: DomainEvents,
     private readonly correctiveActions: CorrectiveActionsService,
     private readonly queue: QueueService,
+    private readonly devices: DevicesRepository,
   ) {}
 
   // ------------------------------------------------------------------------ create
@@ -121,11 +123,7 @@ export class AuditsService {
     const assignmentId = await this.resolveAssignment(scope, request);
     const deviceId = this.requireDevice(scope, request.deviceId);
 
-    if (!(await this.repository.isOwnDevice(scope, deviceId))) {
-      throw AppError.validation('Unknown device', [
-        { field: 'deviceId', message: 'Register the device before starting an audit' },
-      ]);
-    }
+    await this.claimDevice(scope, deviceId);
 
     // §7.1: an auditor who has already captured their selfie is READY; otherwise the
     // audit waits at ASSIGNED until one arrives.
@@ -783,6 +781,58 @@ export class AuditsService {
       throw AppError.notFound('No such audit');
     }
     return audit;
+  }
+
+  /**
+   * Makes `deviceId` usable, or says precisely why it is not.
+   *
+   * This used to be a flat refusal, and the refusal was reaching the wrong phones. A
+   * device id lives in the same keystore as the session, and `getDeviceId()` mints a new
+   * one whenever that read comes back empty — including when it came back empty because
+   * the read *failed*. The session survives, so the app never logs in again, so §8.11's
+   * registration never runs, and every audit that phone starts is refused for an id the
+   * server has simply never been told about. The auditor's day is quarantined over
+   * bookkeeping.
+   *
+   * So an id nobody holds is adopted rather than refused. The two refusals that remain are
+   * the two that mean something:
+   *
+   *   * **revoked** — an administrator ended this device deliberately, and an audit is not
+   *     the place to undo that. `adopt` cannot clear a revocation, so the re-check still
+   *     fails and the message says so.
+   *   * **another user's** — device ids are client-generated, so accepting this would let
+   *     any phone claim any id by asserting it. `adopt` leaves a taken id untouched, and
+   *     this is the sentence that explains the resulting quarantine.
+   *
+   * Both now say which, rather than sharing one "Unknown device": since 0020 that sentence
+   * is stored on the quarantine row, so Sync Health shows it instead of sending a Super
+   * Admin to the container logs.
+   */
+  private async claimDevice(scope: ScopeContext, deviceId: string): Promise<void> {
+    if (await this.repository.isOwnDevice(scope, deviceId)) {
+      return;
+    }
+
+    // The field app is Android-only (AGENTS.md), and `device.platform` is NOT NULL with a
+    // two-value CHECK, so an adopted row has to carry one. It is corrected in place by the
+    // next login, which sends the real platform, model and app version.
+    await this.devices.adopt(scope, deviceId, 'android');
+
+    if (await this.repository.isOwnDevice(scope, deviceId)) {
+      this.logger.log(
+        `adopted unregistered device ${deviceId} for user ${scope.actor.userId} on audit create`,
+      );
+      return;
+    }
+
+    throw AppError.validation('This device cannot start an audit', [
+      {
+        field: 'deviceId',
+        message:
+          'The id is registered to another user or has been revoked. Sign in again on this ' +
+          'device, or ask an administrator to clear the revocation.',
+      },
+    ]);
   }
 
   /**
