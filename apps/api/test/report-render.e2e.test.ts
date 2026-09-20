@@ -79,11 +79,52 @@ afterAll(async () => {
   await renderer.onModuleDestroy();
 });
 
+/**
+ * Where two PDFs stop agreeing, in words.
+ *
+ * A determinism failure that reports only two hashes says nothing about its own cause: the
+ * bytes could differ in a font stream, an image, the metadata or the cross-reference
+ * table, and those are four different bugs. This locates the first difference and names
+ * the object it falls inside, so a failure is a diagnosis rather than a prompt to guess.
+ */
+function describePdfDifference(a: Buffer, b: Buffer): string {
+  if (a.equals(b)) return 'identical';
+
+  const limit = Math.min(a.length, b.length);
+  let at = 0;
+  while (at < limit && a[at] === b[at]) at += 1;
+
+  const textA = a.toString('latin1');
+  // The object the difference sits in: the last `N 0 obj` header at or before the offset.
+  const headers = [...textA.slice(0, at).matchAll(/(\d+) 0 obj/g)];
+  const owner = headers.at(-1);
+  const objectStart = owner?.index ?? 0;
+  // What kind of object that is — /Subtype and /Filter are what separate a font from an
+  // image from a content stream.
+  const dictionary = textA.slice(objectStart, Math.min(objectStart + 400, textA.length));
+  const kind = [...dictionary.matchAll(/\/(Type|Subtype|Filter|BaseFont)\s*\/?([A-Za-z0-9+#-]+)/g)]
+    .map((match) => `/${match[1]} ${match[2]}`)
+    .join(' ');
+
+  const window = (buffer: Buffer) =>
+    JSON.stringify(
+      buffer.subarray(Math.max(0, at - 24), Math.min(buffer.length, at + 24)).toString('latin1'),
+    );
+
+  return [
+    `lengths ${a.length} vs ${b.length}, first difference at byte ${at}`,
+    owner ? `inside object ${owner[1]} (starts at ${objectStart})${kind ? ` — ${kind}` : ''}` : 'before any object header',
+    `a: ${window(a)}`,
+    `b: ${window(b)}`,
+  ].join('\n');
+}
+
 describe('the renderer is deterministic (PART 15.7)', () => {
   it('renders the same fixed payload to byte-identical PDFs', async () => {
     const first = await renderer.render(fixtureZonePayload());
     const second = await renderer.render(fixtureZonePayload());
 
+    expect(describePdfDifference(first.pdf, second.pdf)).toBe('identical');
     expect(first.checksumSha256).toBe(second.checksumSha256);
     // Compared as bytes as well as by digest: a checksum computed over the wrong buffer
     // would agree with itself and prove nothing.
@@ -99,6 +140,7 @@ describe('the renderer is deterministic (PART 15.7)', () => {
     await renderer.onModuleDestroy();
     const second = await renderer.render(fixtureZonePayload());
 
+    expect(describePdfDifference(first.pdf, second.pdf)).toBe('identical');
     expect(first.checksumSha256).toBe(second.checksumSha256);
   }, 180_000);
 
