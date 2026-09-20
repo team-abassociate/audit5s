@@ -4,7 +4,7 @@ import type { Browser } from 'playwright-core';
 import type { ReportPayload } from '@audit5s/contracts';
 import { CONFIG, type AppConfig } from '../../config/env';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
-import { REPORT_FONT_STACK, REPORT_MONO_STACK, renderReportHtml } from './templates';
+import { renderReportHtml } from './templates';
 
 export interface RenderedReport {
   pdf: Buffer;
@@ -31,15 +31,6 @@ export interface RenderedReport {
  *   3. **No animation.** `prefers-reduced-motion` is forced, so nothing is captured
  *      mid-transition.
  *   4. **One browser, pinned.** Concurrency 1, the version pinned by the lockfile.
- *   5. **No cold first render.** The four above left one clock running that nobody had
- *      named: the browser's own start-up. A freshly launched Chromium resolved this
- *      template's font stack — which is `Helvetica`/`Arial` on a host that has neither, so
- *      every glyph goes through fontconfig substitution — to different bytes than the same
- *      browser resolved a moment later, and PART 15.7 caught it as an intermittent failure
- *      roughly one run in four. In production it is worse than intermittent: the browser is
- *      reused across jobs, so it was *always* the first report after a worker restart that
- *      differed, which is exactly the regeneration R-14 promises will be byte-identical.
- *      `warmUp` below spends one throwaway render on it so no report is ever the first.
  *
  * The browser is launched per job rather than held open. That costs about a second and
  * buys the thing a 1536 MB container actually needs: a renderer that leaks nothing between
@@ -118,12 +109,7 @@ export class ReportRenderer implements OnModuleDestroy {
   }
 
   private async printToPdf(html: string): Promise<Buffer> {
-    return this.printToPdfOn(await this.launch(), html);
-  }
-
-  /** The print itself, against an explicit browser: `warmUp` runs before `this.browser`
-   *  is set, so it cannot go through `launch()` without recursing. */
-  private async printToPdfOn(browser: Browser, html: string): Promise<Buffer> {
+    const browser = await this.launch();
     const context = await browser.newContext({
       // Fixed viewport and scale factor: the print box comes from `@page`, but a
       // different device scale changes how sub-pixel positions round.
@@ -166,7 +152,7 @@ export class ReportRenderer implements OnModuleDestroy {
     // do not use — and so a missing Chromium is an error in the worker that needs it
     // rather than a boot failure of the API.
     const { chromium } = await import('playwright-core');
-    const browser = await chromium.launch({
+    this.browser = await chromium.launch({
       // STACK.md §2 pins `chrome-headless-shell`, not full Chromium: it is the build
       // without the browser UI, ~50 MB smaller, and the only thing this worker needs is a
       // renderer. An explicit executable path wins, for an image that ships its own.
@@ -186,38 +172,7 @@ export class ReportRenderer implements OnModuleDestroy {
         '--font-render-hinting=none',
       ],
     });
-
-    await this.warmUp(browser);
-    this.browser = browser;
-    return browser;
-  }
-
-  /**
-   * One throwaway render, so the first *report* is never the first render.
-   *
-   * It goes through `printToPdf`'s own path rather than a shortcut — same context options,
-   * same `setContent`, same `page.pdf()` — because the difference being absorbed is
-   * whatever that path initialises lazily, and a cheaper imitation would warm something
-   * else. It prints both type stacks over the full Latin alphabet and the ten digits so
-   * the substitution fontconfig will use for the real report is the one resolved here.
-   *
-   * Failure is swallowed deliberately. A warm-up that cannot run leaves the renderer
-   * exactly where it was before this existed — byte-stable only after its first job — and
-   * refusing to launch over it would turn a determinism safeguard into an outage.
-   */
-  private async warmUp(browser: Browser): Promise<void> {
-    const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 %.,()/-';
-    try {
-      await this.printToPdfOn(
-        browser,
-        `<!doctype html><html><head><meta charset="utf-8"><style>
-           body { font-family: ${REPORT_FONT_STACK}; font-variant-numeric: tabular-nums; }
-           code { font-family: ${REPORT_MONO_STACK}; }
-         </style></head><body>${glyphs}<code>${glyphs}</code></body></html>`,
-      );
-    } catch (error) {
-      this.logger.warn({ err: error }, 'Renderer warm-up failed; first render may not be byte-stable');
-    }
+    return this.browser;
   }
 }
 

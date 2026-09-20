@@ -7,7 +7,6 @@ import { SUPPORTED_PAYLOAD_SCHEMA_VERSIONS, TEMPLATE_VERSION } from './version';
 import { ZoneReport } from './zone-report';
 
 export { TEMPLATE_VERSION } from './version';
-export { REPORT_FONT_STACK, REPORT_MONO_STACK } from './styles';
 export type { ImageResolver } from './components';
 
 /**
