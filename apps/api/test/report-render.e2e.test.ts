@@ -112,13 +112,27 @@ function describePdfDifference(a: Buffer, b: Buffer): string {
     );
 
   // The census that separates "the same objects, written differently" from "one document
-  // has an object the other does not". The fixture draws one JPEG's bytes as six separate
-  // images, so whether Skia collapses them into a single shared XObject decides both the
-  // image count and every object number after it.
+  // has an object the other does not", and then says which object.
+  //
+  // Counting alone left an ambiguity worth closing: the fixture draws one JPEG's bytes six
+  // times, but the stylesheet also paints a `repeating-linear-gradient` column grid on
+  // every page, and Chromium rasterises a CSS gradient into a tiling Pattern backed by an
+  // image XObject. Three or four images is the wrong shape for six identical photographs
+  // and the right shape for a per-page tile, so the dimensions decide it: the fixture's
+  // photograph is 1×1, and a grid tile is not.
   const census = (buffer: Buffer) => {
     const text = buffer.toString('latin1');
     const count = (pattern: RegExp) => (text.match(pattern) ?? []).length;
-    return `${count(/\d+ 0 obj/g)} objects, ${count(/\/Subtype\s*\/Image/g)} images, ${count(/\/Subtype\s*\/(Type1|TrueType|Type0|CIDFontType[02])/g)} fonts`;
+    const images = [...text.matchAll(/\/Subtype\s*\/Image[\s\S]{0,400}?(?=endobj)/g)].map((match) => {
+      const width = /\/Width\s+(\d+)/.exec(match[0])?.[1] ?? '?';
+      const height = /\/Height\s+(\d+)/.exec(match[0])?.[1] ?? '?';
+      const filter = /\/Filter\s*\/(\w+)/.exec(match[0])?.[1] ?? '?';
+      return `${width}x${height} ${filter}`;
+    });
+    return [
+      `${count(/\d+ 0 obj/g)} objects, ${images.length} images, ${count(/\/Subtype\s*\/(Type1|TrueType|Type0|CIDFontType[02])/g)} fonts`,
+      `      images: [${images.join(', ')}]`,
+    ].join('\n');
   };
 
   return [
