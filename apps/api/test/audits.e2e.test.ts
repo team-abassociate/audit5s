@@ -365,54 +365,31 @@ describe('creating an audit', () => {
     expect(response.status).toBe(403);
   });
 
-  it('adopts a device the session is bound to but nobody ever registered', async () => {
-    // `deviceId` and `platform` are independently optional on login, and the device is only
-    // upserted when *both* arrive — while the token is bound to `deviceId` regardless. A
-    // client that sends the id without the platform therefore holds a session naming a
-    // device the server has no row for, and every audit it starts used to be refused for
-    // it. `requireDevice` makes the token's id the only one usable, so this is the shape
-    // that reaches `claimDevice` with nothing registered behind it.
-    const unregistered = randomUUID();
+  it('refuses a login that names a device but no platform, rather than failing on it', async () => {
+    // `refresh_token.device_id` references `device`, and the device row is only written
+    // when a platform arrives too — so this pair used to issue a token pointing at a
+    // device that was never registered, and the insert broke the foreign key. A
+    // well-formed request answered 500. It is a 422 with a sentence now, and the
+    // invariant it protects is the one the audit path relies on: a session is never
+    // bound to a device that does not exist.
     resetLimits();
     const login = await world.request('POST', `${base}/auth/login`, {
       body: {
         loginId: world.actors.CONSULTANT.loginId,
         password: FIXTURE_PASSWORD,
-        deviceId: unregistered,
-      },
-    });
-    expect(login.status, JSON.stringify(login.body)).toBe(200);
-
-    const before = await world.owner.query(`SELECT 1 FROM device WHERE id = $1`, [unregistered]);
-    expect(before.rows).toHaveLength(0);
-
-    const response = await world.request('POST', `${base}/audits`, {
-      token: (login.body as { accessToken: string }).accessToken,
-      body: {
-        id: randomUUID(),
-        auditType: 'EXTERNAL_5S',
-        unitId: world.unitA,
-        deviceId: unregistered,
+        deviceId: randomUUID(),
       },
     });
 
-    expect(response.status, JSON.stringify(response.body)).toBe(201);
-    expect((response.body as Audit).owningDeviceId).toBe(unregistered);
-
-    const { rows } = await world.owner.query(
-      `SELECT user_id, revoked_at FROM device WHERE id = $1`,
-      [unregistered],
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].user_id).toBe(world.actors.CONSULTANT.userId);
-    expect(rows[0].revoked_at).toBeNull();
+    expect(login.status, JSON.stringify(login.body)).toBe(422);
+    expect(JSON.stringify(login.body)).toMatch(/platform/i);
   });
 
   it('refuses the previous holder of a handset once somebody else signs in on it', async () => {
     // The handover is allowed at login, and this is its other half: the session the
-    // previous holder still carries names a device that is no longer theirs. `adopt` is
-    // `onConflictDoNothing`, so it cannot take the row back, and the refusal stands —
-    // naming the cause rather than the old, shared "Unknown device".
+    // previous holder still carries names a device that is no longer theirs. This is the
+    // only way `requireOwnDevice` can fail — a session is never bound to a device that
+    // was never registered — and it now says so rather than "Unknown device".
     const handset = randomUUID();
     resetLimits();
     const staleToken = await loginFromDevice(world, world.actors.CONSULTANT, handset);

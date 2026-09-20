@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AssignmentsModule } from '../audit-assignments/assignments.module';
 import { CorrectiveActionsModule } from '../corrective-actions/corrective-actions.module';
-import { DevicesModule } from '../devices/devices.module';
 import { EvidenceModule } from '../evidence/evidence.module';
 import { UnitsModule } from '../units/units.module';
 import { AuditZonesController } from '../audit-zones/audit-zones.controller';
@@ -28,7 +27,7 @@ import { SelfieRequirement } from './selfie-requirement';
  * the same tables or a service reaching across module edges, and AZ-1 permits neither.
  */
 @Module({
-  imports: [UnitsModule, AssignmentsModule, EvidenceModule, CorrectiveActionsModule, DevicesModule],
+  imports: [UnitsModule, AssignmentsModule, EvidenceModule, CorrectiveActionsModule],
   controllers: [AuditsController, AuditZonesController, ResponsesController],
   providers: [
     AuditsService,

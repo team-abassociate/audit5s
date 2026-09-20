@@ -35,40 +35,6 @@ export class DevicesRepository extends BaseRepository {
    * deliberately **not** cleared: re-registering a revoked device must not un-revoke it,
    * or revocation would be one app restart away from meaningless.
    */
-  /**
-   * Claims an **unregistered** device id for the signed-in actor.
-   *
-   * A device id is minted by the field app and kept in the phone's keystore, beside the
-   * session. `getDeviceId()` cannot tell a keystore that has no id from one that failed to
-   * read — both come back empty — so a keystore fault makes the app mint a fresh id while
-   * the session issued under the old one is still valid. Nothing registers that id:
-   * registration happens at login (§8.11), and the app is not logging in. The first the
-   * server hears of it is the audit that arrives on it.
-   *
-   * Refusing that audit spends a day of field work on a bookkeeping row, which is the
-   * trade §9.5 exists to avoid, so the row is created instead.
-   *
-   * `onConflictDoNothing` is the entire safety argument, and it is why this is not
-   * `register()`: an id already in the table is left exactly as it stands. This can adopt
-   * an id nobody holds; it can never reassign one that belongs to another user, overwrite
-   * a real platform or model, or clear a revocation. Each of those stays refused, and the
-   * caller re-checks ownership rather than trusting this to have succeeded.
-   */
-  async adopt(scope: ScopeContext, deviceId: string, platform: string): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      await tx
-        .insert(devices)
-        .values({
-          id: deviceId,
-          userId: scope.actor.userId,
-          platform,
-          lastSeenAt: new Date(),
-        })
-        .onConflictDoNothing({ target: devices.id });
-    });
-  }
-
   async register(
     scope: ScopeContext,
     input: {

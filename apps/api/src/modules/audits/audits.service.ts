@@ -38,7 +38,6 @@ import { CorrectiveActionsService } from '../corrective-actions/corrective-actio
 import { getRequestContext } from '../../common/observability/request-context';
 import { UnitsRepository } from '../units/units.repository';
 import { AssignmentsRepository } from '../audit-assignments/assignments.repository';
-import { DevicesRepository } from '../devices/devices.repository';
 import { asAppError } from '../audit-assignments/assignments.service';
 import {
   AuditsRepository,
@@ -76,7 +75,6 @@ export class AuditsService {
     private readonly events: DomainEvents,
     private readonly correctiveActions: CorrectiveActionsService,
     private readonly queue: QueueService,
-    private readonly devices: DevicesRepository,
   ) {}
 
   // ------------------------------------------------------------------------ create
@@ -123,7 +121,7 @@ export class AuditsService {
     const assignmentId = await this.resolveAssignment(scope, request);
     const deviceId = this.requireDevice(scope, request.deviceId);
 
-    await this.claimDevice(scope, deviceId);
+    await this.requireOwnDevice(scope, deviceId);
 
     // §7.1: an auditor who has already captured their selfie is READY; otherwise the
     // audit waits at ASSIGNED until one arrives.
@@ -784,53 +782,27 @@ export class AuditsService {
   }
 
   /**
-   * Makes `deviceId` usable, or says precisely why it is not.
+   * Whether this actor may conduct an audit on `deviceId`.
    *
-   * This used to be a flat refusal, and the refusal was reaching the wrong phones. A
-   * device id lives in the same keystore as the session, and `getDeviceId()` mints a new
-   * one whenever that read comes back empty — including when it came back empty because
-   * the read *failed*. The session survives, so the app never logs in again, so §8.11's
-   * registration never runs, and every audit that phone starts is refused for an id the
-   * server has simply never been told about. The auditor's day is quarantined over
-   * bookkeeping.
-   *
-   * So an id nobody holds is adopted rather than refused. The two refusals that remain are
-   * the two that mean something:
-   *
-   *   * **revoked** — an administrator ended this device deliberately, and an audit is not
-   *     the place to undo that. `adopt` cannot clear a revocation, so the re-check still
-   *     fails and the message says so.
-   *   * **another user's** — device ids are client-generated, so accepting this would let
-   *     any phone claim any id by asserting it. `adopt` leaves a taken id untouched, and
-   *     this is the sentence that explains the resulting quarantine.
-   *
-   * Both now say which, rather than sharing one "Unknown device": since 0020 that sentence
-   * is stored on the quarantine row, so Sync Health shows it instead of sending a Super
-   * Admin to the container logs.
+   * There is exactly one way to fail this, and it is worth naming because the old message
+   * — "Unknown device" — suggested a different one. A session cannot be bound to a device
+   * that was never registered: `refresh_token.device_id` references `device`, so such a
+   * login is refused outright, and `requireDevice` then makes the token's id the only one
+   * a request may use. The row therefore always exists. What it may not be is *this*
+   * actor's, and since login hands a handset to whoever signs in on it, that means the
+   * phone moved on while this session did not.
    */
-  private async claimDevice(scope: ScopeContext, deviceId: string): Promise<void> {
+  private async requireOwnDevice(scope: ScopeContext, deviceId: string): Promise<void> {
     if (await this.repository.isOwnDevice(scope, deviceId)) {
       return;
     }
 
-    // The field app is Android-only (AGENTS.md), and `device.platform` is NOT NULL with a
-    // two-value CHECK, so an adopted row has to carry one. It is corrected in place by the
-    // next login, which sends the real platform, model and app version.
-    await this.devices.adopt(scope, deviceId, 'android');
-
-    if (await this.repository.isOwnDevice(scope, deviceId)) {
-      this.logger.log(
-        `adopted unregistered device ${deviceId} for user ${scope.actor.userId} on audit create`,
-      );
-      return;
-    }
-
-    throw AppError.validation('This device cannot start an audit', [
+    throw AppError.validation('This device belongs to another account', [
       {
         field: 'deviceId',
         message:
-          'The id is registered to another user or has been revoked. Sign in again on this ' +
-          'device, or ask an administrator to clear the revocation.',
+          'Somebody else has since signed in on this device, or it has been revoked. ' +
+          'Sign in again to continue on it.',
       },
     ]);
   }
