@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import jsQR from 'jsqr';
 import { renderReportHtml } from './index';
+import { QUIET_ZONE_MODULES, encodeQr } from './qr';
 import {
   FIXTURE_IMAGE_DATA_URI,
   fixtureAfterEvidencePayload,
@@ -19,6 +21,41 @@ import {
  */
 
 const resolve = () => FIXTURE_IMAGE_DATA_URI;
+
+/**
+ * Pull the first QR code out of rendered markup and read it with an independent decoder.
+ *
+ * The SVG is drawn in module units — one path segment per run of dark modules — so it can
+ * be rasterised here without a rendering engine: allocate a `size × size` grid, scale it up
+ * so the decoder has several pixels per module to work with, and fill the runs. That keeps
+ * this a test of the markup the PDF actually carries rather than of the encoder alone,
+ * which is the half that could silently regress.
+ */
+const SCALE = 4;
+
+function decodeFirstQr(markup: string): string | null {
+  const svg = markup.slice(markup.indexOf('<svg class="cta-qr"'));
+  const size = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)?.[1]);
+  const path = /<path d="([^"]*)"/.exec(svg)?.[1] ?? '';
+  expect(size).toBeGreaterThan(0);
+
+  const side = size * SCALE;
+  // RGBA, white — the quiet zone included, which is the point of drawing it this way.
+  const pixels = new Uint8ClampedArray(side * side * 4).fill(255);
+
+  for (const [, x, y, width] of path.matchAll(/M(\d+) (\d+)h(\d+)/g)) {
+    for (let row = Number(y) * SCALE; row < (Number(y) + 1) * SCALE; row += 1) {
+      for (let col = Number(x) * SCALE; col < (Number(x) + Number(width)) * SCALE; col += 1) {
+        const offset = (row * side + col) * 4;
+        pixels[offset] = 0;
+        pixels[offset + 1] = 0;
+        pixels[offset + 2] = 0;
+      }
+    }
+  }
+
+  return jsQR(pixels, side, side)?.data ?? null;
+}
 
 /** The markup of one section, between its heading and the next. */
 function sectionOf(html: string, title: string): string {
@@ -140,12 +177,71 @@ describe('§4.1 — the initial Zone report', () => {
     expect(section).not.toContain('AFTER PHOTO');
   });
 
-  it('gives each nonconformity the warning badge and the corrective-action button', () => {
+  it('gives each nonconformity the warning badge and the corrective-action block', () => {
     const section = sectionOf(html, 'Nonconformities');
     expect((section.match(/class="badge-nc"/g) ?? []).length).toBe(3);
-    expect(section).toContain('View / Submit Corrective Action');
+    expect(section).toContain('Scan or tap');
     expect(section).toContain('https://app.example.test/ca/FIXED-TOKEN-ONE');
     expect(section).toContain('Q1 · 1S · Score 0');
+  });
+
+  /**
+   * The link, carried three ways.
+   *
+   * A link that is only an `<a>` is a link that works on a desktop and nowhere else: the
+   * annotation Chromium emits for a 7.5 pt line of text is about ten pixels tall once a
+   * viewer fits A4 to a phone, and the viewers these reports arrive in on a phone commonly
+   * drop annotations entirely. Each of the three is asserted separately because each one
+   * is the only one that survives some viewer.
+   */
+  it('carries the corrective-action link as anchor, QR code and printed address', () => {
+    const section = sectionOf(html, 'Nonconformities');
+    const url = 'https://app.example.test/ca/FIXED-TOKEN-ONE';
+
+    expect(section).toContain(`<a class="cta" href="${url}">`);
+    expect(section).toContain('class="cta-qr"');
+    expect(section).toContain(`<span class="cta-url">${url}</span>`);
+  });
+
+  /**
+   * **The QR code is decoded, not merely counted.**
+   *
+   * Asserting that a `<path>` exists would pass just as happily for a symbol with the
+   * wrong mask, a missing quiet zone or a truncated payload — and the failure would be
+   * discovered by a Zone Leader whose phone will not read the page. So the symbol is taken
+   * back out of the rendered markup, rasterised a module at a time, and put through an
+   * independent decoder. What that asserts is the only thing worth asserting: this report
+   * resolves to this corrective action.
+   */
+  it('renders a QR code that decodes back to the corrective-action URL', () => {
+    const section = sectionOf(html, 'Nonconformities');
+    expect(decodeFirstQr(section)).toBe('https://app.example.test/ca/FIXED-TOKEN-ONE');
+  });
+
+  it('surrounds the symbol with the four-module quiet zone a scanner needs', () => {
+    const { size, path } = encodeQr('https://app.example.test/ca/FIXED-TOKEN-ONE');
+    const coordinates = [...path.matchAll(/M(\d+) (\d+)h(\d+)/g)];
+    expect(coordinates.length).toBeGreaterThan(0);
+
+    for (const [, x, y, width] of coordinates) {
+      expect(Number(x)).toBeGreaterThanOrEqual(QUIET_ZONE_MODULES);
+      expect(Number(y)).toBeGreaterThanOrEqual(QUIET_ZONE_MODULES);
+      expect(Number(x) + Number(width)).toBeLessThanOrEqual(size - QUIET_ZONE_MODULES);
+    }
+  });
+
+  /**
+   * Determinism (PART 15.7) reaches into the encoder too. The mask is chosen by the
+   * specification's penalty score rather than at random, so a re-render of an issued
+   * report has to produce the same squares in the same places.
+   */
+  it('encodes the same URL to the same symbol every time', () => {
+    const once = encodeQr('https://app.example.test/ca/FIXED-TOKEN-ONE');
+    const twice = encodeQr('https://app.example.test/ca/FIXED-TOKEN-ONE');
+    expect(once).toEqual(twice);
+
+    const other = encodeQr('https://app.example.test/ca/FIXED-TOKEN-THREE');
+    expect(other.path).not.toBe(once.path);
   });
 
   it('renders a redacted photo as the placeholder with "Photo removed" (R-5)', () => {

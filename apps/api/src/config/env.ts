@@ -186,6 +186,35 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     }
   }
 
+  /*
+   * WEB_APP_URL has to be reachable from outside the building.
+   *
+   * It is checked here, at boot, because by the time it is wrong it is already permanent:
+   * every corrective-action link is frozen into the report payload when the snapshot is
+   * minted, so a report issued against `https://192.168.68.185:5173` carries that address
+   * for the rest of its life. Correcting the setting afterwards does not rewrite a PDF
+   * already emailed to a Zone Leader, and re-minting means re-issuing the report.
+   *
+   * A LAN address also fails in a way that looks like it works: the auditor who generated
+   * the report is on that Wi-Fi, so the link opens on their machine, and it is the person
+   * the report was sent to who finds a dead link.
+   */
+  const unreachable = unreachableReason(parsed.data.WEB_APP_URL);
+  if (unreachable) {
+    if (parsed.data.NODE_ENV === 'production') {
+      throw new Error(
+        `WEB_APP_URL is ${unreachable}, so every corrective-action link this deployment ` +
+          'prints would be unreachable from outside. Set it to the public HTTPS address ' +
+          'of the web app (the APP_HOST Caddy serves).',
+      );
+    }
+    console.warn(
+      `[config] WEB_APP_URL (${parsed.data.WEB_APP_URL}) is ${unreachable}. Corrective-action ` +
+        'links in generated reports will only open on this network, and the address is ' +
+        'frozen into each report when it is generated.',
+    );
+  }
+
   const { JWT_PRIVATE_KEY_B64, JWT_PUBLIC_KEY_B64, ...rest } = parsed.data;
 
   return {
@@ -193,6 +222,42 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     jwtPrivateKeyPem: Buffer.from(JWT_PRIVATE_KEY_B64, 'base64').toString('utf8'),
     jwtPublicKeyPem: Buffer.from(JWT_PUBLIC_KEY_B64, 'base64').toString('utf8'),
   };
+}
+
+/**
+ * Why a corrective-action link would not open on a stranger's phone, or `null`.
+ *
+ * Deliberately a blocklist of the addresses that are unreachable *by definition* rather
+ * than an attempt to prove reachability, which no local check can do — DNS, firewalls and
+ * certificates are all outside this process. What it does catch is the mistake that is
+ * actually made: leaving a development address in place, which is invisible precisely
+ * because it works for whoever is running the servers.
+ */
+function unreachableReason(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return 'not a valid URL';
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return 'not an http(s) URL';
+
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+  if (host === 'localhost' || host.endsWith('.localhost')) return 'a loopback address';
+  if (host === '::1' || /^127\./.test(host)) return 'a loopback address';
+  // RFC 1918 and the link-local range a phone falls back to with no DHCP.
+  if (/^10\./.test(host)) return 'a private LAN address';
+  if (/^192\.168\./.test(host)) return 'a private LAN address';
+  if (/^169\.254\./.test(host)) return 'a link-local address';
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return 'a private LAN address';
+  // fc00::/7, the IPv6 unique-local range.
+  if (/^f[cd][0-9a-f]{2}:/.test(host)) return 'a private LAN address';
+  // A bare hostname resolves only through a local resolver or an mDNS responder.
+  if (host.endsWith('.local') || !host.includes('.')) return 'not a public hostname';
+
+  return null;
 }
 
 export const CONFIG = Symbol('APP_CONFIG');

@@ -250,7 +250,7 @@ function SubmitForm({
 
   // Minted when the form opens, not when the photo is taken: §5.6 puts it in the object
   // key, and a replayed submission has to find its own attempt rather than make a new one.
-  const submissionId = useRef(crypto.randomUUID());
+  const submissionId = useRef(newId());
 
   const acceptPhoto = useCallback((blob: Blob) => {
     setPhoto(blob);
@@ -573,14 +573,51 @@ function sameOriginWhenSecure(url: string): string {
   }
 }
 
+/**
+ * An identifier, on an origin that may not be a secure context.
+ *
+ * `crypto.randomUUID` is secure-context-only, and this page is opened from a link in a
+ * PDF — whatever address the report happened to be generated against. On a plain
+ * `http://192.168.x.x` that property is `undefined`, and because the id was minted during
+ * render the whole form threw and the reader got a blank white page. They had followed a
+ * link from an audit report and arrived at nothing, with no way to tell whether their
+ * earlier answer had been lost.
+ *
+ * `getRandomValues` carries no such restriction, so the fallback is a version 4 UUID built
+ * from it: the same 122 bits of entropy, which is what an idempotency key needs. The
+ * camera and the checksum still require HTTPS and still say so — but Option B, which needs
+ * neither, now works instead of taking the page down with it.
+ */
+function newId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // variant 10xx
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join('-');
+}
+
 async function uploadAfterPhoto(token: string, submissionId: string, photo: Blob): Promise<string> {
   const bytes = new Uint8Array(await photo.arrayBuffer());
+  if (!crypto.subtle) {
+    // Unreachable in practice — the camera is gated on the same secure context, so there
+    // is no photograph to upload without one — but a raw "cannot read properties of
+    // undefined" would be caught below and shown to a Zone Leader as a network failure.
+    throw new Error('This page must be opened over HTTPS before a photograph can be sent.');
+  }
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   const checksumSha256 = [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
 
-  const evidenceId = crypto.randomUUID();
+  const evidenceId = newId();
 
   const intentResponse = await fetch(
     `${BASE_URL}/public/corrective-actions/${token}/upload-intent`,

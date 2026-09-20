@@ -5,6 +5,7 @@ import type {
   SectionScorePayload,
 } from './payload-types';
 import { S_SECTION_SHORT_LABELS } from '@audit5s/domain';
+import { encodeQr } from './qr';
 
 /**
  * The pieces every report page is built from.
@@ -415,6 +416,49 @@ export function Photo({ photo, resolve }: { photo: ReportPhoto; resolve: ImageRe
     return <div className="redacted">Photo unavailable</div>;
   }
   return <img src={source} alt="" />;
+}
+
+/**
+ * The corrective-action link, carried three ways so that no viewer can lose all of them.
+ *
+ * The problem this solves is stated in `qr.ts`: a lone `<a>` produced a link annotation
+ * ten pixels tall on a phone, in viewers that honour annotations at all. So the block is
+ * drawn as one large anchor — the whole card is the tap target now, not a line of 7.5 pt
+ * text — wrapping a scannable square and the address in full.
+ *
+ * **The URL is printed as text deliberately, and it is not a leak.** The secret is already
+ * in the document: it is the annotation's `/URI`, in the PDF's own bytes, on the same page.
+ * Printing it changes nothing about who can read the file and is the only thing that helps
+ * a reader whose viewer offers neither a tappable link nor a second device to scan with.
+ * §10.4's security properties live in the token — 256 random bits, hashed at rest, one
+ * corrective action, expiring — and never in the link being hard to see.
+ */
+export function CorrectiveActionLink({ url }: { url: string }) {
+  const qr = encodeQr(url);
+  return (
+    <a className="cta" href={url}>
+      <svg
+        className="cta-qr"
+        viewBox={`0 0 ${qr.size} ${qr.size}`}
+        xmlns="http://www.w3.org/2000/svg"
+        shapeRendering="crispEdges"
+        role="img"
+        aria-label="Corrective action link"
+      >
+        {/* The quiet zone has to be white, not merely empty: this square sits on the
+            page's faint column grid, and a scanner reads that as part of the symbol. */}
+        <rect width={qr.size} height={qr.size} fill="#FFFFFF" />
+        <path d={qr.path} fill="currentColor" />
+      </svg>
+      <span className="cta-text">
+        <span className="cta-label">Scan or tap — submit corrective action ▸</span>
+        <span className="cta-hint">Photograph the completed work. No app or login needed.</span>
+        {/* Wrapped at every character: a 43-character secret has no spaces to break at,
+            and without this it would run past the card and be clipped. */}
+        <span className="cta-url">{url}</span>
+      </span>
+    </a>
+  );
 }
 
 export function round(value: number): number {
