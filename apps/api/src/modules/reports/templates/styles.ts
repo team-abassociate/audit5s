@@ -27,6 +27,18 @@ import type { ReportPayload } from '@audit5s/contracts';
  * so a report reopened in December keeps the palette it was issued with even if the
  * business repaints the scale (§10.2).
  */
+/**
+ * The report's type stacks.
+ *
+ * Named rather than inlined because the renderer needs them too: it warms a freshly
+ * launched browser through the same fonts before any report reaches it, and a warm-up
+ * against a *copy* of this list would stop warming the right thing the moment one of them
+ * changed. Nothing here is fetched — these resolve against the host's fonts, which is why
+ * the render must not depend on when the resolution happens.
+ */
+export const REPORT_FONT_STACK = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+export const REPORT_MONO_STACK = '"Courier New", Courier, monospace';
+
 export function reportStyles(payload: ReportPayload): string {
   const brand = payload.brand;
   const bandRules = payload.bands
@@ -60,7 +72,7 @@ html, body {
   margin: 0;
   padding: 0;
   /* System stack only: nothing is fetched, so the render cannot vary with the network. */
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: ${REPORT_FONT_STACK};
   font-size: 9.5pt;
   line-height: 1.4;
   color: ${brand.ink};
@@ -201,7 +213,7 @@ h2.section-title::before {
   counter-increment: clause;
   content: "\\00A7" counter(clause) "  ";
   color: ${brand.accent};
-  font-family: "Courier New", Courier, monospace;
+  font-family: ${REPORT_MONO_STACK};
 }
 
 /* --------------------------------------------------------------------------- tables */
