@@ -149,7 +149,7 @@ export function ZoneReport({
 function SelfieImage({ objectKey, resolve }: { objectKey: string; resolve: ImageResolver }) {
   const source = resolve(objectKey);
   return source ? (
-    <img className="selfie" src={source} alt="" />
+    <img className="selfie" src={source} alt="" decoding="sync" loading="eager" />
   ) : (
     <div className="redacted">Photo removed</div>
   );
