@@ -12,6 +12,7 @@ import {
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER } from '@audit5s/domain';
 import { captureEvidence, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
+import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 
 /**
  * `POST /sync/batch` and everything around it (§8.11, §9.3, §9.5).
@@ -357,6 +358,97 @@ describe('§9.3 — per-item results', () => {
       (conflict) => conflict.entityId === orphanZoneId,
     );
     expect(forZone).toHaveLength(0);
+  });
+
+  it('asks a commit that overtook its own upload to wait, and quarantines nothing', async () => {
+    const { auditId } = await startedAudit();
+    const evidenceId = randomUUID();
+
+    // The intent is issued; the PUT never happens — a phone that lost its signal between
+    // the two, or whose photograph is still going up.
+    const intent = await world.request('POST', `${base}/evidence/upload-intent`, {
+      token: consultantToken,
+      headers: { 'x-device-id': DEVICE_ID },
+      body: {
+        id: evidenceId,
+        kind: 'AUDITOR_SELFIE',
+        auditId,
+        contentType: 'image/jpeg',
+        byteSize: 1024,
+        checksumSha256: 'a'.repeat(64),
+        capturedAt: new Date().toISOString(),
+        isLiveCapture: true,
+      },
+    });
+    expect(intent.status, JSON.stringify(intent.body)).toBe(201);
+
+    const response = await push([
+      {
+        outboxId: randomUUID(),
+        entityType: 'evidence',
+        entityId: evidenceId,
+        operation: 'commit',
+        payload: { checksumSha256: 'a'.repeat(64) },
+      },
+    ]);
+
+    expect(response.results[0]).toMatchObject({
+      status: 'RETRY_AFTER_PARENT',
+      missingParent: `evidence_object:${evidenceId}`,
+    });
+
+    const conflicts = await world.request('GET', `${base}/sync-conflicts?limit=200`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    const forEvidence = (conflicts.body as Page<SyncConflict>).data.filter(
+      (conflict) => conflict.entityId === evidenceId,
+    );
+    expect(forEvidence).toHaveLength(0);
+  });
+
+  it('holds an offline pause and completion until the selfie arrives, then applies them', async () => {
+    await assign();
+    const zoneId = await makeZone();
+    const auditId = randomUUID();
+    const auditZoneId = randomUUID();
+
+    // The audit and its Zone reach the server; the selfie is still in the media queue.
+    const structure = await push(auditBatch({ auditId, auditZoneId, zoneId, answers: 0 }));
+    expect(structure.results.every((result) => result.status === 'ACCEPTED')).toBe(true);
+
+    const lifecycle = (): SyncBatchRequest['items'] => [
+      {
+        outboxId: randomUUID(),
+        entityType: 'audit',
+        entityId: auditId,
+        operation: 'pause',
+        payload: { reason: 'Aborted by auditor', resumeAuditZoneId: auditZoneId },
+      },
+    ];
+
+    const early = await push(lifecycle());
+    expect(early.results[0]).toMatchObject({
+      status: 'RETRY_AFTER_PARENT',
+      missingParent: `evidence:auditor_selfie:${auditId}`,
+    });
+
+    const conflicts = await world.request('GET', `${base}/sync-conflicts?limit=200`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    expect(
+      (conflicts.body as Page<SyncConflict>).data.filter((c) => c.entityId === auditId),
+    ).toHaveLength(0);
+
+    await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId: randomUUID(),
+      auditId,
+      kind: 'AUDITOR_SELFIE',
+      deviceId: DEVICE_ID,
+    });
+
+    const late = await push(lifecycle());
+    expect(late.results[0]!.status).toBe('ACCEPTED');
   });
 });
 
@@ -846,6 +938,40 @@ describe('devices (§8.11)', () => {
     });
     const mine = (listed.body as Page<Device>).data;
     expect(mine.length).toBeGreaterThan(0);
-    expect(mine.every((device) => device.userId === world.actors.CONSULTANT.userId)).toBe(true);
+    // Phones they are on — and of the people on each, only themselves: who else shares a
+    // handset is a Super Admin's to see.
+    expect(
+      mine.every(
+        (device) =>
+          device.people.length === 1 && device.people[0]!.userId === world.actors.CONSULTANT.userId,
+      ),
+    ).toBe(true);
+  });
+
+  it('takes only yourself off a shared phone when a field user revokes it (0025)', async () => {
+    const shared = randomUUID();
+    // §12.11 counts every sign-in per login ID; this suite has already spent some.
+    world.app.get(RateLimitService).reset();
+    const consultant = await loginFromDevice(world, world.actors.CONSULTANT, shared);
+    const leader = await loginFromDevice(world, world.actors.ZONE_LEADER, shared);
+
+    const left = await world.request('POST', `${base}/devices/${shared}/revoke`, {
+      token: consultant,
+    });
+    expect(left.status, JSON.stringify(left.body)).toBe(200);
+    // The phone itself is not revoked…
+    expect((left.body as Device).revokedAt).toBeNull();
+
+    // …so the colleague still holding it carries on.
+    const status = await world.request('GET', `${base}/devices/${shared}`, { token: leader });
+    expect(status.status).toBe(200);
+
+    const { rows } = await world.owner.query(
+      `SELECT user_id, revoked_at FROM device_user WHERE device_id = $1`,
+      [shared],
+    );
+    const byUser = new Map(rows.map((row) => [row.user_id, row.revoked_at]));
+    expect(byUser.get(world.actors.CONSULTANT.userId)).not.toBeNull();
+    expect(byUser.get(world.actors.ZONE_LEADER.userId)).toBeNull();
   });
 });

@@ -143,14 +143,15 @@ export default function RootLayout() {
       {/* Outermost of the app's own providers: every screen below reads the palette. */}
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <LocalDatabaseProvider>
-            <SessionProvider>
+          {/* Session first: each person on a shared phone has their own database (0025). */}
+          <SessionProvider>
+            <LocalDatabaseProvider>
               <SyncProvider>
                 <ThemedStatusBar />
                 <AuthGate />
               </SyncProvider>
-            </SessionProvider>
-          </LocalDatabaseProvider>
+            </LocalDatabaseProvider>
+          </SessionProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </SafeAreaProvider>

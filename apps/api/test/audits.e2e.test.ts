@@ -416,19 +416,18 @@ describe('creating an audit', () => {
     expect(rows[0].platform).toBe('android');
   });
 
-  it('refuses the previous holder of a handset once somebody else signs in on it', async () => {
-    // The handover is allowed at login, and this is its other half: the session the
-    // previous holder still carries names a device that is no longer theirs. This is the
-    // only way `requireOwnDevice` can fail — a session is never bound to a device that
-    // was never registered — and it now says so rather than "Unknown device".
+  it('lets both people on a shared handset start audits (0025)', async () => {
+    // Signing in on a phone somebody else uses adds you to it; it does not take it from
+    // them. The first person's session keeps working — this used to be a 422.
     const handset = randomUUID();
     resetLimits();
-    const staleToken = await loginFromDevice(world, world.actors.CONSULTANT, handset);
+    const firstToken = await loginFromDevice(world, world.actors.CONSULTANT, handset);
     resetLimits();
     await loginFromDevice(world, world.actors.ZONE_LEADER, handset);
 
+    await assign(world.actors.CONSULTANT.userId);
     const response = await world.request('POST', `${base}/audits`, {
-      token: staleToken,
+      token: firstToken,
       body: {
         id: randomUUID(),
         auditType: 'EXTERNAL_5S',
@@ -437,11 +436,25 @@ describe('creating an audit', () => {
       },
     });
 
-    expect(response.status, JSON.stringify(response.body)).toBe(422);
-    expect(JSON.stringify(response.body)).toMatch(/another user|revoked/i);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+  });
 
-    const { rows } = await world.owner.query(`SELECT user_id FROM device WHERE id = $1`, [handset]);
-    expect(rows[0].user_id).toBe(world.actors.ZONE_LEADER.userId);
+  it('refuses a person whose place on the handset was withdrawn', async () => {
+    const handset = randomUUID();
+    resetLimits();
+    const token = await loginFromDevice(world, world.actors.CONSULTANT, handset);
+    await world.owner.query(
+      `UPDATE device_user SET revoked_at = now() WHERE device_id = $1 AND user_id = $2`,
+      [handset, world.actors.CONSULTANT.userId],
+    );
+
+    const response = await world.request('POST', `${base}/audits`, {
+      token,
+      body: { id: randomUUID(), auditType: 'EXTERNAL_5S', unitId: world.unitA, deviceId: handset },
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
+    expect(JSON.stringify(response.body)).toMatch(/revoked/i);
   });
 
   it('returns the existing audit when the same client id is posted twice (§8.6 (a))', async () => {

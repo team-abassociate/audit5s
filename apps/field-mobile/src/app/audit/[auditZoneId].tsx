@@ -278,9 +278,10 @@ export default function QuestionnaireScreen() {
           : {}),
       });
     },
-    onSuccess: async (evidenceId) => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
+    onSuccess: (evidenceId) => {
+      // The camera closes the moment SQLite has the photo; the lists refresh behind it.
       setCameraFor(null);
+      void queryClient.invalidateQueries({ queryKey: ['local'] });
       // §2.3 step 13: the auditor sees what they took, and may keep, flag or delete it.
       setPreviewId(evidenceId);
       scheduleSync();

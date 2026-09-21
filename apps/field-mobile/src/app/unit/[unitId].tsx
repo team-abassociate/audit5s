@@ -83,9 +83,9 @@ export default function UnitStartScreen() {
   const saveSelfie = useMutation({
     mutationFn: async (image: ProcessedImage) => {
       const auditId = pendingAuditId!;
-      // The location reading rides with the selfie. It never blocks: `readLocation`
-      // returns null on a denied permission or a timeout, and §12.9 requires that an
-      // absent fix be recorded and flagged rather than treated as a failure.
+      // The location reading rides with the selfie. It never waits for a fix: the camera
+      // warmed one up while the auditor framed the shot, `readLocation` takes whatever is
+      // ready, and §12.9 requires an absent fix be recorded and flagged, never a failure.
       const location = await readLocation();
 
       await captureLocalEvidence(database, {
@@ -111,8 +111,8 @@ export default function UnitStartScreen() {
       await recordAuditStartLocation(database, auditId, location);
       return auditId;
     },
-    onSuccess: async (auditId) => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
+    onSuccess: (auditId) => {
+      void queryClient.invalidateQueries({ queryKey: ['local'] });
       setPendingAuditId(null);
       // Replace, so Back from the Zone form does not land on a spent selfie screen.
       router.replace({ pathname: '/audit/zones/[auditId]', params: { auditId } });

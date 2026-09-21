@@ -26,6 +26,7 @@ import { CONFIG, type AppConfig } from '../../config/env';
 import { AuditsService } from '../audits/audits.service';
 import { AuditZonesService } from '../audit-zones/audit-zones.service';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
+import { DevicesService } from '../devices/devices.service';
 import { EvidenceService } from '../evidence/evidence.service';
 import { ResponsesService } from '../question-responses/responses.service';
 import { SyncRepository } from './sync.repository';
@@ -72,6 +73,7 @@ export class SyncBatchService {
     private readonly responses: ResponsesService,
     private readonly evidence: EvidenceService,
     private readonly correctiveActions: CorrectiveActionsService,
+    private readonly devices: DevicesService,
     private readonly events: SyncEventsService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
@@ -123,6 +125,10 @@ export class SyncBatchService {
       status: rejected.length > 0 || conflicts.length > 0 ? 'PARTIAL' : 'COMPLETED',
       error: null,
     });
+
+    // The Devices table's "Last synced" and the integrity job's silent-device check both
+    // read this stamp; nothing wrote it, so every phone read "never" and looked lost.
+    await this.devices.touchSync(scope, deviceId);
 
     if (conflicts.length > 0 || rejected.length > 0) {
       // §7.4: `SYNC_FAILURE` is raised so somebody knows field work is sitting in a
@@ -235,6 +241,15 @@ export class SyncBatchService {
     error: unknown,
   ): Promise<SyncBatchResult> {
     const code = error instanceof AppError ? error.code : null;
+
+    if (code === 'EVIDENCE_NOT_UPLOADED') {
+      // A commit that overtook its own PUT. The object is its parent and is still on the
+      // phone; the payload is a checksum and two dimensions the evidence row already holds,
+      // so there is nothing here a quarantine would preserve — and quarantining it wrote a
+      // "Payload could not be read" row on every cycle for as long as the upload lagged.
+      return { ...base, status: 'RETRY_AFTER_PARENT', missingParent: `evidence_object:${item.entityId}` };
+    }
+
     const reason = QUARANTINE_REASONS[code ?? ''] ?? null;
     // Built once, for the row as well as the log. `reason` is the category a Super Admin
     // filters on; this is the sentence that tells them which rule actually refused the
@@ -515,6 +530,18 @@ export class SyncBatchService {
       if (!(await present(kind, id))) {
         return `${kind}:${id}`;
       }
+    }
+
+    if (
+      item.entityType === 'audit' &&
+      (item.operation === 'pause' || item.operation === 'resume' || item.operation === 'complete') &&
+      (await this.repository.auditAwaitingSelfie(scope, item.entityId))
+    ) {
+      // §7.1: the selfie is what moves an audit off ASSIGNED, and it rides the media queue.
+      // A pause or a completion that lands first would otherwise be refused as a transition
+      // the machine does not define — dead-lettered on the phone, quarantined here, and
+      // re-sent on every Retry. It is waiting on a parent, and it is told so.
+      return `evidence:auditor_selfie:${item.entityId}`;
     }
     return null;
   }

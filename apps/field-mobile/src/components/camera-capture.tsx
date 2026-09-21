@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
 import { Button } from './ui';
-import { processCapturedPhoto, type ProcessedImage } from '../lib/capture/media';
+import { warmLocation } from '../lib/capture/location';
+import { MAX_LONG_EDGE_PX, processCapturedPhoto, type ProcessedImage } from '../lib/capture/media';
 import { ZONE_PHOTO_LIMIT_MESSAGE } from '../lib/db/photo-limit';
 import { gemba, gembaFonts } from '../lib/gemba';
 
@@ -42,6 +43,39 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
   const [error, setError] = useState<string | null>(null);
   const taking = useRef(false);
   const camera = useRef<CameraView>(null);
+  const [pictureSize, setPictureSize] = useState<string | undefined>(undefined);
+
+  // The location fix starts while the auditor frames the shot, so the shutter never waits
+  // for satellites (§12.9: a missing fix is recorded, never a reason to stall).
+  useEffect(() => {
+    warmLocation();
+  }, []);
+
+  // The smallest frame the sensor offers that still covers §9.4's 1920 px long edge. The
+  // default is the full sensor — 12 MP and up — which is several times more to encode,
+  // write, decode and shrink than anything that is kept.
+  const choosePictureSize = async () => {
+    try {
+      const sizes = (await camera.current?.getAvailablePictureSizesAsync()) ?? [];
+      const parsed = sizes
+        .map((size) => {
+          const [w = 0, h = 0] = size.split('x').map(Number);
+          return { size, w, h };
+        })
+        .filter((entry) => entry.w > 0 && entry.h > 0);
+      if (parsed.length === 0) return;
+      const largest = parsed.reduce((a, b) => (a.w * a.h >= b.w * b.h ? a : b));
+      // Same shape as the full sensor, so the preview and the photograph frame alike.
+      const ratio = largest.w / largest.h;
+      const fit = parsed
+        .filter((entry) => Math.abs(entry.w / entry.h - ratio) < 0.02)
+        .filter((entry) => Math.max(entry.w, entry.h) >= MAX_LONG_EDGE_PX)
+        .sort((a, b) => a.w * a.h - b.w * b.h)[0];
+      if (fit) setPictureSize(fit.size);
+    } catch {
+      // The default size still works; it is only slower.
+    }
+  };
 
   if (!permission) {
     return (
@@ -72,10 +106,13 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
     setError(null);
     try {
       await beforeCapture?.();
-      const photo = await camera.current?.takePictureAsync({ skipProcessing: false });
+      // q0.9 from the sensor: it is re-encoded at q0.8 below, so the extra is never kept.
+      const photo = await camera.current?.takePictureAsync({ quality: 0.9, skipProcessing: false });
       if (!photo?.uri) return;
       // Downscaled, EXIF-stripped and hashed before anything else sees it (§9.4).
-      await onCaptured(await processCapturedPhoto(photo.uri));
+      await onCaptured(
+        await processCapturedPhoto(photo.uri, { width: photo.width, height: photo.height }),
+      );
     } catch (cause) {
       // Said on the screen the auditor is looking at, never an unhandled rejection: nothing
       // was saved, so the honest words are "try again".
@@ -90,7 +127,13 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
 
   return (
     <View style={styles.container}>
-      <CameraView ref={camera} style={styles.preview} facing={facing} />
+      <CameraView
+        ref={camera}
+        style={styles.preview}
+        facing={facing}
+        pictureSize={pictureSize}
+        onCameraReady={() => void choosePictureSize()}
+      />
 
       <View style={styles.controls}>
         <Text style={styles.prompt}>{prompt}</Text>

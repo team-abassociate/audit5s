@@ -897,21 +897,19 @@ export class AuditsService {
    * — "Unknown device" — suggested a different one. A session cannot be bound to a device
    * that was never registered: `refresh_token.device_id` references `device`, so such a
    * login is refused outright, and `requireDevice` then makes the token's id the only one
-   * a request may use. The row therefore always exists. What it may not be is *this*
-   * actor's, and since login hands a handset to whoever signs in on it, that means the
-   * phone moved on while this session did not.
+   * a request may use. The row therefore always exists. A phone is shared (0025), so the
+   * only way this fails is revocation: of the phone, or of this person's place on it.
    */
   private async requireOwnDevice(scope: ScopeContext, deviceId: string): Promise<void> {
     if (await this.repository.isOwnDevice(scope, deviceId)) {
       return;
     }
 
-    throw AppError.validation('This device belongs to another account', [
+    throw AppError.validation('This device is not yours to use', [
       {
         field: 'deviceId',
         message:
-          'Somebody else has since signed in on this device, or it has been revoked. ' +
-          'Sign in again to continue on it.',
+          'This phone, or your access on it, has been revoked. Sign in again to continue on it.',
       },
     ]);
   }
