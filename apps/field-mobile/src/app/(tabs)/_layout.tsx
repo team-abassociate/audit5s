@@ -79,7 +79,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="review" options={{ title: 'Actions', tabBarIcon: icon('⚑'), ...shownTo(admin) }} />
       <Tabs.Screen name="units" options={{ title: 'Units', tabBarIcon: icon('▣'), ...shownTo(admin) }} />
       <Tabs.Screen name="people" options={{ title: 'People', tabBarIcon: icon('◉'), ...shownTo(admin) }} />
-      <Tabs.Screen name="index" options={{ title: 'Units', tabBarIcon: icon('▣'), ...shownTo(!admin) }} />
+      <Tabs.Screen name="index" options={{ tabBarButtonTestID: 'field-units-tab', title: 'Units', tabBarIcon: icon('▣'), ...shownTo(!admin) }} />
       <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: icon('◷'), ...shownTo(!admin) }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: icon('◧'), ...shownTo(!admin) }} />
     </Tabs>

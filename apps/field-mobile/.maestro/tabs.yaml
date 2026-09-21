@@ -29,8 +29,35 @@ env:
     timeout: 60000
 # Every role now lands on Overview; a field role's version of it is the resume screen.
 - takeScreenshot: tab-overview
-- tapOn: "Units"
+- tapOn:
+    id: field-units-tab
+- extendedWaitUntil:
+    visible:
+      id: field-units-list
+    timeout: 15000
+- waitForAnimationToEnd
+- assertVisible:
+    id: field-units-list
 - takeScreenshot: tab-units
+- tapOn: "Overview"
+- scrollUntilVisible:
+    element:
+      id: field-units-shortcut
+    direction: DOWN
+- tapOn:
+    id: field-units-shortcut
+- assertVisible:
+    id: field-units-list
+- tapOn: "Overview"
+- runFlow:
+    when:
+      visible:
+        id: open-field-unit
+    commands:
+      - tapOn:
+          id: open-field-unit
+      - assertVisible:
+          id: field-units-list
 - tapOn: "History"
 - assertVisible: "Audits on this device"
 - takeScreenshot: tab-history

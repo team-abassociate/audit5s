@@ -175,7 +175,7 @@ export function FieldOverview() {
               title="No audit in progress"
               detail="When you start one it appears here, with the way back to the question you stopped on."
             />
-            <Button title="Open a Unit" variant="secondary" onPress={() => router.push('/')} />
+            <Button testID="open-field-unit" title="Open a Unit" variant="secondary" onPress={() => router.push('/')} />
           </Card>
         ) : (
           open.map((audit) => (
@@ -237,7 +237,7 @@ export function FieldOverview() {
               <Button title="History" variant="secondary" onPress={() => router.push('/history')} />
             </View>
             <View style={styles.action}>
-              <Button title="Units" variant="secondary" onPress={() => router.push('/')} />
+              <Button testID="field-units-shortcut" title="Units" variant="secondary" onPress={() => router.push('/')} />
             </View>
           </View>
         </View>

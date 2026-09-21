@@ -97,6 +97,7 @@ export default function UnitsScreen() {
   return (
     <Screen>
       <FlatList
+        testID="field-units-list"
         data={units.data ?? []}
         keyExtractor={(unit) => unit.id}
         renderItem={renderUnit}

@@ -55,6 +55,8 @@ function AuthGate() {
     // Screens pushed on top of a tab — a Unit's Zones, an audit — are part of the
     // signed-in app, so a redirect back to the tab root would make every drill-down
     // bounce straight home.
+    // `(tabs)/index` is the field Units screen. Its segments can be just ['(tabs)'];
+    // it must stay inside the app rather than redirecting back to Overview on every tap.
     const insideApp =
       group === '(tabs)' ||
       group === 'unit' ||
@@ -77,11 +79,6 @@ function AuthGate() {
     } else if (status === 'must-reset' && group !== 'reset-password') {
       router.replace('/reset-password');
     } else if (status === 'ready' && !insideApp) {
-      router.replace('/overview');
-    } else if (status === 'ready' && group === '(tabs)' && segments.length === 1) {
-      // The field Units tab is the app's root route, and nobody's home any more: every
-      // role lands on Overview, which is their own version of it (R-24, and the field
-      // Overview beside it).
       router.replace('/overview');
     }
   }, [status, segments, router]);
