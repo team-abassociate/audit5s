@@ -96,9 +96,9 @@ export class AuthService {
 
     if (request.deviceId) {
       // Runs for every login that names a device, not only one carrying a platform: a
-      // re-login from a known phone still moves `last_seen_at`, and still hands the
-      // handset over when it is somebody else signing in on it.
-      const { registered, transferredFromUserId } = await this.repository.upsertDevice({
+      // re-login from a known phone still moves `last_seen_at`, and a first sign-in by
+      // somebody new adds them to the phone's list (0025) without removing anybody.
+      const { outcome, joinedSharedDevice } = await this.repository.upsertDevice({
         deviceId: request.deviceId,
         userId: user.id,
         platform: request.platform ?? null,
@@ -107,7 +107,14 @@ export class AuthService {
         appVersion: request.appVersion,
       });
 
-      if (!registered) {
+      if (outcome === 'REVOKED') {
+        throw AppError.forbidden(
+          'DEVICE_REVOKED',
+          'This device was revoked. An administrator must clear it before it can be used again.',
+        );
+      }
+
+      if (outcome === 'UNREGISTERED') {
         // A device nobody has registered, described by a login that did not say what it
         // is. The session would be bound to it regardless, and `refresh_token.device_id`
         // references `device` — so this used to be a foreign-key 500 on a well-formed
@@ -120,18 +127,15 @@ export class AuthService {
         ]);
       }
 
-      // A shared handset changing hands is not routine, even though it is permitted: the
-      // previous owner's unsynced work on that phone stops being reachable from it, and an
-      // audit still locked to the device now needs a Super Admin's release. Recorded so
-      // that is a fact somebody can find, rather than something inferred afterwards from a
-      // device list that only ever shows the current owner.
-      if (transferredFromUserId) {
+      // Nobody loses anything when a phone is shared, but who can use a handset is worth
+      // being able to find later without reconstructing it from login attempts.
+      if (joinedSharedDevice) {
         await this.auditLog.recordSafely(
           {
-            action: 'device.transferred',
+            action: 'device.user_added',
             resourceType: 'device',
             resourceId: request.deviceId,
-            before: { userId: transferredFromUserId },
+            before: null,
             after: { userId: user.id },
           },
           `${user.fullName} (${user.loginId})`,

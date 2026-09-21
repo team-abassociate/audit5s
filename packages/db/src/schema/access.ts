@@ -73,6 +73,31 @@ export const devices = pgTable(
   (table) => [index('device_user_revoked_idx').on(table.userId, table.revokedAt)],
 );
 
+/**
+ * Everybody who has signed in on a phone with their own credentials (0025). A plant shares
+ * handsets; access is this list, revocable one person at a time, and `device.user_id` is
+ * only who signed in last.
+ */
+export const deviceUsers = pgTable(
+  'device_user',
+  {
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'restrict' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    firstSignedInAt: timestamp('first_signed_in_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSignedInAt: timestamp('last_signed_in_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.deviceId, table.userId] }),
+    index('device_user_user_idx').on(table.userId, table.revokedAt),
+  ],
+);
+
 export const refreshTokens = pgTable(
   'refresh_token',
   {

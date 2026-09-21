@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Fragment, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Device, Page, SyncConflict } from '@audit5s/contracts';
 import { api } from '@/lib/api';
 import {
@@ -31,20 +31,28 @@ export function SyncHealthPage() {
   const [showResolved, setShowResolved] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const conflicts = useQuery({
+  // Newest first, a page at a time: the queue can outgrow any single page, and a count
+  // taken from one page would under-report what is waiting.
+  const conflicts = useInfiniteQuery({
     queryKey: ['sync-conflicts', showResolved],
-    queryFn: () =>
-      api.get<Page<SyncConflict>>(`/sync-conflicts?limit=200&resolved=${showResolved}`),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => {
+      const query = new URLSearchParams({ limit: '100', resolved: String(showResolved) });
+      if (pageParam) query.set('cursor', pageParam);
+      return api.get<Page<SyncConflict>>(`/sync-conflicts?${query}`);
+    },
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     // Field devices push continuously; an unresolved queue is a live view.
     refetchInterval: showResolved ? false : 30_000,
   });
+  const rows = conflicts.data?.pages.flatMap((page) => page.data) ?? [];
 
   const devices = useQuery({
     queryKey: ['devices'],
     queryFn: () => api.get<Page<Device>>('/devices?limit=200&includeRevoked=true'),
   });
 
-  const unresolved = showResolved ? 0 : (conflicts.data?.data.length ?? 0);
+  const unresolved = showResolved ? 0 : rows.length;
 
   return (
     <div className="space-y-4">
@@ -70,7 +78,7 @@ export function SyncHealthPage() {
           </div>
         )}
 
-        {conflicts.data && conflicts.data.data.length === 0 && (
+        {conflicts.data && rows.length === 0 && (
           <p className="px-4 pb-4 text-sm text-ink-3">
             {showResolved
               ? 'Nothing has been resolved yet.'
@@ -78,7 +86,7 @@ export function SyncHealthPage() {
           </p>
         )}
 
-        {conflicts.data && conflicts.data.data.length > 0 && (
+        {rows.length > 0 && (
           <Table>
             <thead>
               <tr>
@@ -90,16 +98,39 @@ export function SyncHealthPage() {
               </tr>
             </thead>
             <tbody>
-              {conflicts.data.data.map((conflict) => (
-                <ConflictRow
-                  key={conflict.id}
-                  conflict={conflict}
-                  expanded={expanded === conflict.id}
-                  onToggle={() => setExpanded(expanded === conflict.id ? null : conflict.id)}
-                />
+              {rows.map((conflict, index) => (
+                <Fragment key={conflict.id}>
+                  {dayOf(conflict.createdAt) !== dayOf(rows[index - 1]?.createdAt) && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="bg-board px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3"
+                      >
+                        {dayOf(conflict.createdAt)}
+                      </td>
+                    </tr>
+                  )}
+                  <ConflictRow
+                    conflict={conflict}
+                    expanded={expanded === conflict.id}
+                    onToggle={() => setExpanded(expanded === conflict.id ? null : conflict.id)}
+                  />
+                </Fragment>
               ))}
             </tbody>
           </Table>
+        )}
+
+        {conflicts.hasNextPage && (
+          <div className="p-4">
+            <Button
+              variant="secondary"
+              disabled={conflicts.isFetchingNextPage}
+              onClick={() => conflicts.fetchNextPage()}
+            >
+              {conflicts.isFetchingNextPage ? 'Loading…' : 'Load older items'}
+            </Button>
+          </div>
         )}
       </Card>
 
@@ -107,9 +138,9 @@ export function SyncHealthPage() {
         <CardHeader
           title="Devices"
           description={
-            'Every device registered against a field account. Revoking one ends its sessions; ' +
-            'it does not release the audits it holds — that is a separate decision, made on ' +
-            'the audit.'
+            'Every phone in the field, and everybody who has signed in on it — a phone may be ' +
+            'shared. Revoking one ends every session on it; it does not release the audits ' +
+            'it holds — that is a separate decision, made on the audit.'
           }
         />
         {devices.isLoading && <Spinner />}
@@ -123,7 +154,8 @@ export function SyncHealthPage() {
 
       {unresolved > 0 && (
         <p className="text-xs text-ink-3">
-          {unresolved} item{unresolved === 1 ? '' : 's'} waiting. Nothing here has been lost —
+          {unresolved}
+          {conflicts.hasNextPage ? '+' : ''} item{unresolved === 1 ? '' : 's'} waiting. Nothing here has been lost —
           each one is stored complete and can be applied or set aside.
         </p>
       )}
@@ -289,6 +321,7 @@ function DeviceTable({ devices }: { devices: Device[] }) {
         <thead>
           <tr>
             <Th>Device</Th>
+            <Th>People on it</Th>
             <Th>Last seen</Th>
             <Th>Last synced</Th>
             <Th>App</Th>
@@ -301,6 +334,15 @@ function DeviceTable({ devices }: { devices: Device[] }) {
               <Td>
                 <span className="font-medium">{device.model ?? device.platform}</span>
                 <div className="font-mono text-xs text-ink-3">{device.id}</div>
+              </Td>
+              <Td>
+                {/* A phone is shared: everybody who signed in on it, newest first. */}
+                {device.people.map((person) => (
+                  <div key={person.userId} className={person.revokedAt ? 'text-ink-3 line-through' : ''}>
+                    {person.fullName}
+                    <span className="ml-1 text-xs text-ink-3">{relative(person.lastSignedInAt)}</span>
+                  </div>
+                ))}
               </Td>
               <Td>{device.lastSeenAt ? relative(device.lastSeenAt) : 'never'}</Td>
               <Td>
@@ -344,6 +386,17 @@ function StalenessBadge({ iso }: { iso: string }) {
   const hours = (Date.now() - Date.parse(iso)) / 3_600_000;
   const tone = hours > 48 ? 'bad' : hours > 12 ? 'warn' : 'good';
   return <Badge tone={tone}>{relative(iso)}</Badge>;
+}
+
+/** The calendar day a row was held on, as the heading above that day's rows. */
+function dayOf(iso: string | undefined): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function relative(iso: string): string {

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { API_BASE_PATH } from '@audit5s/contracts';
+import { API_BASE_PATH, type Device } from '@audit5s/contracts';
 import { startWorld, stopWorld, type TestWorld } from './harness';
 
 /**
@@ -232,11 +232,10 @@ describe('disable and password reset', () => {
       `${base}/devices?userId=${userId}&includeRevoked=true`,
       { token: world.actors.SUPER_ADMIN.accessToken },
     );
-    expect(
-      (devices.body as { data: Array<{ id: string; revokedAt: string | null }> }).data.find(
-        (device) => device.id === deviceId,
-      )?.revokedAt,
-    ).not.toBeNull();
+    // Their place on the phone is withdrawn — not the phone, which may be shared (0025).
+    const phone = (devices.body as { data: Device[] }).data.find((device) => device.id === deviceId);
+    expect(phone?.revokedAt).toBeNull();
+    expect(phone?.people.find((person) => person.userId === userId)?.revokedAt).not.toBeNull();
   });
 
   it('refuses to let an actor disable themselves', async () => {

@@ -96,9 +96,10 @@ export default function WalkByScreen() {
           : {}),
       });
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
+    onSuccess: () => {
+      // The camera closes the moment SQLite has the photo; the lists refresh behind it.
       setCameraOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['local'] });
     },
   });
 

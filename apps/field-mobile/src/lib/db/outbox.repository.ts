@@ -152,7 +152,15 @@ export async function resetDeadLetters(database: LocalDatabase): Promise<number>
   return rows.length;
 }
 
-/** Evidence whose object went up but whose commit never did — §9.6's stranded case. */
+/**
+ * Evidence whose object went up but whose commit never did — §9.6's stranded case.
+ *
+ * An `objectKey` alone does not mean the object is in storage: it is recorded when
+ * `upload-intent` answers, *before* the PUT. So the photograph's own media row has to be
+ * gone too — it is removed only after the PUT succeeds — and no commit may be queued
+ * already. Reading the key alone queued a commit ahead of every failed PUT, the server
+ * refused it as "not in storage yet", and the sweep re-armed the refusal on every cycle.
+ */
 export function strandedUploads(database: LocalDatabase) {
   return database
     .select()
@@ -162,8 +170,46 @@ export function strandedUploads(database: LocalDatabase) {
         eq(localEvidence.syncState, 'SYNCING'),
         sql`${localEvidence.objectKey} IS NOT NULL`,
         isNull(localEvidence.deletedAt),
+        // Spelled out rather than interpolated: inside a correlated subquery an unqualified
+        // column binds to the inner table, and `id` would silently mean the outbox's own.
+        sql`NOT EXISTS (
+          SELECT 1 FROM outbox AS queued
+          WHERE queued.entity_type = 'evidence'
+            AND queued.entity_id = evidence.id
+            AND queued.operation IN ('upsert', 'commit')
+        )`,
       ),
     );
+}
+
+/**
+ * Commits the old stranded sweep queued ahead of their own upload, and the queue has since
+ * refused: the photograph's media row is still waiting, so the commit is premature rather
+ * than wrong. Removing it is safe — the media pass queues a fresh one once the PUT lands —
+ * and it is what takes these off the "need attention" count on a phone that ran the bug.
+ */
+export async function removePrematureCommits(database: LocalDatabase): Promise<number> {
+  const premature = await database
+    .select({ id: outbox.id })
+    .from(outbox)
+    .where(
+      and(
+        eq(outbox.entityType, 'evidence'),
+        eq(outbox.operation, 'commit'),
+        inArray(outbox.state, ['PENDING', 'FAILED', 'DEAD_LETTER']),
+        sql`EXISTS (
+          SELECT 1 FROM ${outbox} AS media
+          WHERE media.entity_type = 'evidence'
+            AND media.entity_id = outbox.entity_id
+            AND media.operation = 'upsert'
+        )`,
+      ),
+    );
+
+  for (const row of premature) {
+    await removeItem(database, row.id);
+  }
+  return premature.length;
 }
 
 export function evidenceById(database: LocalDatabase, evidenceId: string) {

@@ -1131,14 +1131,18 @@ export class AuditsRepository extends BaseRepository {
     });
   }
 
-  /** A device row that belongs to this actor and is not revoked. */
+  /**
+   * A phone this actor has signed in on and may still use (0025): neither the phone nor
+   * their place on it is revoked. Other people using the same handset do not matter.
+   */
   async isOwnDevice(scope: ScopeContext, deviceId: string): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const result = await tx.execute<{ ok: boolean }>(
-        sql`SELECT true AS ok FROM device
-            WHERE id = ${deviceId}::uuid AND user_id = ${scope.actor.userId}::uuid
-              AND revoked_at IS NULL
+        sql`SELECT true AS ok FROM device d
+            JOIN device_user du ON du.device_id = d.id
+            WHERE d.id = ${deviceId}::uuid AND du.user_id = ${scope.actor.userId}::uuid
+              AND d.revoked_at IS NULL AND du.revoked_at IS NULL
             LIMIT 1`,
       );
       return result.rows.length > 0;

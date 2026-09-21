@@ -5,7 +5,7 @@ import { runSync, type SyncResult } from './engine';
 import { createSyncTransport } from './http-transport';
 import { readFileBytes } from '../capture/media';
 import { getDeviceId } from '../secure-storage';
-import { useLocalDatabase } from '../db/provider';
+import { useOptionalLocalDatabase } from '../db/provider';
 import { useSession } from '../session';
 
 /**
@@ -41,9 +41,9 @@ const TICK_MS = 60_000;
 const IDLE: SyncResult = { accepted: 0, conflicted: 0, failed: 0, deferred: 0, photosUploaded: 0, idle: true };
 
 export function SyncProvider({ children }: { children: ReactNode }) {
-  const database = useLocalDatabase();
+  const database = useOptionalLocalDatabase();
   const { status, can } = useSession();
-  const allowed = status === 'ready' && can('sync', 'push');
+  const allowed = status === 'ready' && can('sync', 'push') && database !== null;
   const allowedRef = useRef(allowed);
   allowedRef.current = allowed;
   const [syncing, setSyncing] = useState(false);
@@ -65,6 +65,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
     try {
       const transport = createSyncTransport(readFileBytes);
+      // `allowed` guarantees a database; the guard is for the type.
+      if (!database) return IDLE;
       const result = await runSync(database, transport, { deviceId: await getDeviceId() });
 
       // Connectivity is inferred from the attempt rather than from a listener: a device

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
 import {
   auditZones,
   audits,
@@ -187,7 +187,12 @@ export class SyncRepository extends BaseRepository {
         query.resolved ? isNotNull(syncConflicts.resolvedAt) : isNull(syncConflicts.resolvedAt),
         query.entityType ? eq(syncConflicts.entityType, query.entityType) : undefined,
         query.deviceId ? eq(syncConflicts.deviceId, query.deviceId) : undefined,
-        query.cursor ? sql`${syncConflicts.id} > ${query.cursor}` : undefined,
+        // Newest first, as a reviewer reads them. The id is a random UUID and says nothing
+        // about time, so the cursor is the row's position in (created_at, id).
+        query.cursor
+          ? sql`(${syncConflicts.createdAt}, ${syncConflicts.id}) < (
+              SELECT c.created_at, c.id FROM sync_conflict c WHERE c.id = ${query.cursor}::uuid)`
+          : undefined,
       ];
 
       return tx
@@ -210,7 +215,7 @@ export class SyncRepository extends BaseRepository {
         .from(syncConflicts)
         .innerJoin(users, eq(users.id, syncConflicts.userId))
         .where(this.scoped(scope, conflictScopeColumns, ...filters))
-        .orderBy(asc(syncConflicts.id))
+        .orderBy(desc(syncConflicts.createdAt), desc(syncConflicts.id))
         .limit(query.limit + 1);
     });
   }
@@ -355,6 +360,24 @@ export class SyncRepository extends BaseRepository {
     return this.exists(
       scope,
       sql`SELECT 1 FROM evidence WHERE id = ${evidenceId}::uuid AND sync_state = 'SYNCED'`,
+    );
+  }
+
+  /**
+   * An audit still at ASSIGNED with no selfie on the server — one whose §7.1 gate has not
+   * been met *yet*. The selfie is on its way through the media queue; a lifecycle item that
+   * arrives ahead of it is waiting on a parent, not malformed.
+   */
+  async auditAwaitingSelfie(scope: ScopeContext, auditId: string): Promise<boolean> {
+    return this.exists(
+      scope,
+      sql`SELECT 1 FROM audit a
+          WHERE a.id = ${auditId}::uuid
+            AND a.status = 'ASSIGNED'
+            AND NOT EXISTS (
+              SELECT 1 FROM evidence e
+              WHERE e.audit_id = a.id AND e.kind = 'AUDITOR_SELFIE' AND e.deleted_at IS NULL
+            )`,
     );
   }
 

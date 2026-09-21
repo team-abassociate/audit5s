@@ -37,12 +37,11 @@ export class DevicesService {
       pushToken: request.pushToken ?? null,
     });
 
-    // A device id already bound to another user reads as **absent**, not as a conflict.
-    // That is AZ-3: "out-of-scope reads return 404, not 403, so object IDs cannot be
-    // probed for existence." A device id is client-generated and unguessable, and
-    // answering "that one is taken" would turn this route into an oracle for which ids
-    // exist. The upsert's owner predicate matched nothing, so nothing was written, and
-    // this read is what makes the refusal explicit rather than a silent no-op.
+    // A phone this person is not on reads as **absent**, not as a conflict. That is AZ-3:
+    // "out-of-scope reads return 404, not 403, so object IDs cannot be probed for
+    // existence." Joining a shared phone is done by signing in on it (0025) — proving the
+    // credentials on that hardware — not by naming its id here, so the upsert wrote
+    // nothing and this read is what makes the refusal explicit rather than a silent no-op.
     return this.get(scope, request.deviceId);
   }
 
@@ -79,14 +78,24 @@ export class DevicesService {
       return toDevice(device);
     }
 
-    await this.repository.revoke(scope, deviceId);
+    // A phone is shared (0025). A Super Admin revoking it — a lost or stolen handset —
+    // stops it for everybody; a field user revoking "their" device is taking themselves
+    // off it, and must not sign their colleagues out of the phone they are holding.
+    const wholePhone = scope.actor.role === 'SUPER_ADMIN';
+    if (wholePhone) {
+      await this.repository.revoke(scope, deviceId);
+    } else {
+      await this.repository.leave(scope, deviceId, scope.actor.userId);
+    }
 
     await this.auditLog.record({
       action: 'device.revoked',
       resourceType: 'device',
       resourceId: deviceId,
       before: { revokedAt: null },
-      after: { revokedAt: new Date().toISOString(), userId: device.userId },
+      after: wholePhone
+        ? { revokedAt: new Date().toISOString(), people: device.people.map((p) => p.userId) }
+        : { revokedAt: new Date().toISOString(), userId: scope.actor.userId },
     });
 
     return this.get(scope, deviceId);
@@ -101,6 +110,12 @@ export function toDevice(row: DeviceRow): Device {
   return {
     id: row.id,
     userId: row.userId,
+    people: row.people.map((person) => ({
+      userId: person.userId,
+      fullName: person.fullName,
+      lastSignedInAt: person.lastSignedInAt.toISOString(),
+      revokedAt: person.revokedAt?.toISOString() ?? null,
+    })),
     platform: row.platform as Device['platform'],
     model: row.model,
     osVersion: row.osVersion,

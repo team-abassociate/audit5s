@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
 import type { SqliteExecutor } from './local-database';
 
@@ -9,7 +10,9 @@ import type { SqliteExecutor } from './local-database';
  * holds its own key, and the real control is the OS keystore plus remote device
  * revocation.
  */
-export async function openExpoExecutor(name = 'audit5s.db'): Promise<SqliteExecutor> {
+export async function openExpoExecutor(
+  name = 'audit5s.db',
+): Promise<SqliteExecutor & { close(): Promise<void> }> {
   const database = await SQLite.openDatabaseAsync(name);
 
   return {
@@ -35,5 +38,46 @@ export async function openExpoExecutor(name = 'audit5s.db'): Promise<SqliteExecu
       // migration list, never from input.
       await database.execAsync(`PRAGMA user_version = ${Math.trunc(version)}`);
     },
+    async close() {
+      await database.closeAsync();
+    },
   };
+}
+
+/**
+ * The file that holds one person's work on this phone (0025: a phone is shared).
+ *
+ * Separate files rather than an owner column: nothing written while A is signed in can be
+ * read, shown or pushed while B is — by construction, not by remembering a WHERE clause
+ * in every query of a store that has dozens.
+ */
+export function databaseNameFor(userId: string): string {
+  return `audit5s-${userId}.db`;
+}
+
+/** The single file every build before 0025 wrote, whoever was signed in. */
+const SHARED_DATABASE = 'audit5s.db';
+
+/**
+ * Hands the pre-0025 file to its owner, once.
+ *
+ * That file holds whatever the phone recorded before it knew people apart, and the person
+ * it was being synced as is whoever the app was signed in as when it updated — the first
+ * person this build resolves, whether by the stored session or by signing in. It is
+ * renamed, never copied or deleted: the data exists in exactly one place throughout.
+ */
+export async function adoptSharedDatabase(userId: string): Promise<void> {
+  const directory = `${FileSystem.documentDirectory}SQLite/`;
+  const shared = await FileSystem.getInfoAsync(`${directory}${SHARED_DATABASE}`);
+  if (!shared.exists) return;
+
+  const own = await FileSystem.getInfoAsync(`${directory}${databaseNameFor(userId)}`);
+  if (own.exists) return;
+
+  for (const suffix of ['', '-wal', '-shm']) {
+    const from = `${directory}${SHARED_DATABASE}${suffix}`;
+    if ((await FileSystem.getInfoAsync(from)).exists) {
+      await FileSystem.moveAsync({ from, to: `${directory}${databaseNameFor(userId)}${suffix}` });
+    }
+  }
 }

@@ -27,6 +27,7 @@ import {
   markSyncing,
   readyItems,
   removeItem,
+  removePrematureCommits,
   resetDeadLetters,
   scheduleRetry,
   strandedUploads,
@@ -176,6 +177,10 @@ export async function recoverStaleWork(
     await markPending(database, row.id);
     reset += 1;
   }
+
+  // A commit queued ahead of its own PUT — the old sweep's mistake — is dropped while the
+  // photograph still waits to go up; the media pass queues it again once the bytes land.
+  await removePrematureCommits(database);
 
   // Evidence whose object went up but whose commit never did. Re-queued rather than
   // called here: the commit then rides the ordinary data batch with everything else.
