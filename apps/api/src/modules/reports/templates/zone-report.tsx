@@ -13,7 +13,6 @@ import {
   Photo,
   RadarWeb,
   RatingPills,
-  SectionBars,
   SectionTable,
   bandOf,
   formatDate,
@@ -76,7 +75,6 @@ export function ZoneReport({
       </div>
 
       <h2 className="section-title">S-wise scoring</h2>
-      <SectionBars sections={zone.sections} bands={payload.bands} />
       <SectionTable sections={zone.sections} bands={payload.bands} />
 
       {/* §4.1 item 4: the web, with the AUDITOR VERIFICATION box to its left. */}
@@ -92,7 +90,7 @@ export function ZoneReport({
         </div>
         <div className="radar-box">
           <h2 className="section-title">5S performance web</h2>
-          <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} />
+          <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} size={220} />
           <div className="caption">
             Each S shows achieved marks / applicable maximum; polygon uses percentage.
           </div>

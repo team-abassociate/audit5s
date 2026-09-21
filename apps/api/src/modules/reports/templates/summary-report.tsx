@@ -71,7 +71,7 @@ export function SummaryReport({
 
       <h2 className="section-title">5S performance web — all selected zones</h2>
       <div className="radar-box">
-        <RadarWeb sections={payload.sections} bands={payload.bands} brand={payload.brand} size={210} />
+        <RadarWeb sections={payload.sections} bands={payload.bands} brand={payload.brand} size={230} />
         <div className="caption">
           Each S shows summed achieved marks / summed applicable maximum; polygon uses
           percentage.

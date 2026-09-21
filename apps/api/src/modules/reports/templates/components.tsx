@@ -4,8 +4,9 @@ import type {
   ReportPhoto,
   SectionScorePayload,
 } from './payload-types';
-import { S_SECTION_SHORT_LABELS } from '@audit5s/domain';
+import { S_SECTION_SHORT_LABELS, S_SECTION_LABELS } from '@audit5s/domain';
 import { encodeQr } from './qr';
+import { REPORT_LOGO } from './logo';
 
 /**
  * The pieces every report page is built from.
@@ -60,8 +61,9 @@ export function Header({ title, subtitle }: { title: string; subtitle: string })
         <div className="subtitle">{subtitle}</div>
       </div>
       <div className="logo-card">
-        <div className="org">AB Associates</div>
-        <div className="tag">OPERATIONS CONSULTING</div>
+        <div className="logo-art">
+          <img src={REPORT_LOGO} alt="AB Associates — Operations Consulting" />
+        </div>
       </div>
     </div>
   );
@@ -130,7 +132,7 @@ export function SectionTable({
           const band = bandOf(bands, section.pct);
           return (
             <tr key={section.section}>
-              <td>{S_SECTION_SHORT_LABELS[section.section]}</td>
+              <td>{S_SECTION_LABELS[section.section]}</td>
               <td className="num">{section.raw}</td>
               <td className="num">{section.max}</td>
               {/* A fully-NA section prints N/A, never 0 (D4). */}
@@ -312,7 +314,7 @@ export function RadarWeb({
               fontSize={7}
               fill={p.band?.color ?? (brand.inkSoft ?? '#5B5B57')}
             >
-              {p.section.raw}/{p.section.max}
+              {p.section.pct === null ? 'N/A' : `${p.section.raw}/${p.section.max}`}
             </text>
           </g>
         );
