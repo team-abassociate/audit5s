@@ -23,7 +23,9 @@
       "environment": "production",
       "autoIncrement": true,
       "env": {
-        "APP_DEPLOYMENT": "production"
+        "APP_DEPLOYMENT": "production",
+        "API_BASE_URL": "https://app.leanstack.tech/api/v1",
+        "WEB_APP_HOST": "app.leanstack.tech"
       }
     },
     "production": {
