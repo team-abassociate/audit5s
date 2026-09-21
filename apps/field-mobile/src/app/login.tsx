@@ -85,7 +85,16 @@ export default function LoginScreen() {
 
             <Button testID="sign-in" title="Sign in" onPress={submit} busy={busy} />
 
-            {serverOpen ? (
+            {/*
+              Bench testing only. The address this phone talks to is baked in by the build
+              (`API_BASE_URL`), and in the field it is not an auditor's to change: a phone
+              on a shop floor is handled by whoever picks it up, and a login screen that
+              offers to point itself at another server is a way to collect somebody's
+              credentials on the way past. `__DEV__` is false in every release APK, so the
+              control exists exactly where the comment on `setApiBaseUrl` needs it — a
+              laptop whose Wi-Fi address keeps moving — and nowhere else.
+            */}
+            {__DEV__ && (serverOpen ? (
               <View style={styles.server}>
                 <Field
                   testID="server-address"
@@ -116,7 +125,7 @@ export default function LoginScreen() {
                   onPress={() => setServerOpen(true)}
                 />
               </View>
-            )}
+            ))}
           </GateCard>
         </ScrollView>
       </Screen>
