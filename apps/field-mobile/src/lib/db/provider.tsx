@@ -20,6 +20,14 @@ import { createThemedStyles, useTheme } from '../theme';
  */
 const LocalDatabaseContext = createContext<LocalDatabase | null>(null);
 
+/**
+ * The file open while nobody has signed in yet. It holds nobody's work and nothing is ever
+ * written to it: it exists because the navigator mounts the home tab for a moment before
+ * the gate redirects to the login screen, and that tab reads the local store. Without a
+ * store to read, the read threw, and a release build closed on launch.
+ */
+const NOBODY = 'signed-out';
+
 export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
   const styles = useStyles();
   const theme = useTheme();
@@ -29,18 +37,19 @@ export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
   const [database, setDatabase] = useState<LocalDatabase | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Signed out keeps whoever was open; a new person replaces them.
-  const wanted = user?.id ?? owner;
+  // Signed out keeps whoever was open; a new person replaces them. Before anybody has
+  // signed in on this launch, the empty placeholder is open.
+  const wanted = user?.id ?? owner ?? NOBODY;
 
   useEffect(() => {
-    if (!wanted || wanted === owner) return;
+    if (wanted === owner) return;
     let cancelled = false;
     let opened: Awaited<ReturnType<typeof openExpoExecutor>> | null = null;
 
     void (async () => {
       try {
         setDatabase(null);
-        await adoptSharedDatabase(wanted);
+        if (wanted !== NOBODY) await adoptSharedDatabase(wanted);
         opened = await openExpoExecutor(databaseNameFor(wanted));
         await migrateLocalDatabase(opened);
         if (cancelled) return;
@@ -71,8 +80,9 @@ export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  // Signed in, and that person's file is still opening — never a frame of somebody else's.
-  if (user && (owner !== user.id || !database)) {
+  // A file is still opening. Signed in, it must be that person's — never a frame of
+  // somebody else's; signed out, any open store will do until the gate redirects.
+  if (!database || (user && owner !== user.id)) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color={theme.color.ink} />
@@ -80,7 +90,6 @@ export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  // Signed out with nothing open yet: the login screen needs no local store.
   return (
     <LocalDatabaseContext.Provider value={database}>{children}</LocalDatabaseContext.Provider>
   );

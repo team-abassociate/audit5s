@@ -1,7 +1,7 @@
 // Must stay the first import: Hermes defines no global `crypto`, and the device id minted
 // on every API request needs one.
 import '../lib/crypto-polyfill';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular';
@@ -47,9 +47,13 @@ function AuthGate() {
   const { status } = useSession();
   const segments = useSegments();
   const router = useRouter();
+  // Whether this sign-in has already been sent to its landing screen. Overview is where a
+  // session *starts*, not a place the app keeps pulling people back to.
+  const landed = useRef(false);
 
   useEffect(() => {
     if (status === 'loading') return;
+    if (status !== 'ready') landed.current = false;
 
     const group = segments[0];
     // Screens pushed on top of a tab — a Unit's Zones, an audit — are part of the
@@ -77,12 +81,16 @@ function AuthGate() {
     } else if (status === 'must-reset' && group !== 'reset-password') {
       router.replace('/reset-password');
     } else if (status === 'ready' && !insideApp) {
+      landed.current = true;
       router.replace('/overview');
-    } else if (status === 'ready' && group === '(tabs)' && segments.length === 1) {
-      // The field Units tab is the app's root route, and nobody's home any more: every
-      // role lands on Overview, which is their own version of it (R-24, and the field
-      // Overview beside it).
-      router.replace('/overview');
+    } else if (status === 'ready' && !landed.current) {
+      // Every role lands on Overview (R-24), and the field Units tab is the app's root
+      // route — so a launch that opens on it is moved once. Only once: this used to fire
+      // on every visit to the root, so the field Units tab, and Overview's "Open a Unit"
+      // and "Units" buttons, all bounced straight back. An auditor could never reach
+      // their Units, see a new assignment, or start an audit.
+      landed.current = true;
+      if (group === '(tabs)' && segments.length === 1) router.replace('/overview');
     }
   }, [status, segments, router]);
 

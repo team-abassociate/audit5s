@@ -8,6 +8,9 @@ import type { ExpoConfig } from 'expo/config';
  * `expo-constants`, so a device build points at the deployed API without a code change.
  */
 const config: ExpoConfig = {
+  // The Expo account that builds and signs the APK. The project and its signing key moved
+  // here from abassociatess-team, so builds keep the key testers' phones already trust.
+  owner: 'abassociates',
   name: 'Leanstack',
   slug: 'audit5s-field',
   version: '0.1.0',
