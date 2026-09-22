@@ -13,7 +13,8 @@
       "env": {
         "API_BASE_URL": "http://192.168.68.185:3000/api/v1",
         "ALLOW_CLEARTEXT": "1"
-      }
+      },
+      "channel": "preview"
     },
     "vps": {
       "distribution": "internal",
@@ -26,7 +27,8 @@
         "APP_DEPLOYMENT": "production",
         "API_BASE_URL": "https://app.leanstack.tech/api/v1",
         "WEB_APP_HOST": "app.leanstack.tech"
-      }
+      },
+      "channel": "production"
     },
     "production": {
       "autoIncrement": true

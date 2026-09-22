@@ -231,7 +231,7 @@ export function PhotoPreview({
 
           <ErrorBanner message={error} />
         </ScrollView>
-        <Button title="Close" variant="secondary" onPress={close} />
+        <Button title="Continue" variant="secondary" onPress={close} />
       </View>
     </Modal>
   );

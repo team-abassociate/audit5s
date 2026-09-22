@@ -562,7 +562,7 @@ export default function AuditZonesScreen() {
 
       {/*
         Three ways out, side by side, because they are alternatives rather than one action
-        with a fallback: put it down for now, call it off, or declare it finished. Stacking
+        with a fallback: call it off, put it down for now, or declare it finished. Stacking
         them made the middle one look like a lesser version of the one above it, and
         "Abort — save and pause" was one button trying to be two.
       */}
@@ -578,18 +578,18 @@ export default function AuditZonesScreen() {
           ) : null}
           {canPause ? (
             <Button
-              title="Save & pause"
-              variant="secondary"
-              busy={leave.isPending && leave.variables === null}
-              onPress={() => leave.mutate(null)}
-            />
-          ) : null}
-          {canPause ? (
-            <Button
               title="Abort"
               variant="danger"
               busy={leave.isPending && leave.variables !== null}
               onPress={confirmAbort}
+            />
+          ) : null}
+          {canPause ? (
+            <Button
+              title="Save & pause"
+              variant="secondary"
+              busy={leave.isPending && leave.variables === null}
+              onPress={() => leave.mutate(null)}
             />
           ) : null}
           {/*
