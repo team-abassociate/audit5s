@@ -46,6 +46,7 @@ import {
 import { useLocalDatabase } from '../../../lib/db/provider';
 import { api } from '../../../lib/api';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
+import { leaveScreen } from '../../../lib/leave-screen';
 
 type CatalogueZone = Awaited<ReturnType<typeof listCatalogueZones>>[number];
 
@@ -221,9 +222,11 @@ export default function AuditZonesScreen() {
    */
   const leave = useMutation({
     mutationFn: (reason: string | null) => pauseLocalAudit(database, auditId, reason),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
+      );
     },
   });
 

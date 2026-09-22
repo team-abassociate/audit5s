@@ -45,6 +45,7 @@ import {
 } from '../../lib/db/evidence.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { bandInk, createThemedStyles, useTheme, type Band } from '../../lib/theme';
+import { leaveScreen } from '../../lib/leave-screen';
 
 const CLASSIFICATIONS: EvidenceClassification[] = ['GOOD', 'NONCONFORMITY', 'NEUTRAL'];
 
@@ -112,9 +113,11 @@ export default function WalkByScreen() {
       await assertZonePhotoLimitForCompletion(database, auditZoneId);
       await completeLocalZone(database, auditZoneId);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
+      );
     },
   });
 

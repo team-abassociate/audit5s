@@ -20,6 +20,7 @@ import { api, problemMessage } from '../../../lib/api';
 import { listLocalQuestions } from '../../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
+import { leaveScreen } from '../../../lib/leave-screen';
 
 /**
  * Correcting a completed audit — `PATCH /audits/{id}/post-completion`, the only way one
@@ -75,13 +76,15 @@ export default function EditAuditScreen() {
           ...(remarkChanged && zone ? { zoneRemark: { auditZoneId: zone.id, remark: remark.trim() || null } } : {}),
         },
       }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['audit', auditId] }),
-        queryClient.invalidateQueries({ queryKey: ['audits'] }),
-        queryClient.invalidateQueries({ queryKey: ['audit-summary', auditId] }),
-      ]);
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['audit', auditId] });
+          void queryClient.invalidateQueries({ queryKey: ['audits'] });
+          void queryClient.invalidateQueries({ queryKey: ['audit-summary', auditId] });
+        },
+      );
     },
   });
 

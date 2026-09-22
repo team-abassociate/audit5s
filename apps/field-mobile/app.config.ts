@@ -66,6 +66,8 @@ const config: ExpoConfig = {
         android: { usesCleartextTraffic: process.env.ALLOW_CLEARTEXT === '1' },
       },
     ],
+    // Gradle needs more metaspace than the default since expo-updates arrived; see the file.
+    './plugins/with-gradle-memory',
     'expo-router',
     'expo-secure-store',
     'expo-font',

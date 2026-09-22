@@ -20,6 +20,7 @@ import { SyncStatusBar } from '../components/sync-status-bar';
 import { HeaderTitle } from '../components/ui';
 import { ThemedStatusBar, ThemeProvider } from '../lib/theme-provider';
 import { useTheme } from '../lib/theme';
+import { RouteErrorBoundary } from '../components/route-error-boundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -165,3 +166,9 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+/**
+ * Exported so expo-router wraps every route below this layout (§ the whole signed-in app).
+ * Without one, a render error in a release build unmounts the tree and shows nothing.
+ */
+export { RouteErrorBoundary as ErrorBoundary };

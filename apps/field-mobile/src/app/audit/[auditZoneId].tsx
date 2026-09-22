@@ -65,6 +65,7 @@ import { formatPct } from '../../lib/format';
 import { isFinished } from '../../lib/labels';
 import { useSync } from '../../lib/sync/provider';
 import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
+import { leaveScreen } from '../../lib/leave-screen';
 
 /** Ten questions to a page: with a five-by-ten checklist, a page is one S. */
 const PAGE_SIZE = 10;
@@ -236,11 +237,15 @@ export default function QuestionnaireScreen() {
       await assertZonePhotoLimitForCompletion(database, auditZoneId);
       await completeLocalZone(database, auditZoneId);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      // Completion is a high-priority sync trigger (§9.3).
-      void sync();
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['local'] });
+          // Completion is a high-priority sync trigger (§9.3).
+          void sync();
+        },
+      );
     },
   });
 
@@ -291,9 +296,11 @@ export default function QuestionnaireScreen() {
   // N7: pausing saves and never discards, and it never waits.
   const pause = useMutation({
     mutationFn: () => pauseLocalAudit(database, zone.data!.auditId, 'Aborted by auditor'),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
+      );
     },
   });
 

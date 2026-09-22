@@ -70,7 +70,7 @@ function ManagementOverview() {
   const [adding, setAdding] = useState(false);
 
   const organizationWide = can('analytics', 'organization_dashboard');
-  const ownUnitId = organizationWide ? null : (scope?.unitIds[0] ?? null);
+  const ownUnitId = organizationWide ? null : (scope?.unitIds?.[0] ?? null);
 
   // ponytail: counts are the first 200 rows of each list, as the web does; switch to a count
   // endpoint if an organization outgrows that.

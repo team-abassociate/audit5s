@@ -23,6 +23,7 @@ import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { useSession } from '../../lib/session';
 import { createThemedStyles } from '../../lib/theme';
+import { leaveScreen } from '../../lib/leave-screen';
 
 const AUDIT_TYPE_LABELS: Record<AuditType, string> = {
   EXTERNAL_5S: '5S audit',
@@ -112,10 +113,12 @@ export default function UnitStartScreen() {
       return auditId;
     },
     onSuccess: (auditId) => {
-      void queryClient.invalidateQueries({ queryKey: ['local'] });
       setPendingAuditId(null);
-      // Replace, so Back from the Zone form does not land on a spent selfie screen.
-      router.replace({ pathname: '/audit/zones/[auditId]', params: { auditId } });
+      leaveScreen(
+        // Replace, so Back from the Zone form does not land on a spent selfie screen.
+        () => router.replace({ pathname: '/audit/zones/[auditId]', params: { auditId } }),
+        () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
+      );
     },
   });
 

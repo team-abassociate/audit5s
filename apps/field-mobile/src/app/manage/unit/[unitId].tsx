@@ -23,6 +23,7 @@ import { api, problemMessage } from '../../../lib/api';
 import { ROLE_LABELS } from '../../../lib/labels';
 import { useSession } from '../../../lib/session';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
+import { leaveScreen } from '../../../lib/leave-screen';
 
 /**
  * One Unit: its details, its Zones, the people with access, and the way to start an audit
@@ -80,9 +81,11 @@ export default function ManageUnitScreen() {
   });
   const archive = useMutation({
     mutationFn: () => api.post(`/units/${unitId}/archive`),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['units'] });
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => void queryClient.invalidateQueries({ queryKey: ['units'] }),
+      );
     },
   });
 

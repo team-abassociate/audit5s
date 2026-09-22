@@ -32,6 +32,7 @@ import { formatDate } from '../../lib/format';
 import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
 import { createThemedStyles, useTheme } from '../../lib/theme';
+import { leaveScreen } from '../../lib/leave-screen';
 
 /**
  * One corrective action (§2.4 steps 6–9, §7.3).
@@ -108,10 +109,14 @@ export default function CorrectiveActionScreen() {
           ? { submittedByName: name.trim(), description: text.trim(), ...(photo ? { afterEvidenceId: photo.evidenceId } : {}) }
           : { explanation: text.trim() }),
       }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      void sync();
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['local'] });
+          void sync();
+        },
+      );
     },
   });
 
