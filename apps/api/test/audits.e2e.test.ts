@@ -128,6 +128,54 @@ async function assign(auditorUserId: string, unitId = world.unitA) {
   return response.body as AuditAssignment;
 }
 
+/**
+ * A Consultant with **no** `unit_membership` — R-28's independent master list, which is
+ * what the field actually has. The harness's fixture Consultant holds a permanent
+ * membership in Unit A, so every assignment-scoped effect is invisible through them.
+ */
+let unboundCount = 0;
+async function unboundConsultant(): Promise<{
+  userId: string;
+  loginId: string;
+  token: string;
+  deviceId: string;
+}> {
+  unboundCount += 1;
+  const suffix = String(9000 + unboundCount);
+  const loginId = `UB${suffix}`;
+  const deviceId = `01930000-0000-7000-8000-0000000${suffix}f`;
+
+  const argon2 = await import('argon2');
+  const { ARGON2_OPTIONS } = await import('../src/modules/auth/password.service');
+  const { rows } = await world.owner.query(
+    `INSERT INTO "user" (login_id, full_name, phone_e164, role, password_hash,
+                         must_reset_password, status)
+     VALUES ($1, $2, $3, 'CONSULTANT', $4, false, 'ACTIVE') RETURNING id`,
+    [
+      loginId,
+      `Unbound Consult ${unboundCount}`,
+      `+9190000${suffix}`,
+      await argon2.hash(FIXTURE_PASSWORD, ARGON2_OPTIONS),
+    ],
+  );
+
+  resetLimits();
+  const token = await loginFromDevice(
+    world,
+    {
+      role: 'CONSULTANT',
+      userId: rows[0].id as string,
+      loginId,
+      accessToken: '',
+      refreshToken: '',
+      unitId: null,
+    },
+    deviceId,
+  );
+
+  return { userId: rows[0].id as string, loginId, token, deviceId };
+}
+
 /** Creates an audit, adds one Zone, and returns both ids. */
 async function startAuditWithZone(options: {
   token: string;
@@ -291,6 +339,87 @@ describe('assignments', () => {
       token: asSuperAdmin(),
     });
     expect(read.status).toBe(200);
+  });
+
+  /**
+   * The field report behind 0027: a Consultant reassigned to a Unit finished an audit and
+   * the phone said "Scores not available" on a score the server had already computed —
+   * `POST /audits/{id}/complete` answered `404 No such audit` *after* completing it.
+   *
+   * Completing an audit closes its assignment, which is right (R-28: the grant is
+   * temporary). What was wrong is that `unit_select` admitted a Unit only through
+   * `app_actor_unit_ids()`, and every audit read `INNER JOIN`s `unit` for its name — so
+   * the audit became unreadable to the person who had just conducted it.
+   *
+   * **This needs a Consultant with no `unit_membership`.** The harness gives the fixture
+   * Consultant a permanent one in Unit A, so for them the assignment closing changes
+   * nothing and the whole suite sailed past this in production.
+   */
+  it('lets a Consultant who holds the Unit by assignment alone read the audit back after it closes', async () => {
+    const { userId, token, deviceId } = await unboundConsultant();
+    const assignment = await assign(userId);
+    const zoneId = await createZone('Z-91', 'Assignment-only zone');
+
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token,
+      deviceId,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+    const values = fiftyAnswers();
+    await answer(token, auditZoneId, values);
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token,
+      body: {},
+    });
+
+    // The edge that closes the assignment, and used to 404 on its own success.
+    const completed = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token,
+      body: {},
+    });
+    expect(completed.status, JSON.stringify(completed.body)).toBe(200);
+
+    // The assignment really did close: this is not the fix quietly keeping it open.
+    const closed = await world.request('GET', `${base}/audit-assignments/${assignment.id}`, {
+      token: asSuperAdmin(),
+    });
+    expect((closed.body as AuditAssignment).status).toBe('COMPLETED');
+
+    // The Scores screen (§8.6, N6).
+    const expected = scoreZone(
+      values.map((value, index) => ({ section: S_SECTION_ORDER[Math.floor(index / 10)]!, value })),
+    );
+    const summary = await world.request('GET', `${base}/audits/${auditId}/summary`, { token });
+    expect(summary.status, JSON.stringify(summary.body)).toBe(200);
+    expect((summary.body as AuditScoreSummary).audit.totals.scorePercentage).toBe(
+      expected.totals.scorePercentage,
+    );
+
+    // …and the History list it was reached from.
+    const list = await world.request('GET', `${base}/audits?limit=100`, { token });
+    expect((list.body as Page<Audit>).data.map((audit) => audit.id)).toContain(auditId);
+
+    // What did *not* widen: the Unit master is still only the Units they currently hold,
+    // and a closed assignment still cannot start another audit there.
+    const catalogue = await world.request('GET', `${base}/sync/catalogue`, { token });
+    expect(
+      (catalogue.body as { units: Array<{ id: string }> }).units.map((unit) => unit.id),
+    ).not.toContain(world.unitA);
+
+    const again = await world.request('POST', `${base}/audits`, {
+      token,
+      body: {
+        id: randomUUID(),
+        auditType: 'EXTERNAL_5S',
+        unitId: world.unitA,
+        checklistVersionId: versionId,
+        deviceId,
+      },
+    });
+    // 404 rather than 403: the Unit is out of scope for the write, so it is not found
+    // rather than forbidden. What matters is that it is still refused.
+    expect(again.status).toBe(404);
   });
 
   it('appears in the device catalogue while open and disappears once cancelled', async () => {
