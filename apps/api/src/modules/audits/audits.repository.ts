@@ -74,6 +74,7 @@ const auditColumns = {
   maxScore: audits.maxScore,
   pausedAt: audits.pausedAt,
   pauseReason: audits.pauseReason,
+  restartCount: audits.restartCount,
   resumeAuditZoneId: audits.resumeAuditZoneId,
   clientCreatedAt: audits.clientCreatedAt,
   clientUpdatedAt: audits.clientUpdatedAt,
@@ -346,6 +347,14 @@ export class AuditsRepository extends BaseRepository {
       resumeQuestionId: string | null | undefined;
       clientUpdatedAt: Date;
       snapshot: ZoneSnapshot;
+      /**
+       * R-34: the snapshot fields this upsert may re-take, and no others.
+       *
+       * Empty once the audit is finished — that is where D6's guarantee lives. While it is
+       * open it carries only what the auditor supplied, so correcting a typed Zone name
+       * works but a Coordinator's master rename still never reaches a snapshot.
+       */
+      resnapshot: Partial<ZoneSnapshot> & { zoneId?: string };
     },
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
@@ -374,6 +383,10 @@ export class AuditsRepository extends BaseRepository {
             sequenceNo: input.sequenceNo,
             clientUpdatedAt: input.clientUpdatedAt,
             version: sql`${auditZones.version} + 1`,
+            // R-34. Absent from this list until now, which is what made a typed Zone name
+            // permanent the moment it was first written — the auditor could not correct
+            // their own entry, only a Super Admin through A-2's door.
+            ...input.resnapshot,
           },
         });
     });
@@ -938,6 +951,61 @@ export class AuditsRepository extends BaseRepository {
         actorRole: scope.actor.role,
         actorLabel: scope.actor.userId,
         action: 'audit.changed_after_completion',
+        resourceType: 'audit',
+        resourceId: input.auditId,
+        unitId: input.unitId,
+        before: input.before,
+        after: input.after,
+        deviceId: scope.actor.deviceId,
+        requestId: input.requestId,
+      });
+    });
+  }
+
+  /**
+   * R-33: the audit goes back to IN_PROGRESS, the counter rises, and the log records it.
+   *
+   * Inside A-2's carve-out, because a restart *is* a change to a completed audit — the
+   * same door R-30 opened, which `app_post_completion_override()` already admits this
+   * audit's own auditor through. Without the flag the append-only trigger refuses the
+   * UPDATE, which is the behaviour that makes this an audited path rather than a bypass.
+   *
+   * `completedAt` and `closedAt` are cleared: they are when this audit finished, and it
+   * has not. `complete` sets them again on the way back out. The cascade runs on the same
+   * transaction, so an audit whose corrective actions could not be withdrawn is not left
+   * restarted.
+   */
+  async restart(
+    scope: ScopeContext,
+    input: {
+      auditId: string;
+      unitId: string;
+      restartCount: number;
+      before: Record<string, unknown>;
+      after: Record<string, unknown>;
+      requestId: string;
+    },
+    cascade?: (tx: Transaction) => Promise<void>,
+  ): Promise<void> {
+    await this.inOverrideTransaction(scope, input.auditId, async (tx) => {
+      await tx
+        .update(audits)
+        .set({
+          status: 'IN_PROGRESS',
+          restartCount: input.restartCount,
+          completedAt: null,
+          closedAt: null,
+          version: sql`${audits.version} + 1`,
+        })
+        .where(eq(audits.id, input.auditId));
+
+      await cascade?.(tx);
+
+      await tx.insert(auditLogs).values({
+        actorUserId: scope.actor.userId,
+        actorRole: scope.actor.role,
+        actorLabel: scope.actor.userId,
+        action: 'audit.restarted',
         resourceType: 'audit',
         resourceId: input.auditId,
         unitId: input.unitId,

@@ -219,6 +219,83 @@ export async function addLocalZone(
   return id;
 }
 
+/**
+ * R-34: correcting the Zone details the auditor typed, on a Zone already in the audit.
+ *
+ * `addLocalZone` writes these once and this is how they change afterwards — the
+ * description, the leader's name, and the department for a scored Zone. The Zone *number*
+ * is deliberately not among them: changing it would re-point the audit Zone at a different
+ * master Zone, which R-29's claim and the one-Zone-per-audit rule both have opinions
+ * about, and those are the server's to enforce rather than a phone's to assume.
+ *
+ * The same outbox operation the Zone was added with. It coalesces on
+ * `(entity_type, entity_id, operation)`, so correcting a Zone three times offline sends
+ * the last state once rather than three upserts racing each other.
+ */
+export async function editLocalZone(
+  database: LocalDatabase,
+  input: {
+    auditZoneId: string;
+    zoneDescription?: string | null;
+    zoneLeaderName?: string | null;
+    checklistVersionId?: string | null;
+    now?: string;
+  },
+): Promise<void> {
+  const now = input.now ?? new Date().toISOString();
+
+  const [existing] = await database
+    .select()
+    .from(localAuditZones)
+    .where(eq(localAuditZones.id, input.auditZoneId))
+    .limit(1);
+  if (!existing) {
+    throw new Error(`Audit Zone ${input.auditZoneId} is not on this device`);
+  }
+
+  const typedDescription = input.zoneDescription?.trim() || null;
+  const typedLeader = input.zoneLeaderName?.trim() || null;
+
+  const version = input.checklistVersionId
+    ? (
+        await database
+          .select({ templateName: checklistVersions.templateName })
+          .from(checklistVersions)
+          .where(eq(checklistVersions.id, input.checklistVersionId))
+          .limit(1)
+      )[0]
+    : undefined;
+
+  await database
+    .update(localAuditZones)
+    .set({
+      ...(input.zoneDescription !== undefined
+        ? { zoneDescriptionSnapshot: typedDescription }
+        : {}),
+      ...(input.zoneLeaderName !== undefined ? { zoneLeaderNameSnapshot: typedLeader } : {}),
+      ...(input.checklistVersionId !== undefined
+        ? {
+            checklistVersionId: input.checklistVersionId,
+            checklistTemplateNameSnapshot: version?.templateName ?? null,
+          }
+        : {}),
+      clientUpdatedAt: now,
+    })
+    .where(eq(localAuditZones.id, input.auditZoneId));
+
+  await enqueue(database, 'audit_zone', input.auditZoneId, 'upsert', {
+    auditId: existing.auditId,
+    zoneNumber: zoneNumberFromCode(existing.zoneCodeSnapshot) ?? undefined,
+    sequenceNo: existing.sequenceNo,
+    checklistVersionId:
+      (input.checklistVersionId ?? existing.checklistVersionId) || undefined,
+    // Sent even when cleared, so the server can tell "unchanged" from "emptied" — only a
+    // field the request carries is ever re-snapshotted (R-34).
+    ...(input.zoneDescription !== undefined ? { zoneDescription: typedDescription } : {}),
+    ...(input.zoneLeaderName !== undefined ? { zoneLeaderName: typedLeader } : {}),
+  });
+}
+
 export interface SaveResponseInput {
   auditZoneId: string;
   auditId: string;
@@ -492,6 +569,42 @@ export async function completeLocalAudit(
     .where(eq(audits.id, auditId));
 
   await enqueue(database, 'audit', auditId, 'complete', { completedAt: now });
+}
+
+/**
+ * R-33: the way back from an accidental *Finish audit*, authored on the phone.
+ *
+ * Two writes, in the order that makes an interruption harmless. The local status goes back
+ * to IN_PROGRESS first, so the auditor can carry on immediately — the whole point is that
+ * this works in a plant with no signal — and the outbox row follows. If the app dies
+ * between them the audit is editable locally and the server still thinks it is finished,
+ * which the next `complete` reconciles; the reverse order would queue a restart for an
+ * audit the auditor cannot yet touch.
+ *
+ * The count rises locally too, so the button says "1 left" straight away rather than after
+ * the next sync. The server keeps its own count and is the one that refuses a third — this
+ * is the screen's copy, not the control.
+ */
+export async function restartLocalAudit(
+  database: LocalDatabase,
+  auditId: string,
+  justification: string,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  const [audit] = await database.select().from(audits).where(eq(audits.id, auditId)).limit(1);
+  if (!audit) return;
+
+  await database
+    .update(audits)
+    .set({
+      status: 'IN_PROGRESS',
+      completedAt: null,
+      restartCount: (audit.restartCount ?? 0) + 1,
+      clientUpdatedAt: now,
+    })
+    .where(eq(audits.id, auditId));
+
+  await enqueue(database, 'audit', auditId, 'restart', { justification });
 }
 
 /**

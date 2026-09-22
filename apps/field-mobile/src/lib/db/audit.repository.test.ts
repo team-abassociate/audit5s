@@ -7,6 +7,7 @@ import {
   completeLocalAudit,
   completeLocalZone,
   createLocalAudit,
+  editLocalZone,
   getLocalAuditZone,
   listLocalAudits,
   listOutbox,
@@ -14,6 +15,7 @@ import {
   listResumableAudits,
   pauseLocalAudit,
   pendingOutboxCount,
+  restartLocalAudit,
   resumeCursor,
   resumeLocalAudit,
   saveLocalResponse,
@@ -669,5 +671,88 @@ describe('a complete offline Zone — the Phase 3 acceptance row, device half', 
 
     expect((await scoreLocalZone(database, auditZoneId)).totals.scorePercentage).toBe(100);
     expect((await scoreLocalZone(database, secondZoneId)).totals.scorePercentage).toBe(0);
+  });
+});
+
+
+describe('restarting a finished audit (R-33)', () => {
+  it('puts it back in progress, counts the restart, and queues one item with the reason', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await completeLocalZone(database, auditZoneId);
+    await completeLocalAudit(database, auditId);
+
+    const beforeRestart = (await listLocalAudits(database)).find((a) => a.id === auditId)!;
+    expect(beforeRestart.status).toBe('COMPLETED');
+
+    await restartLocalAudit(database, auditId, 'Finished before the packing bay');
+
+    // Editable again on this device, without waiting for a connection — the whole point.
+    const after = (await listLocalAudits(database)).find((a) => a.id === auditId)!;
+    expect(after.status).toBe('IN_PROGRESS');
+    expect(after.restartCount).toBe(1);
+
+    const queued = (await listOutbox(database)).filter((row) => row.operation === 'restart');
+    expect(queued).toHaveLength(1);
+    expect(queued[0]!.entityId).toBe(auditId);
+    expect(JSON.parse(queued[0]!.payload as string)).toMatchObject({
+      justification: 'Finished before the packing bay',
+    });
+  });
+
+  it('coalesces two taps into one restart', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await completeLocalZone(database, auditZoneId);
+    await completeLocalAudit(database, auditId);
+
+    await restartLocalAudit(database, auditId, 'First tap, no signal');
+    await restartLocalAudit(database, auditId, 'Second tap, still no signal');
+
+    // The outbox coalesces on (entity_type, entity_id, operation): two taps are one
+    // restart on the server, not two chances spent.
+    const queued = (await listOutbox(database)).filter((row) => row.operation === 'restart');
+    expect(queued).toHaveLength(1);
+  });
+});
+
+
+describe('correcting the Zone details the auditor typed (R-34)', () => {
+  it('rewrites the snapshot on this device and queues one upsert carrying it', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+
+    await editLocalZone(database, {
+      auditZoneId,
+      zoneDescription: 'Press shop, bay 7 — corrected on site',
+      zoneLeaderName: 'R. Iyer',
+    });
+
+    const [zone] = await getLocalAuditZone(database, auditZoneId);
+    expect(zone!.zoneDescriptionSnapshot).toBe('Press shop, bay 7 — corrected on site');
+    expect(zone!.zoneLeaderNameSnapshot).toBe('R. Iyer');
+
+    const queued = (await listOutbox(database)).filter(
+      (row) => row.entityId === auditZoneId && row.operation === 'upsert',
+    );
+    // One row, not two: the correction coalesces with the upsert that created the Zone.
+    expect(queued).toHaveLength(1);
+    expect(JSON.parse(queued[0]!.payload as string)).toMatchObject({
+      auditId,
+      zoneDescription: 'Press shop, bay 7 — corrected on site',
+      zoneLeaderName: 'R. Iyer',
+    });
+  });
+
+  it('leaves a field alone when the correction does not name it', async () => {
+    const { auditZoneId } = await startAudit();
+    await editLocalZone(database, { auditZoneId, zoneLeaderName: 'Only the leader' });
+
+    const [zone] = await getLocalAuditZone(database, auditZoneId);
+    expect(zone!.zoneLeaderNameSnapshot).toBe('Only the leader');
+    // Untouched: only what the correction carries is ever re-snapshotted (R-34).
+    const queued = (await listOutbox(database)).filter(
+      (row) => row.entityId === auditZoneId && row.operation === 'upsert',
+    );
+    expect(JSON.parse(queued[0]!.payload as string)).not.toHaveProperty('zoneDescription');
   });
 });

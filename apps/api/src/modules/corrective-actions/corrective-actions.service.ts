@@ -115,12 +115,52 @@ export class CorrectiveActionsService {
     const dueAt = days > 0 ? new Date(completedAt.getTime() + days * 86_400_000) : null;
 
     const created = await unit.materialize(auditId, dueAt);
+
+    /*
+     * R-33: a finding that was withdrawn and is live again comes back on this edge.
+     *
+     * `materialize` cannot raise it. It skips any photograph that already has an action
+     * (`ON CONFLICT (evidence_id) DO NOTHING`), and the withdrawn row is still that
+     * action — one photograph has one action for its whole life, which the unique index
+     * enforces. So the row is revived to REOPENED instead of a second one appearing.
+     *
+     * This runs on every completion, not only after a restart, and that is right: the
+     * only way to be in this state is for a finding to have gone and come back, and
+     * whichever path took it away, it is a finding again now.
+     */
+    // As the system, like every other withdrawal-and-revival edge: `corrective_action`'s
+    // RLS admits the Unit's people for the acts those roles perform, and none of them is
+    // performing this one — the auditor finished an audit, and this followed. Without it
+    // the UPDATE matches no row and fails silently, which is how RLS refuses a write.
+    const revivable = await unit.asSystem(async () => {
+      const found = await unit.findRevivableActions(auditId);
+      for (const action of found) {
+        try {
+          assertTransition('corrective_action', action.status, 'REOPENED', {
+            role: null,
+            // The justification of whatever brought the finding back — a restart or an
+            // override. Neither is reachable without one.
+            satisfied: ['reason_given'],
+          });
+        } catch (error) {
+          throw asAppError(error);
+        }
+      }
+      await unit.revive(
+        found.map((action) => action.id),
+        dueAt,
+      );
+      return found;
+    });
+
     const auditStatus = await this.rollup(unit, auditId, null);
 
     return {
-      opened: created.length,
+      opened: created.length + revivable.length,
       assigneeIds: [
-        ...new Set(created.flatMap((action) => action.assignedZoneLeaderUserId ?? [])),
+        ...new Set(
+          [...created, ...revivable].flatMap((action) => action.assignedZoneLeaderUserId ?? []),
+        ),
       ],
       auditStatus,
     };
@@ -215,6 +255,53 @@ export class CorrectiveActionsService {
         })),
         auditStatus,
       };
+    });
+  }
+
+  /**
+   * R-33: the corrective-action half of a restart.
+   *
+   * Every unsettled action of the audit is withdrawn, because the audit is going back into
+   * the auditor's hands and every one of those actions came from a mark they are about to
+   * re-decide. A Zone Leader chased for a finding under reconsideration is being asked to
+   * fix something nobody currently claims is wrong.
+   *
+   * Nothing is re-opened here. `complete` runs `materialize` as it always does, so the
+   * findings that survive the second look are raised again on the way out, with a due date
+   * running from that completion — the same arrangement `cascadeAfterCorrection` makes.
+   *
+   * As the system, and for the same reason: the auditor restarted an audit; that these
+   * rows stopped is the consequence, not an act anybody performed on them.
+   */
+  async withdrawForRestart(
+    tx: Transaction,
+    scope: ScopeContext,
+    auditId: string,
+  ): Promise<Array<{ id: string; assignedZoneLeaderUserId: string | null }>> {
+    const unit = this.repository.within(tx, scope);
+    const at = new Date();
+
+    return unit.asSystem(async () => {
+      const stopping = await unit.findRestartableActions(auditId);
+      for (const action of stopping) {
+        try {
+          assertTransition('corrective_action', action.status, 'WITHDRAWN', {
+            role: null,
+            // The restart's justification. The endpoint required one before any of this ran.
+            satisfied: ['reason_given'],
+          });
+        } catch (error) {
+          throw asAppError(error);
+        }
+      }
+      await unit.withdraw(
+        stopping.map((action) => action.id),
+        at,
+      );
+      return stopping.map((action) => ({
+        id: action.id,
+        assignedZoneLeaderUserId: action.assignedZoneLeaderUserId,
+      }));
     });
   }
 

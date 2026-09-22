@@ -99,6 +99,12 @@ export const audits = sqliteTable('audit', {
   completedAt: text('completed_at'),
   pausedAt: text('paused_at'),
   pauseReason: text('pause_reason'),
+  /**
+   * R-33: restarts used, mirrored from the server so the button can say how many are left
+   * while the phone is offline. The server's count is the one that decides; this is what
+   * the screen reads.
+   */
+  restartCount: integer('restart_count').notNull().default(0),
   /** Resume cursor at audit level. Resumption is entirely local (§9.8). */
   resumeAuditZoneId: text('resume_audit_zone_id'),
   startLatitude: real('start_latitude'),
@@ -202,6 +208,12 @@ export const OUTBOX_OPERATIONS = [
    * it.
    */
   'override',
+  /**
+   * R-33's restart, queued. Like `override` it carries a justification and rides the one
+   * endpoint that logs it and counts it against the cap; coalescing on
+   * `(entity_type, entity_id, operation)` means two taps are one restart, not two.
+   */
+  'restart',
 ] as const;
 export type OutboxOperation = (typeof OUTBOX_OPERATIONS)[number];
 

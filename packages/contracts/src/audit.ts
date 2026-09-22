@@ -201,6 +201,14 @@ export const auditSchema = z.object({
   totals: scoreTotalsSchema,
   pausedAt: isoDateTimeSchema.nullable(),
   pauseReason: z.string().nullable(),
+  /**
+   * How many times this audit has been restarted after finishing, and how many chances are
+   * left (R-33). Both are stated rather than leaving the client to subtract: the app says
+   * "2 restarts left" on a button, and a client that computed it from a cap it had compiled
+   * in would go wrong the day the cap moved.
+   */
+  restartCount: z.number().int().nonnegative(),
+  restartsRemaining: z.number().int().nonnegative(),
   /** Resume cursor at audit level (§9.8). */
   resumeAuditZoneId: uuidSchema.nullable(),
   clientCreatedAt: isoDateTimeSchema,
@@ -389,6 +397,18 @@ export const postCompletionOverrideRequestSchema = z.object({
     }),
 });
 export type PostCompletionOverrideRequest = z.infer<typeof postCompletionOverrideRequestSchema>;
+
+/**
+ * `POST /audits/{id}/restart` (R-33) — the way back from an accidental *Finish audit*.
+ *
+ * A justification, because restarting is a change to a completed audit and A-2's door is
+ * the only one: the same 10-character floor the post-completion override uses, so the two
+ * ways of changing a finished audit ask the same of whoever walks through.
+ */
+export const restartAuditRequestSchema = z.object({
+  justification: z.string().trim().min(10).max(2000),
+});
+export type RestartAuditRequest = z.infer<typeof restartAuditRequestSchema>;
 
 export const listAuditsQuerySchema = paginationQuerySchema.extend({
   unitId: uuidSchema.optional(),

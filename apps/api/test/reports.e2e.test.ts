@@ -9,7 +9,7 @@ import {
   type ReportPayload,
   type ReportSnapshot,
 } from '@audit5s/contracts';
-import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
+import { FIXTURE_PASSWORD, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import { completedWalkBy, makeZone } from './corrective-fixtures';
 
 /**
@@ -281,6 +281,96 @@ describe('MULTI_ZONE_SUMMARY aggregates over the selection only (§10.3-C)', () 
     expect(response.status).toBe(422);
     expect(JSON.stringify(response.body)).toMatch(/No completed audit/i);
   }, 120_000);
+});
+
+/**
+ * Two Consultants, one Unit, one day — the product owner's case: "the zones audited by
+ * consultant A and consultant B should be displayed together... it should be one audit".
+ *
+ * The Summary Report is already the answer, and this pins it. `MULTI_ZONE_SUMMARY` is
+ * scoped to a **Unit and a Zone selection**, never to an audit: `resolveLatestAuditZones`
+ * takes the latest completed `audit_zone` per Zone in the Unit without looking at which
+ * audit or which auditor it belongs to. So the two Consultants' work arrives in one
+ * document, under one Unit heading, with one set of totals.
+ *
+ * R-29 keeps them off each other's Zones while they work; this is the other half — what
+ * happens when the work is read back.
+ */
+describe('a Unit audited by two Consultants reads back as one summary', () => {
+  /** A second Consultant, with their own phone, in the same Unit. */
+  async function secondConsultant(): Promise<{ token: string; userId: string; name: string }> {
+    const argon2 = await import('argon2');
+    const { ARGON2_OPTIONS } = await import('../src/modules/auth/password.service');
+    const name = 'Bhavna Consult';
+    const loginId = 'BH7007';
+    const { rows } = await world.owner.query(
+      `INSERT INTO "user" (login_id, full_name, phone_e164, role, password_hash,
+                           must_reset_password, status)
+       VALUES ($1, $2, '+919000007007', 'CONSULTANT', $3, false, 'ACTIVE') RETURNING id`,
+      [loginId, name, await argon2.hash(FIXTURE_PASSWORD, ARGON2_OPTIONS)],
+    );
+    const userId = rows[0].id as string;
+    await world.owner.query(
+      `INSERT INTO unit_membership (user_id, unit_id, role, assigned_by_user_id)
+       VALUES ($1, $2, 'CONSULTANT', $1)`,
+      [userId, world.unitA],
+    );
+    const token = await loginFromDevice(
+      world,
+      { role: 'CONSULTANT', userId, loginId, accessToken: '', refreshToken: '', unitId: world.unitA },
+      '01930000-0000-7000-8000-00000007e002',
+    );
+    return { token, userId, name };
+  }
+
+  it('puts both auditors’ Zones in one document, under both their names', async () => {
+    const other = await secondConsultant();
+
+    // Consultant A takes one Zone; Consultant B takes another, in the same Unit.
+    const byA = await completedZone({ nonconformities: 1, good: 1 });
+    const byB = await completedWalkBy(world, {
+      token: other.token,
+      deviceId: '01930000-0000-7000-8000-00000007e002',
+      unitId: world.unitA,
+      zoneLeaderUserId: world.actors.ZONE_LEADER.userId,
+      nonconformities: 1,
+      good: 1,
+    });
+
+    // Two separate audits on the record — which is what they are.
+    expect(byA.auditId).not.toBe(byB.auditId);
+
+    const response = await generate(superAdmin, {
+      kind: 'MULTI_ZONE_SUMMARY',
+      unitId: world.unitA,
+      selectedZoneIds: [byA.zoneId, byB.zoneId],
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(202);
+    const snapshot = response.body as ReportSnapshot;
+
+    const payload = (
+      await world.request('GET', `${base}/reports/${snapshot.id}/payload`, { token: superAdmin })
+    ).body as ReportPayload;
+
+    // One document, both Zones.
+    expect(payload.zones.map((zone) => zone.auditZoneId).sort()).toEqual(
+      [byA.auditZoneId, byB.auditZoneId].sort(),
+    );
+    expect(new Set(payload.zones.map((zone) => zone.auditId)).size).toBe(2);
+
+    // Both Consultants named — this is the "two different IDs of the respective
+    // consultants" the product owner asked for, and the Summary Report prints it as
+    // "Auditor name: A, B".
+    expect(payload.auditorNames).toContain('Cara Consult');
+    expect(payload.auditorNames).toContain(other.name);
+
+    // No single-audit block: the document does not pick one of them and drop the other.
+    expect(payload.audit).toBeNull();
+
+    // One Unit heading and one set of totals over the whole selection.
+    expect(payload.unit.id).toBe(world.unitA);
+    expect(payload.totals).toBeDefined();
+  }, 240_000);
 });
 
 describe('reading and downloading', () => {

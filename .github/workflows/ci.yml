@@ -103,6 +103,18 @@ jobs:
       # renderer without the browser UI — and `--with-deps` installs the shared libraries
       # the GitHub runner does not ship. Only the e2e suite uses it; the unit tests assert
       # the report *layout* from HTML and need no browser at all.
+      #
+      # Cached on the Playwright version in the lockfile: the browser build is pinned to it,
+      # so the key changes exactly when the browser would. The `--with-deps` system packages
+      # are not cached — they are apt installs outside the home directory — so the install
+      # still runs, but with nothing to download it is seconds rather than half a minute.
+      - name: Cache chrome-headless-shell
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: playwright-${{ runner.os }}-
+
       - name: Install chrome-headless-shell
         run: pnpm --filter @audit5s/api exec playwright install --with-deps chromium-headless-shell
 
@@ -128,7 +140,15 @@ jobs:
   build-image:
     name: Build images and backup smoke
     runs-on: ubuntu-latest
-    needs: [guardrails, verify]
+    # Guardrails only, deliberately. This used to wait for `verify`, which put three
+    # minutes of image building *after* eight minutes of testing and made every green run
+    # eleven minutes end to end — on a workflow whose whole job is to gate a deploy.
+    #
+    # Nothing is loosened by overlapping them: the deploy triggers on the CI run's
+    # conclusion, and a run is only successful if every job is. A failing `verify` still
+    # stops the deploy; it just no longer stops this job from having already finished.
+    # The cost is runner minutes on a red commit, which is the cheaper of the two.
+    needs: [guardrails]
 
     steps:
       - uses: actions/checkout@v4

@@ -225,6 +225,15 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
        BEGIN SELECT RAISE(ABORT, '${ZONE_PHOTO_LIMIT_MESSAGE}'); END`,
     ],
   },
+  {
+    version: 6,
+    statements: [
+      // R-33: restarts used on this audit, so the Restart button can say how many chances
+      // are left without a round trip. Mirrored from the server on every pull; the
+      // server's count is still the one that refuses a third.
+      `ALTER TABLE audit ADD COLUMN restart_count INTEGER NOT NULL DEFAULT 0`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

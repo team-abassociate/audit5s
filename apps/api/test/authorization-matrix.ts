@@ -691,6 +691,18 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'POST',
+    path: '/api/v1/audits/:auditId/restart',
+    description:
+      'audit:restart — R-33, the way back from an accidental finish. Twice, justified and logged',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
     path: '/api/v1/audits/:auditId/cancel',
     description: 'audit:cancel — SUPER_ADMIN only; every row is retained (A-1)',
     expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },

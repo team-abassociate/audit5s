@@ -112,6 +112,15 @@ export const SYNC_OPERATIONS = [
    * them through the one door that writes an audit-log entry with the before and after.
    */
   'override',
+  /**
+   * R-33's restart, authored offline.
+   *
+   * An auditor who finished an audit by mistake in a plant with no signal must be able to
+   * say so there and then, not on the drive back. Like `override` it carries a
+   * justification and goes through `POST /audits/{id}/restart` — the one door that writes
+   * the `audit.restarted` log entry and counts the restart against the cap.
+   */
+  'restart',
 ] as const;
 export const syncOperationSchema = z.enum(SYNC_OPERATIONS);
 export type SyncOperation = z.infer<typeof syncOperationSchema>;

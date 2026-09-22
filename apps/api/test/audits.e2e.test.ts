@@ -907,6 +907,161 @@ describe('finishing a Zone and an audit', () => {
   });
 
   /**
+   * R-33 — the way back from an accidental *Finish audit*, and the cap that keeps it a
+   * correction rather than an open door.
+   *
+   * The whole loop in one test, because the halves are only correct together: a restart
+   * that did not restore the auditor's powers would be useless, and one that had no limit
+   * would mean no audit is ever finished.
+   */
+  it('restarts a finished audit twice, restores the auditor’s powers, then refuses a third', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-95', 'Restart zone');
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+    await answer(consultantToken, auditZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+
+    const finished = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(finished.status, JSON.stringify(finished.body)).toBe(200);
+    expect((finished.body as Audit).restartCount).toBe(0);
+    expect((finished.body as Audit).restartsRemaining).toBe(2);
+
+    // --- first restart ------------------------------------------------------
+    const first = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'Tapped finish before auditing the packing bay' },
+    });
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const detail = first.body as AuditDetail;
+    expect(detail.status).toBe('IN_PROGRESS');
+    expect(detail.restartCount).toBe(1);
+    expect(detail.restartsRemaining).toBe(1);
+    // The Zones keep their own statuses: the auditor reopens what they need.
+    expect(detail.zones[0]!.status).toBe('COMPLETED');
+
+    // It was logged, with the reason and the count on either side.
+    const { rows: logged } = await world.owner.query(
+      `SELECT before, after FROM audit_log
+       WHERE resource_id = $1 AND action = 'audit.restarted'`,
+      [auditId],
+    );
+    expect(logged).toHaveLength(1);
+    expect(logged[0].before).toMatchObject({ restartCount: 0 });
+    expect(logged[0].after).toMatchObject({
+      restartCount: 1,
+      justification: 'Tapped finish before auditing the packing bay',
+    });
+
+    /*
+     * The auditor's ordinary powers are back, and this is the assertion that matters.
+     *
+     * The response upsert is gated on the **audit's** status, not the Zone's — PART 6's
+     * "audit must not be COMPLETED" — so a Zone still marked COMPLETED under a restarted
+     * audit takes an ordinary mark, through the plain endpoint, with no justification and
+     * no override. That is the whole point of returning the audit to IN_PROGRESS rather
+     * than inventing a separate "restarted" flag: every rule that gates the auditor reads
+     * one column, so restoring that column restores all of them at once.
+     *
+     * It rescores on the way, by the same Review-button path that already existed.
+     */
+    const corrected = await world.request(
+      'PUT',
+      `${base}/audit-zones/${auditZoneId}/responses/${randomUUID()}`,
+      {
+        token: consultantToken,
+        body: {
+          // Question 2 was answered SCORE_2 by `fiftyAnswers`; dropping it to 0 is a
+          // change the score has to show. (Question 1 is already a 0.)
+          checklistQuestionId: questionIds[1],
+          value: 'SCORE_0',
+          answeredAt: new Date().toISOString(),
+        },
+      },
+    );
+    expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
+
+    const rescored = await world.request('GET', `${base}/audits/${auditId}/summary`, {
+      token: consultantToken,
+    });
+    expect(rescored.status).toBe(200);
+    expect((rescored.body as AuditScoreSummary).audit.totals.scorePercentage).not.toBe(
+      (finished.body as Audit).totals.scorePercentage,
+    );
+
+    // --- second restart -----------------------------------------------------
+    await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    const second = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'One more correction on the dispatch Zone' },
+    });
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect((second.body as AuditDetail).restartCount).toBe(2);
+    expect((second.body as AuditDetail).restartsRemaining).toBe(0);
+
+    // --- and no third -------------------------------------------------------
+    await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    const third = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'Hoping for a third bite at this audit' },
+    });
+    expect(third.status).toBe(409);
+    expect((third.body as { code: string }).code).toBe('RESTART_LIMIT_REACHED');
+  }, 240_000);
+
+  it('refuses a restart with no justification, and one on an unfinished audit', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-96', 'Unfinished zone');
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+
+    // Still IN_PROGRESS: there is nothing to restart.
+    const early = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'Nothing has finished yet' },
+    });
+    expect(early.status).toBe(409);
+    expect((early.body as { code: string }).code).toBe('INVALID_STATE_TRANSITION');
+
+    await answer(consultantToken, auditZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+
+    // A-2's floor: a restart is a change to a finished audit and has to say why.
+    const bare = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'oops' },
+    });
+    expect(bare.status).toBe(422);
+  }, 240_000);
+
+  /**
    * The Review button's bug, in the terms the product owner reported it: a Consultant
    * changed a score on a finished Zone, saved, and every screen but their own kept the old
    * number. PART 6 allows the write until the audit is completed — what was missing was
@@ -1183,6 +1338,68 @@ describe('snapshot isolation (D6)', () => {
     expect((second.body as AuditZone).zoneNameSnapshot).toBe('Original name');
     expect((second.body as AuditZone).zoneRemark).toBe('Tidy');
   });
+
+  /**
+   * R-34 — the auditor may correct the Zone they named, while the audit is open.
+   *
+   * The companion to the test above, and the pair is the point: a *master* rename still
+   * never reaches a snapshot, and the auditor's own correction now does. One of those is
+   * D6's guarantee and the other was D6 being read wider than it said.
+   */
+  it('lets the auditor correct the Zone description and leader they typed, while open', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-97', 'Corrected zone', 'Typed in a hurry');
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+
+    const fixed = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
+      token: consultantToken,
+      body: {
+        zoneId,
+        sequenceNo: 1,
+        checklistVersionId: versionId,
+        zoneDescription: 'Press shop, bay 7 — corrected on site',
+        zoneLeaderName: 'R. Iyer',
+      },
+    });
+    expect(fixed.status, JSON.stringify(fixed.body)).toBe(200);
+    expect((fixed.body as AuditZone).zoneDescriptionSnapshot).toBe(
+      'Press shop, bay 7 — corrected on site',
+    );
+    expect((fixed.body as AuditZone).zoneLeaderNameSnapshot).toBe('R. Iyer');
+
+    // And once it is finished, the same correction is refused — the snapshot is history.
+    await answer(consultantToken, auditZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+
+    const late = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
+      token: consultantToken,
+      body: {
+        zoneId,
+        sequenceNo: 1,
+        checklistVersionId: versionId,
+        zoneDescription: 'Changed after the fact',
+      },
+    });
+    // Whether it is refused outright or accepted-but-ignored, the snapshot must not move.
+    const after = await world.request('GET', `${base}/audits/${auditId}`, {
+      token: consultantToken,
+    });
+    const frozen = (after.body as AuditDetail).zones.find((zone) => zone.id === auditZoneId)!;
+    expect(frozen.zoneDescriptionSnapshot).toBe('Press shop, bay 7 — corrected on site');
+    expect([200, 409]).toContain(late.status);
+  }, 180_000);
 
   it('refuses the same Zone twice in one audit', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);

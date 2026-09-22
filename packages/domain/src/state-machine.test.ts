@@ -3,6 +3,7 @@ import { AUDIT_STATUSES, AUDIT_ZONE_STATUSES, ROLES, type Role } from '@audit5s/
 import {
   AUDIT_TRANSITIONS,
   AUDIT_ZONE_TRANSITIONS,
+  TRANSITION_GUARDS,
   InvalidStateTransition,
   assertTransition,
   canTransition,
@@ -20,15 +21,11 @@ import {
  * a denial" a property of the system rather than of the cases someone remembered to write.
  */
 
-const ALL_GUARDS: TransitionGuard[] = [
-  'device_owns_audit',
-  'all_zones_completed',
-  'all_questions_answered',
-  'has_evidence',
-  'selfie_captured',
-  'membership_active',
-  'reason_given',
-];
+/**
+ * Derived, never listed. A hand-kept copy of this went stale the moment R-33 added a
+ * guard, and the suite's reaction was to assert that a legal edge was illegal.
+ */
+const ALL_GUARDS: TransitionGuard[] = [...TRANSITION_GUARDS];
 
 /** A context that satisfies every guard, so a case is testing the edge and not a guard. */
 function asRole(role: Role | null) {
@@ -160,7 +157,9 @@ describe('assertTransition', () => {
   it('raises InvalidStateTransition naming the entity, both statuses and the refusal', () => {
     let caught: unknown;
     try {
-      assertTransition('audit', 'COMPLETED', 'IN_PROGRESS', asRole('CONSULTANT'));
+      // CANCELLED → IN_PROGRESS: deliberately absent. An administrative voiding is not a
+      // finish, and R-33's restart does not un-void one (A-1).
+      assertTransition('audit', 'CANCELLED', 'IN_PROGRESS', asRole('CONSULTANT'));
     } catch (error) {
       caught = error;
     }
@@ -168,10 +167,10 @@ describe('assertTransition', () => {
     expect(caught).toBeInstanceOf(InvalidStateTransition);
     const error = caught as InvalidStateTransition;
     expect(error.entity).toBe('audit');
-    expect(error.from).toBe('COMPLETED');
+    expect(error.from).toBe('CANCELLED');
     expect(error.to).toBe('IN_PROGRESS');
     expect(error.refusal.reason).toBe('NO_SUCH_EDGE');
-    expect(error.message).toContain('audit COMPLETED → IN_PROGRESS');
+    expect(error.message).toContain('audit CANCELLED → IN_PROGRESS');
   });
 
   it('says which guard blocked, not merely "conflict"', () => {

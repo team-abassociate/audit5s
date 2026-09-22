@@ -14,6 +14,7 @@ import {
   patchEvidenceRequestSchema,
   pauseAuditRequestSchema,
   postCompletionOverrideRequestSchema,
+  restartAuditRequestSchema,
   resumeAuditRequestSchema,
   submitCorrectiveActionRequestSchema,
   uploadIntentRequestSchema,
@@ -374,6 +375,17 @@ export class SyncBatchService {
       case 'audit:override': {
         const body = postCompletionOverrideRequestSchema.parse(item.payload);
         const audit = await this.audits.postCompletionOverride(scope, item.entityId, body);
+        return audit.version;
+      }
+
+      /**
+       * R-33: the restart, queued. `ensureStarted` is absent for the same reason it is
+       * absent from `audit:override` — the audit is finished and its device lock was
+       * released on completion; restarting is not a claim to be conducting it already.
+       */
+      case 'audit:restart': {
+        const body = restartAuditRequestSchema.parse(item.payload);
+        const audit = await this.audits.restart(scope, item.entityId, body);
         return audit.version;
       }
 

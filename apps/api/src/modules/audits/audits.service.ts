@@ -15,6 +15,7 @@ import type {
   QuestionResponse,
   ReleaseDeviceRequest,
   ResumeAuditRequest,
+  RestartAuditRequest,
   StartAuditRequest,
   ZoneLocksResponse,
 } from '@audit5s/contracts';
@@ -25,6 +26,8 @@ import {
   auditTypeUsesChecklist,
   isAuditCompleted,
   isScoredAuditType,
+  restartsRemaining,
+  MAX_AUDIT_RESTARTS,
   type LocationAssessment,
   type ScopeContext,
   type TransitionGuard,
@@ -655,6 +658,90 @@ export class AuditsService {
   }
 
   /**
+   * `POST /audits/{id}/restart` (R-33) — the way back from an accidental *Finish audit*.
+   *
+   * Two things make this a correction rather than an open door, and both are checked here
+   * before anything moves: the audit has restarts left, and the caller said why.
+   *
+   * The audit returns to IN_PROGRESS with its Zones' statuses untouched. That is
+   * deliberate — the auditor reopens the Zones they actually need through the edge that
+   * already exists, and `all_zones_completed` still guards the way out, so an audit cannot
+   * be finished while half-restarted. Everything else the auditor regains comes for free,
+   * because every one of those rules reads `audit.status` rather than a flag of its own:
+   * evidence may be added and removed again (E-4), marks go back through the ordinary
+   * upsert, and R-34's Zone corrections apply.
+   */
+  async restart(
+    scope: ScopeContext,
+    auditId: string,
+    request: RestartAuditRequest,
+  ): Promise<AuditDetail> {
+    const audit = await this.mustFind(scope, auditId);
+
+    if (!isAuditCompleted(audit.status)) {
+      throw AppError.conflict(
+        'INVALID_STATE_TRANSITION',
+        'This audit is not finished; there is nothing to restart',
+      );
+    }
+
+    const remaining = restartsRemaining(audit.restartCount);
+    if (remaining <= 0) {
+      throw AppError.conflict(
+        'RESTART_LIMIT_REACHED',
+        `This audit has already been restarted ${MAX_AUDIT_RESTARTS} times, which is the limit. ` +
+          'A wrong mark can still be corrected through the audit edit, which records the reason.',
+      );
+    }
+
+    // The table is asked even though both its guards were just checked by hand: a §7.1
+    // edge is taken through `assertTransition` everywhere else, and an edge that is legal
+    // only because one service remembered to check it is one a later caller will take.
+    try {
+      assertTransition('audit', audit.status as AuditStatus, 'IN_PROGRESS', {
+        role: scope.actor.role,
+        satisfied: ['restarts_remaining', 'reason_given'],
+      });
+    } catch (error) {
+      throw asAppError(error);
+    }
+
+    const restartCount = audit.restartCount + 1;
+    let withdrawn: Array<{ id: string; assignedZoneLeaderUserId: string | null }> = [];
+
+    await this.repository.restart(
+      scope,
+      {
+        auditId,
+        unitId: audit.unitId,
+        restartCount,
+        before: { status: audit.status, restartCount: audit.restartCount },
+        after: {
+          status: 'IN_PROGRESS',
+          restartCount,
+          restartsRemaining: restartsRemaining(restartCount),
+          justification: request.justification,
+        },
+        requestId: getRequestContext()?.requestId ?? 'audit-restart',
+      },
+      // Same transaction as the status change: an audit whose corrective actions could not
+      // be stopped must not end up restarted with people still being chased.
+      async (tx) => {
+        withdrawn = await this.correctiveActions.withdrawForRestart(tx, scope, auditId);
+      },
+    );
+
+    if (withdrawn.length > 0) {
+      this.logger.log(
+        `audit ${auditId} restarted (${restartCount}/${MAX_AUDIT_RESTARTS}); ` +
+          `${withdrawn.length} corrective action(s) withdrawn`,
+      );
+    }
+
+    return this.detail(scope, auditId);
+  }
+
+  /**
    * `PATCH /audits/{id}/post-completion` — the **only** way a completed audit changes.
    *
    * A-2's carve-out is opened here and nowhere else, inside the same transaction that
@@ -1017,6 +1104,8 @@ export function toAudit(row: AuditRow): Audit {
     },
     pausedAt: row.pausedAt?.toISOString() ?? null,
     pauseReason: row.pauseReason,
+    restartCount: row.restartCount,
+    restartsRemaining: restartsRemaining(row.restartCount),
     resumeAuditZoneId: row.resumeAuditZoneId,
     clientCreatedAt: row.clientCreatedAt.toISOString(),
     clientUpdatedAt: row.clientUpdatedAt.toISOString(),

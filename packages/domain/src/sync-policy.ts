@@ -58,6 +58,10 @@ const OPERATION_PHASE: Record<SyncOperation, number> = {
   // anything else in the same batch — the answers, the Zone completions, the audit's own
   // completion — has to land before the correction to them makes sense.
   override: PHASE.FINALIZE,
+  // Also finalize, and for the same reason (R-33): a restart addresses an audit that is
+  // already finished, so this batch's `complete` for it has to land first or there is
+  // nothing to restart.
+  restart: PHASE.FINALIZE,
 };
 
 /** Ordering within the structure phase, where two operations touch the same entity. */
@@ -76,6 +80,10 @@ const STRUCTURE_OPERATION_RANK: Record<SyncOperation, number> = {
   // After `complete` on the same audit: correcting an audit this batch is also finishing
   // only works in that order.
   override: 1,
+  // Last. An audit finished and restarted in one batch has to be finished first, and a
+  // correction queued before the restart was authored against the finished audit — so it
+  // belongs on the near side of the reopening, not the far one.
+  restart: 2,
 };
 
 export interface OrderableSyncItem {

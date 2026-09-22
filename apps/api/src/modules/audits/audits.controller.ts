@@ -18,6 +18,7 @@ import {
   listAuditsQuerySchema,
   pauseAuditRequestSchema,
   postCompletionOverrideRequestSchema,
+  restartAuditRequestSchema,
   resumeAuditRequestSchema,
   startAuditRequestSchema,
   type Audit,
@@ -30,6 +31,7 @@ import {
   type Page,
   type PauseAuditRequest,
   type PostCompletionOverrideRequest,
+  type RestartAuditRequest,
   type ResumeAuditRequest,
   type StartAuditRequest,
   type ZoneLocksResponse,
@@ -199,6 +201,25 @@ export class AuditsController {
     @Body(new ZodValidationPipe(completeAuditRequestSchema)) body: CompleteAuditRequest,
   ): Promise<Audit> {
     return this.audits.complete(scope, auditId, body);
+  }
+
+  /**
+   * R-33: the way back from an accidental *Finish audit*, twice and no more.
+   *
+   * `AuditDetail` rather than `Audit`, because the caller is about to edit: the phone that
+   * just restarted needs the Zones and their statuses to know what it may reopen, and a
+   * second round trip for them would be a round trip on a connection that may not be there.
+   */
+  @RequirePermission('audit', 'restart')
+  @Scope({ param: 'auditId', intent: 'write' })
+  @Post(':auditId/restart')
+  @HttpCode(HttpStatus.OK)
+  restart(
+    @CurrentScope() scope: ScopeContext,
+    @Param('auditId', ParseUUIDPipe) auditId: string,
+    @Body(new ZodValidationPipe(restartAuditRequestSchema)) body: RestartAuditRequest,
+  ): Promise<AuditDetail> {
+    return this.audits.restart(scope, auditId, body);
   }
 
   /** Voids the audit and keeps every row (A-1). There is no DELETE here, for anybody. */

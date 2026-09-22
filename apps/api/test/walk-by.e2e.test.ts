@@ -265,9 +265,19 @@ describe('§2.7 — the ten steps, in order', () => {
     );
   });
 
-  it('does not let the snapshots move on a later write (D6)', async () => {
-    // The exception §2.7 carves out is for the *first* write, like every other snapshot.
-    // A second upsert must not be able to rewrite what the report will render.
+  /**
+   * R-34 moved this line, and it is worth saying where it moved *from*.
+   *
+   * This test used to assert that the §2.7 description could be written once and never
+   * again — the snapshot was taken on the first write, full stop. The product owner
+   * settled on 2026-09-22 that the auditor may correct what they themselves typed, so the
+   * boundary is no longer "the first write" but "before it is finished".
+   *
+   * What did **not** move is D6 itself, which is about somebody else's edits: a
+   * Coordinator renaming this Zone in master data still never reaches the snapshot, and
+   * `audits.e2e.test.ts` pins that from the other side.
+   */
+  it('lets the auditor rewrite the description they typed, while the audit is open', async () => {
     const auditId = await startWalkBy();
     const zoneId = await makeZone('Original');
 
@@ -275,14 +285,30 @@ describe('§2.7 — the ten steps, in order', () => {
       zoneDescription: 'What the auditor saw on the day',
     });
 
+    // Still open: the auditor's own correction lands (R-34).
     const again = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
       token: consultantToken,
-      body: { zoneId, sequenceNo: 1, zoneDescription: 'Rewritten a week later' },
+      body: { zoneId, sequenceNo: 1, zoneDescription: 'Corrected before leaving site' },
     });
     expect(again.status).toBe(200);
     expect((again.body as AuditZone).zoneDescriptionSnapshot).toBe(
-      'What the auditor saw on the day',
+      'Corrected before leaving site',
     );
+
+    // A write that names no description leaves the one there is — only what the request
+    // supplies is ever re-taken, which is what keeps a master rename out.
+    const remarkOnly = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
+      token: consultantToken,
+      body: { zoneId, sequenceNo: 1, zoneRemark: 'Tidy' },
+    });
+    expect(remarkOnly.status).toBe(200);
+    expect((remarkOnly.body as AuditZone).zoneDescriptionSnapshot).toBe(
+      'Corrected before leaving site',
+    );
+
+    // The freeze on completion is the other half of R-34, and it is pinned in
+    // `audits.e2e.test.ts` against a scored audit — a walk-by cannot be finished without
+    // photographs, and staging those here would test the evidence gate, not this rule.
   });
 });
 

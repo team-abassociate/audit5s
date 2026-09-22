@@ -557,3 +557,73 @@ describe('offline submission through the outbox (§9.2, §9.3)', () => {
     void HEADER_IDEMPOTENCY_KEY;
   });
 });
+
+/**
+ * R-33's corrective-action half: restarting a finished audit stops what it raised.
+ *
+ * The product owner settled the shape — withdraw, then re-raise on the way out — and both
+ * halves are asserted here, because either alone is a different product. Withdrawing
+ * without re-raising loses findings; re-raising without withdrawing leaves a Zone Leader
+ * chased twice for one photograph.
+ */
+describe('restarting an audit withdraws what it raised (R-33)', () => {
+  it('withdraws the open actions, leaves a verified one alone, and re-raises on re-finish', async () => {
+    const { auditId, actions } = await completedWalkBy(world, {
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      unitId: world.unitA,
+      zoneLeaderUserId: world.actors.ZONE_LEADER.userId,
+      nonconformities: 2,
+      good: 0,
+    });
+    expect(actions).toHaveLength(2);
+    const [first, second] = actions;
+
+    // One of the two is answered and verified before the restart — work that was really
+    // done, on the record. R-31's rule says a restart does not unmake it.
+    // An Option A answer carries its own after-photograph, which closes the action to
+    // VERIFIED on the spot — R-23 removed the separate review step.
+    await submitOptionA(world, leaderToken, first!);
+    const { rows: verified } = await world.owner.query(
+      `SELECT status FROM corrective_action WHERE id = $1`,
+      [first!.id],
+    );
+    expect(verified[0].status).toBe('VERIFIED');
+
+    // --- the restart --------------------------------------------------------
+    const restarted = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'Finished this walk-by before the last bay was photographed' },
+    });
+    expect(restarted.status, JSON.stringify(restarted.body)).toBe(200);
+
+    const after = await world.owner.query(
+      `SELECT id, status, resolved_at FROM corrective_action WHERE audit_id = $1 ORDER BY id`,
+      [auditId],
+    );
+    const byId = new Map(after.rows.map((row) => [row.id as string, row]));
+
+    // The one nobody had answered is withdrawn: settled, though nothing was fixed.
+    expect(byId.get(second!.id)!.status).toBe('WITHDRAWN');
+    expect(byId.get(second!.id)!.resolved_at).not.toBeNull();
+
+    // The verified one is untouched. Somebody fixed that, and somebody checked it.
+    expect(byId.get(first!.id)!.status).toBe('VERIFIED');
+
+    // --- and re-raised on the way back out ----------------------------------
+    const refinished = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(refinished.status, JSON.stringify(refinished.body)).toBe(200);
+
+    const reraised = await world.owner.query(
+      `SELECT status FROM corrective_action
+       WHERE audit_id = $1 AND status NOT IN ('WITHDRAWN', 'VERIFIED')`,
+      [auditId],
+    );
+    // The photograph is still a live nonconformity, so its finding comes back — a new
+    // action, dated from this completion rather than the first one.
+    expect(reraised.rows.length).toBeGreaterThan(0);
+  }, 240_000);
+});

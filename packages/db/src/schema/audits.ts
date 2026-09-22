@@ -116,6 +116,8 @@ export const audits = pgTable(
     maxScore: integer('max_score'),
     pausedAt: timestamp('paused_at', { withTimezone: true }),
     pauseReason: text('pause_reason'),
+    /** R-33: how many times this audit has been restarted after finishing. Only rises. */
+    restartCount: integer('restart_count').notNull().default(0),
     resumeAuditZoneId: uuid('resume_audit_zone_id'),
     /** Device clock — conflict ordering only, never a business date. */
     clientCreatedAt: timestamp('client_created_at', { withTimezone: true }).notNull().defaultNow(),
