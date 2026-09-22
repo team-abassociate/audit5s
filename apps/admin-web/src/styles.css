@@ -28,12 +28,9 @@
   --color-ok: var(--ok-band);
   --color-warn: var(--warn-band);
   --color-crit: var(--crit-band);
-  --shadow-tile: var(--shadow-1);
-  --shadow-tile-hover: var(--shadow-2);
-  --radius-sm: var(--r-sm);
-  --radius-DEFAULT: var(--r);
-  --radius-lg: var(--r-lg);
-  --radius-full: var(--r-pill);
+  --shadow-tile: 3px 3px 0 var(--hard);
+  --shadow-tile-hover: 5px 5px 0 var(--hard);
+  --radius-*: initial; /* non-negotiable 1: nothing in this system is rounded */
 }
 
 html,
@@ -59,7 +56,7 @@ body {
 }
 
 .gb-rail {
-  border-right: 1px solid var(--edge);
+  border-right: 2px solid var(--edge);
   background: var(--tile-2);
   display: flex;
   flex-direction: column;
@@ -69,7 +66,7 @@ body {
 }
 .gb-brand {
   padding: 18px 16px 16px;
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 2px solid var(--edge);
 }
 .gb-brand-logo {
   display: block;
@@ -100,7 +97,7 @@ body {
   color: var(--ink-2);
   font-size: 13.5px;
   font-weight: 500;
-  border: 1px solid transparent;
+  border: 1.5px solid transparent;
 }
 .gb-nav a:hover {
   background: var(--tile);
@@ -111,8 +108,8 @@ body {
   background: var(--tile);
   border-color: var(--edge);
   color: var(--ink);
-  font-weight: 600;
-  box-shadow: var(--shadow-1);
+  font-weight: 700;
+  box-shadow: 2px 2px 0 var(--hard);
 }
 .gb-nav i {
   font-style: normal;
@@ -154,7 +151,7 @@ body {
   gap: 14px;
   flex-wrap: wrap;
   padding: 14px 28px;
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 2px solid var(--edge);
   background: var(--tile-2);
   position: sticky;
   top: 0;
@@ -162,22 +159,15 @@ body {
 }
 .gb-top h1 {
   font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 800;
+  font-stretch: 112%;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
-/*
- * One control height for the whole toolbar.
- *
- * The selects, the combobox, the sync pill and the buttons used to carry their own
- * padding and so resolved to four slightly different heights; on a centred flex row that
- * reads as misalignment even though every box is on the grid. They now share `--ctl-h`
- * and align on it, so the row is level whatever it contains.
- */
 .gb-tools {
-  --ctl-h: 34px;
   display: flex;
   align-items: center;
-  gap: 10px 14px;
+  gap: 14px;
   flex-wrap: wrap;
   /* Grows instead of floating right, so a page's selectors sit beside the title. */
   flex: 1;
@@ -185,27 +175,18 @@ body {
 .gb-sel {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: var(--ctl-h);
-}
-.gb-sel .gb-label {
-  white-space: nowrap;
+  gap: 7px;
 }
 .gb-sel select,
 .gb-sel .gb-sel-input {
   width: auto;
-  height: var(--ctl-h);
   font: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   background: var(--tile);
   color: var(--ink);
-  border: 1px solid var(--edge);
-  border-radius: var(--r-sm);
-  padding: 0 10px;
-}
-.gb-tools .gb-btn {
-  height: var(--ctl-h);
+  border: 1.5px solid var(--edge);
+  padding: 5px 9px;
 }
 .gb-pill {
   /* The last thing before the shell's own controls: everything after it is right-aligned. */
@@ -213,21 +194,17 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: var(--ctl-h);
   font-size: 12px;
   color: var(--ink-2);
-  border: 1px solid var(--edge-soft);
-  border-radius: var(--r-pill);
+  border: 1.5px solid var(--edge-soft);
   background: var(--tile);
-  padding: 0 12px;
+  padding: 5px 10px;
 }
 .gb-pill i {
   width: 8px;
   height: 8px;
-  border-radius: var(--r-pill);
   background: var(--ok-band);
   display: block;
-  flex: none;
 }
 .gb-pill i.gb-pill--stale {
   background: var(--warn-band);
@@ -239,7 +216,7 @@ body {
   font-size: 12.5px;
 }
 .gb-who b {
-  font-weight: 600;
+  font-weight: 700;
 }
 .gb-who span {
   color: var(--ink-3);
@@ -254,7 +231,7 @@ body {
   display: grid;
   place-items: center;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 800;
   letter-spacing: 0.02em;
   flex: none;
 }
@@ -272,7 +249,7 @@ body {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 2px solid var(--edge);
   padding-bottom: 8px;
 }
 .gb-head p {
@@ -281,13 +258,13 @@ body {
   color: var(--ink-2);
 }
 .gb-badge {
-  border: 1px solid var(--edge);
+  border: 1.5px solid var(--edge);
   background: var(--tile);
   padding: 3px 9px;
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.11em;
-
+  text-transform: uppercase;
 }
 .gb-foot {
   padding: 0 28px 36px;
@@ -310,7 +287,7 @@ body {
   gap: 2px;
 }
 .gb-kpi .gb-figure {
-  font-size: 26px;
+  font-size: 33px;
 }
 .gb-kpi small {
   font-size: 12px;
@@ -345,7 +322,7 @@ body {
   margin-top: 3px;
 }
 .gb-zone .gb-figure {
-  font-size: 23px;
+  font-size: 29px;
 }
 .gb-zone .gb-delta {
   font-family: var(--font-data);
@@ -364,7 +341,7 @@ body {
 .gb-zone .gb-meta em {
   font-style: normal;
   color: var(--crit);
-  font-weight: 600;
+  font-weight: 700;
 }
 .gb-zone .gb-band {
   margin-top: 9px;
@@ -386,12 +363,12 @@ body {
   position: sticky;
   top: 86px;
   background: var(--tile);
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow-1);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
 }
 .gb-detail-head {
   padding: 13px 15px;
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 2px solid var(--edge);
 }
 .gb-detail-head p {
   margin: 4px 0 0;
@@ -483,7 +460,6 @@ body {
 .gb-findings li i {
   width: 4px;
   align-self: stretch;
-  border-radius: var(--r-pill);
   background: var(--edge);
   flex: none;
 }
@@ -512,12 +488,13 @@ body {
 .gb-findings li em {
   margin-left: auto;
   font-style: normal;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
   white-space: nowrap;
-  border: 1px solid currentColor;
-  border-radius: var(--r-pill);
-  padding: 1px 8px;
+  border: 1.5px solid currentColor;
+  padding: 2px 7px;
   align-self: center;
 }
 .gb-finding--open em {
@@ -550,8 +527,8 @@ body {
    ========================================================================== */
 .gb-tablewrap,
 .gb-matrix {
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow-1);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
   background: var(--tile);
   overflow-x: auto;
 }
@@ -569,11 +546,11 @@ body {
   text-align: left;
   font-size: 10.5px;
   letter-spacing: 0.12em;
-
+  text-transform: uppercase;
   color: var(--ink-3);
-  font-weight: 600;
+  font-weight: 700;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 2px solid var(--edge);
   background: var(--tile-2);
   white-space: nowrap;
 }
@@ -617,10 +594,10 @@ body {
 }
 .gb-matrix td.gb-avg {
   text-align: center;
-  font-weight: 600;
+  font-weight: 800;
   font-size: 15px;
   letter-spacing: -0.02em;
-  border-left: 1px solid var(--edge);
+  border-left: 2px solid var(--edge);
   font-variant-numeric: tabular-nums;
 }
 
@@ -634,8 +611,8 @@ body {
 }
 
 .gb-trend {
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow-1);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
   background: var(--tile);
   padding: 14px 16px 8px;
 }
@@ -708,7 +685,7 @@ body {
 .gb-now {
   fill: var(--ink);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 900;
   font-family: var(--font-display);
   letter-spacing: -0.02em;
 }
@@ -720,8 +697,8 @@ body {
   align-items: start;
 }
 .gb-card {
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow-1);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
   background: var(--tile);
   padding: 14px 16px 16px;
 }
@@ -735,7 +712,7 @@ body {
   grid-template-columns: repeat(3, 1fr);
   gap: 1px;
   background: var(--edge);
-  border: 1px solid var(--edge);
+  border: 1.5px solid var(--edge);
   margin-top: 13px;
 }
 .gb-stats3 div {
@@ -744,7 +721,7 @@ body {
 }
 .gb-stats3 .gb-figure {
   display: block;
-  font-size: 22px;
+  font-size: 27px;
 }
 .gb-share {
   margin-top: 13px;
@@ -776,7 +753,7 @@ body {
 }
 .gb-prog {
   height: 15px;
-  border: 1px solid var(--edge);
+  border: 1.5px solid var(--edge);
   background: var(--tile-2);
   margin-top: 9px;
 }
@@ -818,14 +795,14 @@ body {
     position: static;
     height: auto;
     border-right: 0;
-    border-bottom: 1px solid var(--edge);
+    border-bottom: 2px solid var(--edge);
     flex-direction: row;
     align-items: center;
     overflow-x: auto;
   }
   .gb-brand {
     border-bottom: 0;
-    border-right: 1px solid var(--edge);
+    border-right: 2px solid var(--edge);
     white-space: nowrap;
     padding: 12px 14px;
     display: flex;
@@ -879,8 +856,8 @@ body {
    ========================================================================== */
 .gb-panel {
   background: var(--tile);
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow-1);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
 }
 .gb-panel-head {
   display: flex;
@@ -888,7 +865,7 @@ body {
   justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 2px solid var(--edge);
 }
 .gb-panel-head p {
   margin: 3px 0 0;
@@ -902,7 +879,7 @@ body {
   font-size: 13px;
   background: var(--tile-2);
   color: var(--ink);
-  border: 1px solid var(--edge);
+  border: 1.5px solid var(--edge);
   padding: 7px 9px;
 }
 .gb-input::placeholder {
@@ -959,8 +936,8 @@ body {
   padding: 0;
   list-style: none;
   background: var(--tile);
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow-1);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
 }
 .gb-combobox-option,
 .gb-combobox-empty {
@@ -1003,30 +980,30 @@ body {
 }
 .gb-notice {
   background: var(--tile-2);
-  border: 1px solid var(--edge);
+  border: 1.5px solid var(--edge);
   border-left: 4px solid var(--crit-band);
   padding: 9px 12px;
   font-size: 13px;
   color: var(--ink);
 }
 .gb-btn {
-  border: 1px solid var(--edge);
+  border: 1.5px solid var(--edge);
   background: var(--tile);
   color: var(--ink);
   padding: 6px 11px;
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  box-shadow: var(--shadow-1);
+  box-shadow: 2px 2px 0 var(--hard);
   cursor: pointer;
   white-space: nowrap;
   transition: box-shadow 143ms ease-out, transform 143ms ease-out;
 }
 .gb-btn:hover {
-  box-shadow: var(--shadow-1);
+  box-shadow: 3px 3px 0 var(--hard);
 }
 .gb-btn:active {
-  box-shadow: none;
+  box-shadow: 0 0 0 var(--hard);
   transform: translate(2px, 2px);
 }
 .gb-btn:focus-visible {
@@ -1041,7 +1018,7 @@ body {
 .gb-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-  box-shadow: none;
+  box-shadow: 0 0 0 var(--hard);
 }
 /* Destructive is an outline, never a red fill: red is a score band (non-negotiable 6). */
 .gb-btn--danger {
@@ -1067,8 +1044,8 @@ body {
   width: 100%;
   max-width: 400px;
   background: var(--tile);
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow-1);
+  border: 2px solid var(--edge);
+  box-shadow: 6px 6px 0 var(--hard);
   padding: 20px 22px 22px;
 }
 .gb-gate-card--wide {
@@ -1076,12 +1053,12 @@ body {
 }
 .gb-gate-brand b {
   display: block;
-  font-size: 20px;
-  font-weight: 600;
-
+  font-size: 24px;
+  font-weight: 900;
+  font-stretch: 118%;
   letter-spacing: -0.02em;
   line-height: 1;
-
+  text-transform: uppercase;
 }
 .gb-gate-brand span {
   display: block;
@@ -1089,7 +1066,7 @@ body {
   font-size: 11px;
   color: var(--ink-3);
   letter-spacing: 0.13em;
-
+  text-transform: uppercase;
   font-weight: 600;
 }
 .gb-stack {
@@ -1116,70 +1093,4 @@ body {
   * {
     transition: none !important;
   }
-}
-
-/* ==========================================================================
-   CORNERS — the restyle's one systematic addition.
-
-   The old system forbade `border-radius` outright: a magnet on a whiteboard has
-   square corners. The corporate treatment rounds every surface instead, so the
-   radius is applied here in one block rather than scattered across forty rules —
-   nothing above sets the property, so there is no specificity contest.
-
-   Values come from the token file. A literal radius here would be the same bug a
-   literal hex would be.
-   ========================================================================== */
-.gb-panel,
-.gb-card,
-.gb-detail,
-.gb-notice,
-.gb-gate-card,
-.gb-tablewrap,
-.gb-matrix,
-.gb-trend,
-.gb-combobox-list {
-  border-radius: var(--r);
-  overflow: hidden;
-}
-.gb-input,
-.gb-field select,
-.gb-field textarea,
-.gb-combobox input {
-  border-radius: var(--r-sm);
-}
-.gb-nav a,
-.gb-badge,
-.gb-legend span {
-  border-radius: var(--r-sm);
-}
-.gb-nav i,
-.gb-av,
-.gb-track,
-.gb-prog,
-.gb-track i,
-.gb-prog i {
-  border-radius: var(--r-pill);
-}
-/* The panel header sits flush inside a rounded panel, so only its top corners round. */
-.gb-panel-head {
-  border-radius: var(--r) var(--r) 0 0;
-}
-/* A table inside a rounded wrapper must not square off the wrapper's bottom corners. */
-.gb-tablewrap table,
-.gb-matrix table {
-  border-radius: inherit;
-}
-.gb-tablewrap--flush {
-  border-radius: 0;
-}
-
-/* The badge was a letter-spaced caps chip; it is now a quiet pill. */
-.gb-badge {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0;
-  padding: 3px 10px;
-  border-radius: var(--r-pill);
-  border-color: var(--edge-soft);
-  color: var(--ink-2);
 }

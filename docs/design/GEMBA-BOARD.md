@@ -1,82 +1,64 @@
-# The audit5s design system
+# Gemba Board — the audit5s design system
 
-**Status:** authoritative for `apps/admin-web`. `apps/field-mobile` is covered by §9.
+**Status:** authoritative for `apps/admin-web` and `apps/field-mobile` UI.
 **Files in this folder:**
 
 | File | What it is | How to use it |
 |---|---|---|
-| [`gemba-tokens.css`](./gemba-tokens.css) | Every colour, border, shadow, radius, type role and primitive. | Copy verbatim. Never re-declare a value it already defines. |
-| [`reference-dashboard.html`](./reference-dashboard.html) | **Superseded — see the banner in the file.** It renders the previous whiteboard treatment and is kept only as a record of it. | Do not copy from it. The running app is the reference. |
-| This file | The rules, the component anatomy, and how to brief an agent. | Read §0–§3 before writing any UI. |
+| [`gemba-tokens.css`](./gemba-tokens.css) | Every colour, border, shadow, type role and primitive. | Copy verbatim. Never re-declare a value it already defines. |
+| [`reference-dashboard.html`](./reference-dashboard.html) | A complete working screen built only from those tokens. | Open it. When a spec sentence is ambiguous, the reference wins. |
+| This file | The rules, the component anatomy, and how to brief an agent. | Read §1–§3 before writing any UI. |
 
 ---
 
-## 0. What changed, and what did not
-
-The web app was originally built as a **Gemba Board**: the magnetic whiteboard by the
-production line, rendered literally — a dry-erase ground with a 28px rule, rectangular
-magnets with hard ink borders and zero-blur offset shadows, masking-tape markers, 900-weight
-letter-spaced caps. It was internally consistent and it photographed well.
-
-It was replaced, on the owner's instruction, with a **conventional corporate treatment**:
-rounded corners, soft blurred elevation, grey-on-white surfaces, sentence case, lighter
-type. The product is sold to plant management and read on office monitors, and the
-whiteboard metaphor read as loud rather than as disciplined.
-
-**What survived the change, unaltered:**
-
-- Every score semantic in §3 — the bands, `N/A` exclusion, decimal places, server authority.
-- The `gb-` class names and the component anatomy in §6. This was a change of material, not
-  of structure, so no component was renamed and no markup moved.
-- The token discipline itself: one file owns every value, and a literal in a component is
-  still a bug. Only the values inside that file changed.
-- Both themes, the accent-is-interaction-only rule, and status-is-never-colour-alone.
-
-**What the old system forbade and this one requires:** border radius, and blurred shadows.
-Any instruction elsewhere in the repository still banning those two is stale; this file and
-`gemba-tokens.css` are the current contract.
-
 ## 1. The idea in one paragraph
 
-A 5S audit is about a plant being orderly, so the interface argues by being orderly itself:
-a calm grey ground, white cards with hairline borders and soft elevation, generous spacing,
-and one amber slip for the single thing someone must act on. Nothing tilts, nothing is
-hand-drawn, nothing sits off-grid. The restraint is the point — a dashboard that shouts at a
-plant manager about their own scores is arguing against itself. Colour appears only where it
-carries meaning, so when something is red it is genuinely red.
+A 5S audit is about a plant being orderly. So the dashboard is the **magnetic whiteboard that
+already hangs by the line**, rendered exactly: a dry-erase ground with a faint 28px rule,
+rectangular magnets with hard ink borders and hard offset shadows, masking-tape section
+markers, and a yellow slip for the one thing someone must act on. The material is physical.
+The **alignment is not** — nothing tilts, nothing is hand-drawn, nothing sits off-grid. A 5S
+product whose own interface is untidy is a joke, and the discipline is the point.
 
 ## 2. Non-negotiables
 
 An agent that breaks any of these has not built this design system.
 
-1. **Radius comes from a token.** `--r-sm` (6px) for controls, `--r` (8px) for surfaces, `--r-lg` (12px) for large panels, `--r-pill` for chips, dots and tracks. Never a literal.
-2. **Elevation is soft and from a token.** `--shadow-1` at rest, `--shadow-2` on hover or selection, `--shadow-3` for overlays. Never a hand-written `box-shadow`, and never the old zero-blur offset.
+1. **No border radius.** Anywhere. `border-radius: 0` is the default and the only value.
+2. **No blurred shadows.** Elevation is `box-shadow: Npx Npx 0 var(--hard)` — hard, offset down-right, zero blur. 2px for buttons, 3px at rest, 5px on hover/selected, 0 on press (with `translate(3px,3px)`).
 3. **No rotation, no random offsets, no "organic" scatter.** Every object sits on the grid.
 4. **Two families only:** Archivo (display + UI) and DM Mono (data). Never introduce a third.
-5. **Display numerals are Archivo 700**, `letter-spacing:-.02em`, tabular. Mono is for *small* data only — table cells, timestamps, axis ticks, deltas. Getting this backwards is the most common way this system is built wrong.
-6. **Sentence case.** Headings, labels and buttons are written the way a sentence is. The letter-spaced uppercase of the previous system is gone; do not reintroduce it "for emphasis".
-7. **Colour is semantic, not decorative.** Green/amber/red mean score bands and nothing else. The teal accent (`--accent`) appears in focus rings, selection and the primary button — never as a decorative fill, never in a chart.
-8. **One amber slip per view**, and only when a human must do something. Two slips means nothing is urgent.
-9. **Status is shape + colour.** A band, a rail, an outlined chip — colour alone never carries meaning (colour-blind auditors, projector screens, sunlight on a phone).
-10. **Every value is a token.** A literal hex, radius or shadow in a component is a bug.
-11. **Both themes, always.** Never invert; the dark palette is its own set of values, already in the token file.
+5. **Display numerals are Archivo 900**, `letter-spacing:-.04em`, tabular. Mono is for *small* data only — table cells, timestamps, axis ticks, deltas. Getting this backwards is the most common way this system is built wrong.
+6. **Colour is semantic, not decorative.** Green/amber/red mean score bands and nothing else. The teal accent (`--accent`) appears only in focus rings and selection — never as a fill, never in a chart.
+7. **One yellow slip per view**, and only when a human must do something. Two slips means nothing is urgent.
+8. **Status is shape + colour.** A band, a rail, an outlined chip — colour alone never carries meaning (colour-blind auditors, projector screens, sunlight on a phone).
+9. **Every value is a token.** A literal hex in a component is a bug.
+10. **Both themes, always.** Light = whiteboard, dark = slate board. Never invert; the dark palette is its own set of values, already in the token file.
 
 ## 3. Score semantics
 
 There are **four** bands, not three. `packages/domain/src/rating-scale.ts` owns the scale
-(R-6b) and is the only file allowed to name a colour; this table must follow it, never lead
-it. The design system carries three colour pairs, so the two upper bands share `--ok` and the
-**label** is what keeps all four apart — which is why status must read without colour.
+(R-6b) and is the only file allowed to name a colour; this table must follow it, never lead it.
+This board carries three colour pairs, so the two upper bands share `--ok` and the **label** is
+what keeps all four apart — which is why status must read without colour (non-negotiable 8).
 
-| Band | Range | Colour class | Label shown |
+| Band | Range | Token pair | Label shown |
 |---|---|---|---|
 | Outstanding | ≥ 90 | `--ok` / `--ok-band` | `Outstanding` |
 | On Track | 75 – 89.9 | `--ok` / `--ok-band` | `On Track` |
 | Improving | 60 – 74.9 | `--warn` / `--warn-band` | `Improving` |
 | Needs Support | < 60 | `--crit` / `--crit-band` | `Needs Support` |
 | Target line | 90 (`TARGET`) | `--crit-band`, dashed, on charts only | — |
-| Not applicable | — | `.gb-na` hatch | `N/A` |
-| Not started | — | dashed tile, `--ink-3` | `—` |
+| Not applicable | — | `.gb-na` hatch, label `N/A` | `N/A` |
+| Not started | — | dashed tile, `—`, `--ink-3` | `—` |
+
+> **This table is the one part of this document that is deliberately not the 12 Sep original.**
+> The original read Good ≥ 80 / Watch / Action with a target of 85. R-6b (DECISIONS.md,
+> 16 Sep) replaced that with four bands at 90 / 75 / 60 — a binding resolution that predates
+> and is independent of any visual treatment, and that `rating-scale.ts`, `lib/bands.ts` and
+> `board.ts` (`TARGET = 90`) already implement. Restoring the three-band table would put this
+> file back in conflict with `packages/domain`. Do not "revert" it. The decimal-places rule
+> below is held to the shipping code for the same reason (`score2` in `DashboardPage.tsx`).
 
 Rules that come from the product, not from taste:
 
@@ -90,41 +72,37 @@ Rules that come from the product, not from taste:
 
 ```html
 <link rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..700&family=DM+Mono:wght@400;500&display=swap">
+  href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=DM+Mono:wght@400;500&display=swap">
 ```
-
-The weight axis now stops at 700 — nothing in the system is set above it, and loading to 900
-would only invite its reuse.
 
 | Role | Family | Size | Weight | Other |
 |---|---|---|---|---|
-| Page / section heading | Archivo | 17px | 600 | sentence case, `letter-spacing:-.01em` |
-| Panel heading | Archivo | 15px | 600 | sentence case |
-| Display figure (KPI, tile score, stat) | Archivo | 20–26px | **700** | `letter-spacing:-.02em`, tabular |
-| Body | Archivo | 14px | 400 | `line-height:1.5` |
+| Page / section heading | Archivo | 19px | 800 | `font-stretch:112%`, uppercase, `letter-spacing:.02em` |
+| Panel heading | Archivo | 15–16px | 800 | `font-stretch:110%`, uppercase |
+| Display figure (KPI, tile score, stat) | Archivo | 27–33px | **900** | `letter-spacing:-.04em`, tabular |
+| Body | Archivo | 15px | 400 | `line-height:1.5` |
 | Secondary / helper | Archivo | 12.5–13px | 400 | `--ink-2` |
-| Field label | Archivo | 12px | 500 | sentence case, no tracking, `--ink-3` |
+| Field label | Archivo | 10.5px | 600 | uppercase, `letter-spacing:.13em`, `--ink-3` |
 | Table + small data | DM Mono | 12–13px | 400–500 | tabular |
-| Chip / badge / tape | Archivo | 12px | 500 | sentence case, pill radius |
+| Chip / badge / tape | Archivo | 10.5px | 700 | uppercase, `letter-spacing:.09–.14em` |
 
-The width axis is left at 100%. The previous system stretched headings to 110–118% as a
-signature; that is exactly the effect the restyle removed, so do not reintroduce it.
+The expanded width axis (`font-stretch: 110–118%`) on headings is a signature of this system.
+Losing it makes the page read as generic admin software.
 
 ## 5. Layout
 
-- Base unit **8px**. Gaps are 8 / 16 / 24 / 28. Page padding 22–28px, 16px at phone width.
+- Base unit **14px**. Gaps are 14 / 22 / 28. Page padding 22–28px, 16px at phone width.
 - Shell: fixed **216px** rail + fluid main. Rail becomes a horizontal scrolling strip below 860px.
-- Topbar is sticky, hairline bottom border, and holds: title, scope selectors (Unit, cycle), sync pill, theme switch, secondary action, primary action, identity chip. **Every control in it shares one height (`--ctl-h`, 34px)** and aligns on it — mixed control heights on a centred flex row read as misalignment even when nothing is off-grid.
-- Content is a single column of **sections**. Each section = heading block with a hairline underline, then its content 14px below.
+- Topbar is sticky, 2px ink bottom border, and holds: title, scope selectors (Unit, cycle), sync pill, theme switch, secondary action, primary action, identity chip.
+- Content is a single column of **sections**. Each section = heading block with a 2px ink underline, then its content 14px below.
 - Tile grids: `repeat(auto-fit, minmax(178px,1fr))` for KPIs, fixed 3-up for the department board (2-up ≤860px, 1-up ≤440px).
 - Detail panels are sticky at `top:86px` on desktop, static below 1180px.
 - Only tables and charts may scroll horizontally, each in its own `overflow-x:auto` container.
 
 ## 6. Components
 
-Anatomy is fixed; the data is not. The anatomy below is still correct — the restyle changed
-material, not structure — but `reference-dashboard.html` renders it in the retired treatment,
-so read `apps/admin-web/src/features/dashboard/DashboardPage.tsx` for working markup instead.
+Anatomy is fixed; the data is not. Full working markup for every one of these is in
+`reference-dashboard.html` — read it rather than guessing.
 
 **Zone tile (the magnet).** `<button>` with `aria-pressed`. Anatomy top to bottom: label
 (`.gb-label`, department name) → row of [figure `900`, delta mono] → meta line (leader, NC
@@ -143,7 +121,7 @@ average column is separated by a 2px ink border and set in Archivo 800. Rows bel
 a `--crit-band` left rail.
 
 **Trend chart.** Hand-authored SVG. One scale, ticks labelled with values the chart actually
-reaches (40/60/80/100), dashed target rule at 85 labelled `TARGET 85`, 2.6px line, 12% area
+reaches (40/60/80/100), dashed target rule at 90 labelled `TARGET 90`, 2.6px line, 12% area
 fill, an emphasised endpoint dot with its value. All strokes and fills are tokens so it works in
 both themes. Leave room in the `viewBox` for the outermost labels.
 
@@ -218,26 +196,6 @@ offset by 3px behind the tile, because `elevation` is always blurred.
 
 ---
 
-## 9. Field mobile
-
-`apps/field-mobile` was **not** restyled, and that is deliberate rather than an omission.
-
-The port lives in `apps/field-mobile/src/lib/gemba.ts` — React Native has no CSS, so the
-tokens are a TypeScript object there rather than an import of `gemba-tokens.css`. It still
-carries the whiteboard values: heavy borders, high contrast, large figures.
-
-Keep it that way until someone decides otherwise. The phone is used by an auditor standing
-on a plant floor, often in direct sunlight, frequently wearing gloves, at arm's length. High
-contrast and large touch targets are a legibility requirement there, not a style. The web
-dashboard is read on an office monitor by someone sitting down, which is why it could afford
-to become quiet and the phone cannot.
-
-The consequence is that the two apps no longer look alike. That is a real cost and it is
-accepted knowingly: if the mobile app is ever restyled to match, the score semantics in §3
-must survive the move unchanged, exactly as they did here.
-
----
-
 # How to brief an agent
 
 ## The one-line brief
@@ -295,9 +253,9 @@ Add one line to `AGENTS.md` so no one has to remember:
 Paste this as the definition of done for any UI task:
 
 - [ ] Zero hex literals outside `gemba-tokens.css`
-- [ ] Zero literal `border-radius` or `box-shadow` values — both come from tokens
-- [ ] Only Archivo + DM Mono; display figures are Archivo 700, mono only for small data
-- [ ] Headings and labels are sentence case; no letter-spaced uppercase anywhere
+- [ ] Zero `border-radius`, zero blurred `box-shadow`
+- [ ] Only Archivo + DM Mono; display figures are Archivo 900, mono only for small data
+- [ ] Headings carry `font-stretch: 110–112%` and uppercase
 - [ ] Renders correctly in both theme states (`data-theme="light"` and `data-theme="dark"`)
 - [ ] Status reads without colour (band, rail, chip, or hatch present)
 - [ ] At most one yellow slip, and only for something actionable
@@ -310,11 +268,10 @@ Paste this as the definition of done for any UI task:
 
 | What an agent does | Why it is wrong |
 |---|---|
-| Writes a literal `box-shadow` or `border-radius` | Both are tokens now. A hand-written value is the same bug a hex literal is, and it drifts the moment the scale changes. |
-| Reinstates the hard offset shadow or square corners | That system was deliberately retired (§0). Restoring a piece of it leaves two design systems in one screen. |
-| Adds letter-spaced uppercase "for emphasis" | Sentence case is non-negotiable 6. Emphasis comes from weight and colour. |
+| Softens the shadow "for polish" | The hard offset *is* the magnet. Blur turns it into generic SaaS. |
+| Rounds the corners a little | See non-negotiable 1. There is no small amount of rounding. |
 | Sets big numbers in the mono face | Mono is data; the figure is display. This single swap dissolves the identity. |
 | Uses the teal accent to brighten a chart | Accent is interaction only. Charts use score-band colours. |
 | Adds a third font "for contrast" | Contrast comes from the width and weight axes of Archivo. |
 | Shows an all-`NA` section as 0% | Destroys the Unit trend and misrepresents the audit. |
-| Rounds one component more than the scale allows | Four radius values exist. A fifth is drift, not taste. |
+| Tilts a card to look like paper | This is a 5S product. Alignment is the argument. |

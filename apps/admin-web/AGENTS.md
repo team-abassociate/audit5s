@@ -25,13 +25,17 @@ The rejectable violations, restated so they are unmissable:
    **Archivo 900**, `letter-spacing:-.04em`, tabular. Mono is never used for a big number.
 4. **No hex literal outside `gemba-tokens.css`.**
 5. **Accent (`--accent`) is interaction only** — focus and selection. Never a chart fill,
-   never decoration. Score bands carry meaning: ≥80 ok, 60–79.9 warn, <60 crit, target 85.
+   never decoration. Score bands carry meaning, and there are **four** of them (R-6b,
+   `packages/domain/src/rating-scale.ts`): Outstanding ≥ 90, On Track 75–89.9, Improving
+   60–74.9, Needs Support < 60, target 90. The board has three colour pairs, so the two
+   upper bands share `--ok` and the **label** keeps them apart.
 6. **Status reads without colour** — a band, a 4px rail, an outlined chip, or the `.gb-na` hatch.
 7. **One yellow slip per view**, only when a human must act.
 8. **An all-`NA` section renders `N/A` on a hatch and is excluded from the average**, never 0
    (`ARCHITECTURE.md` §1.5-D4). Not-started is a dashed tile and an em dash, also not 0.
-9. **All three theme states must work**: no stamp (system), `data-theme="light"`,
-   `data-theme="dark"`.
+9. **Both theme states must work**: `data-theme="light"` and `data-theme="dark"`. The
+   attribute is always stamped before first paint, so the token file's `prefers-color-scheme`
+   block is a fallback, not a selectable mode (GEMBA-BOARD.md §7).
 
 shadcn/ui components ship rounded and soft-shadowed. Strip `rounded-*`, replace `shadow-*` with
 the token shadow, and repoint colours at the tokens — or do not use the component. Recharts

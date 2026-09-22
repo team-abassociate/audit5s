@@ -58,14 +58,10 @@ list; this is the subset that most often gets quietly violated.
 - **pg-boss is the only enqueue mechanism** (R-2). There is no `domain_event` outbox table.
 - **UI is built from the design system, not invented per screen.**
   [`docs/design/GEMBA-BOARD.md`](./docs/design/GEMBA-BOARD.md) is binding; read it and
-  `docs/design/gemba-tokens.css` in full before writing any component. **Read its §0 first:**
-  the whiteboard treatment was retired in favour of a conventional corporate one, so radius
-  and soft shadows are now required where they were once banned, and
-  `reference-dashboard.html` is a superseded record rather than a reference. A UI diff that
-  introduces a hex literal, a literal radius, a hand-written `box-shadow` or a third typeface
-  is rejected — as is any view that renders an all-`NA` section as `0` rather than excluding
-  it. `apps/field-mobile` deliberately keeps the high-contrast values (§9); it is a
-  sunlight-and-gloves legibility requirement, not stale styling to be tidied up.
+  `docs/design/gemba-tokens.css` in full, and open `docs/design/reference-dashboard.html`,
+  before writing any component. A UI diff that introduces a hex literal outside the token
+  file, a `border-radius`, a blurred `box-shadow`, or a third typeface is rejected — as is
+  any view that renders an all-`NA` section as `0` rather than excluding it.
 
 ### Two lists that fail CI or waste your time
 
