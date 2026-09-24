@@ -419,23 +419,36 @@ export function HeaderAction({
   onPress,
   accessibilityLabel,
   testID,
+  variant = 'default',
+  disabled = false,
 }: {
   title: string;
   onPress: () => void;
   accessibilityLabel?: string;
   testID?: string;
+  /** `danger`: the crit rule and ink, for the header action that ends something. */
+  variant?: 'default' | 'danger';
+  disabled?: boolean;
 }) {
   const styles = useStyles();
+  const danger = variant === 'danger';
   return (
     <Pressable
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityState={{ disabled }}
       onPress={onPress}
+      disabled={disabled}
       hitSlop={8}
-      style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}
+      style={({ pressed }) => [
+        styles.headerAction,
+        danger && styles.headerActionDanger,
+        disabled && styles.headerActionDisabled,
+        pressed && styles.headerActionPressed,
+      ]}
     >
-      <Text style={styles.headerActionText}>{title}</Text>
+      <Text style={[styles.headerActionText, danger && styles.headerActionDangerText, disabled && styles.headerActionTextDisabled]}>{title}</Text>
     </Pressable>
   );
 }
@@ -1049,6 +1062,10 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.color.tile,
   },
   headerActionPressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
+  headerActionDanger: { borderColor: theme.color.crit },
+  headerActionDangerText: { color: theme.color.crit },
+  headerActionDisabled: { borderColor: theme.color.edgeSoft },
+  headerActionTextDisabled: { color: theme.color.ink3 },
   headerActionText: { fontFamily: theme.family.medium, fontSize: theme.font.sm, color: theme.color.ink },
   compactDanger: { borderColor: theme.color.crit, alignSelf: 'flex-start' },
   compactDangerText: { color: theme.color.crit },

@@ -223,3 +223,30 @@ export function unsyncedPhotos(database: LocalDatabase) {
     .from(localEvidence)
     .where(and(sql`${localEvidence.syncState} <> 'SYNCED'`, isNull(localEvidence.deletedAt)));
 }
+
+/**
+ * Audits that still have a photograph on its way up.
+ *
+ * *Finish audit* can be queued while a photo waits out a retry on a weak connection. Sent
+ * first, it froze the audit (A-2) and the photo arriving after it was refused as
+ * `AUDIT_ALREADY_COMPLETED` — a 4xx that is never retried, so it dead-lettered, the bar
+ * went red, and a nonconformity photo could miss its corrective action. The engine holds
+ * such an audit's `complete` back until its photos are up.
+ *
+ * A dead-lettered photo does not hold it: that one is waiting for a person, and an audit
+ * must not be unfinishable because of a single unreadable file.
+ */
+export async function auditsAwaitingPhotos(database: LocalDatabase): Promise<Set<string>> {
+  const rows = await database
+    .select({ auditId: localEvidence.auditId })
+    .from(outbox)
+    .innerJoin(localEvidence, eq(localEvidence.id, outbox.entityId))
+    .where(
+      and(
+        eq(outbox.queue, 'media'),
+        inArray(outbox.state, ['PENDING', 'SYNCING', 'FAILED']),
+        isNull(localEvidence.deletedAt),
+      ),
+    );
+  return new Set(rows.map((row) => row.auditId));
+}

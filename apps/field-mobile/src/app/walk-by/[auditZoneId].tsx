@@ -25,6 +25,7 @@ import {
   Screen,
   SectionHead,
 } from '../../components/ui';
+import { useAbortMenu } from '../../components/abort-menu';
 import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
@@ -121,6 +122,15 @@ export default function WalkByScreen() {
     },
   });
 
+  const abortMenu = useAbortMenu({
+    auditId: zone.data?.auditId,
+    auditZoneId,
+    zoneLabel: zone.data
+      ? zoneDisplayLabel(zone.data.zoneCodeSnapshot, zone.data.zoneNameSnapshot)
+      : 'this Zone',
+    zoneFinished: zone.data?.status === 'COMPLETED',
+  });
+
   if (zone.isLoading || photos.isLoading) {
     return (
       <Screen style={styles.centered}>
@@ -140,13 +150,17 @@ export default function WalkByScreen() {
     );
   }
 
-  const editable = zone.data.status !== 'COMPLETED';
+  // A withdrawn Zone left the audit and takes no more photographs.
+  const editable = zone.data.status !== 'COMPLETED' && zone.data.status !== 'WITHDRAWN';
   const title = zoneDisplayLabel(zone.data.zoneCodeSnapshot, zone.data.zoneNameSnapshot);
   const count = (photos.data ?? []).filter((photo) => isZoneAuditPhoto(photo.kind)).length;
 
   return (
     <Screen>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{ title, headerRight: () => (editable ? abortMenu.trigger : null) }}
+      />
+      {abortMenu.sheet}
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
           {zone.data.zoneDescriptionSnapshot ? <Text style={styles.body}>{zone.data.zoneDescriptionSnapshot}</Text> : null}
