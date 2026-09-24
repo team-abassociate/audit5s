@@ -112,6 +112,21 @@ export const SYNC_OPERATIONS = [
    * them through the one door that writes an audit-log entry with the before and after.
    */
   'override',
+  /**
+   * R-33's restart, authored offline.
+   *
+   * An auditor who finished an audit by mistake in a plant with no signal must be able to
+   * say so there and then, not on the drive back. Like `override` it carries a
+   * justification and goes through `POST /audits/{id}/restart` — the one door that writes
+   * the `audit.restarted` log entry and counts the restart against the cap.
+   */
+  'restart',
+  /**
+   * An unfinished Zone withdrawn from its audit by the auditor ("abort this Zone"). Nothing
+   * is deleted: the Zone's status becomes WITHDRAWN, which takes it out of the score and
+   * the Finish-audit guard and releases its R-29 lock.
+   */
+  'withdraw',
 ] as const;
 export const syncOperationSchema = z.enum(SYNC_OPERATIONS);
 export type SyncOperation = z.infer<typeof syncOperationSchema>;

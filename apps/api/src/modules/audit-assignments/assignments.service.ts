@@ -37,54 +37,67 @@ export class AssignmentsService {
       throw AppError.notFound('No such Unit');
     }
 
-    const auditor = await this.repository.findActiveAuditor(scope, request.auditorUserId);
-    if (!auditor) {
-      throw AppError.validation('The assignee is not an active auditor', [
-        { field: 'auditorUserId', message: 'Choose an active Consultant or Zone Leader' },
-      ]);
+    // The named auditor first, then the co-auditors in the order given, each once. Naming
+    // the same person twice is not an error worth refusing — it is one person.
+    const auditorUserIds = [
+      ...new Set([request.auditorUserId, ...(request.coAuditorUserIds ?? [])]),
+    ];
+
+    for (const auditorUserId of auditorUserIds) {
+      const field = auditorUserId === request.auditorUserId ? 'auditorUserId' : 'coAuditorUserIds';
+      const auditor = await this.repository.findActiveAuditor(scope, auditorUserId);
+      if (!auditor) {
+        throw AppError.validation('The assignee is not an active auditor', [
+          { field, message: 'Choose an active Consultant or Zone Leader' },
+        ]);
+      }
+
+      // Consultants are independent of Units: this assignment itself grants temporary
+      // access. Zone Leaders remain permanent Unit roles and may only audit their own Unit.
+      if (
+        auditor.role === 'ZONE_LEADER' &&
+        !(await this.repository.isActiveMember(scope, auditorUserId, request.unitId))
+      ) {
+        throw AppError.validation('The Zone Leader is not an active member of this Unit', [
+          { field, message: 'Choose a Zone Leader from this Unit' },
+        ]);
+      }
     }
 
-    // Consultants are independent of Units: this assignment itself grants temporary
-    // access. Zone Leaders remain permanent Unit roles and may only audit their own Unit.
-    if (
-      auditor.role === 'ZONE_LEADER' &&
-      !(await this.repository.isActiveMember(scope, request.auditorUserId, request.unitId))
-    ) {
-      throw AppError.validation('The Zone Leader is not an active member of this Unit', [
-        { field: 'auditorUserId', message: 'Choose a Zone Leader from this Unit' },
-      ]);
-    }
-
-    const id = await this.repository.create(scope, request, (tx, assignmentId) =>
+    const ids = await this.repository.create(scope, request, auditorUserIds, (tx, assignmentId, auditorUserId) =>
       this.events.emit(tx, {
         type: 'AUDIT_ASSIGNED',
         actorUserId: scope.actor.userId,
         unitId: request.unitId,
         resourceType: 'audit_assignment',
         resourceId: assignmentId,
-        userIds: [request.auditorUserId],
+        userIds: [auditorUserId],
         data: {
           unitName: unit.name,
           auditType: request.auditType,
           dueAt: request.dueAt ?? null,
+          coAuditors: auditorUserIds.length - 1,
         },
       }),
     );
-    const created = await this.mustFind(scope, id);
 
-    await this.auditLog.record({
-      action: 'audit_assignment.created',
-      resourceType: 'audit_assignment',
-      resourceId: id,
-      unitId: request.unitId,
-      after: {
-        auditorUserId: created.auditorUserId,
-        auditType: created.auditType,
-        dueAt: created.dueAt?.toISOString() ?? null,
-      },
-    });
+    for (const id of ids) {
+      const created = await this.mustFind(scope, id);
+      await this.auditLog.record({
+        action: 'audit_assignment.created',
+        resourceType: 'audit_assignment',
+        resourceId: id,
+        unitId: request.unitId,
+        after: {
+          auditorUserId: created.auditorUserId,
+          auditType: created.auditType,
+          dueAt: created.dueAt?.toISOString() ?? null,
+          groupId: created.groupId,
+        },
+      });
+    }
 
-    return toAssignment(created);
+    return toAssignment(await this.mustFind(scope, ids[0]!));
   }
 
   async list(scope: ScopeContext, query: ListAuditAssignmentsQuery): Promise<Page<AuditAssignment>> {
@@ -197,6 +210,7 @@ export function toAssignment(row: AssignmentRow): AuditAssignment {
     dueAt: row.dueAt?.toISOString() ?? null,
     instructions: row.instructions,
     suggestedZoneIds: row.suggestedZoneIds ?? [],
+    groupId: row.groupId,
     createdByUserId: row.createdByUserId,
     cancelledAt: row.cancelledAt?.toISOString() ?? null,
     cancelReason: row.cancelReason,

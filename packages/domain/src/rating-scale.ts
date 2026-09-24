@@ -92,16 +92,14 @@ export const RESPONSE_TOKENS: Readonly<Record<string, ResponseToken>> = {
 } as const;
 
 /**
- * Report chrome — the "Technical Manual" register: a strict hairline grid, numbered
- * clauses, and one accent colour carried structurally (target lines, the clause marker,
- * the corrective-action link) rather than decoratively. Deliberately flat and unrounded —
- * these reports leave the building and sit in front of MNC clients — with every actual
- * rating still carried by `RATING_BANDS` / `RESPONSE_TOKENS`, never by this palette.
+ * Report palette from the approved Zone1Press reference: maroon masthead, orange mark
+ * and warm paper rules. Rating meanings remain in RATING_BANDS / RESPONSE_TOKENS.
+ * Copied into each snapshot so previously issued payloads retain their colours.
  */
 export const BRAND_TOKENS = {
-  ink: '#101112',
-  inkSoft: '#5B5B57',
-  hairline: '#D8D8D3',
-  panel: '#F1F0EC',
-  accent: '#B3261E',
+  ink: '#601A16',
+  inkSoft: '#735650',
+  hairline: '#EAD2CA',
+  panel: '#FFF8F4',
+  accent: '#FF7300',
 } as const;

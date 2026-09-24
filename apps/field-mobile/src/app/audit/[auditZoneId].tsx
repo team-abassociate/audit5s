@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, FlatList, Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { HeaderBackButton } from 'expo-router/react-navigation';
 import type { ResponseValue, SSection } from '@audit5s/contracts';
 import {
   RESPONSE_TOKENS,
@@ -20,7 +21,6 @@ import {
   ErrorBanner,
   Field,
   Figure,
-  HeaderAction,
   Label,
   Muted,
   Screen,
@@ -38,6 +38,7 @@ import {
   type LocalPhoto,
 } from '../../components/evidence-photos';
 import { ResponseChips } from '../../components/response-chips';
+import { useAbortMenu } from '../../components/abort-menu';
 import {
   assertZonePhotoCapacity,
   assertZonePhotoLimitForCompletion,
@@ -55,7 +56,6 @@ import {
   getLocalAudit,
   getLocalAuditZone,
   listQuestionsWithAnswers,
-  pauseLocalAudit,
   saveLocalResponse,
   saveZoneRemark,
   scoreLocalZone,
@@ -65,6 +65,7 @@ import { formatPct } from '../../lib/format';
 import { isFinished } from '../../lib/labels';
 import { useSync } from '../../lib/sync/provider';
 import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
+import { leaveScreen } from '../../lib/leave-screen';
 
 /** Ten questions to a page: with a five-by-ten checklist, a page is one S. */
 const PAGE_SIZE = 10;
@@ -236,11 +237,15 @@ export default function QuestionnaireScreen() {
       await assertZonePhotoLimitForCompletion(database, auditZoneId);
       await completeLocalZone(database, auditZoneId);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      // Completion is a high-priority sync trigger (§9.3).
-      void sync();
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['local'] });
+          // Completion is a high-priority sync trigger (§9.3).
+          void sync();
+        },
+      );
     },
   });
 
@@ -278,22 +283,24 @@ export default function QuestionnaireScreen() {
           : {}),
       });
     },
-    onSuccess: async (evidenceId) => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
+    onSuccess: (evidenceId) => {
+      // The camera closes the moment SQLite has the photo; the lists refresh behind it.
       setCameraFor(null);
+      void queryClient.invalidateQueries({ queryKey: ['local'] });
       // §2.3 step 13: the auditor sees what they took, and may keep, flag or delete it.
       setPreviewId(evidenceId);
       scheduleSync();
     },
   });
 
-  // N7: pausing saves and never discards, and it never waits.
-  const pause = useMutation({
-    mutationFn: () => pauseLocalAudit(database, zone.data!.auditId, 'Aborted by auditor'),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      router.back();
-    },
+  // Before any early return: it is a hook. The labels settle once the Zone has loaded.
+  const abortMenu = useAbortMenu({
+    auditId: zone.data?.auditId,
+    auditZoneId,
+    zoneLabel: zone.data
+      ? zoneDisplayLabel(zone.data.zoneCodeSnapshot, zone.data.zoneNameSnapshot)
+      : 'this Zone',
+    zoneFinished: zone.data?.status === 'COMPLETED',
   });
 
   const goTo = useCallback((next: number) => {
@@ -301,21 +308,21 @@ export default function QuestionnaireScreen() {
     list.current?.scrollToOffset({ offset: 0, animated: false });
   }, []);
 
-  // The hardware back button pages back through the questions and never discards (§5).
+  // Android's back gesture follows the header back action; Previous still changes pages.
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (cameraFor) {
         setCameraFor(null);
         return true;
       }
-      if (page > 0) {
-        goTo(page - 1);
+      if (audit.data?.status === 'IN_PROGRESS') {
+        abortMenu.pauseAudit();
         return true;
       }
       return false;
     });
     return () => subscription.remove();
-  }, [cameraFor, page, goTo]);
+  }, [cameraFor, audit.data?.status, abortMenu.pauseAudit]);
 
   // The audit joins the wait: until its status is known the screen cannot say whether the
   // answers may be changed, and guessing "yes" for a frame is a tap that queues a write the
@@ -371,8 +378,11 @@ export default function QuestionnaireScreen() {
    * that accepted the tap anyway saved a score into an outbox item the server would throw
    * out. The auditor saw the new number, nobody else ever did, and nothing said so.
    */
+  // A withdrawn Zone left the audit: it reads as it was left and takes no more answers.
   const auditOpen = audit.data
-    ? !isFinished(audit.data.status) && audit.data.status !== 'CANCELLED'
+    ? !isFinished(audit.data.status) &&
+      audit.data.status !== 'CANCELLED' &&
+      zone.data.status !== 'WITHDRAWN'
     : false;
   /**
    * R-30: a finished audit is correctable by the auditor who conducted it, through A-2's
@@ -399,16 +409,23 @@ export default function QuestionnaireScreen() {
       <Stack.Screen
         options={{
           title,
-          headerRight: () =>
-            auditOpen ? (
-              <HeaderAction
-                title="Pause"
-                accessibilityLabel="Pause the audit. Your answers stay saved on this device."
-                onPress={() => pause.mutate()}
-              />
-            ) : null,
+          // "Abort" — withdraw this Zone, or pause the whole audit — within a thumb of the
+          // questions, not only from the Zones list behind them.
+          headerLeft:
+            audit.data?.status === 'IN_PROGRESS'
+              ? ({ tintColor }) => (
+                  <HeaderBackButton
+                    tintColor={tintColor}
+                    accessibilityLabel="Pause audit and go to Overview"
+                    disabled={abortMenu.busy}
+                    onPress={abortMenu.pauseAudit}
+                  />
+                )
+              : undefined,
+          headerRight: () => (auditOpen ? abortMenu.trigger : null),
         }}
       />
+      {abortMenu.sheet}
 
       {/* Frozen above the questions, so the S and its progress stay in view while scrolling. */}
       <View style={styles.pinned}>

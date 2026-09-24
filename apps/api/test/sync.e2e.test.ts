@@ -12,6 +12,7 @@ import {
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER } from '@audit5s/domain';
 import { captureEvidence, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
+import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 
 /**
  * `POST /sync/batch` and everything around it (§8.11, §9.3, §9.5).
@@ -357,6 +358,97 @@ describe('§9.3 — per-item results', () => {
       (conflict) => conflict.entityId === orphanZoneId,
     );
     expect(forZone).toHaveLength(0);
+  });
+
+  it('asks a commit that overtook its own upload to wait, and quarantines nothing', async () => {
+    const { auditId } = await startedAudit();
+    const evidenceId = randomUUID();
+
+    // The intent is issued; the PUT never happens — a phone that lost its signal between
+    // the two, or whose photograph is still going up.
+    const intent = await world.request('POST', `${base}/evidence/upload-intent`, {
+      token: consultantToken,
+      headers: { 'x-device-id': DEVICE_ID },
+      body: {
+        id: evidenceId,
+        kind: 'AUDITOR_SELFIE',
+        auditId,
+        contentType: 'image/jpeg',
+        byteSize: 1024,
+        checksumSha256: 'a'.repeat(64),
+        capturedAt: new Date().toISOString(),
+        isLiveCapture: true,
+      },
+    });
+    expect(intent.status, JSON.stringify(intent.body)).toBe(201);
+
+    const response = await push([
+      {
+        outboxId: randomUUID(),
+        entityType: 'evidence',
+        entityId: evidenceId,
+        operation: 'commit',
+        payload: { checksumSha256: 'a'.repeat(64) },
+      },
+    ]);
+
+    expect(response.results[0]).toMatchObject({
+      status: 'RETRY_AFTER_PARENT',
+      missingParent: `evidence_object:${evidenceId}`,
+    });
+
+    const conflicts = await world.request('GET', `${base}/sync-conflicts?limit=200`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    const forEvidence = (conflicts.body as Page<SyncConflict>).data.filter(
+      (conflict) => conflict.entityId === evidenceId,
+    );
+    expect(forEvidence).toHaveLength(0);
+  });
+
+  it('holds an offline pause and completion until the selfie arrives, then applies them', async () => {
+    await assign();
+    const zoneId = await makeZone();
+    const auditId = randomUUID();
+    const auditZoneId = randomUUID();
+
+    // The audit and its Zone reach the server; the selfie is still in the media queue.
+    const structure = await push(auditBatch({ auditId, auditZoneId, zoneId, answers: 0 }));
+    expect(structure.results.every((result) => result.status === 'ACCEPTED')).toBe(true);
+
+    const lifecycle = (): SyncBatchRequest['items'] => [
+      {
+        outboxId: randomUUID(),
+        entityType: 'audit',
+        entityId: auditId,
+        operation: 'pause',
+        payload: { reason: 'Aborted by auditor', resumeAuditZoneId: auditZoneId },
+      },
+    ];
+
+    const early = await push(lifecycle());
+    expect(early.results[0]).toMatchObject({
+      status: 'RETRY_AFTER_PARENT',
+      missingParent: `evidence:auditor_selfie:${auditId}`,
+    });
+
+    const conflicts = await world.request('GET', `${base}/sync-conflicts?limit=200`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    expect(
+      (conflicts.body as Page<SyncConflict>).data.filter((c) => c.entityId === auditId),
+    ).toHaveLength(0);
+
+    await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId: randomUUID(),
+      auditId,
+      kind: 'AUDITOR_SELFIE',
+      deviceId: DEVICE_ID,
+    });
+
+    const late = await push(lifecycle());
+    expect(late.results[0]!.status).toBe('ACCEPTED');
   });
 });
 
@@ -846,6 +938,178 @@ describe('devices (§8.11)', () => {
     });
     const mine = (listed.body as Page<Device>).data;
     expect(mine.length).toBeGreaterThan(0);
-    expect(mine.every((device) => device.userId === world.actors.CONSULTANT.userId)).toBe(true);
+    // Phones they are on — and of the people on each, only themselves: who else shares a
+    // handset is a Super Admin's to see.
+    expect(
+      mine.every(
+        (device) =>
+          device.people.length === 1 && device.people[0]!.userId === world.actors.CONSULTANT.userId,
+      ),
+    ).toBe(true);
+  });
+
+  it('takes only yourself off a shared phone when a field user revokes it (0025)', async () => {
+    const shared = randomUUID();
+    // §12.11 counts every sign-in per login ID; this suite has already spent some.
+    world.app.get(RateLimitService).reset();
+    const consultant = await loginFromDevice(world, world.actors.CONSULTANT, shared);
+    const leader = await loginFromDevice(world, world.actors.ZONE_LEADER, shared);
+
+    const left = await world.request('POST', `${base}/devices/${shared}/revoke`, {
+      token: consultant,
+    });
+    expect(left.status, JSON.stringify(left.body)).toBe(200);
+    // The phone itself is not revoked…
+    expect((left.body as Device).revokedAt).toBeNull();
+
+    // …so the colleague still holding it carries on.
+    const status = await world.request('GET', `${base}/devices/${shared}`, { token: leader });
+    expect(status.status).toBe(200);
+
+    const { rows } = await world.owner.query(
+      `SELECT user_id, revoked_at FROM device_user WHERE device_id = $1`,
+      [shared],
+    );
+    const byUser = new Map(rows.map((row) => [row.user_id, row.revoked_at]));
+    expect(byUser.get(world.actors.CONSULTANT.userId)).not.toBeNull();
+    expect(byUser.get(world.actors.ZONE_LEADER.userId)).toBeNull();
+  });
+});
+
+/**
+ * The auditor's "abort this Zone" (0030, 0031), as the phone sends it: `audit_zone:withdraw`
+ * in a sync batch. The Zone leaves the audit — out of the score, out of the finish guard,
+ * its lock released — and nothing it recorded is deleted.
+ */
+describe('withdrawing an unfinished Zone', () => {
+  function withdrawItem(auditId: string, auditZoneId: string): SyncBatchRequest['items'][number] {
+    return {
+      outboxId: randomUUID(),
+      entityType: 'audit_zone',
+      entityId: auditZoneId,
+      operation: 'withdraw',
+      payload: { auditId, reason: 'Wrong Zone', withdrawnAt: new Date().toISOString() },
+    };
+  }
+
+  async function detail(auditId: string) {
+    const response = await world.request('GET', `${base}/audits/${auditId}`, { token: consultantToken });
+    expect(response.status).toBe(200);
+    return response.body as {
+      totals: { maxScore: number };
+      zones: Array<{ id: string; status: string; withdrawReason?: string | null; responses: unknown[] }>;
+    };
+  }
+
+  it('takes the Zone out of the audit and its score, keeps its answers, and frees the Zone', async () => {
+    const { auditId, auditZoneId, zoneId } = await startedAudit();
+    const answers = auditBatch({ auditId, auditZoneId, zoneId, answers: 5 }).slice(2);
+    await push(answers);
+
+    const result = await push([withdrawItem(auditId, auditZoneId)]);
+    expect(result.results[0]?.status, JSON.stringify(result.results)).toBe('ACCEPTED');
+
+    const after = await detail(auditId);
+    const zone = after.zones.find((candidate) => candidate.id === auditZoneId)!;
+    expect(zone.status).toBe('WITHDRAWN');
+    expect(zone.withdrawReason).toBe('Wrong Zone');
+    // A-1: nothing is deleted.
+    expect(zone.responses).toHaveLength(5);
+
+    // R-29's lock is released on the same write.
+    const { rows } = await world.owner.query('SELECT audit_open FROM audit_zone WHERE id = $1', [
+      auditZoneId,
+    ]);
+    expect(rows[0].audit_open).toBe(false);
+
+    // A retried withdrawal is not an error.
+    const again = await push([withdrawItem(auditId, auditZoneId)]);
+    expect(['ACCEPTED', 'DUPLICATE']).toContain(again.results[0]?.status);
+  });
+
+  it('finishes the audit on the Zones left, scored without the withdrawn one', async () => {
+    const { auditId, auditZoneId: kept, zoneId } = await startedAudit();
+    const abandoned = randomUUID();
+    const otherZoneId = await makeZone();
+
+    // Zone A: every question answered, then finished.
+    await push(auditBatch({ auditId, auditZoneId: kept, zoneId, answers: 50 }).slice(2));
+    await push([
+      {
+        outboxId: randomUUID(),
+        entityType: 'audit_zone',
+        entityId: kept,
+        operation: 'complete',
+        payload: { auditId },
+      },
+    ]);
+    const keptScore = (await detail(auditId)).totals.maxScore;
+    expect(keptScore).toBeGreaterThan(0);
+
+    // Zone B: started, half answered, then withdrawn.
+    await push([
+      {
+        outboxId: randomUUID(),
+        entityType: 'audit_zone',
+        entityId: abandoned,
+        operation: 'upsert',
+        payload: { auditId, zoneId: otherZoneId, sequenceNo: 2, checklistVersionId: versionId },
+      },
+      ...auditBatch({ auditId, auditZoneId: abandoned, zoneId: otherZoneId, answers: 20 }).slice(2),
+      withdrawItem(auditId, abandoned),
+    ]);
+
+    // Zone B no longer stands between the audit and Finish, and adds nothing to its score.
+    const finish = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(finish.status, JSON.stringify(finish.body)).toBe(200);
+    expect((await detail(auditId)).totals.maxScore).toBe(keptScore);
+  });
+
+  it('lets the same Zone be started again in the same audit, and refuses answers to the withdrawn one', async () => {
+    const { auditId, auditZoneId, zoneId } = await startedAudit();
+    await push([withdrawItem(auditId, auditZoneId)]);
+
+    const restarted = randomUUID();
+    const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${restarted}`, {
+      token: consultantToken,
+      body: { zoneId, sequenceNo: 2, checklistVersionId: versionId },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+
+    const late = await world.request(
+      'PUT',
+      `${base}/audit-zones/${auditZoneId}/responses/${randomUUID()}`,
+      {
+        token: consultantToken,
+        body: {
+          checklistQuestionId: questionIds[0],
+          value: 'SCORE_2',
+          answeredAt: new Date().toISOString(),
+        },
+      },
+    );
+    expect(late.status).toBe(409);
+  });
+
+  it('does not count a withdrawn Zone as the one Zone an audit needs to finish', async () => {
+    const { auditId, auditZoneId } = await startedAudit();
+    await push([withdrawItem(auditId, auditZoneId)]);
+
+    // The only Zone is withdrawn, so the audit has none to finish with (§7.1: ≥1 Zone).
+    const finish = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(finish.status).toBe(409);
+
+    // And the withdrawn Zone is still on record.
+    const { rows } = await world.owner.query(
+      `SELECT count(*)::int AS n FROM audit_zone WHERE audit_id = $1 AND status = 'WITHDRAWN'`,
+      [auditId],
+    );
+    expect(rows[0].n).toBe(1);
   });
 });

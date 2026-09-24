@@ -7,6 +7,7 @@ import {
   completeLocalAudit,
   completeLocalZone,
   createLocalAudit,
+  editLocalZone,
   getLocalAuditZone,
   listLocalAudits,
   listOutbox,
@@ -14,12 +15,14 @@ import {
   listResumableAudits,
   pauseLocalAudit,
   pendingOutboxCount,
+  restartLocalAudit,
   resumeCursor,
   resumeLocalAudit,
   saveLocalResponse,
   saveZoneRemark,
   scoreLocalZone,
   uuidv7,
+  withdrawLocalZone,
 } from './audit.repository';
 import { replaceCatalogue } from './catalogue.repository';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
@@ -133,6 +136,19 @@ describe('the local schema', () => {
     // to recreate it would be a data-loss bug that only appears in the field.
     const audits = await listLocalAudits(database);
     expect(audits.map((audit) => audit.id)).toContain(auditId);
+  });
+  it('rebuilds audit_zone for v7 without losing a Zone a device already holds', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers().slice(0, 5));
+
+    // As a phone on v6 meets this build: step 7 runs over real, unsynced work.
+    await executor.setUserVersion(6);
+    await migrateLocalDatabase(executor);
+
+    const [zone] = await getLocalAuditZone(database, auditZoneId);
+    expect(zone?.auditId).toBe(auditId);
+    expect(zone?.status).toBe('IN_PROGRESS');
+    expect(await executor.userVersion()).toBe(LOCAL_SCHEMA_VERSION);
   });
 });
 
@@ -407,6 +423,55 @@ describe('abort and resume (N7, §9.8)', () => {
   });
 });
 
+describe('withdrawing one Zone (abort this Zone, 0031)', () => {
+  it('takes the Zone out of the audit, keeps its answers, and queues the withdrawal', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers().slice(0, 10));
+
+    await withdrawLocalZone(database, auditZoneId, 'Wrong Zone');
+
+    const [zone] = await getLocalAuditZone(database, auditZoneId);
+    expect(zone?.status).toBe('WITHDRAWN');
+    // Nothing is discarded (A-1).
+    const saved = await executor.query(`SELECT COUNT(*) FROM question_response`, []);
+    expect(saved[0]?.[0]).toBe(10);
+    // Resume never reopens a Zone the auditor walked away from.
+    expect((await resumeCursor(database, auditId)).auditZoneId).toBeNull();
+    // Out of the audit's Zone count.
+    expect((await listResumableAudits(database))[0]?.zonesTotal).toBe(0);
+
+    const queued = (await listOutbox(database)).find(
+      (item) => item.entityType === 'audit_zone' && item.operation === 'withdraw',
+    );
+    expect(queued?.entityId).toBe(auditZoneId);
+    expect(JSON.parse(queued!.payload)).toMatchObject({ auditId, reason: 'Wrong Zone' });
+  });
+
+  it('stays withdrawn if a late answer is saved, and lets the Zone be started again', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await withdrawLocalZone(database, auditZoneId, null);
+    await answerAll(auditId, auditZoneId, ['SCORE_2']);
+    expect((await getLocalAuditZone(database, auditZoneId))[0]?.status).toBe('WITHDRAWN');
+
+    const again = await addLocalZone(database, {
+      auditId,
+      zoneNumber: 1,
+      sequenceNo: 2,
+      checklistVersionId: VERSION,
+    });
+    expect(again).not.toBe(auditZoneId);
+  });
+
+  it('leaves a finished Zone alone — that is a review, not a withdrawal', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await completeLocalZone(database, auditZoneId);
+
+    await withdrawLocalZone(database, auditZoneId, null);
+    expect((await getLocalAuditZone(database, auditZoneId))[0]?.status).toBe('COMPLETED');
+  });
+});
+
 describe('reviewing a finished Zone', () => {
   it('records the new answer, rescores, and leaves the Zone finished', async () => {
     const { auditId, auditZoneId } = await startAudit();
@@ -669,5 +734,88 @@ describe('a complete offline Zone — the Phase 3 acceptance row, device half', 
 
     expect((await scoreLocalZone(database, auditZoneId)).totals.scorePercentage).toBe(100);
     expect((await scoreLocalZone(database, secondZoneId)).totals.scorePercentage).toBe(0);
+  });
+});
+
+
+describe('restarting a finished audit (R-33)', () => {
+  it('puts it back in progress, counts the restart, and queues one item with the reason', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await completeLocalZone(database, auditZoneId);
+    await completeLocalAudit(database, auditId);
+
+    const beforeRestart = (await listLocalAudits(database)).find((a) => a.id === auditId)!;
+    expect(beforeRestart.status).toBe('COMPLETED');
+
+    await restartLocalAudit(database, auditId, 'Finished before the packing bay');
+
+    // Editable again on this device, without waiting for a connection — the whole point.
+    const after = (await listLocalAudits(database)).find((a) => a.id === auditId)!;
+    expect(after.status).toBe('IN_PROGRESS');
+    expect(after.restartCount).toBe(1);
+
+    const queued = (await listOutbox(database)).filter((row) => row.operation === 'restart');
+    expect(queued).toHaveLength(1);
+    expect(queued[0]!.entityId).toBe(auditId);
+    expect(JSON.parse(queued[0]!.payload as string)).toMatchObject({
+      justification: 'Finished before the packing bay',
+    });
+  });
+
+  it('coalesces two taps into one restart', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await completeLocalZone(database, auditZoneId);
+    await completeLocalAudit(database, auditId);
+
+    await restartLocalAudit(database, auditId, 'First tap, no signal');
+    await restartLocalAudit(database, auditId, 'Second tap, still no signal');
+
+    // The outbox coalesces on (entity_type, entity_id, operation): two taps are one
+    // restart on the server, not two chances spent.
+    const queued = (await listOutbox(database)).filter((row) => row.operation === 'restart');
+    expect(queued).toHaveLength(1);
+  });
+});
+
+
+describe('correcting the Zone details the auditor typed (R-34)', () => {
+  it('rewrites the snapshot on this device and queues one upsert carrying it', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+
+    await editLocalZone(database, {
+      auditZoneId,
+      zoneDescription: 'Press shop, bay 7 — corrected on site',
+      zoneLeaderName: 'R. Iyer',
+    });
+
+    const [zone] = await getLocalAuditZone(database, auditZoneId);
+    expect(zone!.zoneDescriptionSnapshot).toBe('Press shop, bay 7 — corrected on site');
+    expect(zone!.zoneLeaderNameSnapshot).toBe('R. Iyer');
+
+    const queued = (await listOutbox(database)).filter(
+      (row) => row.entityId === auditZoneId && row.operation === 'upsert',
+    );
+    // One row, not two: the correction coalesces with the upsert that created the Zone.
+    expect(queued).toHaveLength(1);
+    expect(JSON.parse(queued[0]!.payload as string)).toMatchObject({
+      auditId,
+      zoneDescription: 'Press shop, bay 7 — corrected on site',
+      zoneLeaderName: 'R. Iyer',
+    });
+  });
+
+  it('leaves a field alone when the correction does not name it', async () => {
+    const { auditZoneId } = await startAudit();
+    await editLocalZone(database, { auditZoneId, zoneLeaderName: 'Only the leader' });
+
+    const [zone] = await getLocalAuditZone(database, auditZoneId);
+    expect(zone!.zoneLeaderNameSnapshot).toBe('Only the leader');
+    // Untouched: only what the correction carries is ever re-snapshotted (R-34).
+    const queued = (await listOutbox(database)).filter(
+      (row) => row.entityId === auditZoneId && row.operation === 'upsert',
+    );
+    expect(JSON.parse(queued[0]!.payload as string)).not.toHaveProperty('zoneDescription');
   });
 });

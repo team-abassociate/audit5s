@@ -1,7 +1,8 @@
 // ponytail: the legacy API, which SDK 57 still ships; move to the `File` class when the
 // legacy entry point is removed. The root import throws on these methods since SDK 54.
 import * as FileSystem from 'expo-file-system/legacy';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Crypto from 'expo-crypto';
 
 /**
@@ -45,62 +46,75 @@ export interface ProcessedImage {
  * Hashing the original instead would be subtly wrong: `commit` verifies the stored object
  * against this value, and the stored object is the re-encoded one.
  */
-export async function processCapturedPhoto(uri: string): Promise<ProcessedImage> {
-  const manipulated = await ImageManipulator.manipulateAsync(
-    uri,
-    [{ resize: { width: MAX_LONG_EDGE_PX } }],
-    {
-      compress: JPEG_QUALITY,
-      format: ImageManipulator.SaveFormat.JPEG,
-    },
-  );
+export async function processCapturedPhoto(
+  uri: string,
+  /** The frame's own size, as the camera reported it — so the resize needs no decode. */
+  source?: { width: number; height: number },
+): Promise<ProcessedImage> {
+  const context = ImageManipulator.manipulate(uri);
+  // The **long** edge, not the width: a portrait frame resized by width came out 1920×2560,
+  // over §9.4's limit, and a small front-camera selfie was upscaled for nothing.
+  if (source && Math.max(source.width, source.height) > MAX_LONG_EDGE_PX) {
+    context.resize(
+      source.width >= source.height ? { width: MAX_LONG_EDGE_PX } : { height: MAX_LONG_EDGE_PX },
+    );
+  } else if (!source) {
+    context.resize({ width: MAX_LONG_EDGE_PX });
+  }
+  const image = await context.renderAsync();
+  const manipulated = await image.saveAsync({ compress: JPEG_QUALITY, format: SaveFormat.JPEG });
 
-  const info = await FileSystem.getInfoAsync(manipulated.uri);
-  const byteSize = info.exists && 'size' in info ? (info.size ?? 0) : 0;
+  const kept = await keepDurably(manipulated.uri);
+  // One native read gives both the size and the bytes to hash — no base64 detour.
+  const bytes = await readFileBytes(kept);
 
   return {
-    uri: manipulated.uri,
-    byteSize,
+    uri: kept,
+    byteSize: bytes.byteLength,
     width: manipulated.width,
     height: manipulated.height,
-    checksumSha256: await sha256OfFile(manipulated.uri),
+    checksumSha256: await sha256OfBytes(bytes),
     contentType: 'image/jpeg',
   };
 }
 
 /**
- * SHA-256 of a file, computed from its base64 form.
+ * Moves a processed photograph out of the cache and into app-private documents.
  *
- * `expo-crypto` hashes strings rather than streams, so the file is read once as base64 and
- * hashed as bytes. At a few hundred kilobytes that is affordable; it is the reason the
- * downscale happens first.
+ * The manipulator writes to the cache directory, which Android is free to clear whenever
+ * storage runs low. A photograph still waiting for a signal is field evidence, not a cache
+ * entry: once its file is gone the upload can never succeed, and the audit it proves waits
+ * for it forever.
  */
-export async function sha256OfFile(uri: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  return sha256OfBase64(base64);
+async function keepDurably(cacheUri: string): Promise<string> {
+  const directory = `${FileSystem.documentDirectory}evidence/`;
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+  const target = `${directory}${cacheUri.split('/').pop()}`;
+  await FileSystem.moveAsync({ from: cacheUri, to: target });
+  return target;
 }
 
-export async function sha256OfBase64(base64: string): Promise<string> {
-  const bytes = decodeBase64(base64);
+/**
+ * SHA-256 of a file. `expo-crypto` hashes buffers rather than streams, so the file is read
+ * whole; at a few hundred kilobytes that is affordable, and it is why the downscale is first.
+ */
+export async function sha256OfFile(uri: string): Promise<string> {
+  return sha256OfBytes(await readFileBytes(uri));
+}
+
+async function sha256OfBytes(bytes: Uint8Array): Promise<string> {
   const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Reads a local file as bytes, for the presigned PUT. */
+/**
+ * Reads a local file as bytes, for the hash and the presigned PUT.
+ *
+ * Straight into an ArrayBuffer. The base64 read it replaced pushed every photograph
+ * through a character-by-character loop on the JS thread — hundreds of milliseconds per
+ * photo, during which even the shutter's spinner stuttered.
+ */
 export async function readFileBytes(uri: string): Promise<Uint8Array> {
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  return decodeBase64(base64);
+  return new Uint8Array(await new File(uri).arrayBuffer());
 }
 
-function decodeBase64(base64: string): Uint8Array {
-  const binary = globalThis.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-}

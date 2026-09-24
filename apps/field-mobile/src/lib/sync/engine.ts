@@ -22,11 +22,13 @@ import {
   evidenceById,
   itemsInState,
   markDeadLetter,
+  auditsAwaitingPhotos,
   markPending,
   markSettled,
   markSyncing,
   readyItems,
   removeItem,
+  removePrematureCommits,
   resetDeadLetters,
   scheduleRetry,
   strandedUploads,
@@ -177,6 +179,10 @@ export async function recoverStaleWork(
     reset += 1;
   }
 
+  // A commit queued ahead of its own PUT — the old sweep's mistake — is dropped while the
+  // photograph still waits to go up; the media pass queues it again once the bytes land.
+  await removePrematureCommits(database);
+
   // Evidence whose object went up but whose commit never did. Re-queued rather than
   // called here: the commit then rides the ordinary data batch with everything else.
   for (const row of await strandedUploads(database)) {
@@ -253,9 +259,15 @@ async function drainDataQueue(
   operations?: readonly SyncOperation[],
 ): Promise<SyncResult> {
   const all = await readyItems(database, 'data', new Date(now()).toISOString());
-  const ready = operations
+  // An audit's `complete` waits for its photographs (see `auditsAwaitingPhotos`). It stays
+  // PENDING and goes in the first cycle after the last photo is up.
+  const holding = await auditsAwaitingPhotos(database);
+  const ready = (operations
     ? all.filter((row) => operations.includes(row.operation as SyncOperation))
-    : all;
+    : all
+  ).filter(
+    (row) => !(row.entityType === 'audit' && row.operation === 'complete' && holding.has(row.entityId)),
+  );
 
   if (ready.length === 0) {
     return { ...EMPTY };

@@ -88,7 +88,10 @@ export class ScoringService {
   ): Promise<{ scored: boolean; audit: ScoreBreakdown; zones: Map<string, ScoreBreakdown> }> {
     const audit = await this.repository.findById(scope, auditId);
     const scored = audit !== null && isScoredAuditType(audit.auditType);
-    const zones = await this.repository.listZones(scope, auditId);
+    // A withdrawn Zone was abandoned, not audited: it is no part of the audit's score.
+    const zones = (await this.repository.listZones(scope, auditId)).filter(
+      (zone) => zone.status !== 'WITHDRAWN',
+    );
     const responses = scored ? await this.repository.listResponses(scope, auditId) : [];
 
     const byZone = new Map<string, ScorableRow[]>();

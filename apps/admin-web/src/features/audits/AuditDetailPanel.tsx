@@ -126,7 +126,9 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
                   {zone.zoneLeaderNameSnapshot ? ` · Zone Leader: ${zone.zoneLeaderNameSnapshot}` : ''}
                 </p>
               </div>
-              <Badge tone={zone.status === 'COMPLETED' ? 'good' : 'warn'}>{zone.status}</Badge>
+              <Badge tone={zone.status === 'COMPLETED' ? 'good' : zone.status === 'WITHDRAWN' ? 'neutral' : 'warn'}>
+                {zone.status}
+              </Badge>
             </div>
 
             {audit.scored && <SectionTable sections={zoneScore?.sections ?? zone.sections} />}

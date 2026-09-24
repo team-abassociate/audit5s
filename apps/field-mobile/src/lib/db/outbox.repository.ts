@@ -152,7 +152,15 @@ export async function resetDeadLetters(database: LocalDatabase): Promise<number>
   return rows.length;
 }
 
-/** Evidence whose object went up but whose commit never did — §9.6's stranded case. */
+/**
+ * Evidence whose object went up but whose commit never did — §9.6's stranded case.
+ *
+ * An `objectKey` alone does not mean the object is in storage: it is recorded when
+ * `upload-intent` answers, *before* the PUT. So the photograph's own media row has to be
+ * gone too — it is removed only after the PUT succeeds — and no commit may be queued
+ * already. Reading the key alone queued a commit ahead of every failed PUT, the server
+ * refused it as "not in storage yet", and the sweep re-armed the refusal on every cycle.
+ */
 export function strandedUploads(database: LocalDatabase) {
   return database
     .select()
@@ -162,8 +170,46 @@ export function strandedUploads(database: LocalDatabase) {
         eq(localEvidence.syncState, 'SYNCING'),
         sql`${localEvidence.objectKey} IS NOT NULL`,
         isNull(localEvidence.deletedAt),
+        // Spelled out rather than interpolated: inside a correlated subquery an unqualified
+        // column binds to the inner table, and `id` would silently mean the outbox's own.
+        sql`NOT EXISTS (
+          SELECT 1 FROM outbox AS queued
+          WHERE queued.entity_type = 'evidence'
+            AND queued.entity_id = evidence.id
+            AND queued.operation IN ('upsert', 'commit')
+        )`,
       ),
     );
+}
+
+/**
+ * Commits the old stranded sweep queued ahead of their own upload, and the queue has since
+ * refused: the photograph's media row is still waiting, so the commit is premature rather
+ * than wrong. Removing it is safe — the media pass queues a fresh one once the PUT lands —
+ * and it is what takes these off the "need attention" count on a phone that ran the bug.
+ */
+export async function removePrematureCommits(database: LocalDatabase): Promise<number> {
+  const premature = await database
+    .select({ id: outbox.id })
+    .from(outbox)
+    .where(
+      and(
+        eq(outbox.entityType, 'evidence'),
+        eq(outbox.operation, 'commit'),
+        inArray(outbox.state, ['PENDING', 'FAILED', 'DEAD_LETTER']),
+        sql`EXISTS (
+          SELECT 1 FROM ${outbox} AS media
+          WHERE media.entity_type = 'evidence'
+            AND media.entity_id = outbox.entity_id
+            AND media.operation = 'upsert'
+        )`,
+      ),
+    );
+
+  for (const row of premature) {
+    await removeItem(database, row.id);
+  }
+  return premature.length;
 }
 
 export function evidenceById(database: LocalDatabase, evidenceId: string) {
@@ -176,4 +222,31 @@ export function unsyncedPhotos(database: LocalDatabase) {
     .select({ id: localEvidence.id })
     .from(localEvidence)
     .where(and(sql`${localEvidence.syncState} <> 'SYNCED'`, isNull(localEvidence.deletedAt)));
+}
+
+/**
+ * Audits that still have a photograph on its way up.
+ *
+ * *Finish audit* can be queued while a photo waits out a retry on a weak connection. Sent
+ * first, it froze the audit (A-2) and the photo arriving after it was refused as
+ * `AUDIT_ALREADY_COMPLETED` — a 4xx that is never retried, so it dead-lettered, the bar
+ * went red, and a nonconformity photo could miss its corrective action. The engine holds
+ * such an audit's `complete` back until its photos are up.
+ *
+ * A dead-lettered photo does not hold it: that one is waiting for a person, and an audit
+ * must not be unfinishable because of a single unreadable file.
+ */
+export async function auditsAwaitingPhotos(database: LocalDatabase): Promise<Set<string>> {
+  const rows = await database
+    .select({ auditId: localEvidence.auditId })
+    .from(outbox)
+    .innerJoin(localEvidence, eq(localEvidence.id, outbox.entityId))
+    .where(
+      and(
+        eq(outbox.queue, 'media'),
+        inArray(outbox.state, ['PENDING', 'SYNCING', 'FAILED']),
+        isNull(localEvidence.deletedAt),
+      ),
+    );
+  return new Set(rows.map((row) => row.auditId));
 }

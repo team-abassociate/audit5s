@@ -15,6 +15,7 @@ import type {
   QuestionResponse,
   ReleaseDeviceRequest,
   ResumeAuditRequest,
+  RestartAuditRequest,
   StartAuditRequest,
   ZoneLocksResponse,
 } from '@audit5s/contracts';
@@ -25,6 +26,8 @@ import {
   auditTypeUsesChecklist,
   isAuditCompleted,
   isScoredAuditType,
+  restartsRemaining,
+  MAX_AUDIT_RESTARTS,
   type LocationAssessment,
   type ScopeContext,
   type TransitionGuard,
@@ -352,7 +355,12 @@ export class AuditsService {
         unitId: audit.unitId,
         resourceType: 'audit',
         resourceId: auditId,
-        data: { auditType: audit.auditType, locationSuspicious: location?.suspicious ?? false },
+        data: {
+          auditType: audit.auditType,
+          locationSuspicious: location?.suspicious ?? false,
+          auditorName: audit.auditorName,
+          unitName: audit.unitName,
+        },
       }),
     );
 
@@ -407,7 +415,12 @@ export class AuditsService {
         unitId: audit.unitId,
         resourceType: 'audit',
         resourceId: auditId,
-        data: { auditType: audit.auditType, reason: request.reason ?? null },
+        data: {
+          auditType: audit.auditType,
+          reason: request.reason ?? null,
+          auditorName: audit.auditorName,
+          unitName: audit.unitName,
+        },
       }),
     );
 
@@ -559,7 +572,13 @@ export class AuditsService {
       },
     );
 
-    if (audit.assignmentId) {
+    // The assignment closes with the last of its audits, not the first. Closing it while
+    // another audit of the same assignment is still open used to end the auditor's grant
+    // on the Unit mid-audit, and that audit's next sync items were refused (0032).
+    if (
+      audit.assignmentId &&
+      !(await this.repository.hasOtherOpenAuditForAssignment(scope, audit.assignmentId, auditId))
+    ) {
       await this.assignments.setStatus(
         { ...scope, resolver: 'organization' },
         audit.assignmentId,
@@ -652,6 +671,90 @@ export class AuditsService {
     });
 
     return this.get(scope, auditId);
+  }
+
+  /**
+   * `POST /audits/{id}/restart` (R-33) — the way back from an accidental *Finish audit*.
+   *
+   * Two things make this a correction rather than an open door, and both are checked here
+   * before anything moves: the audit has restarts left, and the caller said why.
+   *
+   * The audit returns to IN_PROGRESS with its Zones' statuses untouched. That is
+   * deliberate — the auditor reopens the Zones they actually need through the edge that
+   * already exists, and `all_zones_completed` still guards the way out, so an audit cannot
+   * be finished while half-restarted. Everything else the auditor regains comes for free,
+   * because every one of those rules reads `audit.status` rather than a flag of its own:
+   * evidence may be added and removed again (E-4), marks go back through the ordinary
+   * upsert, and R-34's Zone corrections apply.
+   */
+  async restart(
+    scope: ScopeContext,
+    auditId: string,
+    request: RestartAuditRequest,
+  ): Promise<AuditDetail> {
+    const audit = await this.mustFind(scope, auditId);
+
+    if (!isAuditCompleted(audit.status)) {
+      throw AppError.conflict(
+        'INVALID_STATE_TRANSITION',
+        'This audit is not finished; there is nothing to restart',
+      );
+    }
+
+    const remaining = restartsRemaining(audit.restartCount);
+    if (remaining <= 0) {
+      throw AppError.conflict(
+        'RESTART_LIMIT_REACHED',
+        `This audit has already been restarted ${MAX_AUDIT_RESTARTS} times, which is the limit. ` +
+          'A wrong mark can still be corrected through the audit edit, which records the reason.',
+      );
+    }
+
+    // The table is asked even though both its guards were just checked by hand: a §7.1
+    // edge is taken through `assertTransition` everywhere else, and an edge that is legal
+    // only because one service remembered to check it is one a later caller will take.
+    try {
+      assertTransition('audit', audit.status as AuditStatus, 'IN_PROGRESS', {
+        role: scope.actor.role,
+        satisfied: ['restarts_remaining', 'reason_given'],
+      });
+    } catch (error) {
+      throw asAppError(error);
+    }
+
+    const restartCount = audit.restartCount + 1;
+    let withdrawn: Array<{ id: string; assignedZoneLeaderUserId: string | null }> = [];
+
+    await this.repository.restart(
+      scope,
+      {
+        auditId,
+        unitId: audit.unitId,
+        restartCount,
+        before: { status: audit.status, restartCount: audit.restartCount },
+        after: {
+          status: 'IN_PROGRESS',
+          restartCount,
+          restartsRemaining: restartsRemaining(restartCount),
+          justification: request.justification,
+        },
+        requestId: getRequestContext()?.requestId ?? 'audit-restart',
+      },
+      // Same transaction as the status change: an audit whose corrective actions could not
+      // be stopped must not end up restarted with people still being chased.
+      async (tx) => {
+        withdrawn = await this.correctiveActions.withdrawForRestart(tx, scope, auditId);
+      },
+    );
+
+    if (withdrawn.length > 0) {
+      this.logger.log(
+        `audit ${auditId} restarted (${restartCount}/${MAX_AUDIT_RESTARTS}); ` +
+          `${withdrawn.length} corrective action(s) withdrawn`,
+      );
+    }
+
+    return this.detail(scope, auditId);
   }
 
   /**
@@ -897,21 +1000,19 @@ export class AuditsService {
    * — "Unknown device" — suggested a different one. A session cannot be bound to a device
    * that was never registered: `refresh_token.device_id` references `device`, so such a
    * login is refused outright, and `requireDevice` then makes the token's id the only one
-   * a request may use. The row therefore always exists. What it may not be is *this*
-   * actor's, and since login hands a handset to whoever signs in on it, that means the
-   * phone moved on while this session did not.
+   * a request may use. The row therefore always exists. A phone is shared (0025), so the
+   * only way this fails is revocation: of the phone, or of this person's place on it.
    */
   private async requireOwnDevice(scope: ScopeContext, deviceId: string): Promise<void> {
     if (await this.repository.isOwnDevice(scope, deviceId)) {
       return;
     }
 
-    throw AppError.validation('This device belongs to another account', [
+    throw AppError.validation('This device is not yours to use', [
       {
         field: 'deviceId',
         message:
-          'Somebody else has since signed in on this device, or it has been revoked. ' +
-          'Sign in again to continue on it.',
+          'This phone, or your access on it, has been revoked. Sign in again to continue on it.',
       },
     ]);
   }
@@ -988,6 +1089,7 @@ export function toAudit(row: AuditRow): Audit {
   return {
     id: row.id,
     assignmentId: row.assignmentId,
+    assignmentGroupId: row.assignmentGroupId,
     unitId: row.unitId,
     unitName: row.unitName,
     auditType: row.auditType,
@@ -1019,6 +1121,8 @@ export function toAudit(row: AuditRow): Audit {
     },
     pausedAt: row.pausedAt?.toISOString() ?? null,
     pauseReason: row.pauseReason,
+    restartCount: row.restartCount,
+    restartsRemaining: restartsRemaining(row.restartCount),
     resumeAuditZoneId: row.resumeAuditZoneId,
     clientCreatedAt: row.clientCreatedAt.toISOString(),
     clientUpdatedAt: row.clientUpdatedAt.toISOString(),
@@ -1072,6 +1176,8 @@ export function toAuditZone(
     resumeQuestionId: row.resumeQuestionId,
     startedAt: row.startedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
+    withdrawnAt: row.withdrawnAt?.toISOString() ?? null,
+    withdrawReason: row.withdrawReason,
     clientUpdatedAt: row.clientUpdatedAt.toISOString(),
     version: row.version,
   };

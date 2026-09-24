@@ -60,6 +60,8 @@ export const auditAssignments = pgTable(
     instructions: text('instructions'),
     /** Hints for the Zone picker; the auditor may choose others (§5.5). */
     suggestedZoneIds: uuid('suggested_zone_ids').array(),
+    /** Shared by the assignments of one Unit audit given to several auditors (0029). */
+    groupId: uuid('group_id'),
     createdByUserId: uuid('created_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -116,6 +118,8 @@ export const audits = pgTable(
     maxScore: integer('max_score'),
     pausedAt: timestamp('paused_at', { withTimezone: true }),
     pauseReason: text('pause_reason'),
+    /** R-33: how many times this audit has been restarted after finishing. Only rises. */
+    restartCount: integer('restart_count').notNull().default(0),
     resumeAuditZoneId: uuid('resume_audit_zone_id'),
     /** Device clock — conflict ordering only, never a business date. */
     clientCreatedAt: timestamp('client_created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -199,12 +203,18 @@ export const auditZones = pgTable(
     }),
     startedAt: timestamp('started_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    /** The auditor's "abort this Zone" (0031): when, and why if they said. */
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+    withdrawReason: text('withdraw_reason'),
     clientUpdatedAt: timestamp('client_updated_at', { withTimezone: true }).notNull().defaultNow(),
     version: integer('version').notNull().default(1),
     ...timestamps,
   },
   (table) => [
-    uniqueIndex('audit_zone_audit_zone_key').on(table.auditId, table.zoneId),
+    // Once per audit among the Zones not withdrawn (0031), so an aborted Zone can be redone.
+    uniqueIndex('audit_zone_audit_zone_key')
+      .on(table.auditId, table.zoneId)
+      .where(sql`status <> 'WITHDRAWN'`),
     uniqueIndex('audit_zone_sequence_key').on(table.auditId, table.sequenceNo),
     index('audit_zone_zone_completed_idx').on(table.zoneId, table.completedAt),
     index('audit_zone_audit_status_idx').on(table.auditId, table.status),

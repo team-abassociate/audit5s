@@ -245,6 +245,13 @@ export const reportSnapshotSchema = z.object({
   auditId: uuidSchema.nullable(),
   auditZoneId: uuidSchema.nullable(),
   selectedZoneIds: z.array(uuidSchema).nullable(),
+  /**
+   * A summary of hand-picked audited Zones: each id is one Zone *of one audit*, so the same
+   * Zone may be taken from one audit and not another. Null for every other report.
+   */
+  selectedAuditZoneIds: z.array(uuidSchema).nullable(),
+  /** A summary of one multi-auditor audit: the assignment group whose Zones it combines. */
+  assignmentGroupId: uuidSchema.nullable(),
   payloadSchemaVersion: z.number().int().positive(),
   templateVersion: z.string(),
   status: reportStatusSchema,
@@ -269,12 +276,32 @@ export type ReportSnapshot = z.infer<typeof reportSnapshotSchema>;
 export const generateReportRequestSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('INITIAL_ZONE'), auditZoneId: uuidSchema }),
   z.object({ kind: z.literal('AFTER_EVIDENCE_ZONE'), auditZoneId: uuidSchema }),
-  z.object({
-    kind: z.literal('MULTI_ZONE_SUMMARY'),
-    unitId: uuidSchema,
-    /** The exact selection, stored on the snapshot so the summary is reproducible. */
-    selectedZoneIds: z.array(uuidSchema).min(1).max(200),
-  }),
+  z
+    .object({
+      kind: z.literal('MULTI_ZONE_SUMMARY'),
+      unitId: uuidSchema,
+      /**
+       * The exact selection by Zone, stored on the snapshot so the summary is reproducible.
+       * Each Zone contributes its latest completed audit of it.
+       */
+      selectedZoneIds: z.array(uuidSchema).max(200).default([]),
+      /**
+       * The exact selection by audited Zone — a Zone *of a particular audit*. This is how a
+       * Super Admin takes Zones 1 and 2 from the first audit of the month and Zones 3, 4
+       * and 5 from the second, which a selection by Zone cannot say. Takes precedence over
+       * `selectedZoneIds` when both are sent.
+       */
+      selectedAuditZoneIds: z.array(uuidSchema).min(1).max(200).optional(),
+      /**
+       * One audit conducted by several auditors together: each selected Zone is taken from
+       * the audits of this assignment group, not from the Unit's latest audit of it.
+       */
+      assignmentGroupId: uuidSchema.optional(),
+    })
+    .refine((request) => request.selectedZoneIds.length > 0 || request.selectedAuditZoneIds, {
+      message: 'Select at least one Zone',
+      path: ['selectedZoneIds'],
+    }),
 ]);
 export type GenerateReportRequest = z.infer<typeof generateReportRequestSchema>;
 

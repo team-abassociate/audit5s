@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '@audit5s/contracts';
-import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
+import { FIXTURE_PASSWORD, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 
 /**
@@ -92,52 +92,72 @@ describe('login', () => {
 describe('a shared handset', () => {
   const SHARED_DEVICE = '01930000-0000-7000-8000-0000000005a1';
 
-  it('follows whoever last signed in on it, and says so in the audit log', async () => {
+  it('admits everybody who signs in on it, and takes nothing from anybody (0025)', async () => {
     resetLimits();
 
     // A device id is minted per install and kept on the phone, so two auditors using one
-    // handset present the same id. The upsert used to leave `user_id` alone: the phone
-    // stayed with whoever logged in first, and every audit the second one started was
-    // refused for a device that was not theirs, with the work quarantined behind it.
+    // handset present the same id. Signing in used to hand the phone over, and the first
+    // person's session then failed on every audit they started.
     await loginFromDevice(world, world.actors.CONSULTANT, SHARED_DEVICE);
-    const first = await world.owner.query(`SELECT user_id FROM device WHERE id = $1`, [
-      SHARED_DEVICE,
-    ]);
-    expect(first.rows[0].user_id).toBe(world.actors.CONSULTANT.userId);
-
     resetLimits();
     await loginFromDevice(world, world.actors.ZONE_LEADER, SHARED_DEVICE);
 
-    const second = await world.owner.query(
+    const { rows: people } = await world.owner.query(
+      `SELECT user_id, revoked_at FROM device_user WHERE device_id = $1 ORDER BY user_id`,
+      [SHARED_DEVICE],
+    );
+    expect(people.map((row) => row.user_id).sort()).toEqual(
+      [world.actors.CONSULTANT.userId, world.actors.ZONE_LEADER.userId].sort(),
+    );
+    expect(people.every((row) => row.revoked_at === null)).toBe(true);
+
+    // `device.user_id` is only who signed in last.
+    const { rows: device } = await world.owner.query(
       `SELECT user_id, revoked_at FROM device WHERE id = $1`,
       [SHARED_DEVICE],
     );
-    expect(second.rows).toHaveLength(1);
-    expect(second.rows[0].user_id).toBe(world.actors.ZONE_LEADER.userId);
-    expect(second.rows[0].revoked_at).toBeNull();
+    expect(device[0].user_id).toBe(world.actors.ZONE_LEADER.userId);
+    expect(device[0].revoked_at).toBeNull();
 
-    // Recorded, because the previous owner's unsynced work on that phone stops being
-    // reachable from it and an audit still locked to it now needs a Super Admin release.
     const { rows } = await world.owner.query(
-      `SELECT before, after FROM audit_log
-       WHERE action = 'device.transferred' AND resource_id = $1`,
+      `SELECT after FROM audit_log WHERE action = 'device.user_added' AND resource_id = $1`,
       [SHARED_DEVICE],
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].before).toMatchObject({ userId: world.actors.CONSULTANT.userId });
     expect(rows[0].after).toMatchObject({ userId: world.actors.ZONE_LEADER.userId });
   });
 
-  it('records no transfer when the same person signs in again', async () => {
+  it('records nobody new when the same person signs in again', async () => {
     resetLimits();
     await loginFromDevice(world, world.actors.ZONE_LEADER, SHARED_DEVICE);
 
     const { rows } = await world.owner.query(
       `SELECT COUNT(*)::int AS n FROM audit_log
-       WHERE action = 'device.transferred' AND resource_id = $1`,
+       WHERE action = 'device.user_added' AND resource_id = $1`,
       [SHARED_DEVICE],
     );
     expect(rows[0].n).toBe(1);
+  });
+
+  it('keeps a revoked phone revoked when somebody signs in on it', async () => {
+    const lost = '01930000-0000-7000-8000-0000000005a2';
+    resetLimits();
+    await loginFromDevice(world, world.actors.CONSULTANT, lost);
+    await world.owner.query(`UPDATE device SET revoked_at = now() WHERE id = $1`, [lost]);
+
+    resetLimits();
+    const response = await world.request('POST', `${API_BASE_PATH}/auth/login`, {
+      body: {
+        loginId: world.actors.ZONE_LEADER.loginId,
+        password: FIXTURE_PASSWORD,
+        deviceId: lost,
+      },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(403);
+    expect((response.body as { code: string }).code).toBe('DEVICE_REVOKED');
+
+    const { rows } = await world.owner.query(`SELECT revoked_at FROM device WHERE id = $1`, [lost]);
+    expect(rows[0].revoked_at).not.toBeNull();
   });
 });
 

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL, ne } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   audits,
@@ -493,6 +493,79 @@ export class CorrectiveActionWork {
       );
   }
 
+  /**
+   * R-33: every action of this audit that is still asking something of somebody.
+   *
+   * Wider than `findWithdrawableActions`, and deliberately: that one asks whether a
+   * particular finding has gone, because a correction changes one mark. A restart puts the
+   * whole audit back in play, so every unsettled action of it stops — the auditor is about
+   * to re-decide the marks they all came from.
+   *
+   * VERIFIED and WITHDRAWN are absent for the same reason as there: both are settled, and
+   * a verified action records work somebody actually did and checked (R-31).
+   */
+  async findRestartableActions(
+    auditId: string,
+  ): Promise<Array<{ id: string; status: CorrectiveActionStatus; assignedZoneLeaderUserId: string | null }>> {
+    return this.tx
+      .select({
+        id: correctiveActions.id,
+        status: correctiveActions.status,
+        assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,
+      })
+      .from(correctiveActions)
+      .where(
+        and(
+          eq(correctiveActions.auditId, auditId),
+          inArray(correctiveActions.status, ['OPEN', 'REOPENED', 'ACTION_SUBMITTED', 'NOT_POSSIBLE']),
+        ),
+      );
+  }
+
+  /**
+   * The mirror of `findWithdrawableActions`: withdrawn findings that are live again.
+   *
+   * A photograph whose action was withdrawn and which is a NONCONFORMITY once more — the
+   * mark went back to a 0 after a restart, or a correction put it there. `materialize`
+   * cannot raise these: it skips any evidence that already has an action row, and the
+   * withdrawn one is still that row. So they are revived rather than re-created, which the
+   * unique index on `evidence_id` requires anyway.
+   */
+  async findRevivableActions(
+    auditId: string,
+  ): Promise<Array<{ id: string; status: CorrectiveActionStatus; assignedZoneLeaderUserId: string | null }>> {
+    return this.tx
+      .select({
+        id: correctiveActions.id,
+        status: correctiveActions.status,
+        assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,
+      })
+      .from(correctiveActions)
+      .innerJoin(evidence, eq(evidence.id, correctiveActions.evidenceId))
+      .where(
+        and(
+          eq(correctiveActions.auditId, auditId),
+          eq(correctiveActions.status, 'WITHDRAWN'),
+          eq(evidence.classification, 'NONCONFORMITY'),
+          isNull(evidence.deletedAt),
+        ),
+      );
+  }
+
+  /** Puts revived findings back in play: REOPENED, unsettled, with a fresh due date. */
+  async revive(actionIds: readonly string[], dueAt: Date | null): Promise<void> {
+    if (actionIds.length === 0) return;
+    await this.tx
+      .update(correctiveActions)
+      .set({
+        status: 'REOPENED',
+        resolvedAt: null,
+        dueAt,
+        version: sql`${correctiveActions.version} + 1`,
+      })
+      .where(inArray(correctiveActions.id, [...actionIds]));
+  }
+
   /** Withdraws the named actions. `resolved_at` is set: settled, though never fixed. */
   async withdraw(actionIds: readonly string[], at: Date): Promise<void> {
     if (actionIds.length === 0) return;
@@ -589,6 +662,8 @@ export class CorrectiveActionWork {
           eq(evidence.classification, 'NONCONFORMITY'),
           inArray(evidence.kind, ['QUESTION_EVIDENCE', 'WALK_BY_PHOTO']),
           isNull(evidence.deletedAt),
+          // A Zone the auditor withdrew was not audited: its photos raise nothing.
+          ne(auditZones.status, 'WITHDRAWN'),
         ),
       )
       .orderBy(asc(auditZones.sequenceNo), asc(evidence.id));

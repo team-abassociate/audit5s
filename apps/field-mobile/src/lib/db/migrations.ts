@@ -225,6 +225,59 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
        BEGIN SELECT RAISE(ABORT, '${ZONE_PHOTO_LIMIT_MESSAGE}'); END`,
     ],
   },
+  {
+    version: 6,
+    statements: [
+      // R-33: restarts used on this audit, so the Restart button can say how many chances
+      // are left without a round trip. Mirrored from the server on every pull; the
+      // server's count is still the one that refuses a third.
+      `ALTER TABLE audit ADD COLUMN restart_count INTEGER NOT NULL DEFAULT 0`,
+    ],
+  },
+  {
+    /*
+     * 0031 on the phone: a withdrawn Zone ("abort this Zone") no longer holds its place in
+     * the audit, so the same Zone can be started again beside it.
+     *
+     * v1 wrote the rule as a table constraint, `UNIQUE (audit_id, zone_id)`, and SQLite
+     * cannot drop one — the table is rebuilt instead, copying every row, inside the one
+     * transaction the runner gives each step. Nothing references `audit_zone` by foreign
+     * key, so the swap is invisible to the rest of the store. The rebuild table is dropped
+     * first so a step interrupted after COMMIT but before `user_version` moved re-runs
+     * cleanly.
+     */
+    version: 7,
+    statements: [
+      `DROP TABLE IF EXISTS audit_zone_rebuild`,
+      `CREATE TABLE audit_zone_rebuild (
+         id TEXT PRIMARY KEY, audit_id TEXT NOT NULL, zone_id TEXT NOT NULL,
+         sequence_no INTEGER NOT NULL, status TEXT NOT NULL,
+         zone_code_snapshot TEXT NOT NULL, zone_name_snapshot TEXT NOT NULL,
+         zone_description_snapshot TEXT,
+         zone_leader_user_id_snapshot TEXT, zone_leader_name_snapshot TEXT,
+         checklist_version_id TEXT, checklist_template_name_snapshot TEXT,
+         zone_remark TEXT, resume_question_id TEXT,
+         started_at TEXT, completed_at TEXT, client_updated_at TEXT NOT NULL,
+         sync_state TEXT NOT NULL DEFAULT 'LOCAL_ONLY'
+       )`,
+      `INSERT INTO audit_zone_rebuild (
+         id, audit_id, zone_id, sequence_no, status, zone_code_snapshot, zone_name_snapshot,
+         zone_description_snapshot, zone_leader_user_id_snapshot, zone_leader_name_snapshot,
+         checklist_version_id, checklist_template_name_snapshot, zone_remark,
+         resume_question_id, started_at, completed_at, client_updated_at, sync_state
+       ) SELECT
+         id, audit_id, zone_id, sequence_no, status, zone_code_snapshot, zone_name_snapshot,
+         zone_description_snapshot, zone_leader_user_id_snapshot, zone_leader_name_snapshot,
+         checklist_version_id, checklist_template_name_snapshot, zone_remark,
+         resume_question_id, started_at, completed_at, client_updated_at, sync_state
+       FROM audit_zone`,
+      `DROP TABLE audit_zone`,
+      `ALTER TABLE audit_zone_rebuild RENAME TO audit_zone`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_zone_audit ON audit_zone (audit_id, sequence_no)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_zone_live
+         ON audit_zone (audit_id, zone_id) WHERE status <> 'WITHDRAWN'`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

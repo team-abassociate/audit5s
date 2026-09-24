@@ -85,6 +85,9 @@ const zoneIds: string[] = [];
  */
 let offline = false;
 
+/** The presigned PUT alone failing, while the API itself answers. */
+let putFails = false;
+
 /** A one-by-one pixel JPEG, with real magic bytes — `commit` sniffs them (§12.8). */
 const TINY_JPEG = Buffer.from(
   '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a' +
@@ -135,6 +138,10 @@ const transport: SyncTransport = {
   async uploadObject(intent, _localFileUri, contentType): Promise<void> {
     if (offline) {
       throw new Error('The device is offline; the object upload must not have been attempted');
+    }
+    if (putFails) {
+      // The plant's connection dropping between the intent and the bytes — no status.
+      throw new TransportError('Network request failed', null);
     }
     // Straight to the presigned URL, carrying no session — exactly as §5 requires and as
     // the device's own transport does.
@@ -592,6 +599,64 @@ describe('Phase 4 acceptance', () => {
     expect(local.totals.applicableQuestions).toBe(47);
     expect(local.totals.naQuestions).toBe(3);
   });
+
+  it('retries a photograph whose upload failed, without sending its commit ahead of it', async () => {
+    // Field reports: a PUT that fails after `upload-intent` answered left the evidence row
+    // with an object key, the stranded sweep read that as "uploaded", and a commit was
+    // refused on every cycle — dead-lettered on the phone and quarantined on the server
+    // as "Payload could not be read", forty-five times per photograph.
+    const localAuditId = await createLocalAudit(database, {
+      unitId,
+      auditType: 'EXTERNAL_5S',
+      checklistVersionId: null,
+    });
+    const selfieId = await captureLocalEvidence(database, {
+      auditId: localAuditId,
+      kind: 'AUDITOR_SELFIE',
+      localFileUri: 'file:///data/evidence/selfie.jpg',
+      byteSize: TINY_JPEG.byteLength,
+      checksumSha256: createHash('sha256').update(TINY_JPEG).digest('hex'),
+    });
+
+    const hour = 60 * 60 * 1000;
+    const cycle = (offsetMs: number) =>
+      runSync(database, transport, {
+        deviceId: DEVICE_ID,
+        appVersion: '1.4.2',
+        now: () => Date.now() + offsetMs,
+      });
+    const rowsFor = async (entityId: string) =>
+      (await listOutbox(database)).filter((row) => row.entityId === entityId);
+
+    putFails = true;
+    try {
+      await cycle(0);
+      await cycle(hour);
+      await cycle(2 * hour);
+    } finally {
+      putFails = false;
+    }
+
+    const waiting = await rowsFor(selfieId);
+    expect(waiting.map((row) => row.operation)).toEqual(['upsert']);
+    expect(waiting[0]!.state).not.toBe('DEAD_LETTER');
+
+    const { rows: quarantined } = await world.owner.query(
+      `SELECT COUNT(*)::int AS count FROM sync_conflict WHERE entity_id = $1`,
+      [selfieId],
+    );
+    expect(quarantined[0].count).toBe(0);
+
+    // The signal comes back: the PUT lands, the commit follows it in the same cycle.
+    await cycle(3 * hour);
+    expect(await rowsFor(selfieId)).toEqual([]);
+
+    const { rows: stored } = await world.owner.query(
+      `SELECT sync_state FROM evidence WHERE id = $1`,
+      [selfieId],
+    );
+    expect(stored[0].sync_state).toBe('SYNCED');
+  }, 180_000);
 });
 
 /** The row counts that must not move when a duplicate arrives. */

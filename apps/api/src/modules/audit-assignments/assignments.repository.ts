@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gt, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import {
@@ -32,6 +33,7 @@ const assignmentColumns = {
   dueAt: auditAssignments.dueAt,
   instructions: auditAssignments.instructions,
   suggestedZoneIds: auditAssignments.suggestedZoneIds,
+  groupId: auditAssignments.groupId,
   createdByUserId: auditAssignments.createdByUserId,
   cancelledAt: auditAssignments.cancelledAt,
   cancelReason: auditAssignments.cancelReason,
@@ -60,27 +62,39 @@ export class AssignmentsRepository extends BaseRepository {
     };
   }
 
+  /**
+   * One assignment per auditor, in one transaction: either every auditor of the audit is
+   * assigned or none is. Several auditors share a fresh `group_id`; one alone gets none.
+   * Returns the ids in the order of `auditorUserIds`.
+   */
   async create(
     scope: ScopeContext,
-    request: CreateAuditAssignmentRequest,
-    afterWrite?: (tx: Transaction, id: string) => Promise<void>,
-  ): Promise<string> {
+    request: Omit<CreateAuditAssignmentRequest, 'auditorUserId' | 'coAuditorUserIds'>,
+    auditorUserIds: readonly string[],
+    afterWrite?: (tx: Transaction, id: string, auditorUserId: string) => Promise<void>,
+  ): Promise<string[]> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const [row] = await tx
-        .insert(auditAssignments)
-        .values({
-          unitId: request.unitId,
-          auditorUserId: request.auditorUserId,
-          auditType: request.auditType,
-          dueAt: request.dueAt ? new Date(request.dueAt) : null,
-          instructions: request.instructions ?? null,
-          suggestedZoneIds: request.suggestedZoneIds ?? null,
-          createdByUserId: scope.actor.userId,
-        })
-        .returning({ id: auditAssignments.id });
-      await afterWrite?.(tx as Transaction, row!.id);
-      return row!.id;
+      const groupId = auditorUserIds.length > 1 ? randomUUID() : null;
+      const ids: string[] = [];
+      for (const auditorUserId of auditorUserIds) {
+        const [row] = await tx
+          .insert(auditAssignments)
+          .values({
+            unitId: request.unitId,
+            auditorUserId,
+            auditType: request.auditType,
+            dueAt: request.dueAt ? new Date(request.dueAt) : null,
+            instructions: request.instructions ?? null,
+            suggestedZoneIds: request.suggestedZoneIds ?? null,
+            groupId,
+            createdByUserId: scope.actor.userId,
+          })
+          .returning({ id: auditAssignments.id });
+        await afterWrite?.(tx as Transaction, row!.id, auditorUserId);
+        ids.push(row!.id);
+      }
+      return ids;
     });
   }
 
@@ -108,6 +122,7 @@ export class AssignmentsRepository extends BaseRepository {
         query.unitId ? eq(auditAssignments.unitId, query.unitId) : undefined,
         query.auditorUserId ? eq(auditAssignments.auditorUserId, query.auditorUserId) : undefined,
         query.status ? eq(auditAssignments.status, query.status) : undefined,
+        query.groupId ? eq(auditAssignments.groupId, query.groupId) : undefined,
         query.open ? inArray(auditAssignments.status, [...OPEN_ASSIGNMENT_STATUSES]) : undefined,
         query.cursor ? gt(auditAssignments.id, query.cursor) : undefined,
       ];

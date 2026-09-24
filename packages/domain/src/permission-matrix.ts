@@ -427,6 +427,28 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: { SUPER_ADMIN: org },
   },
   {
+    /*
+     * R-33. The same shape as `edit_after_completion`, because it is the same door: a
+     * change to a finished audit, justified and logged. The auditor holds a key to their
+     * own audits and no others — a Consultant handed a colleague's finished audit gets a
+     * 404, like any other out-of-scope read (AZ-3).
+     */
+    resource: 'audit',
+    action: 'restart',
+    description: 'Restart a finished audit; capped at two and always written to the log',
+    grants: {
+      SUPER_ADMIN: org,
+      CONSULTANT: {
+        resolver: 'own_audits',
+        condition: 'the actor conducted this audit; two restarts, justification logged (R-33)',
+      },
+      ZONE_LEADER: {
+        resolver: 'own_audits',
+        condition: 'the actor conducted this audit; two restarts, justification logged (R-33)',
+      },
+    },
+  },
+  {
     /**
      * A-2's only door, and since R-30 it has two keys.
      *

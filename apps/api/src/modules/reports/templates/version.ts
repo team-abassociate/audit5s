@@ -16,7 +16,10 @@
  * what the bump is for: the two are meant to differ, and the snapshot records which one
  * a reader is holding.
  */
-export const TEMPLATE_VERSION = '1.1.0';
+// 1.2.0 — reference-led maroon report theme, quieter layout and single page footer.
+// 1.3.0 — the rating key sits under the S-wise table, the zone checklist opens its own
+// page, and no checklist row is split across a page break.
+export const TEMPLATE_VERSION = '1.3.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

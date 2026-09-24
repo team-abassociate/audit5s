@@ -8,6 +8,9 @@ import type { ExpoConfig } from 'expo/config';
  * `expo-constants`, so a device build points at the deployed API without a code change.
  */
 const config: ExpoConfig = {
+  // The Expo account that builds and signs the APK. The project and its signing key moved
+  // here from abassociatess-team, so builds keep the key testers' phones already trust.
+  owner: 'abassociates',
   name: 'Leanstack',
   slug: 'audit5s-field',
   version: '0.1.0',
@@ -63,6 +66,8 @@ const config: ExpoConfig = {
         android: { usesCleartextTraffic: process.env.ALLOW_CLEARTEXT === '1' },
       },
     ],
+    // Gradle needs more metaspace than the default since expo-updates arrived; see the file.
+    './plugins/with-gradle-memory',
     'expo-router',
     'expo-secure-store',
     'expo-font',
@@ -86,6 +91,29 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  /*
+   * OTA updates (STACK.md §4: "OTA updates — EAS Update, free tier").
+   *
+   * A JS-only fix — a wrong label, a reordered button — reaches installed phones through
+   * `eas update` instead of a rebuild and a re-install. It cannot carry native changes: a
+   * new permission, a new native module or an SDK bump still needs a build, because the
+   * runtime on the device has to match.
+   *
+   * `runtimeVersion` is the contract that enforces that. `appVersion` ties a bundle to
+   * `version` above, so a build with different native code will not accept an update
+   * published for the old one — which is the failure this guards against, an auditor's
+   * phone pulling JS that calls a native module the binary does not contain.
+   *
+   * `fallbackToCacheTimeout: 0` because the app is offline-first: it starts from the
+   * bundle it already has and fetches in the background, so a plant with no signal opens
+   * instantly rather than waiting on a network check that will fail.
+   */
+  updates: {
+    url: 'https://u.expo.dev/71411439-1202-4ffe-bf53-55ef490216e7',
+    fallbackToCacheTimeout: 0,
+  },
+  runtimeVersion: { policy: 'appVersion' },
+
   extra: { apiBaseUrl: process.env.API_BASE_URL ?? 'http://10.0.2.2:3000/api/v1', eas: { projectId: '71411439-1202-4ffe-bf53-55ef490216e7', }, },
   experiments: { typedRoutes: true },
 };

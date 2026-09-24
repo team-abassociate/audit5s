@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import {
+  deviceUsers,
   devices,
   loginAttempts,
   otpChallenges,
@@ -111,23 +112,19 @@ export class AuthRepository {
     osVersion?: string | null;
     appVersion?: string | null;
     pushToken?: string | null;
+  }): Promise<{
+    /** `UNREGISTERED`: unknown id, no platform. `REVOKED`: an administrator revoked the phone. */
+    outcome: 'OK' | 'UNREGISTERED' | 'REVOKED';
     /**
-     * The user this device belonged to before this login, when that was somebody else.
-     * A handset is physical and its id is per-install, not per-user: signing in on it is
-     * the act of taking it over, and it is the only moment anybody proves they hold the
-     * credentials *on that device*. Before this, the upsert left `user_id` alone, so a
-     * shared phone stayed with whoever logged in first and every audit the second auditor
-     * started was refused for a device that was not theirs.
-     *
-     * The previous owner's unsynced work on the phone stops being reachable from it, and
-     * any audit still locked to this device is released the documented way, through
-     * `POST /audits/{id}/release-device`. That is why this is reported rather than
-     * swallowed: the caller audit-logs it.
+     * True when this person joined a phone other people already use (0025). A handset is
+     * shared: signing in with your own credentials adds you to its list and takes nothing
+     * from anybody else, so their sessions, audits and queued work carry on untouched.
      */
-  }): Promise<{ registered: boolean; transferredFromUserId: string | null }> {
+    joinedSharedDevice: boolean;
+  }> {
     return withAuthPhase(this.db, async (tx) => {
       const [existing] = await tx
-        .select({ userId: devices.userId, platform: devices.platform })
+        .select({ platform: devices.platform, revokedAt: devices.revokedAt })
         .from(devices)
         .where(eq(devices.id, input.deviceId))
         .limit(1);
@@ -138,8 +135,22 @@ export class AuthRepository {
       // failure to `refresh_token.device_id`, which references this table, and answer a
       // well-formed request with a foreign-key 500.
       if (!existing && !input.platform) {
-        return { registered: false, transferredFromUserId: null };
+        return { outcome: 'UNREGISTERED', joinedSharedDevice: false };
       }
+
+      // A revoked phone stays revoked. Signing in used to clear `revoked_at`, which made
+      // an administrator's revocation last exactly until somebody typed a password.
+      if (existing?.revokedAt) {
+        return { outcome: 'REVOKED', joinedSharedDevice: false };
+      }
+
+      const [member] = existing
+        ? await tx
+            .select({ userId: deviceUsers.userId })
+            .from(deviceUsers)
+            .where(and(eq(deviceUsers.deviceId, input.deviceId), eq(deviceUsers.userId, input.userId)))
+            .limit(1)
+        : [];
 
       // `ON CONFLICT DO UPDATE` still forms the candidate row, and `platform` is NOT NULL,
       // so a re-login that reports none has to carry the stored one through the VALUES
@@ -169,18 +180,23 @@ export class AuthRepository {
             ...(input.appVersion !== undefined ? { appVersion: input.appVersion } : {}),
             ...(input.pushToken ? { pushToken: input.pushToken } : {}),
             lastSeenAt: sql`now()`,
-            revokedAt: null,
-            // The handover itself. Deliberately unconditional: a device row follows the
-            // account that last signed in on the hardware.
+            // Who signed in last, for the Devices table. Nothing authorises against it.
             userId: input.userId,
           },
         });
 
-      return {
-        registered: true,
-        transferredFromUserId:
-          existing && existing.userId !== input.userId ? existing.userId : null,
-      };
+      // The list is what grants access. A proper sign-in (re)admits the person: if an
+      // administrator had withdrawn their account and has since restored it, the password
+      // they just proved is the authority to use the phone again.
+      await tx
+        .insert(deviceUsers)
+        .values({ deviceId: input.deviceId, userId: input.userId })
+        .onConflictDoUpdate({
+          target: [deviceUsers.deviceId, deviceUsers.userId],
+          set: { lastSignedInAt: sql`now()`, revokedAt: null },
+        });
+
+      return { outcome: 'OK', joinedSharedDevice: Boolean(existing) && !member };
     });
   }
 
@@ -288,10 +304,12 @@ export class AuthRepository {
         .update(refreshTokens)
         .set({ revokedAt: sql`now()` })
         .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+      // This person's place on every phone they used — not the phones. A shared handset
+      // keeps working for everybody else on it.
       await tx
-        .update(devices)
+        .update(deviceUsers)
         .set({ revokedAt: sql`now()` })
-        .where(and(eq(devices.userId, userId), isNull(devices.revokedAt)));
+        .where(and(eq(deviceUsers.userId, userId), isNull(deviceUsers.revokedAt)));
     });
   }
 

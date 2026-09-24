@@ -3,6 +3,7 @@ import type {
   AuditZone,
   CompleteAuditZoneRequest,
   UpsertAuditZoneRequest,
+  WithdrawAuditZoneRequest,
 } from '@audit5s/contracts';
 import {
   assertTransition,
@@ -61,17 +62,46 @@ export class AuditZonesService {
     if (existing && existing.auditId !== auditId) {
       throw AppError.conflict('CONFLICT', 'This audit Zone belongs to another audit');
     }
+    // A withdrawn Zone stays as it was left. A late upsert queued before the withdrawal is
+    // accepted and changes nothing, rather than bringing the Zone back into the audit.
+    if (existing?.status === 'WITHDRAWN') {
+      return this.get(scope, auditZoneId);
+    }
 
-    // A Zone already on this audit keeps the master Zone it was created with. Only a first
-    // write resolves one — and, for a Zone number the Unit has never used, adds it.
-    const zoneId = existing?.zoneId ?? (await this.resolveZone(scope, audit, auditId, request));
+    /*
+     * R-34: while the audit is **open**, the auditor may re-point this audit Zone at a
+     * different Zone number — they typed it, and a typo was previously permanent.
+     *
+     * Once the audit is finished it keeps the Zone it was created with, which is D6: a
+     * report issued today does not change its subject next month. A cancelled audit keeps
+     * it too; there is nothing to correct in a voided record.
+     */
+    const editable = !isAuditCompleted(audit.status) && audit.status !== 'CANCELLED';
+    const zoneId =
+      existing && !editable
+        ? existing.zoneId
+        : await this.resolveZone(scope, audit, auditId, request);
+
+    // Re-pointing an existing audit Zone is subject to the same two refusals a first write
+    // earns: the Unit's other open audits still hold what they hold (R-29), and one Zone
+    // still appears at most once per audit.
+    if (existing && zoneId !== existing.zoneId) {
+      const alreadyInAudit = await this.repository.listZones(scope, auditId);
+      if (alreadyInAudit.some((zone) => zone.zoneId === zoneId && zone.status !== 'WITHDRAWN')) {
+        throw AppError.conflict(
+          'ZONE_ALREADY_IN_AUDIT',
+          'This Zone is already part of this audit. A Zone appears at most once per audit.',
+        );
+      }
+      await this.assertZoneNotClaimed(scope, auditId, zoneId);
+    }
 
     // Two refusals a first write can earn, both decided here rather than left to whichever
     // unique index the insert happens to hit first. A later write of a Zone this audit
     // already holds is neither: it is the ordinary upsert, checked against its own row.
     if (!existing) {
       const alreadyInAudit = await this.repository.listZones(scope, auditId);
-      if (alreadyInAudit.some((zone) => zone.zoneId === zoneId)) {
+      if (alreadyInAudit.some((zone) => zone.zoneId === zoneId && zone.status !== 'WITHDRAWN')) {
         throw AppError.conflict(
           'ZONE_ALREADY_IN_AUDIT',
           'This Zone is already part of this audit. A Zone appears at most once per audit.',
@@ -173,6 +203,38 @@ export class AuditZonesService {
         resumeQuestionId: request.resumeQuestionId,
         clientUpdatedAt: request.clientUpdatedAt ? new Date(request.clientUpdatedAt) : new Date(),
         snapshot,
+        /*
+         * R-34: which snapshot fields this write may re-take.
+         *
+         * **Only what the auditor actually supplied**, never a blanket refresh from the
+         * live `zone` row. That distinction is the whole of D6's remaining guarantee: a
+         * Coordinator renaming a Zone in master data must not reach an audit's snapshot,
+         * and a blanket re-copy would let it in through the back door the next time the
+         * device saved so much as a remark.
+         *
+         * So: the code and name follow only a deliberate change of Zone number; the
+         * description and the leader follow only a request that named one.
+         */
+        resnapshot: editable
+          ? {
+              ...(existing && zoneId !== existing.zoneId
+                ? {
+                    zoneId,
+                    zoneCodeSnapshot: snapshot.zoneCodeSnapshot,
+                    zoneNameSnapshot: snapshot.zoneNameSnapshot,
+                  }
+                : {}),
+              ...(request.zoneDescription !== undefined
+                ? { zoneDescriptionSnapshot: snapshot.zoneDescriptionSnapshot }
+                : {}),
+              ...(request.zoneLeaderName !== undefined || request.zoneLeaderUserId !== undefined
+                ? {
+                    zoneLeaderUserIdSnapshot: snapshot.zoneLeaderUserIdSnapshot,
+                    zoneLeaderNameSnapshot: snapshot.zoneLeaderNameSnapshot,
+                  }
+                : {}),
+            }
+          : {},
       });
     } catch (error) {
       if (isUniqueViolation(error, 'audit_zone_audit_zone_key')) {
@@ -293,6 +355,70 @@ export class AuditZonesService {
     // Section scores are written on this edge (§7.2), by the same pure function the device
     // used, so the radar chart and the S-trend read a materialised copy of it.
     await this.scoring.recompute(scope, auditId);
+
+    return this.get(scope, auditZoneId);
+  }
+
+  /**
+   * The auditor's "abort this Zone": an unfinished Zone leaves its audit.
+   *
+   * Nothing is deleted (A-1). The status moves to WITHDRAWN — which takes the Zone out of
+   * the audit's score, out of the Finish-audit guard and out of the findings raised on
+   * completion — and 0031's trigger releases its R-29 lock in the same write, so another
+   * audit, or this one again, may take the Zone. Its answers and photographs stay on record.
+   *
+   * Idempotent: a retried withdrawal returns the Zone as it is.
+   */
+  async withdraw(
+    scope: ScopeContext,
+    auditZoneId: string,
+    request: WithdrawAuditZoneRequest,
+  ): Promise<AuditZone> {
+    const audit = await this.mustFindAudit(scope, request.auditId);
+    const zone = await this.repository.findZone(scope, auditZoneId);
+    if (!zone || zone.auditId !== request.auditId) {
+      throw AppError.notFound('No such audit Zone on this audit');
+    }
+    if (zone.status === 'WITHDRAWN') {
+      return this.get(scope, auditZoneId);
+    }
+
+    this.assertWritable(scope, audit);
+
+    try {
+      assertTransition('audit_zone', zone.status, 'WITHDRAWN', {
+        role: scope.actor.role,
+        satisfied: [],
+      });
+    } catch (error) {
+      if (zone.status === 'COMPLETED') {
+        throw AppError.conflict(
+          'INVALID_STATE_TRANSITION',
+          'This Zone is already finished, so it is part of the audit. Review it instead of withdrawing it.',
+        );
+      }
+      throw asAppError(error);
+    }
+
+    await this.repository.updateZone(scope, auditZoneId, {
+      status: 'WITHDRAWN',
+      withdrawnAt: request.withdrawnAt ? new Date(request.withdrawnAt) : new Date(),
+      withdrawReason: request.reason ?? null,
+      resumeQuestionId: null,
+      clientUpdatedAt: new Date(),
+    });
+
+    await this.auditLog.record({
+      action: 'audit_zone.withdrawn',
+      resourceType: 'audit_zone',
+      resourceId: auditZoneId,
+      unitId: audit.unitId,
+      before: { status: zone.status },
+      after: { status: 'WITHDRAWN', reason: request.reason ?? null },
+    });
+
+    // The audit's score no longer includes this Zone.
+    await this.scoring.recompute(scope, request.auditId);
 
     return this.get(scope, auditZoneId);
   }

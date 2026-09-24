@@ -42,3 +42,9 @@ public.pem
 supabase-changes.patch
 # The LAN testing CA the web app serves to phones; generated locally, per laptop
 apps/admin-web/public/audit5s-ca.crt
+
+# Built Android packages. A release APK is ~130 MB and rebuildable from any commit
+# (`eas build -p android --profile vps --local`), so it never belongs in git history.
+*.apk
+*.aab
+releases/

@@ -37,7 +37,12 @@ export const AUDIT_STATUSES = [
 export const auditStatusSchema = z.enum(AUDIT_STATUSES);
 export type AuditStatus = z.infer<typeof auditStatusSchema>;
 
-export const AUDIT_ZONE_STATUSES = ['DRAFT', 'IN_PROGRESS', 'COMPLETED'] as const;
+/**
+ * `WITHDRAWN` (0030): the auditor abandoned the Zone before finishing it. It leaves the
+ * audit's score, no longer stands between the audit and *Finish audit*, and frees the Zone
+ * for another audit — while its answers and photographs stay on record (A-1).
+ */
+export const AUDIT_ZONE_STATUSES = ['DRAFT', 'IN_PROGRESS', 'COMPLETED', 'WITHDRAWN'] as const;
 export const auditZoneStatusSchema = z.enum(AUDIT_ZONE_STATUSES);
 export type AuditZoneStatus = z.infer<typeof auditZoneStatusSchema>;
 

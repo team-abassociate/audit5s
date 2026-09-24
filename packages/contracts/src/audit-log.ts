@@ -48,12 +48,19 @@ export const AUDIT_LOG_ACTIONS = [
   'unit.archived',
   'device.revoked',
   /**
-   * A handset changed hands: somebody signed in on a device registered to another user,
-   * and login moved it to them. Recorded because it is the moment the previous owner's
-   * unsynced work on that phone stops being reachable from it.
+   * Before 0025: a handset changed hands, and login moved it to the new user. Kept so the
+   * entries written then still parse; nothing writes it now.
    */
   'device.transferred',
+  /**
+   * Somebody signed in on a phone for the first time while other people already use it
+   * (0025). Nobody loses access — the phone is shared — but who can use a handset is a
+   * fact worth being able to find.
+   */
+  'device.user_added',
   'sync_conflict.resolved',
+  /** The auditor withdrew an unfinished Zone from their audit ("abort this Zone", 0031). */
+  'audit_zone.withdrawn',
 ] as const;
 export const auditLogActionSchema = z.enum(AUDIT_LOG_ACTIONS);
 export type AuditLogAction = z.infer<typeof auditLogActionSchema>;

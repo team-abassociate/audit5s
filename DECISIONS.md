@@ -1564,3 +1564,105 @@ photos are never automatically deleted. Unfinished Zones already above the limit
 must be reduced to 25 before submission. Completed historical audits are preserved.
 This is enforced in the updated field app; older APKs and the API are unchanged so
 already queued evidence can still sync without being quarantined by a new server cap.
+
+## R-33 — An auditor may restart their own finished audit, twice
+
+**Settled 2026-09-22 by the product owner**, after a Consultant tapped *Finish audit* by
+mistake and had no way back: §7.1 had no edge out of `COMPLETED`, so a slip of the thumb
+ended the audit and froze its score.
+
+Two controls, not one. The first is a confirmation before finishing, because the cheapest
+fix for an accidental tap is not to accept it. The second is this: the audit can be
+restarted, and it is **capped at two restarts**. The cap is the point — an audit that can
+be reopened without limit is not a finished audit, and its score is never settled.
+
+- **`audit.restart_count`**, an integer that only rises. A third restart is refused with
+  `RESTART_LIMIT_REACHED`, and the count is visible on the audit so the app can say how
+  many chances are left rather than discovering the limit at the moment of use.
+- **It goes through A-2's door, unchanged.** Restarting is a change to a completed audit,
+  so it is `POST /audits/{id}/restart` with a justification, inside the same override
+  transaction R-30 opened, writing an `audit.restarted` log entry with the count before and
+  after. `app_post_completion_override()` already admits the auditor of the named audit; no
+  new carve-out is cut, and the append-only trigger is not touched.
+- **The audit returns to `IN_PROGRESS`** and its Zones keep their own statuses. The auditor
+  reopens the Zones they need through the edge that already exists, corrects them, and
+  finishes again — `all_zones_completed` still guards the way out, so an audit cannot be
+  left half-restarted.
+- **Restarting restores the auditor's ordinary powers**, because every one of them is
+  gated on the audit's status rather than on a separate flag: evidence may be added and
+  soft-deleted again (E-4 reads `audit.status`), marks and remarks are written by the
+  ordinary upsert rather than the override, and R-34's Zone corrections apply.
+
+**The corrective actions it already raised are withdrawn, then re-raised.** This is R-31's
+cascade, run on a different trigger:
+
+1. On restart, every **OPEN** corrective action of that audit moves to `WITHDRAWN`, with
+   the restart's justification as its reason. A Zone Leader stops being chased for a
+   finding the auditor is in the middle of reconsidering.
+2. **`VERIFIED` actions are left alone.** Somebody went and fixed that one and somebody
+   checked it; restarting the audit does not unmake the work. This is R-31's rule, in its
+   own words, and it holds here for the same reason.
+3. On the next completion, `materialize` runs as it always does. A finding still present is
+   raised again, with a due date running from that completion; a finding the auditor
+   corrected away simply is not, and stays withdrawn.
+
+**A report already issued is not recalled.** Report snapshots are immutable (RS-1) and a
+restart does not reach back into one. A summary generated before a restart states the score
+as it stood when it was generated, which is what a frozen document is for; regenerating
+after the audit is finished again produces v2 beside it.
+
+## R-34 — The auditor may correct the Zone they named, while the audit is open
+
+**Settled 2026-09-22 by the product owner.** R-19 let the auditor name the Zone — code,
+description and the Zone leader's name, typed on the phone. What it did not allow was
+fixing a typo: the D6 snapshot was taken on the first write and never re-taken, so a Zone
+entered as "Zone 4 — Dispatch" stayed that way for the life of the audit.
+
+**D6 is unchanged, because D6 is about somebody else's edits.** Its guarantee is that a
+Coordinator renaming a Zone in master data months later does not move history — and that
+still holds exactly as before, enforced by the same snapshot columns. What this settles is
+the narrower question D6 never addressed: whether the auditor may correct their own data
+entry on their own audit before they finish it.
+
+- The snapshot columns of `audit_zone` may be **re-taken while the audit is open**, by the
+  auditor conducting it: `zone_code_snapshot`, `zone_name_snapshot`,
+  `zone_description_snapshot`, `zone_leader_user_id_snapshot` and `zone_leader_name`.
+- **Once the audit is finished, they freeze** with everything else, and change only through
+  A-2's door — or after an R-33 restart, which puts the audit back in the open state where
+  this applies.
+- The live `zone` row is updated alongside, through `app_ensure_zone_for_audit`, so the
+  correction reaches the Unit's Zone master the auditor created it in rather than leaving
+  the two disagreeing.
+
+## R-35 — The renderer is byte-stable within a browser, not across one
+
+**Settled 2026-09-22**, after CI was red for three days on `report-render.e2e.test.ts` and
+every deploy in that window had to go out through `deploy.yml`'s manual dispatch.
+
+The failing assertion was that two renders of one frozen payload produce byte-identical
+PDFs **after the browser has been restarted**. It does not hold, and no arrangement of this
+repository's code makes it hold. Chromium decides whether several draws of the same JPEG
+become one shared image XObject or several separate ones, and that decision follows its
+decoded-image cache — which a freshly started browser does not have. The two renders came
+out about 825 bytes apart, in whichever direction the cache happened to fall.
+
+Three earlier attempts treated it as ours: a font warm-up, an object census, then a revert
+of the warm-up when the counts said it was never fonts. The counts were right. It is not
+ours.
+
+**What is still asserted, strictly:** byte-identity between two renders in one browser.
+That is the renderer's own determinism, it is what PART 15.7 is about, and it passes.
+
+**What replaced the cross-restart byte comparison:** the same document — page count, the
+chosen image tier, and a census of pages and embedded fonts. Those are the things whose
+change would be a real defect, and none of them depends on Chromium's image cache.
+
+**Why RS-1 is untouched.** RS-1 guarantees that a *stored* v1 never changes its bytes, and
+it does not rest on re-rendering being reproducible — it rests on v1 never being re-rendered
+at all, which the database enforces. A worker that restarts and renders a report again
+produces the same document; whether it produces the same bytes was never something a reader
+of a report could observe.
+
+**A test that cannot pass is worse than a missing one.** It was not protecting the property
+it named, it was the reason a ready fix for a field-blocking bug sat behind a manual
+override, and it trained everyone reading CI to expect red.

@@ -35,3 +35,7 @@ apps/admin-web/.vite/
 build-log.txt
 seed-log.txt
 *.patch
+
+# Local copies - do not upload to EAS
+/audit5s/
+/Lean_5S_AB_Associates_CASE_B_FIXED/

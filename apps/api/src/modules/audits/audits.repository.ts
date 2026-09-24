@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gte, inArray, isNull, lte, notExists, sql, type SQL } from 'drizzle-orm';
 import {
+  auditAssignments,
   auditLogs,
   auditZoneSectionScores,
   auditZones,
@@ -48,6 +49,7 @@ const auditScopeColumns = { unitId: audits.unitId, ownerUserId: audits.auditorUs
 const auditColumns = {
   id: audits.id,
   assignmentId: audits.assignmentId,
+  assignmentGroupId: auditAssignments.groupId,
   unitId: audits.unitId,
   unitName: units.name,
   auditType: audits.auditType,
@@ -74,6 +76,7 @@ const auditColumns = {
   maxScore: audits.maxScore,
   pausedAt: audits.pausedAt,
   pauseReason: audits.pauseReason,
+  restartCount: audits.restartCount,
   resumeAuditZoneId: audits.resumeAuditZoneId,
   clientCreatedAt: audits.clientCreatedAt,
   clientUpdatedAt: audits.clientUpdatedAt,
@@ -105,6 +108,8 @@ const auditZoneColumns = {
   resumeQuestionId: auditZones.resumeQuestionId,
   startedAt: auditZones.startedAt,
   completedAt: auditZones.completedAt,
+  withdrawnAt: auditZones.withdrawnAt,
+  withdrawReason: auditZones.withdrawReason,
   clientUpdatedAt: auditZones.clientUpdatedAt,
   version: auditZones.version,
 };
@@ -238,7 +243,9 @@ export class AuditsRepository extends BaseRepository {
         query.active
           ? inArray(audits.status, ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'])
           : undefined,
-        query.cursor ? sql`${audits.id} > ${query.cursor}` : undefined,
+        // Newest first: ids are UUIDv7, so id order is creation order, and the cursor walks
+        // backwards from the last row of the previous page.
+        query.cursor ? sql`${audits.id} < ${query.cursor}` : undefined,
       ];
 
       return tx
@@ -246,8 +253,9 @@ export class AuditsRepository extends BaseRepository {
         .from(audits)
         .innerJoin(units, eq(units.id, audits.unitId))
         .innerJoin(users, eq(users.id, audits.auditorUserId))
+        .leftJoin(auditAssignments, eq(auditAssignments.id, audits.assignmentId))
         .where(this.scoped(scope, auditScopeColumns, ...filters))
-        .orderBy(asc(audits.id))
+        .orderBy(desc(audits.id))
         .limit(query.limit + 1);
     });
   }
@@ -346,6 +354,14 @@ export class AuditsRepository extends BaseRepository {
       resumeQuestionId: string | null | undefined;
       clientUpdatedAt: Date;
       snapshot: ZoneSnapshot;
+      /**
+       * R-34: the snapshot fields this upsert may re-take, and no others.
+       *
+       * Empty once the audit is finished — that is where D6's guarantee lives. While it is
+       * open it carries only what the auditor supplied, so correcting a typed Zone name
+       * works but a Coordinator's master rename still never reaches a snapshot.
+       */
+      resnapshot: Partial<ZoneSnapshot> & { zoneId?: string };
     },
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
@@ -374,6 +390,10 @@ export class AuditsRepository extends BaseRepository {
             sequenceNo: input.sequenceNo,
             clientUpdatedAt: input.clientUpdatedAt,
             version: sql`${auditZones.version} + 1`,
+            // R-34. Absent from this list until now, which is what made a typed Zone name
+            // permanent the moment it was first written — the auditor could not correct
+            // their own entry, only a Super Admin through A-2's door.
+            ...input.resnapshot,
           },
         });
     });
@@ -415,11 +435,13 @@ export class AuditsRepository extends BaseRepository {
     scope: ScopeContext,
     auditZoneId: string,
     patch: Partial<{
-      status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
+      status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'WITHDRAWN';
       zoneRemark: string | null;
       resumeQuestionId: string | null;
       startedAt: Date | null;
       completedAt: Date | null;
+      withdrawnAt: Date | null;
+      withdrawReason: string | null;
       clientUpdatedAt: Date;
     }>,
   ): Promise<string | null> {
@@ -949,6 +971,61 @@ export class AuditsRepository extends BaseRepository {
     });
   }
 
+  /**
+   * R-33: the audit goes back to IN_PROGRESS, the counter rises, and the log records it.
+   *
+   * Inside A-2's carve-out, because a restart *is* a change to a completed audit — the
+   * same door R-30 opened, which `app_post_completion_override()` already admits this
+   * audit's own auditor through. Without the flag the append-only trigger refuses the
+   * UPDATE, which is the behaviour that makes this an audited path rather than a bypass.
+   *
+   * `completedAt` and `closedAt` are cleared: they are when this audit finished, and it
+   * has not. `complete` sets them again on the way back out. The cascade runs on the same
+   * transaction, so an audit whose corrective actions could not be withdrawn is not left
+   * restarted.
+   */
+  async restart(
+    scope: ScopeContext,
+    input: {
+      auditId: string;
+      unitId: string;
+      restartCount: number;
+      before: Record<string, unknown>;
+      after: Record<string, unknown>;
+      requestId: string;
+    },
+    cascade?: (tx: Transaction) => Promise<void>,
+  ): Promise<void> {
+    await this.inOverrideTransaction(scope, input.auditId, async (tx) => {
+      await tx
+        .update(audits)
+        .set({
+          status: 'IN_PROGRESS',
+          restartCount: input.restartCount,
+          completedAt: null,
+          closedAt: null,
+          version: sql`${audits.version} + 1`,
+        })
+        .where(eq(audits.id, input.auditId));
+
+      await cascade?.(tx);
+
+      await tx.insert(auditLogs).values({
+        actorUserId: scope.actor.userId,
+        actorRole: scope.actor.role,
+        actorLabel: scope.actor.userId,
+        action: 'audit.restarted',
+        resourceType: 'audit',
+        resourceId: input.auditId,
+        unitId: input.unitId,
+        before: input.before,
+        after: input.after,
+        deviceId: scope.actor.deviceId,
+        requestId: input.requestId,
+      });
+    });
+  }
+
   /** Rewrites the scores of a frozen audit, inside the same carve-out. */
   async writeScoresUnderOverride(
     scope: ScopeContext,
@@ -997,12 +1074,45 @@ export class AuditsRepository extends BaseRepository {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [row] = await tx
         .select({
-          total: sql<number>`COUNT(*)::int`,
+          // A withdrawn Zone left the audit: it neither blocks the finish nor counts toward
+          // the "at least one Zone" it needs.
+          total: sql<number>`COUNT(*) FILTER (WHERE ${auditZones.status} <> 'WITHDRAWN')::int`,
           completed: sql<number>`COUNT(*) FILTER (WHERE ${auditZones.status} = 'COMPLETED')::int`,
         })
         .from(auditZones)
         .where(eq(auditZones.auditId, auditId));
       return { total: row?.total ?? 0, completed: row?.completed ?? 0 };
+    });
+  }
+
+  /**
+   * Whether another audit fulfilling this assignment is still open.
+   *
+   * `resolveAssignment` links an auditor's open assignment to every external audit they
+   * start in its Unit, so one assignment can carry several audits of one day. Finishing
+   * one of them must not close the assignment the others are still being conducted under.
+   */
+  async hasOtherOpenAuditForAssignment(
+    scope: ScopeContext,
+    assignmentId: string,
+    exceptAuditId: string,
+  ): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .select({ id: audits.id })
+        .from(audits)
+        .where(
+          this.scoped(
+            scope,
+            auditScopeColumns,
+            eq(audits.assignmentId, assignmentId),
+            sql`${audits.id} <> ${exceptAuditId}`,
+            inArray(audits.status, ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED']),
+          ),
+        )
+        .limit(1);
+      return row !== undefined;
     });
   }
 
@@ -1025,6 +1135,7 @@ export class AuditsRepository extends BaseRepository {
         .where(
           and(
             eq(auditZones.auditId, auditId),
+            sql`${auditZones.status} <> 'WITHDRAWN'`,
             this.scoped(scope, auditScopeColumns),
             notExists(
               tx
@@ -1131,14 +1242,18 @@ export class AuditsRepository extends BaseRepository {
     });
   }
 
-  /** A device row that belongs to this actor and is not revoked. */
+  /**
+   * A phone this actor has signed in on and may still use (0025): neither the phone nor
+   * their place on it is revoked. Other people using the same handset do not matter.
+   */
   async isOwnDevice(scope: ScopeContext, deviceId: string): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const result = await tx.execute<{ ok: boolean }>(
-        sql`SELECT true AS ok FROM device
-            WHERE id = ${deviceId}::uuid AND user_id = ${scope.actor.userId}::uuid
-              AND revoked_at IS NULL
+        sql`SELECT true AS ok FROM device d
+            JOIN device_user du ON du.device_id = d.id
+            WHERE d.id = ${deviceId}::uuid AND du.user_id = ${scope.actor.userId}::uuid
+              AND d.revoked_at IS NULL AND du.revoked_at IS NULL
             LIMIT 1`,
       );
       return result.rows.length > 0;
@@ -1151,6 +1266,7 @@ export class AuditsRepository extends BaseRepository {
       .from(audits)
       .innerJoin(units, eq(units.id, audits.unitId))
       .innerJoin(users, eq(users.id, audits.auditorUserId))
+      .leftJoin(auditAssignments, eq(auditAssignments.id, audits.assignmentId))
       .where(and(eq(audits.id, auditId), this.scoped(scope, auditScopeColumns)))
       .limit(1);
     return row ?? null;

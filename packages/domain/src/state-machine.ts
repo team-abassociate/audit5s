@@ -36,21 +36,34 @@ export type StateMachineEntity = 'audit' | 'audit_zone' | 'audit_assignment' | '
  * and hands the result in; naming them here keeps the guard list next to the edge it
  * guards rather than in whichever handler happened to implement it.
  */
-export type TransitionGuard =
+/**
+ * Every guard the table can name, as data.
+ *
+ * A `const` array rather than a bare union so the exhaustive suite can iterate it. It was
+ * a union, and the list of "all guards" in the test was kept by hand beside it — which
+ * held exactly until R-33 added one and the suite began asserting that a guarded edge was
+ * illegal, because the guard it had never heard of was not in its list.
+ */
+export const TRANSITION_GUARDS = [
   /** `owning_device_id` is free, or already this device (D7). */
-  | 'device_owns_audit'
+  'device_owns_audit',
   /** Every `audit_zone` of the audit is COMPLETED, and there is at least one. */
-  | 'all_zones_completed'
+  'all_zones_completed',
   /** Every question of the pinned checklist version has a response (7.2). */
-  | 'all_questions_answered'
+  'all_questions_answered',
   /** At least one non-deleted evidence row — the WALK_BY minimum (7.2). */
-  | 'has_evidence'
+  'has_evidence',
   /** A selfie evidence row exists, as `EXTERNAL_5S` / `CROSS_5S` / `WALK_BY` require. */
-  | 'selfie_captured'
+  'selfie_captured',
   /** The actor still holds an ACTIVE membership in the audit's Unit. */
-  | 'membership_active'
+  'membership_active',
   /** A free-text reason was supplied. Cancellation and rejection both demand one. */
-  | 'reason_given';
+  'reason_given',
+  /** R-33: this audit has been restarted fewer than `MAX_AUDIT_RESTARTS` times. */
+  'restarts_remaining',
+] as const;
+
+export type TransitionGuard = (typeof TRANSITION_GUARDS)[number];
 
 export interface Transition<S extends string> {
   from: S;
@@ -69,6 +82,17 @@ export interface Transition<S extends string> {
  * a reason. It is the strongest administrative action in the system and it still only sets
  * a status: invariant A-1 says no path deletes an audit, so there is no edge to `[*]`.
  */
+/**
+ * R-33's cap. Two, and the number lives here rather than in the service because both the
+ * server's refusal and the field app's "2 restarts left" have to mean the same thing.
+ */
+export const MAX_AUDIT_RESTARTS = 2;
+
+/** How many restarts an audit has left. Never negative, whatever the stored count says. */
+export function restartsRemaining(restartCount: number): number {
+  return Math.max(0, MAX_AUDIT_RESTARTS - restartCount);
+}
+
 export const AUDIT_TRANSITIONS: readonly Transition<AuditStatus>[] = [
   {
     from: 'ASSIGNED',
@@ -126,6 +150,31 @@ export const AUDIT_TRANSITIONS: readonly Transition<AuditStatus>[] = [
     actors: ['SUPER_ADMIN'],
     note: 'A Super Admin reopens a corrective action after the fact',
   },
+  /*
+   * R-33 — the way back from an accidental *Finish audit*.
+   *
+   * Four `from` statuses rather than one, because "finished" is four statuses by the time
+   * a person notices: an audit that raised no nonconformity is already CLOSED, and one
+   * that raised some has moved on through the corrective-action rollup. Refusing the
+   * restart on those would make the feature depend on whether the audit happened to have
+   * findings, which is not a distinction the auditor made.
+   *
+   * CANCELLED is deliberately not among them: that is an administrative voiding by a
+   * Super Admin (A-1), not a finish, and un-voiding it is not the auditor's to do.
+   *
+   * Both guards matter. `restarts_remaining` is the cap that makes this a correction
+   * rather than an open door; `reason_given` is A-2's — a completed audit changes only
+   * through a path that records why.
+   */
+  ...(['COMPLETED', 'CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED', 'CLOSED'] as const).map(
+    (from) => ({
+      from,
+      to: 'IN_PROGRESS' as const,
+      actors: ['CONSULTANT', 'ZONE_LEADER', 'SUPER_ADMIN'] as const,
+      guards: ['restarts_remaining', 'reason_given'] as const,
+      note: 'Restart after finishing (R-33). Capped at two, and logged with its reason',
+    }),
+  ),
   ...(['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'] as const).map((from) => ({
     from,
     to: 'CANCELLED' as const,
@@ -180,6 +229,17 @@ export const AUDIT_ZONE_TRANSITIONS: readonly Transition<AuditZoneStatus>[] = [
     guards: ['reason_given'],
     note: 'Reopen; logged as audit.changed_after_completion (A-2)',
   },
+  /*
+   * The auditor's "abort this Zone". Only from an unfinished Zone: a finished one has a
+   * score somebody may already have read, and taking it back is A-2's override, not this.
+   * Terminal — the Zone may be audited again, but as a new audit Zone.
+   */
+  ...(['DRAFT', 'IN_PROGRESS'] as const).map((from) => ({
+    from,
+    to: 'WITHDRAWN' as const,
+    actors: ['CONSULTANT', 'ZONE_LEADER'] as const,
+    note: 'Abort this Zone: out of the score and the finish guard, lock released, rows kept',
+  })),
 ];
 
 /** `audit_assignment`. AA-1: revoking the membership cancels rather than deletes. */
@@ -236,6 +296,22 @@ export const CORRECTIVE_ACTION_TRANSITIONS: readonly Transition<CorrectiveAction
   { from: 'REOPENED', to: 'WITHDRAWN', actors: [], guards: ['reason_given'] },
   { from: 'ACTION_SUBMITTED', to: 'WITHDRAWN', actors: [], guards: ['reason_given'] },
   { from: 'NOT_POSSIBLE', to: 'WITHDRAWN', actors: [], guards: ['reason_given'] },
+  /*
+   * A withdrawn finding that comes back (R-33).
+   *
+   * Withdrawal says "there was nothing to fix"; if the photograph is a live nonconformity
+   * again — because the audit was restarted and the mark went back to a 0 — then there is
+   * something to fix after all, and the same row says so rather than a second one. The
+   * unique index on `evidence_id` makes that not merely tidier but the only option: one
+   * photograph has one action, for its whole life.
+   *
+   * REOPENED rather than OPEN, because that is what this is: a finding somebody has
+   * already seen come and go. It carries a fresh due date, like every other reopening.
+   *
+   * The system's edge, with no actor, for the reason every other withdrawal edge has none:
+   * nobody pressed anything. The auditor changed a mark and this followed.
+   */
+  { from: 'WITHDRAWN', to: 'REOPENED', actors: [], guards: ['reason_given'] },
 ];
 
 const TABLES = {

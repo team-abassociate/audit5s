@@ -15,13 +15,10 @@ import type { ReportPayload } from '@audit5s/contracts';
  *     stops being true.
  *
  * The type scale below deliberately does **not** borrow the product's Archivo / DM Mono
- * pairing (`docs/design/GEMBA-BOARD.md` §4): that pairing is fetched from Google Fonts, and
- * this pipeline may not fetch anything at render time (R-14). What it does borrow is the
- * same *discipline* — a flat, unrounded, functionally-coloured page instead of a rounded,
- * softly-shadowed one — expressed in the system serif-free stack that was already safe to
- * ship. That is deliberate for a second reason: these PDFs leave the building and sit in
- * front of MNC clients, so the sharp, structured, no-ornament register reads as an audit
- * document rather than a dashboard printed onto paper.
+ * pairing (`docs/design/GEMBA-BOARD.md` §4): this pipeline may not fetch fonts at render
+ * time (R-14). The existing system font stack is retained by request. The supplied
+ * Zone1Press reference sets the maroon masthead, open metadata and warm table rules.
+ * Avoid decorative grids, numbered clauses and redundant charts.
  *
  * Colours come from `payload.bands` / `payload.brand` rather than from `packages/domain`,
  * so a report reopened in December keeps the palette it was issued with even if the
@@ -34,7 +31,7 @@ export function reportStyles(payload: ReportPayload): string {
       (band) => `
 .band-${band.token} { color: ${band.color}; }
 .tint-${band.token} { background: ${band.tint}; color: ${band.color}; }
-.pill-${band.token} { background: ${band.tint}; color: ${band.color}; border-color: ${band.color}; }
+.pill-${band.token} { background: ${band.color}; color: white; border-color: ${band.color}; }
 .band-fill-${band.token} { background: ${band.color}; }`,
     )
     .join('\n');
@@ -50,8 +47,8 @@ export function reportStyles(payload: ReportPayload): string {
 @page {
   size: A4 portrait;
   margin: 14mm 12mm 16mm 12mm;
-  @bottom-left { content: "Lean 5S Report • AB Associates"; }
-  @bottom-right { content: "Page " counter(page); }
+  @bottom-left { content: "Lean 5S Report • AB Associates"; font-size: 7.5pt; color: ${brand.inkSoft}; }
+  @bottom-right { content: "Page " counter(page); font-size: 7.5pt; color: ${brand.inkSoft}; }
 }
 
 * { box-sizing: border-box; }
@@ -66,48 +63,34 @@ html, body {
   color: ${brand.ink};
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
-  /* The technical-manual register: a faint column grid on every page, not a decoration —
-     a drawing sheet's guide lines, printed rather than blank. */
-  background-image: repeating-linear-gradient(
-    90deg, rgba(0, 0, 0, 0.04) 0, rgba(0, 0, 0, 0.04) 1px, transparent 1px, transparent calc(100% / 12)
-  );
-  counter-reset: clause;
+  /* Local print tokens; no screen-theme or network dependency. */
+  background: white;
+  --report-radius: 8px;
 }
 
-/* Chromium's own header/footer is disabled in the launch options; this is the printed
-   footer, repeated by fixed positioning on each page box. */
+/* Only the @page margin boxes print a footer. */
 .page-footer {
-  position: fixed;
-  bottom: -10mm;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: space-between;
-  border-top: 0.75px solid ${brand.hairline};
-  padding-top: 2px;
-  font-size: 7.5pt;
-  letter-spacing: 0.02em;
-  color: ${brand.inkSoft};
+  display: none; /* @page owns the footer; a second fixed copy overlaps later pages. */
 }
 
-/* ------------------------------------------------------------------ header band (§3.5)
-   Flat, unrounded, ink-on-white: a masthead rather than a rounded app card. The two
-   blocks (mark + title on the left, firm identity on the right) sit at opposite ends of
-   one hard rule, so the page reads immediately as one firm's letterhead. */
+/* Reference masthead, kept within the printable page area. */
 .header {
   display: flex;
   align-items: stretch;
   gap: 12px;
-  border-bottom: 2px solid ${brand.ink};
-  padding-bottom: 10px;
+  background: ${brand.ink};
+  color: white;
+  margin: 0;
+  padding: 16px;
+  break-inside: avoid;
 }
 .header .badge {
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border: 1.5px solid ${brand.ink};
-  background: ${brand.ink};
-  color: #FFFFFF;
+  width: 50px;
+  height: 50px;
+  border-radius: var(--report-radius);
+  background: ${brand.accent};
+  color: ${brand.ink};
   font-weight: 700;
   font-size: 11pt;
   letter-spacing: 0.02em;
@@ -119,23 +102,36 @@ html, body {
 .header .title {
   font-size: 13.5pt;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
-  color: ${brand.ink};
+  color: white;
 }
 .header .subtitle {
   font-size: 8pt;
-  color: ${brand.inkSoft};
+  color: white;
   margin-top: 1px;
   letter-spacing: 0.01em;
 }
 .header .logo-card {
   flex: 0 0 auto;
   align-self: center;
-  border-left: 1.5px solid ${brand.hairline};
-  padding-left: 10px;
+  background: white;
+  border-radius: var(--report-radius);
+  padding: 12px;
   text-align: right;
   line-height: 1.2;
+}
+.header .logo-art {
+  width: 185px;
+  height: 32px;
+  overflow: hidden;
+}
+.header .logo-card img {
+  display: block;
+  width: 220px;
+  height: auto;
+  /* Trim only the supplied artwork's white canvas, preserving the full logo. */
+  transform: translate(-18px, -10px);
 }
 .header .logo-card .org {
   font-weight: 700;
@@ -151,27 +147,21 @@ html, body {
   font-weight: 600;
 }
 
-/* -------------------------------------------------------------- metadata grid (§4.1.2)
-   Each cell is a flat labelled tile: a hairline frame, no fill, no radius — a data field
-   on a form, not a card floating on a board. */
+/* Open metadata grid, without individual card borders. */
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0;
-  margin-top: 10px;
-  border: 1px solid ${brand.hairline};
-  border-bottom: none;
-  border-right: none;
+  gap: 16px 12px;
+  margin: 18px 0 12px;
+  break-inside: avoid;
 }
 .meta-cell {
-  border-right: 1px solid ${brand.hairline};
-  border-bottom: 1px solid ${brand.hairline};
   padding: 5px 8px 6px;
 }
 .meta-label {
   font-size: 6.5pt;
   font-weight: 600;
-  letter-spacing: 0.09em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: ${brand.inkSoft};
 }
@@ -182,33 +172,29 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ------------------------------------------------------------------------ section rule
-   A section opens with a short uppercase, letter-spaced label under a hard ink rule —
-   the print equivalent of the product's tape marker, without the texture: this is a
-   client deliverable, not a shop-floor board. The "§N" is a CSS counter, not text in the
-   markup — the heading's own text stays exactly what §4.1–§4.3 name it. */
+/* Plain section headings stay with the following content. */
 h2.section-title {
   font-size: 8.5pt;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: ${brand.ink};
   margin: 16px 0 6px;
   padding-bottom: 3px;
-  border-bottom: 1.5px solid ${brand.ink};
-}
-h2.section-title::before {
-  counter-increment: clause;
-  content: "\\00A7" counter(clause) "  ";
-  color: ${brand.accent};
-  font-family: "Courier New", Courier, monospace;
+  break-after: avoid;
 }
 
 /* --------------------------------------------------------------------------- tables */
 table { width: 100%; border-collapse: collapse; }
+/* A checklist row is never cut across a page: the whole row moves to the next page, and
+   the header repeats above it there. \`td\` carries the rule too because Chromium honours
+   \`break-inside\` on table cells more reliably than on the row alone. */
+thead { display: table-header-group; }
+tr, th, td { break-inside: avoid; }
+tr.section-row { break-after: avoid; }
 th, td {
   border: 1px solid ${brand.hairline};
-  padding: 3.5px 6px;
+  padding: 6px;
   text-align: left;
   vertical-align: top;
 }
@@ -216,7 +202,7 @@ thead th {
   background: ${brand.ink};
   color: #FFFFFF;
   font-size: 7pt;
-  letter-spacing: 0.07em;
+  letter-spacing: 0;
   text-transform: uppercase;
   font-weight: 600;
 }
@@ -228,11 +214,11 @@ tbody tr:nth-child(even) { background: ${brand.panel}; }
    two hard ink rules rather than a solid fill, so the subtotal's own band colour (below)
    still reads instead of disappearing into a dark background. */
 tbody tr.section-row, tbody tr.section-row td {
-  background: ${brand.panel};
-  color: ${brand.ink};
-  font-weight: 800;
+  background: ${brand.ink};
+  color: white;
+  font-weight: 700;
   font-size: 8pt;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   border-top: 1.5px solid ${brand.ink};
   border-bottom: 1.5px solid ${brand.ink};
 }
@@ -251,19 +237,18 @@ tbody tr.total-row, tbody tr.total-row td {
   display: flex;
   align-items: stretch;
   margin-top: 10px;
-  border: 1px solid ${brand.hairline};
+  break-inside: avoid;
 }
 .verification {
-  flex: 0 0 32%;
+  flex: 0 0 24%;
   padding: 8px;
-  border-right: 1px solid ${brand.hairline};
   text-align: center;
 }
 .verification .selfie {
   width: 100%;
   height: auto;
-  max-height: 52mm;
-  object-fit: cover;
+  max-height: 30mm;
+  object-fit: contain;
   border: 1px solid ${brand.hairline};
 }
 .radar-box {
@@ -276,7 +261,7 @@ tbody tr.total-row, tbody tr.total-row td {
 /* ------------------------------------------------------------- rating-scale pills
    Outlined chips, not filled capsules: colour still marks the band, carried once more by
    a small filled swatch so it reads even where a reader's printer renders text in black. */
-.pills { display: flex; gap: 6px; margin-top: 8px; }
+.pills { display: flex; gap: 6px; margin-top: 8px; margin-bottom: 4px; }
 .pill {
   flex: 1 1 0;
   border: 1.25px solid;
@@ -285,13 +270,13 @@ tbody tr.total-row, tbody tr.total-row td {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-align: center;
-  background: #FFFFFF !important;
+  border-radius: var(--report-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
 }
-.pill .swatch { width: 8px; height: 8px; border: 1px solid currentColor; background: currentColor; flex: 0 0 auto; }
+.pill .swatch { display: none; }
 
 /* --------------------------------------------------------------- score index bars (§2)
    The same S-wise numbers as the ledger table below, read at a glance: one bar per S,
@@ -393,9 +378,9 @@ tbody tr.total-row, tbody tr.total-row td {
   gap: 6px;
   margin-top: 5px;
   padding: 5px 6px;
-  border: 1.25px solid ${brand.accent};
+  border: 1px solid ${brand.hairline};
   background: #FFFFFF;
-  color: ${brand.accent} !important;
+  color: ${brand.ink} !important;
   text-decoration: none;
   /* A link split across a page break loses half its tap target and half its symbol. */
   break-inside: avoid;
@@ -480,7 +465,7 @@ tbody tr.total-row, tbody tr.total-row td {
 /* The one callout this page allows itself, and only when there is something to read:
    an accent rail, not a filled panel, so it stays legible in mono photocopies too. */
 .zone-remark {
-  border-left: 3px solid ${brand.accent};
+  border-left: 2px solid ${brand.hairline};
   background: ${brand.panel};
   padding: 5px 8px;
   margin-top: 6px;

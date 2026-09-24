@@ -128,6 +128,54 @@ async function assign(auditorUserId: string, unitId = world.unitA) {
   return response.body as AuditAssignment;
 }
 
+/**
+ * A Consultant with **no** `unit_membership` — R-28's independent master list, which is
+ * what the field actually has. The harness's fixture Consultant holds a permanent
+ * membership in Unit A, so every assignment-scoped effect is invisible through them.
+ */
+let unboundCount = 0;
+async function unboundConsultant(): Promise<{
+  userId: string;
+  loginId: string;
+  token: string;
+  deviceId: string;
+}> {
+  unboundCount += 1;
+  const suffix = String(9000 + unboundCount);
+  const loginId = `UB${suffix}`;
+  const deviceId = `01930000-0000-7000-8000-0000000${suffix}f`;
+
+  const argon2 = await import('argon2');
+  const { ARGON2_OPTIONS } = await import('../src/modules/auth/password.service');
+  const { rows } = await world.owner.query(
+    `INSERT INTO "user" (login_id, full_name, phone_e164, role, password_hash,
+                         must_reset_password, status)
+     VALUES ($1, $2, $3, 'CONSULTANT', $4, false, 'ACTIVE') RETURNING id`,
+    [
+      loginId,
+      `Unbound Consult ${unboundCount}`,
+      `+9190000${suffix}`,
+      await argon2.hash(FIXTURE_PASSWORD, ARGON2_OPTIONS),
+    ],
+  );
+
+  resetLimits();
+  const token = await loginFromDevice(
+    world,
+    {
+      role: 'CONSULTANT',
+      userId: rows[0].id as string,
+      loginId,
+      accessToken: '',
+      refreshToken: '',
+      unitId: null,
+    },
+    deviceId,
+  );
+
+  return { userId: rows[0].id as string, loginId, token, deviceId };
+}
+
 /** Creates an audit, adds one Zone, and returns both ids. */
 async function startAuditWithZone(options: {
   token: string;
@@ -293,6 +341,165 @@ describe('assignments', () => {
     expect(read.status).toBe(200);
   });
 
+  /**
+   * The field report behind 0027: a Consultant reassigned to a Unit finished an audit and
+   * the phone said "Scores not available" on a score the server had already computed —
+   * `POST /audits/{id}/complete` answered `404 No such audit` *after* completing it.
+   *
+   * Completing an audit closes its assignment, which is right (R-28: the grant is
+   * temporary). What was wrong is that `unit_select` admitted a Unit only through
+   * `app_actor_unit_ids()`, and every audit read `INNER JOIN`s `unit` for its name — so
+   * the audit became unreadable to the person who had just conducted it.
+   *
+   * **This needs a Consultant with no `unit_membership`.** The harness gives the fixture
+   * Consultant a permanent one in Unit A, so for them the assignment closing changes
+   * nothing and the whole suite sailed past this in production.
+   */
+  it('lets a Consultant who holds the Unit by assignment alone read the audit back after it closes', async () => {
+    const { userId, token, deviceId } = await unboundConsultant();
+    const assignment = await assign(userId);
+    const zoneId = await createZone('Z-91', 'Assignment-only zone');
+
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token,
+      deviceId,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+    const values = fiftyAnswers();
+    await answer(token, auditZoneId, values);
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token,
+      body: {},
+    });
+
+    // The edge that closes the assignment, and used to 404 on its own success.
+    const completed = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token,
+      body: {},
+    });
+    expect(completed.status, JSON.stringify(completed.body)).toBe(200);
+
+    // The assignment really did close: this is not the fix quietly keeping it open.
+    const closed = await world.request('GET', `${base}/audit-assignments/${assignment.id}`, {
+      token: asSuperAdmin(),
+    });
+    expect((closed.body as AuditAssignment).status).toBe('COMPLETED');
+
+    // The Scores screen (§8.6, N6).
+    const expected = scoreZone(
+      values.map((value, index) => ({ section: S_SECTION_ORDER[Math.floor(index / 10)]!, value })),
+    );
+    const summary = await world.request('GET', `${base}/audits/${auditId}/summary`, { token });
+    expect(summary.status, JSON.stringify(summary.body)).toBe(200);
+    expect((summary.body as AuditScoreSummary).audit.totals.scorePercentage).toBe(
+      expected.totals.scorePercentage,
+    );
+
+    // …and the History list it was reached from.
+    const list = await world.request('GET', `${base}/audits?limit=100`, { token });
+    expect((list.body as Page<Audit>).data.map((audit) => audit.id)).toContain(auditId);
+
+    // What did *not* widen: the Unit master is still only the Units they currently hold,
+    // and a closed assignment still cannot start another audit there.
+    const catalogue = await world.request('GET', `${base}/sync/catalogue`, { token });
+    expect(
+      (catalogue.body as { units: Array<{ id: string }> }).units.map((unit) => unit.id),
+    ).not.toContain(world.unitA);
+
+    const again = await world.request('POST', `${base}/audits`, {
+      token,
+      body: {
+        id: randomUUID(),
+        auditType: 'EXTERNAL_5S',
+        unitId: world.unitA,
+        checklistVersionId: versionId,
+        deviceId,
+      },
+    });
+    // 404 rather than 403: the Unit is out of scope for the write, so it is not found
+    // rather than forbidden. What matters is that it is still refused.
+    expect(again.status).toBe(404);
+  });
+
+  /*
+   * Field report, 2026-09-23: three audits of one Unit on one assignment. Finishing the
+   * second closed the assignment, the Unit left the Consultant's scope, and the next Zone
+   * of the first — still open on the same phone — was refused as "No such audit", which
+   * Sync health shows as "Access was revoked mid-audit".
+   */
+  it('keeps the Unit for an open audit when another audit on the same assignment finishes', async () => {
+    const { userId, token, deviceId } = await unboundConsultant();
+    const assignment = await assign(userId);
+
+    // Both audits pick up the one open assignment, as the phone's audits do: it sends none.
+    const first = await startAuditWithZone({
+      token,
+      deviceId,
+      zoneId: await createZone('Z-93', 'First audit zone'),
+    });
+    const second = await startAuditWithZone({
+      token,
+      deviceId,
+      zoneId: await createZone('Z-94', 'Second audit zone'),
+    });
+    for (const audit of [first, second]) {
+      const read = await world.request('GET', `${base}/audits/${audit.auditId}`, { token });
+      expect((read.body as Audit).assignmentId).toBe(assignment.id);
+    }
+
+    await answer(token, second.auditZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${second.auditId}/zones/${second.auditZoneId}/complete`, {
+      token,
+      body: {},
+    });
+    const finished = await world.request('POST', `${base}/audits/${second.auditId}/complete`, {
+      token,
+      body: {},
+    });
+    expect(finished.status, JSON.stringify(finished.body)).toBe(200);
+
+    // The assignment stays open while the first audit is still being conducted under it.
+    const stillOpen = await world.request('GET', `${base}/audit-assignments/${assignment.id}`, {
+      token: asSuperAdmin(),
+    });
+    expect((stillOpen.body as AuditAssignment).status).toBe('IN_PROGRESS');
+
+    // The first audit's next Zone, named by number as the phone names it.
+    const nextZoneId = randomUUID();
+    const next = await world.request('PUT', `${base}/audits/${first.auditId}/zones/${nextZoneId}`, {
+      token,
+      body: { zoneNumber: 71, sequenceNo: 2, checklistVersionId: versionId, zoneLeaderName: 'A Leader' },
+    });
+    expect(next.status, JSON.stringify(next.body)).toBe(200);
+
+    // And the Unit is still on the phone's catalogue while that audit is open.
+    const catalogue = await world.request('GET', `${base}/sync/catalogue`, { token });
+    expect(
+      (catalogue.body as { units: Array<{ id: string }> }).units.map((unit) => unit.id),
+    ).toContain(world.unitA);
+
+    // Finishing the last open audit on the assignment closes it after all.
+    for (const auditZoneId of [first.auditZoneId, nextZoneId]) {
+      await answer(token, auditZoneId, fiftyAnswers());
+      const done = await world.request(
+        'POST',
+        `${base}/audits/${first.auditId}/zones/${auditZoneId}/complete`,
+        { token, body: {} },
+      );
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+    }
+    const last = await world.request('POST', `${base}/audits/${first.auditId}/complete`, {
+      token,
+      body: {},
+    });
+    expect(last.status, JSON.stringify(last.body)).toBe(200);
+    const closed = await world.request('GET', `${base}/audit-assignments/${assignment.id}`, {
+      token: asSuperAdmin(),
+    });
+    expect((closed.body as AuditAssignment).status).toBe('COMPLETED');
+  });
+
   it('appears in the device catalogue while open and disappears once cancelled', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
 
@@ -416,19 +623,18 @@ describe('creating an audit', () => {
     expect(rows[0].platform).toBe('android');
   });
 
-  it('refuses the previous holder of a handset once somebody else signs in on it', async () => {
-    // The handover is allowed at login, and this is its other half: the session the
-    // previous holder still carries names a device that is no longer theirs. This is the
-    // only way `requireOwnDevice` can fail — a session is never bound to a device that
-    // was never registered — and it now says so rather than "Unknown device".
+  it('lets both people on a shared handset start audits (0025)', async () => {
+    // Signing in on a phone somebody else uses adds you to it; it does not take it from
+    // them. The first person's session keeps working — this used to be a 422.
     const handset = randomUUID();
     resetLimits();
-    const staleToken = await loginFromDevice(world, world.actors.CONSULTANT, handset);
+    const firstToken = await loginFromDevice(world, world.actors.CONSULTANT, handset);
     resetLimits();
     await loginFromDevice(world, world.actors.ZONE_LEADER, handset);
 
+    await assign(world.actors.CONSULTANT.userId);
     const response = await world.request('POST', `${base}/audits`, {
-      token: staleToken,
+      token: firstToken,
       body: {
         id: randomUUID(),
         auditType: 'EXTERNAL_5S',
@@ -437,11 +643,25 @@ describe('creating an audit', () => {
       },
     });
 
-    expect(response.status, JSON.stringify(response.body)).toBe(422);
-    expect(JSON.stringify(response.body)).toMatch(/another user|revoked/i);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+  });
 
-    const { rows } = await world.owner.query(`SELECT user_id FROM device WHERE id = $1`, [handset]);
-    expect(rows[0].user_id).toBe(world.actors.ZONE_LEADER.userId);
+  it('refuses a person whose place on the handset was withdrawn', async () => {
+    const handset = randomUUID();
+    resetLimits();
+    const token = await loginFromDevice(world, world.actors.CONSULTANT, handset);
+    await world.owner.query(
+      `UPDATE device_user SET revoked_at = now() WHERE device_id = $1 AND user_id = $2`,
+      [handset, world.actors.CONSULTANT.userId],
+    );
+
+    const response = await world.request('POST', `${base}/audits`, {
+      token,
+      body: { id: randomUUID(), auditType: 'EXTERNAL_5S', unitId: world.unitA, deviceId: handset },
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
+    expect(JSON.stringify(response.body)).toMatch(/revoked/i);
   });
 
   it('returns the existing audit when the same client id is posted twice (§8.6 (a))', async () => {
@@ -765,6 +985,161 @@ describe('finishing a Zone and an audit', () => {
   });
 
   /**
+   * R-33 — the way back from an accidental *Finish audit*, and the cap that keeps it a
+   * correction rather than an open door.
+   *
+   * The whole loop in one test, because the halves are only correct together: a restart
+   * that did not restore the auditor's powers would be useless, and one that had no limit
+   * would mean no audit is ever finished.
+   */
+  it('restarts a finished audit twice, restores the auditor’s powers, then refuses a third', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-95', 'Restart zone');
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+    await answer(consultantToken, auditZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+
+    const finished = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(finished.status, JSON.stringify(finished.body)).toBe(200);
+    expect((finished.body as Audit).restartCount).toBe(0);
+    expect((finished.body as Audit).restartsRemaining).toBe(2);
+
+    // --- first restart ------------------------------------------------------
+    const first = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'Tapped finish before auditing the packing bay' },
+    });
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const detail = first.body as AuditDetail;
+    expect(detail.status).toBe('IN_PROGRESS');
+    expect(detail.restartCount).toBe(1);
+    expect(detail.restartsRemaining).toBe(1);
+    // The Zones keep their own statuses: the auditor reopens what they need.
+    expect(detail.zones[0]!.status).toBe('COMPLETED');
+
+    // It was logged, with the reason and the count on either side.
+    const { rows: logged } = await world.owner.query(
+      `SELECT before, after FROM audit_log
+       WHERE resource_id = $1 AND action = 'audit.restarted'`,
+      [auditId],
+    );
+    expect(logged).toHaveLength(1);
+    expect(logged[0].before).toMatchObject({ restartCount: 0 });
+    expect(logged[0].after).toMatchObject({
+      restartCount: 1,
+      justification: 'Tapped finish before auditing the packing bay',
+    });
+
+    /*
+     * The auditor's ordinary powers are back, and this is the assertion that matters.
+     *
+     * The response upsert is gated on the **audit's** status, not the Zone's — PART 6's
+     * "audit must not be COMPLETED" — so a Zone still marked COMPLETED under a restarted
+     * audit takes an ordinary mark, through the plain endpoint, with no justification and
+     * no override. That is the whole point of returning the audit to IN_PROGRESS rather
+     * than inventing a separate "restarted" flag: every rule that gates the auditor reads
+     * one column, so restoring that column restores all of them at once.
+     *
+     * It rescores on the way, by the same Review-button path that already existed.
+     */
+    const corrected = await world.request(
+      'PUT',
+      `${base}/audit-zones/${auditZoneId}/responses/${randomUUID()}`,
+      {
+        token: consultantToken,
+        body: {
+          // Question 2 was answered SCORE_2 by `fiftyAnswers`; dropping it to 0 is a
+          // change the score has to show. (Question 1 is already a 0.)
+          checklistQuestionId: questionIds[1],
+          value: 'SCORE_0',
+          answeredAt: new Date().toISOString(),
+        },
+      },
+    );
+    expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
+
+    const rescored = await world.request('GET', `${base}/audits/${auditId}/summary`, {
+      token: consultantToken,
+    });
+    expect(rescored.status).toBe(200);
+    expect((rescored.body as AuditScoreSummary).audit.totals.scorePercentage).not.toBe(
+      (finished.body as Audit).totals.scorePercentage,
+    );
+
+    // --- second restart -----------------------------------------------------
+    await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    const second = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'One more correction on the dispatch Zone' },
+    });
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect((second.body as AuditDetail).restartCount).toBe(2);
+    expect((second.body as AuditDetail).restartsRemaining).toBe(0);
+
+    // --- and no third -------------------------------------------------------
+    await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    const third = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'Hoping for a third bite at this audit' },
+    });
+    expect(third.status).toBe(409);
+    expect((third.body as { code: string }).code).toBe('RESTART_LIMIT_REACHED');
+  }, 240_000);
+
+  it('refuses a restart with no justification, and one on an unfinished audit', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-96', 'Unfinished zone');
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+
+    // Still IN_PROGRESS: there is nothing to restart.
+    const early = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'Nothing has finished yet' },
+    });
+    expect(early.status).toBe(409);
+    expect((early.body as { code: string }).code).toBe('INVALID_STATE_TRANSITION');
+
+    await answer(consultantToken, auditZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+
+    // A-2's floor: a restart is a change to a finished audit and has to say why.
+    const bare = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      body: { justification: 'oops' },
+    });
+    expect(bare.status).toBe(422);
+  }, 240_000);
+
+  /**
    * The Review button's bug, in the terms the product owner reported it: a Consultant
    * changed a score on a finished Zone, saved, and every screen but their own kept the old
    * number. PART 6 allows the write until the audit is completed — what was missing was
@@ -1041,6 +1416,68 @@ describe('snapshot isolation (D6)', () => {
     expect((second.body as AuditZone).zoneNameSnapshot).toBe('Original name');
     expect((second.body as AuditZone).zoneRemark).toBe('Tidy');
   });
+
+  /**
+   * R-34 — the auditor may correct the Zone they named, while the audit is open.
+   *
+   * The companion to the test above, and the pair is the point: a *master* rename still
+   * never reaches a snapshot, and the auditor's own correction now does. One of those is
+   * D6's guarantee and the other was D6 being read wider than it said.
+   */
+  it('lets the auditor correct the Zone description and leader they typed, while open', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-97', 'Corrected zone', 'Typed in a hurry');
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+
+    const fixed = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
+      token: consultantToken,
+      body: {
+        zoneId,
+        sequenceNo: 1,
+        checklistVersionId: versionId,
+        zoneDescription: 'Press shop, bay 7 — corrected on site',
+        zoneLeaderName: 'R. Iyer',
+      },
+    });
+    expect(fixed.status, JSON.stringify(fixed.body)).toBe(200);
+    expect((fixed.body as AuditZone).zoneDescriptionSnapshot).toBe(
+      'Press shop, bay 7 — corrected on site',
+    );
+    expect((fixed.body as AuditZone).zoneLeaderNameSnapshot).toBe('R. Iyer');
+
+    // And once it is finished, the same correction is refused — the snapshot is history.
+    await answer(consultantToken, auditZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+
+    const late = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
+      token: consultantToken,
+      body: {
+        zoneId,
+        sequenceNo: 1,
+        checklistVersionId: versionId,
+        zoneDescription: 'Changed after the fact',
+      },
+    });
+    // Whether it is refused outright or accepted-but-ignored, the snapshot must not move.
+    const after = await world.request('GET', `${base}/audits/${auditId}`, {
+      token: consultantToken,
+    });
+    const frozen = (after.body as AuditDetail).zones.find((zone) => zone.id === auditZoneId)!;
+    expect(frozen.zoneDescriptionSnapshot).toBe('Press shop, bay 7 — corrected on site');
+    expect([200, 409]).toContain(late.status);
+  }, 180_000);
 
   it('refuses the same Zone twice in one audit', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);

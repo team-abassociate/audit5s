@@ -71,7 +71,7 @@ describe('RESPONSE_TOKENS', () => {
 
 describe('BRAND_TOKENS', () => {
   it('carries the report chrome palette', () => {
-    expect(BRAND_TOKENS.ink).toBe('#101112');
-    expect(BRAND_TOKENS.accent).toBe('#B3261E');
+    expect(BRAND_TOKENS.ink).toBe('#601A16');
+    expect(BRAND_TOKENS.accent).toBe('#FF7300');
   });
 });

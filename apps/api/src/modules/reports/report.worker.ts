@@ -91,6 +91,7 @@ export class ReportWorker {
 
       this.logger.log(
         `${data.snapshotId}: rendered v${snapshot.version} (${rendered.pdf.byteLength} bytes, ` +
+          `photo tier ${rendered.imageTier}, ` +
           `${rendered.pageCount ?? '?'} pages)`,
       );
     } catch (error) {

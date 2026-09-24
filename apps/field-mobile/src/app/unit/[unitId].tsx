@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { AuditType } from '@audit5s/contracts';
@@ -13,9 +13,16 @@ import {
   Screen,
   SectionHead,
   Segmented,
+  Slip,
+  SlipText,
 } from '../../components/ui';
 import { CameraCapture } from '../../components/camera-capture';
-import { createLocalAudit, recordAuditStartLocation } from '../../lib/db/audit.repository';
+import {
+  createLocalAudit,
+  listResumableAudits,
+  recordAuditStartLocation,
+  resumeLocalAudit,
+} from '../../lib/db/audit.repository';
 import { getLocalUnit } from '../../lib/db/catalogue.repository';
 import { captureLocalEvidence } from '../../lib/db/evidence.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
@@ -23,6 +30,7 @@ import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { useSession } from '../../lib/session';
 import { createThemedStyles } from '../../lib/theme';
+import { leaveScreen } from '../../lib/leave-screen';
 
 const AUDIT_TYPE_LABELS: Record<AuditType, string> = {
   EXTERNAL_5S: '5S audit',
@@ -59,6 +67,31 @@ export default function UnitStartScreen() {
     queryFn: () => getLocalUnit(database, unitId),
   });
 
+  /*
+   * An audit this phone already has open in this Unit. Opening the Unit used to offer only
+   * "Start an audit", so a Consultant who had left their audit — paused, or simply backed
+   * out to the Units list — could only come back in by starting a second one, and the
+   * day's Zones were split across audits (2026-09-23). The open one is offered first now.
+   */
+  const openHere = useQuery({
+    queryKey: ['local', 'resumable-audits'],
+    queryFn: () => listResumableAudits(database),
+    select: (audits) => audits.find((audit) => audit.unitId === unitId) ?? null,
+  });
+  const existing = openHere.data ?? null;
+
+  const continueAudit = useMutation({
+    mutationFn: async (auditId: string) => {
+      if (existing?.status === 'PAUSED') await resumeLocalAudit(database, auditId);
+      return auditId;
+    },
+    onSuccess: (auditId) =>
+      leaveScreen(
+        () => router.replace({ pathname: '/audit/zones/[auditId]', params: { auditId } }),
+        () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
+      ),
+  });
+
   const types = auditTypesFor(scope?.role);
   const [picked, setPicked] = useState<AuditType | null>(null);
   const auditType = picked ?? types[0] ?? null;
@@ -83,9 +116,9 @@ export default function UnitStartScreen() {
   const saveSelfie = useMutation({
     mutationFn: async (image: ProcessedImage) => {
       const auditId = pendingAuditId!;
-      // The location reading rides with the selfie. It never blocks: `readLocation`
-      // returns null on a denied permission or a timeout, and §12.9 requires that an
-      // absent fix be recorded and flagged rather than treated as a failure.
+      // The location reading rides with the selfie. It never waits for a fix: the camera
+      // warmed one up while the auditor framed the shot, `readLocation` takes whatever is
+      // ready, and §12.9 requires an absent fix be recorded and flagged, never a failure.
       const location = await readLocation();
 
       await captureLocalEvidence(database, {
@@ -111,11 +144,13 @@ export default function UnitStartScreen() {
       await recordAuditStartLocation(database, auditId, location);
       return auditId;
     },
-    onSuccess: async (auditId) => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
+    onSuccess: (auditId) => {
       setPendingAuditId(null);
-      // Replace, so Back from the Zone form does not land on a spent selfie screen.
-      router.replace({ pathname: '/audit/zones/[auditId]', params: { auditId } });
+      leaveScreen(
+        // Replace, so Back from the Zone form does not land on a spent selfie screen.
+        () => router.replace({ pathname: '/audit/zones/[auditId]', params: { auditId } }),
+        () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
+      );
     },
   });
 
@@ -143,8 +178,27 @@ export default function UnitStartScreen() {
       <Stack.Screen options={{ title, headerBackTitle: 'Units' }} />
 
       <ScrollView contentContainerStyle={styles.content}>
+        {existing ? (
+          <Slip title="Your audit here is still open">
+            <SlipText>
+              {existing.zonesFinished} of {existing.zonesTotal} Zone
+              {existing.zonesTotal === 1 ? '' : 's'} finished
+              {existing.status === 'PAUSED' ? ', paused' : ''}. Add the next Zone to this audit
+              rather than starting a new one.
+            </SlipText>
+            <View style={styles.slipAction}>
+              <Button
+                testID="continue-audit"
+                title={existing.status === 'PAUSED' ? 'Resume this audit' : 'Continue this audit'}
+                busy={continueAudit.isPending}
+                onPress={() => continueAudit.mutate(existing.id)}
+              />
+            </View>
+          </Slip>
+        ) : null}
+
         <SectionHead
-          title="Start an audit"
+          title={existing ? 'Or start a separate audit' : 'Start an audit'}
           description="Your selfie first, then the Zone. Nothing here needs a connection."
         />
 
@@ -188,7 +242,20 @@ export default function UnitStartScreen() {
             testID="start-audit"
             title="Take selfie"
             busy={startAudit.isPending}
-            onPress={() => startAudit.mutate(auditType)}
+            variant={existing ? 'secondary' : 'primary'}
+            onPress={() =>
+              existing
+                ? Alert.alert(
+                    'Start a separate audit?',
+                    'Your open audit of this Unit stays open. The Zones you add next go to the ' +
+                      'new audit instead, and the two are scored separately.',
+                    [
+                      { text: 'Keep my audit', style: 'cancel' },
+                      { text: 'Start new audit', onPress: () => startAudit.mutate(auditType) },
+                    ],
+                  )
+                : startAudit.mutate(auditType)
+            }
           />
           <Muted>Work is saved on this device and syncs when there is a connection.</Muted>
         </ActionBar>
@@ -199,4 +266,5 @@ export default function UnitStartScreen() {
 
 const useStyles = createThemedStyles((theme) => ({
   content: { gap: theme.space.sm, paddingBottom: theme.space.md },
+  slipAction: { marginTop: theme.space.xs },
 }));

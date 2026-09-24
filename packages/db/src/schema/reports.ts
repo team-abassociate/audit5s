@@ -41,6 +41,10 @@ export const reportSnapshots = pgTable(
     auditZoneId: uuid('audit_zone_id').references(() => auditZones.id, { onDelete: 'restrict' }),
     /** The exact Zone selection of a summary, so its scope is reproducible (§10.3-C). */
     selectedZoneIds: uuid('selected_zone_ids').array(),
+    /** A summary of hand-picked audited Zones, possibly from several audits (0033). */
+    selectedAuditZoneIds: uuid('selected_audit_zone_ids').array(),
+    /** A summary of one multi-auditor audit: the assignment group it combines (0029). */
+    assignmentGroupId: uuid('assignment_group_id'),
     /** THE frozen data. A report renders from this and never from live tables (§10.1). */
     payload: jsonb('payload').$type<ReportPayload>().notNull(),
     payloadSchemaVersion: integer('payload_schema_version').notNull().default(1),

@@ -13,7 +13,6 @@ import {
   Photo,
   RadarWeb,
   RatingPills,
-  SectionBars,
   SectionTable,
   bandOf,
   formatDate,
@@ -76,8 +75,9 @@ export function ZoneReport({
       </div>
 
       <h2 className="section-title">S-wise scoring</h2>
-      <SectionBars sections={zone.sections} bands={payload.bands} />
       <SectionTable sections={zone.sections} bands={payload.bands} />
+      {/* The colour key sits under the table whose percentages it colours. */}
+      <RatingPills bands={payload.bands} />
 
       {/* §4.1 item 4: the web, with the AUDITOR VERIFICATION box to its left. */}
       <div className="web-row">
@@ -92,16 +92,15 @@ export function ZoneReport({
         </div>
         <div className="radar-box">
           <h2 className="section-title">5S performance web</h2>
-          <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} />
+          <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} size={220} />
           <div className="caption">
             Each S shows achieved marks / applicable maximum; polygon uses percentage.
           </div>
         </div>
       </div>
 
-      <RatingPills bands={payload.bands} />
-
-      <h2 className="section-title">Checklist — responses and marks</h2>
+      {/* The checklist opens its own page, so its first rows never trail page 1. */}
+      <h2 className="section-title page-break">Checklist — responses and marks</h2>
       <ChecklistTable zone={zone} payload={payload} />
 
       {zone.zoneRemark ? (

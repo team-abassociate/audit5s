@@ -354,9 +354,9 @@ export function DashboardPage() {
             </select>
           </div>
         ) : null}
-        <div className="gb-pill">
+        <div className="gb-pill" title="Last sync">
           <i />
-          Last sync <span className="gb-data">{lastSync(overview.dataUpdatedAt, unitName?.timezone)}</span>
+          <span className="gb-pill-label">Last sync</span> <span className="gb-data">{lastSync(overview.dataUpdatedAt, unitName?.timezone)}</span>
         </div>
         {can('report', 'read_snapshot') ? (
           <Link className="gb-btn" to="/reports">

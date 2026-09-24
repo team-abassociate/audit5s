@@ -58,9 +58,8 @@ const EVENT_LABEL: Record<NotificationEventType, string> = {
  * Where a notification leads.
  *
  * Keyed on `resourceType` — what the event is *about* — and only falling back to the
- * event type when the row carries no resource. The routes are flat, so this lands on the
- * right tab rather than the exact record; that is still the difference between one click
- * and a hunt.
+ * event type when the row carries no resource. `notificationSearch` below narrows it to
+ * the exact record where the tab can open one.
  */
 function notificationTarget(notification: Notification): NotificationTarget {
   switch (notification.resourceType) {
@@ -92,6 +91,24 @@ function notificationTarget(notification: Notification): NotificationTarget {
         : notification.eventType === 'DATA_INTEGRITY_ALERT'
           ? '/dashboard'
           : '/dashboard';
+  }
+}
+
+/**
+ * The exact record on the target tab, when the tab can open one: the audit's own row on
+ * the audit board, the assignment, the person. Everywhere else the tab is the destination.
+ */
+function notificationSearch(notification: Notification): Record<string, string> | undefined {
+  if (!notification.resourceId) return undefined;
+  switch (notification.resourceType) {
+    case 'audit':
+      return { audit: notification.resourceId };
+    case 'audit_assignment':
+      return { assignment: notification.resourceId };
+    case 'user':
+      return { user: notification.resourceId };
+    default:
+      return undefined;
   }
 }
 
@@ -151,6 +168,7 @@ export function NotificationsPage() {
         <ul className="divide-y divide-edge-soft">
           {page.data?.data.map((notification) => {
             const target = notificationTarget(notification);
+            const search = notificationSearch(notification);
             return (
               <li key={notification.id}>
                 {/*
@@ -160,6 +178,7 @@ export function NotificationsPage() {
                 */}
                 <Link
                   to={target}
+                  search={search}
                   className={cn(
                     'flex w-full items-start gap-3 px-4 py-3 text-left no-underline hover:bg-board',
                     !notification.readAt && 'bg-tile-2',
@@ -171,7 +190,7 @@ export function NotificationsPage() {
                   <span
                     aria-hidden
                     className={cn(
-                      'mt-1.5 h-2 w-2 shrink-0 rounded-full',
+                      'mt-1.5 h-2 w-2 shrink-0',
                       notification.readAt ? 'bg-transparent' : 'bg-crit',
                     )}
                   />
@@ -190,7 +209,9 @@ export function NotificationsPage() {
                         {EVENT_LABEL[notification.eventType]}
                       </span>
                       <span className="text-xs text-ink-3">
-                        Open {TARGET_LABEL[target]} →
+                        {search
+                          ? `Open this ${notification.resourceType === 'audit_assignment' ? 'assignment' : notification.resourceType === 'user' ? 'person' : 'audit'} →`
+                          : `Open ${TARGET_LABEL[target]} →`}
                       </span>
                     </span>
                   </span>

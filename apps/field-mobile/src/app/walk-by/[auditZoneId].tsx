@@ -25,6 +25,7 @@ import {
   Screen,
   SectionHead,
 } from '../../components/ui';
+import { useAbortMenu } from '../../components/abort-menu';
 import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
@@ -45,6 +46,7 @@ import {
 } from '../../lib/db/evidence.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { bandInk, createThemedStyles, useTheme, type Band } from '../../lib/theme';
+import { leaveScreen } from '../../lib/leave-screen';
 
 const CLASSIFICATIONS: EvidenceClassification[] = ['GOOD', 'NONCONFORMITY', 'NEUTRAL'];
 
@@ -96,9 +98,10 @@ export default function WalkByScreen() {
           : {}),
       });
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
+    onSuccess: () => {
+      // The camera closes the moment SQLite has the photo; the lists refresh behind it.
       setCameraOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['local'] });
     },
   });
 
@@ -111,10 +114,21 @@ export default function WalkByScreen() {
       await assertZonePhotoLimitForCompletion(database, auditZoneId);
       await completeLocalZone(database, auditZoneId);
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      router.back();
+    onSuccess: () => {
+      leaveScreen(
+        () => router.back(),
+        () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
+      );
     },
+  });
+
+  const abortMenu = useAbortMenu({
+    auditId: zone.data?.auditId,
+    auditZoneId,
+    zoneLabel: zone.data
+      ? zoneDisplayLabel(zone.data.zoneCodeSnapshot, zone.data.zoneNameSnapshot)
+      : 'this Zone',
+    zoneFinished: zone.data?.status === 'COMPLETED',
   });
 
   if (zone.isLoading || photos.isLoading) {
@@ -136,13 +150,17 @@ export default function WalkByScreen() {
     );
   }
 
-  const editable = zone.data.status !== 'COMPLETED';
+  // A withdrawn Zone left the audit and takes no more photographs.
+  const editable = zone.data.status !== 'COMPLETED' && zone.data.status !== 'WITHDRAWN';
   const title = zoneDisplayLabel(zone.data.zoneCodeSnapshot, zone.data.zoneNameSnapshot);
   const count = (photos.data ?? []).filter((photo) => isZoneAuditPhoto(photo.kind)).length;
 
   return (
     <Screen>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{ title, headerRight: () => (editable ? abortMenu.trigger : null) }}
+      />
+      {abortMenu.sheet}
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
           {zone.data.zoneDescriptionSnapshot ? <Text style={styles.body}>{zone.data.zoneDescriptionSnapshot}</Text> : null}

@@ -148,6 +148,8 @@ export const ERROR_CODES = [
   /** Another open audit of the same Unit already holds this Zone (R-29). */
   'ZONE_LOCKED_BY_ANOTHER_AUDIT',
   'ASSIGNMENT_REQUIRED',
+  /** R-33: a finished audit may be restarted twice, and this one has been. */
+  'RESTART_LIMIT_REACHED',
   // Evidence and media (§8.7, §9.4, §12.8)
   'SUMMARY_FLAG_TAKEN',
   'EVIDENCE_NOT_UPLOADED',

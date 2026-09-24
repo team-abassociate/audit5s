@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
 import type { AuditScoreSummary } from '@audit5s/contracts';
 import { bandFor, zoneDisplayLabel } from '@audit5s/domain';
-import { api } from '../../../lib/api';
+import { api, problemMessage } from '../../../lib/api';
 import {
   Button,
   Card,
@@ -59,11 +59,17 @@ export default function AuditSummaryScreen() {
     return (
       <Screen>
         <View style={styles.stack}>
+          {/*
+            The server's own sentence when it answered, the connection sentence only when
+            nothing answered. It used to say "try again when you have signal" whatever had
+            happened — so a `404` from a full-strength phone read as a coverage problem,
+            and the defect behind 0027 was hunted in the wrong place for a day.
+          */}
           <EmptyState
             title="Scores not available"
             detail={
-              'This needs a connection — the finished score is the server’s, not this ' +
-              'device’s. Try again when you have signal.'
+              problemMessage(summary.error) ??
+              'The finished score is the server’s, not this device’s. Try again when you have signal.'
             }
           />
           <Button
