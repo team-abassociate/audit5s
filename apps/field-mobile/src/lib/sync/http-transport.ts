@@ -3,8 +3,9 @@ import type {
   SyncStatus,
   UploadIntentResponse,
 } from '@audit5s/contracts';
-import { api, ApiError } from '../api';
+import { api, ApiError, apiBaseUrl } from '../api';
 import { TransportError, type ReadLocalFile, type SyncTransport } from './transport';
+import { reachableUploadUrl } from './upload-url';
 
 /**
  * The production transport: the app's authenticated `api` client for the JSON calls, and a
@@ -34,7 +35,7 @@ export function createSyncTransport(readFile: ReadLocalFile): SyncTransport {
       // No `Authorization` header, deliberately: the URL carries its own authority, which
       // is the whole point of presigning (§5). Sending a session token here would be
       // harmless and misleading — it would suggest the API is in the path when it is not.
-      const response = await fetch(intent.uploadUrl, {
+      const response = await fetch(reachableUploadUrl(intent.uploadUrl, apiBaseUrl()), {
         method: 'PUT',
         headers: { ...intent.requiredHeaders, 'content-type': contentType },
         // React Native's `fetch` types name the body differently from the DOM's, and the

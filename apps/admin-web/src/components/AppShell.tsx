@@ -77,22 +77,25 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <main className="gb-main">
         <div className="gb-top">
-          <h1 className="gb-h1">{title}</h1>
-          <div className="gb-tools">
-            {/* Pages put their scope selectors here with <TopbarTools> (§5). */}
-            <div id={TOPBAR_SLOT_ID} className="gb-tools" />
-            <ThemeSwitch />
-            <div className="gb-who">
-              <div className="gb-av" aria-hidden="true">{initials(user?.fullName)}</div>
-              <div>
-                <b>{user?.fullName}</b>
-                <span>{user?.loginId}</span>
+          <div className="gb-top-row">
+            <h1 className="gb-h1">{title}</h1>
+            <div className="gb-shell-tools">
+              <ThemeSwitch />
+              <div className="gb-who" title={user ? `${user.fullName} · ${user.loginId}` : undefined}>
+                <div className="gb-av" aria-hidden="true">{initials(user?.fullName)}</div>
+                <div>
+                  <b>{user?.fullName}</b>
+                  <span>{user?.loginId}</span>
+                </div>
               </div>
+              <button className="gb-btn" type="button" onClick={() => void signOut()}>
+                Sign out
+              </button>
             </div>
-            <button className="gb-btn" type="button" onClick={() => void signOut()}>
-              Sign out
-            </button>
           </div>
+          {/* Pages put their scope selectors here with <TopbarTools> (§5): a second row of
+              its own, which collapses to nothing on a page that has none. */}
+          <div id={TOPBAR_SLOT_ID} className="gb-tools" />
         </div>
         <div className="gb-page">{children}</div>
       </main>

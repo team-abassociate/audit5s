@@ -22,6 +22,7 @@ import {
   evidenceById,
   itemsInState,
   markDeadLetter,
+  auditsAwaitingPhotos,
   markPending,
   markSettled,
   markSyncing,
@@ -258,9 +259,15 @@ async function drainDataQueue(
   operations?: readonly SyncOperation[],
 ): Promise<SyncResult> {
   const all = await readyItems(database, 'data', new Date(now()).toISOString());
-  const ready = operations
+  // An audit's `complete` waits for its photographs (see `auditsAwaitingPhotos`). It stays
+  // PENDING and goes in the first cycle after the last photo is up.
+  const holding = await auditsAwaitingPhotos(database);
+  const ready = (operations
     ? all.filter((row) => operations.includes(row.operation as SyncOperation))
-    : all;
+    : all
+  ).filter(
+    (row) => !(row.entityType === 'audit' && row.operation === 'complete' && holding.has(row.entityId)),
+  );
 
   if (ready.length === 0) {
     return { ...EMPTY };

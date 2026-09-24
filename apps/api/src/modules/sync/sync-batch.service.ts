@@ -19,6 +19,7 @@ import {
   submitCorrectiveActionRequestSchema,
   uploadIntentRequestSchema,
   upsertAuditZoneRequestSchema,
+  withdrawAuditZoneRequestSchema,
   upsertQuestionResponseRequestSchema,
 } from '@audit5s/contracts';
 import { sortSyncItems, type ScopeContext } from '@audit5s/domain';
@@ -401,6 +402,12 @@ export class SyncBatchService {
         const body = completeAuditZoneRequestSchema.parse(item.payload);
         const auditId = this.requireString(item.payload, 'auditId');
         const zone = await this.zones.complete(scope, auditId, item.entityId, body);
+        return zone.version;
+      }
+
+      case 'audit_zone:withdraw': {
+        const body = withdrawAuditZoneRequestSchema.parse(item.payload);
+        const zone = await this.zones.withdraw(scope, item.entityId, body);
         return zone.version;
       }
 

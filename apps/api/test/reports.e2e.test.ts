@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   API_BASE_PATH,
   HEADER_IDEMPOTENCY_KEY,
+  type Audit,
+  type AuditAssignment,
   type AuditScoreSummary,
   type Page,
   type ReportAccessToken,
@@ -270,6 +272,58 @@ describe('MULTI_ZONE_SUMMARY aggregates over the selection only (§10.3-C)', () 
     expect(payload.audit).toBeNull();
   }, 180_000);
 
+  /*
+   * The Super Admin's month: several audits of one Unit, and a summary of *some* Zones of
+   * *some* of them — Zones 1 and 2 from audit 1, Zone 3 from audit 2 — chosen one audited
+   * Zone at a time rather than "the latest of every Zone".
+   */
+  it('summarises exactly the audited Zones chosen, across audits, and regenerates the same', async () => {
+    const fromFirst = await completedZone({ nonconformities: 1, good: 1 });
+    const fromSecond = await completedZone({ nonconformities: 1, good: 1 });
+    const leftOut = await completedZone({ nonconformities: 1, good: 1 });
+    expect(new Set([fromFirst.auditId, fromSecond.auditId, leftOut.auditId]).size).toBe(3);
+
+    const response = await generate(superAdmin, {
+      kind: 'MULTI_ZONE_SUMMARY',
+      unitId: world.unitA,
+      selectedAuditZoneIds: [fromFirst.auditZoneId, fromSecond.auditZoneId],
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(202);
+    const snapshot = response.body as ReportSnapshot;
+    expect(snapshot.selectedAuditZoneIds).toEqual([fromFirst.auditZoneId, fromSecond.auditZoneId]);
+    expect(snapshot.selectedZoneIds).toBeNull();
+
+    const payload = (
+      await world.request('GET', `${base}/reports/${snapshot.id}/payload`, { token: superAdmin })
+    ).body as ReportPayload;
+    expect(payload.zones.map((zone) => zone.auditZoneId).sort()).toEqual(
+      [fromFirst.auditZoneId, fromSecond.auditZoneId].sort(),
+    );
+
+    // A regeneration is the same selection, not whatever is latest by then.
+    const again = await world.request('POST', `${base}/reports/${snapshot.id}/regenerate`, {
+      token: superAdmin,
+      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+    });
+    expect(again.status, JSON.stringify(again.body)).toBe(202);
+    expect((again.body as ReportSnapshot).selectedAuditZoneIds).toEqual(
+      snapshot.selectedAuditZoneIds,
+    );
+    expect(leftOut.auditZoneId).not.toBe(fromFirst.auditZoneId);
+  }, 180_000);
+
+  it('refuses a chosen audited Zone that is not a finished Zone of this Unit', async () => {
+    const finished = await completedZone({ nonconformities: 1 });
+    const response = await generate(superAdmin, {
+      kind: 'MULTI_ZONE_SUMMARY',
+      unitId: world.unitA,
+      selectedAuditZoneIds: [finished.auditZoneId, randomUUID()],
+    });
+
+    expect(response.status).toBe(422);
+    expect(JSON.stringify(response.body)).toMatch(/1 of the chosen Zones is not/);
+  }, 120_000);
+
   it('refuses a selection with no completed audit rather than issuing an empty report', async () => {
     const emptyZone = await makeZone(world, world.unitA, null);
     const response = await generate(superAdmin, {
@@ -474,3 +528,136 @@ async function countTokens(): Promise<number> {
   const { rows } = await world.owner.query(`SELECT count(*)::int AS n FROM report_access_token`);
   return rows[0].n as number;
 }
+
+/**
+ * One audit of a Unit, assigned to several Consultants at once (0029). Each gets their own
+ * assignment and conducts their own audit on their own phone; the assignments share a
+ * group, and the combined summary is built from that group's Zones — not from whatever was
+ * audited in the Unit before or since.
+ */
+describe('a team audit: several Consultants on one assignment', () => {
+  const OTHER_DEVICE = '01930000-0000-7000-8000-00000007e003';
+
+  async function anotherConsultant(): Promise<{ token: string; userId: string; name: string }> {
+    const argon2 = await import('argon2');
+    const { ARGON2_OPTIONS } = await import('../src/modules/auth/password.service');
+    const name = 'Dev Teammate';
+    const loginId = 'DV7008';
+    const { rows } = await world.owner.query(
+      `INSERT INTO "user" (login_id, full_name, phone_e164, role, password_hash,
+                           must_reset_password, status)
+       VALUES ($1, $2, '+919000007008', 'CONSULTANT', $3, false, 'ACTIVE') RETURNING id`,
+      [loginId, name, await argon2.hash(FIXTURE_PASSWORD, ARGON2_OPTIONS)],
+    );
+    const userId = rows[0].id as string;
+    const token = await loginFromDevice(
+      world,
+      { role: 'CONSULTANT', userId, loginId, accessToken: '', refreshToken: '', unitId: world.unitA },
+      OTHER_DEVICE,
+    );
+    return { token, userId, name };
+  }
+
+  function assign(body: unknown) {
+    return world.request('POST', `${base}/audit-assignments`, {
+      token: superAdmin,
+      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+      body,
+    });
+  }
+
+  it('refuses the whole team when one member cannot audit, and creates nobody', async () => {
+    const before = await world.owner.query('SELECT count(*)::int AS n FROM audit_assignment');
+    const response = await assign({
+      unitId: world.unitA,
+      auditorUserId: world.actors.CONSULTANT.userId,
+      auditType: 'WALK_BY',
+      // A Coordinator does not conduct audits.
+      coAuditorUserIds: [world.actors.COORDINATOR.userId],
+    });
+    expect(response.status).toBe(422);
+    const after = await world.owner.query('SELECT count(*)::int AS n FROM audit_assignment');
+    expect(after.rows[0].n).toBe(before.rows[0].n);
+  });
+
+  it('assigns each auditor, groups them, and summarises exactly the team’s Zones', async () => {
+    const other = await anotherConsultant();
+
+    const created = await assign({
+      unitId: world.unitA,
+      auditorUserId: world.actors.CONSULTANT.userId,
+      auditType: 'WALK_BY',
+      coAuditorUserIds: [other.userId],
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const lead = created.body as AuditAssignment;
+    expect(lead.auditorUserId).toBe(world.actors.CONSULTANT.userId);
+    expect(lead.groupId).not.toBeNull();
+
+    const team = (
+      await world.request('GET', `${base}/audit-assignments?groupId=${lead.groupId}`, { token: superAdmin })
+    ).body as Page<AuditAssignment>;
+    expect(team.data.map((row) => row.auditorUserId).sort()).toEqual(
+      [world.actors.CONSULTANT.userId, other.userId].sort(),
+    );
+    const mine = team.data.find((row) => row.auditorUserId === other.userId)!;
+
+    // A Zone of the Unit audited earlier, outside the team: the summary must not take it.
+    const outside = await completedZone({ nonconformities: 0, good: 1 });
+
+    const byLead = await completedWalkBy(world, {
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      unitId: world.unitA,
+      zoneLeaderUserId: world.actors.ZONE_LEADER.userId,
+      nonconformities: 1,
+      good: 1,
+      assignmentId: lead.id,
+    });
+    const byOther = await completedWalkBy(world, {
+      token: other.token,
+      deviceId: OTHER_DEVICE,
+      unitId: world.unitA,
+      zoneLeaderUserId: world.actors.ZONE_LEADER.userId,
+      nonconformities: 1,
+      good: 1,
+      assignmentId: mine.id,
+    });
+
+    // The board carries the group on each share, so the web can show them together.
+    const board = (await world.request('GET', `${base}/audits?limit=200`, { token: superAdmin }))
+      .body as Page<Audit>;
+    for (const id of [byLead.auditId, byOther.auditId]) {
+      expect(board.data.find((audit) => audit.id === id)?.assignmentGroupId).toBe(lead.groupId);
+    }
+    expect(board.data.find((audit) => audit.id === outside.auditId)?.assignmentGroupId).toBeNull();
+
+    const response = await generate(superAdmin, {
+      kind: 'MULTI_ZONE_SUMMARY',
+      unitId: world.unitA,
+      selectedZoneIds: [outside.zoneId, byLead.zoneId, byOther.zoneId],
+      assignmentGroupId: lead.groupId,
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(202);
+    const snapshot = response.body as ReportSnapshot;
+    expect(snapshot.assignmentGroupId).toBe(lead.groupId);
+
+    const zonesOf = async (snapshotId: string) =>
+      (
+        (await world.request('GET', `${base}/reports/${snapshotId}/payload`, { token: superAdmin }))
+          .body as ReportPayload
+      ).zones.map((zone) => zone.auditZoneId).sort();
+
+    const expected = [byLead.auditZoneId, byOther.auditZoneId].sort();
+    expect(await zonesOf(snapshot.id)).toEqual(expected);
+
+    // A regeneration is the same combined audit, not the Unit's latest Zones.
+    const again = await world.request('POST', `${base}/reports/${snapshot.id}/regenerate`, {
+      token: superAdmin,
+      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+    });
+    expect(again.status, JSON.stringify(again.body)).toBe(202);
+    expect((again.body as ReportSnapshot).assignmentGroupId).toBe(lead.groupId);
+    expect(await zonesOf((again.body as ReportSnapshot).id)).toEqual(expected);
+  }, 180_000);
+});

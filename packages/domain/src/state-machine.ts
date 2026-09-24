@@ -229,6 +229,17 @@ export const AUDIT_ZONE_TRANSITIONS: readonly Transition<AuditZoneStatus>[] = [
     guards: ['reason_given'],
     note: 'Reopen; logged as audit.changed_after_completion (A-2)',
   },
+  /*
+   * The auditor's "abort this Zone". Only from an unfinished Zone: a finished one has a
+   * score somebody may already have read, and taking it back is A-2's override, not this.
+   * Terminal — the Zone may be audited again, but as a new audit Zone.
+   */
+  ...(['DRAFT', 'IN_PROGRESS'] as const).map((from) => ({
+    from,
+    to: 'WITHDRAWN' as const,
+    actors: ['CONSULTANT', 'ZONE_LEADER'] as const,
+    note: 'Abort this Zone: out of the score and the finish guard, lock released, rows kept',
+  })),
 ];
 
 /** `audit_assignment`. AA-1: revoking the membership cancels rather than deletes. */

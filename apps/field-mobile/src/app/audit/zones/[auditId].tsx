@@ -12,7 +12,6 @@ import {
   zoneDisplayLabel,
 } from '@audit5s/domain';
 import {
-  ActionBar,
   Button,
   Card,
   CardHeader,
@@ -21,7 +20,9 @@ import {
   EmptyState,
   ErrorBanner,
   Field,
+  HeaderAction,
   Label,
+  ConfirmAction,
   Muted,
   Screen,
   SectionHead,
@@ -36,6 +37,7 @@ import {
   restartLocalAudit,
   listLocalAuditZones,
   pauseLocalAudit,
+  withdrawLocalZone,
   resumeCursor,
   resumeLocalAudit,
 } from '../../../lib/db/audit.repository';
@@ -230,16 +232,10 @@ export default function AuditZonesScreen() {
     },
   });
 
-  const confirmAbort = () =>
-    Alert.alert(
-      'Abort this audit?',
-      'Everything you have recorded is kept on this device and synced as usual. The audit ' +
-        'is paused and the Super Admin is told it was aborted. You can still reopen it.',
-      [
-        { text: 'Keep auditing', style: 'cancel' },
-        { text: 'Abort', style: 'destructive', onPress: () => leave.mutate('Aborted by auditor') },
-      ],
-    );
+  const withdraw = useMutation({
+    mutationFn: (auditZoneId: string) => withdrawLocalZone(database, auditZoneId, 'Aborted by auditor'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
+  });
 
   const finish = useMutation({
     mutationFn: () => completeLocalAudit(database, auditId),
@@ -300,15 +296,20 @@ export default function AuditZonesScreen() {
   }
 
   const zonesInAudit = auditZones.data ?? [];
-  const usedCodes = new Set(zonesInAudit.map((zone) => zone.zoneCodeSnapshot));
+  // A withdrawn Zone is still listed — it happened — but it is out of the audit: it does
+  // not hold its Zone number, block the next Zone, or stand between the audit and Finish.
+  const liveZones = zonesInAudit.filter((zone) => zone.status !== 'WITHDRAWN');
+  const usedCodes = new Set(liveZones.map((zone) => zone.zoneCodeSnapshot));
   const byCode = new Map((catalogueZones.data ?? []).map((zone) => [zone.code, zone]));
-  const allComplete = zonesInAudit.length > 0 && zonesInAudit.every((z) => z.status === 'COMPLETED');
+  const allComplete = liveZones.length > 0 && liveZones.every((z) => z.status === 'COMPLETED');
   const paused = audit.data?.status === 'PAUSED';
+  // A paused audit is resumed first: its Zones and its finish wait behind *Resume*, which
+  // is what the server's state machine asks too — a paused audit cannot be finished.
   const canAddZone =
-    audit.data?.status !== 'COMPLETED' && (zonesInAudit.length === 0 || allComplete);
+    audit.data?.status !== 'COMPLETED' && !paused && (liveZones.length === 0 || allComplete);
 
-  const finished = zonesInAudit.filter((zone) => zone.status === 'COMPLETED').length;
-  const canFinish = allComplete && audit.data?.status !== 'COMPLETED';
+  const finished = liveZones.filter((zone) => zone.status === 'COMPLETED').length;
+  const canFinish = allComplete && audit.data?.status !== 'COMPLETED' && !paused;
   // Both ways of leaving need an audit that is actually running; a paused one has already
   // been left, and the Resume slip above is what it offers instead.
   const canPause = audit.data?.status === 'IN_PROGRESS';
@@ -378,33 +379,168 @@ export default function AuditZonesScreen() {
     addZone.mutate({ zoneNumber, draft });
   };
 
+  const addZoneCard = canAddZone ? (
+    <Card>
+      <CardHeader
+        title={zonesInAudit.length === 0 ? 'Create the Zone' : 'Add the next Zone'}
+        description={
+          walkBy
+            ? 'Where the walk-by goes, and who leads it.'
+            : 'Each Zone is its own questionnaire of the department you choose.'
+        }
+      />
+
+      <Label>Zone</Label>
+      <Pressable
+        testID="zone-number"
+        accessibilityRole="button"
+        accessibilityLabel="Choose the Zone"
+        onPress={() => setPicking(true)}
+        style={[styles.select, showErrors && errors.zone ? styles.selectError : null]}
+      >
+        <Text style={zoneNumber === null ? styles.selectPlaceholder : styles.selectValue}>
+          {zoneNumber === null
+            ? `Choose Zone ${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`
+            : selected
+              ? zoneDisplayLabel(selected.code, selected.name)
+              : `Zone ${zoneNumber} (new)`}
+        </Text>
+        <Text style={styles.selectChevron}>▾</Text>
+      </Pressable>
+      {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
+
+      {/* R-29, said before the questions rather than after them. */}
+      {lockOnSelection ? (
+        <Slip title="That Zone is taken">
+          <SlipText>
+            {lockOnSelection.auditorName} is auditing Zone {lockOnSelection.zoneCode} —{' '}
+            {lockOnSelection.zoneName} in another audit of this Unit. Choose a
+            different Zone; nothing you have recorded is lost.
+          </SlipText>
+        </Slip>
+      ) : null}
+
+      <Field
+        label="Zone description (optional)"
+        multiline
+        value={draft.description}
+        onChangeText={(value) => editDraft({ description: value })}
+        placeholder="What this Zone covers"
+        containerStyle={styles.gapAbove}
+      />
+
+      <Field
+        testID="zone-leader-name"
+        label="Zone Leader’s name"
+        value={draft.leaderName}
+        onChangeText={(value) => editDraft({ leaderName: value })}
+        placeholder="Full name"
+        autoCapitalize="words"
+        error={showErrors && errors.leader ? errors.leader : undefined}
+      />
+
+      {!walkBy ? (
+        <>
+          <Label>Department</Label>
+          <ChoiceList
+            options={(versions.data ?? []).map((version) => ({
+              value: version.id,
+              label: version.templateName,
+              detail: `${version.totalQuestions} questions`,
+            }))}
+            value={draft.versionId}
+            onChange={(value) => editDraft({ versionId: value })}
+            empty="No department checklists on this device yet. Pull down on Units to refresh."
+          />
+          {showErrors && errors.department ? (
+            <Text style={styles.error}>{errors.department}</Text>
+          ) : null}
+        </>
+      ) : null}
+
+      <ErrorBanner message={addZone.error ? addZone.error.message : null} />
+
+      <Button
+        testID="start-zone"
+        title={walkBy ? 'Open camera' : 'Start the questions'}
+        busy={addZone.isPending}
+        onPress={submit}
+      />
+    </Card>
+  ) : null;
+
   return (
     <Screen>
-      <Stack.Screen options={{ title: walkBy ? 'Walk-by' : 'Audit' }} />
+      <Stack.Screen
+        options={{
+          title: walkBy ? 'Walk-by' : 'Audit',
+          headerRight: () =>
+            canRestart ? (
+              <HeaderAction
+                title={`Restart (${restartsLeft})`}
+                accessibilityLabel={`Restart audit, ${restartsLeft} left`}
+                disabled={restart.isPending}
+                onPress={() => setRestartReason('')}
+              />
+            ) : canPause || canFinish ? (
+              <View style={styles.headerActions}>
+                {canPause ? (
+                  <HeaderAction
+                    title="Save & pause"
+                    disabled={leave.isPending}
+                    onPress={() => leave.mutate(null)}
+                  />
+                ) : null}
+                <HeaderAction
+                  title="Finish audit"
+                  disabled={!canFinish || finish.isPending}
+                  onPress={confirmFinish}
+                />
+              </View>
+            ) : null,
+        }}
+      />
 
       <FlatList
         data={zonesInAudit}
         keyExtractor={(zone) => zone.id}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
-          <>
+          <View style={styles.header}>
             {/* The one slip on this screen: a paused audit is waiting for the auditor. */}
-            {paused && cursor.data?.auditZoneId ? (
+            {paused ? (
               <Slip title="Paused">
                 <SlipText>
-                  {walkBy
-                    ? 'Your photographs and remarks are saved on this device.'
-                    : `${cursor.data.answered} question${cursor.data.answered === 1 ? '' : 's'} answered in this Zone. Resume where you stopped.`}
+                  {!cursor.data?.auditZoneId
+                    ? 'Everything is saved on this device. Resume to add the next Zone or finish the audit.'
+                    : walkBy
+                      ? 'Your photographs and remarks are saved on this device.'
+                      : `${cursor.data.answered} question${cursor.data.answered === 1 ? '' : 's'} answered in this Zone. Resume where you stopped.`}
                 </SlipText>
                 <View style={styles.slipAction}>
                   <Button title="Resume" busy={resume.isPending} onPress={() => resume.mutate()} />
                 </View>
               </Slip>
             ) : null}
+            {/*
+              The next Zone comes first, above the Zones already done. Below them it sank
+              off the bottom of a phone by the sixth Zone, behind the Abort / Save & pause /
+              Finish bar, and a Consultant in the field read that as the audit being over:
+              they paused it and started a new audit for Zone 7 (2026-09-23).
+            */}
+            {addZoneCard}
             {zonesInAudit.length > 0 ? (
-              <SectionHead title="Zones in this audit" description={`${finished} of ${zonesInAudit.length} finished`} />
+              <SectionHead
+                title="Zones in this audit"
+                description={
+                  `${finished} of ${liveZones.length} finished` +
+                  (zonesInAudit.length > liveZones.length
+                    ? ` · ${zonesInAudit.length - liveZones.length} aborted`
+                    : '')
+                }
+              />
             ) : null}
-          </>
+          </View>
         }
         ListEmptyComponent={
           canAddZone ? null : (
@@ -421,140 +557,84 @@ export default function AuditZonesScreen() {
                   .join(' · ') || null
               }
               action={
-                <Chip tone={item.status === 'COMPLETED' ? 'ok' : item.status === 'DRAFT' ? 'muted' : 'warn'}>
-                  {item.status === 'COMPLETED' ? 'Finished' : item.status === 'DRAFT' ? 'Not started' : 'In progress'}
+                <Chip
+                  tone={
+                    item.status === 'COMPLETED'
+                      ? 'ok'
+                      : item.status === 'DRAFT' || item.status === 'WITHDRAWN'
+                        ? 'muted'
+                        : 'warn'
+                  }
+                >
+                  {item.status === 'COMPLETED'
+                    ? 'Finished'
+                    : item.status === 'WITHDRAWN'
+                      ? 'Aborted'
+                      : item.status === 'DRAFT'
+                        ? 'Not started'
+                        : 'In progress'}
                 </Chip>
               }
             />
-            <View style={styles.zoneActions}>
-              <View style={styles.zoneAction}>
-                <Button
-                  title={item.status === 'COMPLETED' ? 'Review' : 'Open'}
-                  variant="secondary"
-                  onPress={() =>
-                    router.push({
-                      pathname: walkBy ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
-                      params: { auditZoneId: item.id },
-                    })
-                  }
-                />
-              </View>
-              {/*
-                R-34: the auditor typed this Zone's description and leader, and until now
-                a typo in either was permanent. Shown only while the audit is open —
-                afterwards the snapshot is what the report renders, and it is history.
-              */}
-              {auditOpen ? (
+            {item.status === 'WITHDRAWN' ? (
+              <Muted>
+                Aborted — its answers are cleared from this audit and it is not scored. Start
+                the Zone again to audit it afresh.
+              </Muted>
+            ) : (
+              <View style={styles.zoneActions}>
                 <View style={styles.zoneAction}>
                   <Button
-                    title="Edit details"
+                    title={item.status === 'COMPLETED' ? 'Review' : 'Open'}
                     variant="secondary"
                     onPress={() =>
-                      setEditing({
-                        auditZoneId: item.id,
-                        label: zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot),
-                        description: item.zoneDescriptionSnapshot ?? '',
-                        leaderName: item.zoneLeaderNameSnapshot ?? '',
+                      router.push({
+                        pathname: walkBy ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
+                        params: { auditZoneId: item.id },
                       })
                     }
                   />
                 </View>
-              ) : null}
-            </View>
+                {/*
+                  R-34: the auditor typed this Zone's description and leader, and until now
+                  a typo in either was permanent. Shown only while the audit is open —
+                  afterwards the snapshot is what the report renders, and it is history.
+                */}
+                {auditOpen ? (
+                  <View style={styles.zoneAction}>
+                    <Button
+                      title="Edit details"
+                      variant="secondary"
+                      onPress={() =>
+                        setEditing({
+                          auditZoneId: item.id,
+                          label: zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot),
+                          description: item.zoneDescriptionSnapshot ?? '',
+                          leaderName: item.zoneLeaderNameSnapshot ?? '',
+                        })
+                      }
+                    />
+                  </View>
+                ) : null}
+                {/* Abort one Zone without leaving the audit (0031). Unfinished Zones only. */}
+                {auditOpen && item.status !== 'COMPLETED' ? (
+                  <View style={styles.zoneAction}>
+                    <ConfirmAction
+                      compact
+                      title="Abort Zone"
+                      question={`Abort ${zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot)}? Its answers are cleared from this audit and it leaves the score. The rest of the audit carries on, and you can start this Zone again.`}
+                      confirmLabel="Abort this Zone"
+                      busy={withdraw.isPending && withdraw.variables === item.id}
+                      onConfirm={() => withdraw.mutate(item.id)}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            )}
           </Card>
         )}
         ListFooterComponent={
           <View style={styles.footer}>
-            {canAddZone ? (
-              <Card>
-                <CardHeader
-                  title={zonesInAudit.length === 0 ? 'Create the Zone' : 'Add the next Zone'}
-                  description={
-                    walkBy
-                      ? 'Where the walk-by goes, and who leads it.'
-                      : 'Each Zone is its own questionnaire of the department you choose.'
-                  }
-                />
-
-                <Label>Zone</Label>
-                <Pressable
-                  testID="zone-number"
-                  accessibilityRole="button"
-                  accessibilityLabel="Choose the Zone"
-                  onPress={() => setPicking(true)}
-                  style={[styles.select, showErrors && errors.zone ? styles.selectError : null]}
-                >
-                  <Text style={zoneNumber === null ? styles.selectPlaceholder : styles.selectValue}>
-                    {zoneNumber === null
-                      ? `Choose Zone ${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`
-                      : selected
-                        ? zoneDisplayLabel(selected.code, selected.name)
-                        : `Zone ${zoneNumber} (new)`}
-                  </Text>
-                  <Text style={styles.selectChevron}>▾</Text>
-                </Pressable>
-                {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
-
-                {/* R-29, said before the questions rather than after them. */}
-                {lockOnSelection ? (
-                  <Slip title="That Zone is taken">
-                    <SlipText>
-                      {lockOnSelection.auditorName} is auditing Zone {lockOnSelection.zoneCode} —{' '}
-                      {lockOnSelection.zoneName} in another audit of this Unit. Choose a
-                      different Zone; nothing you have recorded is lost.
-                    </SlipText>
-                  </Slip>
-                ) : null}
-
-                <Field
-                  label="Zone description (optional)"
-                  multiline
-                  value={draft.description}
-                  onChangeText={(value) => editDraft({ description: value })}
-                  placeholder="What this Zone covers"
-                  containerStyle={styles.gapAbove}
-                />
-
-                <Field
-                  testID="zone-leader-name"
-                  label="Zone Leader’s name"
-                  value={draft.leaderName}
-                  onChangeText={(value) => editDraft({ leaderName: value })}
-                  placeholder="Full name"
-                  autoCapitalize="words"
-                  error={showErrors && errors.leader ? errors.leader : undefined}
-                />
-
-                {!walkBy ? (
-                  <>
-                    <Label>Department</Label>
-                    <ChoiceList
-                      options={(versions.data ?? []).map((version) => ({
-                        value: version.id,
-                        label: version.templateName,
-                        detail: `${version.totalQuestions} questions`,
-                      }))}
-                      value={draft.versionId}
-                      onChange={(value) => editDraft({ versionId: value })}
-                      empty="No department checklists on this device yet. Pull down on Units to refresh."
-                    />
-                    {showErrors && errors.department ? (
-                      <Text style={styles.error}>{errors.department}</Text>
-                    ) : null}
-                  </>
-                ) : null}
-
-                <ErrorBanner message={addZone.error ? addZone.error.message : null} />
-
-                <Button
-                  testID="start-zone"
-                  title={walkBy ? 'Open camera' : 'Start the questions'}
-                  busy={addZone.isPending}
-                  onPress={submit}
-                />
-              </Card>
-            ) : null}
-
             <Muted>
               Saved on this device. Nothing here waits for a connection, and nothing is lost
               without one.
@@ -562,52 +642,6 @@ export default function AuditZonesScreen() {
           </View>
         }
       />
-
-      {/*
-        Three ways out, side by side, because they are alternatives rather than one action
-        with a fallback: call it off, put it down for now, or declare it finished. Stacking
-        them made the middle one look like a lesser version of the one above it, and
-        "Abort — save and pause" was one button trying to be two.
-      */}
-      {canFinish || canPause || canRestart ? (
-        <ActionBar row>
-          {canRestart ? (
-            <Button
-              title={`Restart (${restartsLeft} left)`}
-              variant="secondary"
-              busy={restart.isPending}
-              onPress={() => setRestartReason('')}
-            />
-          ) : null}
-          {canPause ? (
-            <Button
-              title="Abort"
-              variant="danger"
-              busy={leave.isPending && leave.variables !== null}
-              onPress={confirmAbort}
-            />
-          ) : null}
-          {canPause ? (
-            <Button
-              title="Save & pause"
-              variant="secondary"
-              busy={leave.isPending && leave.variables === null}
-              onPress={() => leave.mutate(null)}
-            />
-          ) : null}
-          {/*
-            Present from the first Zone, and inert until every Zone is finished — the rule
-            §7.1 already enforces. A button that appears only at the end hides what the end
-            *is*; one that is visibly not yet available says it.
-          */}
-          <Button
-            title="Finish audit"
-            disabled={!canFinish}
-            busy={finish.isPending}
-            onPress={confirmFinish}
-          />
-        </ActionBar>
-      ) : null}
 
       <ZoneDetailsPrompt
         edit={editing}
@@ -860,6 +894,8 @@ const useStyles = createThemedStyles((theme) => ({
   restartBody: { gap: theme.space.sm, paddingTop: theme.space.xs },
   zoneActions: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
   zoneAction: { flex: 1 },
+  headerActions: { flexDirection: 'row', gap: theme.space.xs },
+  header: { gap: theme.space.sm },
   footer: { gap: theme.space.sm, marginTop: theme.space.lg, paddingBottom: theme.space.md },
   slipAction: { marginTop: theme.space.xs },
   gapAbove: { marginTop: theme.space.md },

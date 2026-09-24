@@ -193,6 +193,8 @@ export const outbox = sqliteTable('outbox', {
  * two-phase media flow. `submit` is a corrective-action attempt (Phase 6).
  */
 export const OUTBOX_OPERATIONS = [
+  /** An unfinished Zone withdrawn from its audit — the auditor's "abort this Zone". */
+  'withdraw',
   'upsert',
   'patch',
   'complete',

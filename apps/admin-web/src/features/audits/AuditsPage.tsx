@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearch } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Audit,
@@ -30,6 +31,13 @@ import {
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { AuditDetailPanel } from './AuditDetailPanel';
+import { AuditProgress, TeamProgress } from './AuditProgress';
+
+/** `/audits?audit=…` or `?assignment=…` — where a notification sends someone. */
+export interface AuditsSearch {
+  audit?: string;
+  assignment?: string;
+}
 
 /**
  * The live audit board (§2.1 step 10) and assignment creation.
@@ -41,9 +49,26 @@ import { AuditDetailPanel } from './AuditDetailPanel';
  */
 export function AuditsPage() {
   const { scope, can } = useSession();
+  const search = useSearch({ strict: false }) as AuditsSearch;
   const [assigning, setAssigning] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [showActiveOnly, setShowActiveOnly] = useState(true);
+  // A deep link may point at a finished audit, which the active-only board would hide.
+  const [showActiveOnly, setShowActiveOnly] = useState(!search.audit);
+  const [expanded, setExpanded] = useState<string | null>(search.audit ?? null);
+  const [expandedAssignment, setExpandedAssignment] = useState<string | null>(
+    search.assignment ?? null,
+  );
+
+  // Arriving from a second notification while already on this page re-targets it.
+  useEffect(() => {
+    if (search.audit) {
+      setShowActiveOnly(false);
+      setExpanded(search.audit);
+    }
+  }, [search.audit]);
+  useEffect(() => {
+    if (search.assignment) setExpandedAssignment(search.assignment);
+  }, [search.assignment]);
 
   const audits = useQuery({
     queryKey: ['audits', showActiveOnly],
@@ -60,6 +85,44 @@ export function AuditsPage() {
 
   const isConsultant = scope?.role === 'CONSULTANT';
 
+  // Newest first. The server already orders so, but a board read top-down is the whole
+  // point, so it is stated here rather than trusted.
+  const auditRows = useMemo(
+    () => [...(audits.data?.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [audits.data],
+  );
+  const assignmentRows = useMemo(
+    () =>
+      [...(assignments.data?.data ?? [])].sort(
+        (a, b) =>
+          // A team's assignments stay together, newest team first.
+          b.createdAt.localeCompare(a.createdAt) || (a.groupId ?? a.id).localeCompare(b.groupId ?? b.id),
+      ),
+    [assignments.data],
+  );
+
+  /** The auditors of each team, from whichever list names them. */
+  const teams = useMemo(() => {
+    const byGroup = new Map<string, { audits: Audit[]; assignments: AuditAssignment[] }>();
+    const team = (groupId: string) => {
+      const found = byGroup.get(groupId) ?? { audits: [], assignments: [] };
+      byGroup.set(groupId, found);
+      return found;
+    };
+    for (const audit of auditRows) if (audit.assignmentGroupId) team(audit.assignmentGroupId).audits.push(audit);
+    for (const assignment of assignmentRows) if (assignment.groupId) team(assignment.groupId).assignments.push(assignment);
+    return byGroup;
+  }, [auditRows, assignmentRows]);
+
+  const teamSize = (groupId: string | null | undefined) => {
+    if (!groupId) return 1;
+    const team = teams.get(groupId);
+    return new Set([
+      ...(team?.audits ?? []).map((audit) => audit.auditorUserId),
+      ...(team?.assignments ?? []).map((assignment) => assignment.auditorUserId),
+    ]).size;
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -68,7 +131,7 @@ export function AuditsPage() {
           description={
             isConsultant
               ? 'Every audit you conducted, newest first. Read-only — the official report is a Super Admin deliverable (N5).'
-              : 'The live board: assigned, ready, in progress and paused audits across the Units you can see.'
+              : 'Newest first. Click a Unit to see its progress Zone by Zone; a team audit shows every auditor’s share.'
           }
           action={
             <div className="flex gap-2">
@@ -93,13 +156,13 @@ export function AuditsPage() {
           </div>
         )}
 
-        {audits.data && audits.data.data.length === 0 && (
+        {audits.data && auditRows.length === 0 && (
           <p className="px-4 py-6 text-sm text-ink-3">
             {showActiveOnly ? 'No audits are running right now.' : 'No audits yet.'}
           </p>
         )}
 
-        {audits.data && audits.data.data.length > 0 && (
+        {auditRows.length > 0 && (
           <Table>
             <thead>
               <tr>
@@ -113,33 +176,71 @@ export function AuditsPage() {
               </tr>
             </thead>
             <tbody>
-              {audits.data.data.map((audit) => (
-                <tr key={audit.id} className="border-t border-edge-soft">
-                  <Td>{audit.unitName}</Td>
-                  <Td>{AUDIT_TYPE_LABELS[audit.auditType]}</Td>
-                  <Td>{audit.auditorName}</Td>
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      <Badge tone={STATUS_TONE[audit.status]}>{STATUS_LABELS[audit.status]}</Badge>
-                      <LocationFlag audit={audit} />
-                    </div>
-                  </Td>
-                  <Td>
-                    <ScoreCell audit={audit} />
-                  </Td>
-                  <Td className="text-ink-3">
-                    {new Date(audit.updatedAt).toLocaleString()}
-                  </Td>
-                  <Td>
-                    <Button
-                      variant="secondary"
-                      onClick={() => setSelected(selected === audit.id ? null : audit.id)}
+              {auditRows.map((audit) => {
+                const open = expanded === audit.id;
+                const size = teamSize(audit.assignmentGroupId);
+                const team = audit.assignmentGroupId ? teams.get(audit.assignmentGroupId) : undefined;
+                return (
+                  <Fragment key={audit.id}>
+                    <tr
+                      ref={audit.id === search.audit ? scrollIntoViewOnce : undefined}
+                      className={cn(
+                        'border-t border-edge-soft',
+                        audit.id === search.audit && 'gb-row--target',
+                        open && 'gb-row--open',
+                      )}
                     >
-                      {selected === audit.id ? 'Hide' : 'Open'}
-                    </Button>
-                  </Td>
-                </tr>
-              ))}
+                      <Td>
+                        <RowToggle open={open} onClick={() => setExpanded(open ? null : audit.id)}>
+                          {audit.unitName}
+                        </RowToggle>
+                      </Td>
+                      <Td>{AUDIT_TYPE_LABELS[audit.auditType]}</Td>
+                      <Td>
+                        <div className="flex items-center gap-2">
+                          {audit.auditorName}
+                          {size > 1 && <Badge tone="neutral">team of {size}</Badge>}
+                        </div>
+                      </Td>
+                      <Td>
+                        <div className="flex items-center gap-2">
+                          <Badge tone={STATUS_TONE[audit.status]}>{STATUS_LABELS[audit.status]}</Badge>
+                          <LocationFlag audit={audit} />
+                        </div>
+                      </Td>
+                      <Td>
+                        <ScoreCell audit={audit} />
+                      </Td>
+                      <Td className="text-ink-3">
+                        {new Date(audit.updatedAt).toLocaleString()}
+                      </Td>
+                      <Td>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setSelected(selected === audit.id ? null : audit.id)}
+                        >
+                          {selected === audit.id ? 'Hide' : 'Open'}
+                        </Button>
+                      </Td>
+                    </tr>
+                    {open && (
+                      <tr className="gb-row-expand">
+                        <td colSpan={7}>
+                          {audit.assignmentGroupId && size > 1 ? (
+                            <TeamProgress
+                              unitId={audit.unitId}
+                              audits={team?.audits ?? [audit]}
+                              pending={pendingAuditors(team)}
+                            />
+                          ) : (
+                            <AuditProgress auditId={audit.id} />
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </Table>
         )}
@@ -147,11 +248,11 @@ export function AuditsPage() {
 
       {selected && <AuditDetailPanel auditId={selected} onClose={() => setSelected(null)} />}
 
-      {!isConsultant && assignments.data && assignments.data.data.length > 0 && (
+      {!isConsultant && assignmentRows.length > 0 && (
         <Card>
           <CardHeader
             title="Open assignments"
-            description="Assigned work that has not been completed. Revoking a Unit membership cancels these rather than deleting them (AA-1)."
+            description="Assigned work not yet completed, newest first. Click a Unit to see how far its auditors have got. Revoking a Unit membership cancels these rather than deleting them (AA-1)."
           />
           <Table>
             <thead>
@@ -165,14 +266,62 @@ export function AuditsPage() {
               </tr>
             </thead>
             <tbody>
-              {assignments.data.data.map((assignment) => (
-                <AssignmentRow key={assignment.id} assignment={assignment} />
+              {assignmentRows.map((assignment) => (
+                <AssignmentRow
+                  key={assignment.id}
+                  assignment={assignment}
+                  team={assignment.groupId ? teams.get(assignment.groupId)?.assignments ?? [] : []}
+                  targeted={assignment.id === search.assignment}
+                  open={expandedAssignment === assignment.id}
+                  onToggle={() =>
+                    setExpandedAssignment(expandedAssignment === assignment.id ? null : assignment.id)
+                  }
+                />
               ))}
             </tbody>
           </Table>
         </Card>
       )}
     </div>
+  );
+}
+
+/** Team members with an open assignment and no audit on the board yet. */
+function pendingAuditors(team: { audits: Audit[]; assignments: AuditAssignment[] } | undefined): string[] {
+  if (!team) return [];
+  const started = new Set(team.audits.map((audit) => audit.assignmentId));
+  return team.assignments
+    .filter((assignment) => !started.has(assignment.id))
+    .map((assignment) => assignment.auditorName);
+}
+
+/** Brings a deep-linked row into view, once, when it first renders. */
+function scrollIntoViewOnce(row: HTMLTableRowElement | null) {
+  if (!row || row.dataset.scrolled) return;
+  row.dataset.scrolled = '1';
+  requestAnimationFrame(() => row.scrollIntoView({ block: 'center' }));
+}
+
+/**
+ * The click target that expands a row: a real button, so it is reachable by keyboard and
+ * announces its state, styled as the row's own label rather than as a second button.
+ */
+export function RowToggle({
+  open,
+  onClick,
+  children,
+}: {
+  open: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button type="button" className="gb-rowtoggle" aria-expanded={open} onClick={onClick}>
+      <span className="gb-rowtoggle-chev" aria-hidden>
+        ▸
+      </span>
+      {children}
+    </button>
   );
 }
 
@@ -235,7 +384,20 @@ function ScoreCell({ audit }: { audit: Audit }) {
   );
 }
 
-function AssignmentRow({ assignment }: { assignment: AuditAssignment }) {
+function AssignmentRow({
+  assignment,
+  team,
+  targeted,
+  open,
+  onToggle,
+}: {
+  assignment: AuditAssignment;
+  /** Every open assignment of this assignment's team, itself included; empty when alone. */
+  team: AuditAssignment[];
+  targeted: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const queryClient = useQueryClient();
   const { can } = useSession();
   const [reason, setReason] = useState('');
@@ -246,42 +408,121 @@ function AssignmentRow({ assignment }: { assignment: AuditAssignment }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['audit-assignments'] }),
   });
 
+  const others = team.filter((member) => member.id !== assignment.id);
+
   return (
-    <tr className="border-t border-edge-soft">
-      <Td>{assignment.unitName}</Td>
-      <Td>{assignment.auditorName}</Td>
-      <Td>{AUDIT_TYPE_LABELS[assignment.auditType]}</Td>
-      <Td>{assignment.dueAt ? new Date(assignment.dueAt).toLocaleDateString() : '—'}</Td>
-      <Td>
-        <Badge tone="neutral">{assignment.status}</Badge>
-      </Td>
-      <Td>
-        {can('audit_assignment', 'cancel') && (
-          <div className="flex gap-2">
-            <Input
-              placeholder="Reason"
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-            <Button
-              variant="secondary"
-              disabled={reason.trim().length === 0 || cancel.isPending}
-              onClick={() => cancel.mutate()}
-            >
-              Cancel
-            </Button>
+    <Fragment>
+      <tr
+        ref={targeted ? scrollIntoViewOnce : undefined}
+        className={cn('border-t border-edge-soft', targeted && 'gb-row--target', open && 'gb-row--open')}
+      >
+        <Td>
+          <RowToggle open={open} onClick={onToggle}>
+            {assignment.unitName}
+          </RowToggle>
+        </Td>
+        <Td>
+          <div className="flex flex-wrap items-center gap-2">
+            {assignment.auditorName}
+            {others.length > 0 && (
+              <span
+                className="text-xs text-ink-3"
+                title={`Same audit as ${others.map((member) => member.auditorName).join(', ')}`}
+              >
+                + {others.map((member) => member.auditorName).join(', ')}
+              </span>
+            )}
           </div>
-        )}
-        {cancel.error && <ErrorNotice error={cancel.error} />}
-      </Td>
-    </tr>
+        </Td>
+        <Td>{AUDIT_TYPE_LABELS[assignment.auditType]}</Td>
+        <Td>{assignment.dueAt ? new Date(assignment.dueAt).toLocaleDateString() : '—'}</Td>
+        <Td>
+          <Badge tone={assignment.status === 'IN_PROGRESS' ? 'warn' : 'neutral'}>
+            {assignment.status.replace(/_/g, ' ').toLowerCase()}
+          </Badge>
+        </Td>
+        <Td>
+          {can('audit_assignment', 'cancel') && (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
+              <Button
+                variant="secondary"
+                disabled={reason.trim().length === 0 || cancel.isPending}
+                onClick={() => cancel.mutate()}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+          {cancel.error && <ErrorNotice error={cancel.error} />}
+        </Td>
+      </tr>
+      {open && (
+        <tr className="gb-row-expand">
+          <td colSpan={6}>
+            <AssignmentProgress assignment={assignment} team={team.length > 0 ? team : [assignment]} />
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+}
+
+/**
+ * How far an assignment — or its whole team — has got. The audits come from the Unit's
+ * list, matched on the assignment they were started against; an auditor who has not
+ * started yet is said so rather than left out.
+ */
+function AssignmentProgress({
+  assignment,
+  team,
+}: {
+  assignment: AuditAssignment;
+  team: AuditAssignment[];
+}) {
+  const unitAudits = useQuery({
+    queryKey: ['audits', 'unit', assignment.unitId],
+    queryFn: () => api.get<Page<Audit>>(`/audits?unitId=${assignment.unitId}&limit=200`),
+    refetchInterval: 30_000,
+  });
+
+  if (unitAudits.isLoading) return <Spinner label="Loading progress…" />;
+  if (unitAudits.error) return <ErrorNotice error={unitAudits.error} />;
+
+  const ids = new Set(team.map((member) => member.id));
+  const audits = (unitAudits.data?.data ?? []).filter(
+    (audit) => audit.assignmentId !== null && ids.has(audit.assignmentId),
+  );
+  const started = new Set(audits.map((audit) => audit.assignmentId));
+  const pending = team.filter((member) => !started.has(member.id)).map((member) => member.auditorName);
+
+  if (assignment.groupId && team.length > 1) {
+    return (
+      <TeamProgress unitId={assignment.unitId} audits={audits} pending={pending} />
+    );
+  }
+  const audit = audits[0];
+  return audit ? (
+    <AuditProgress auditId={audit.id} />
+  ) : (
+    <p className="gb-progress-line">
+      <b>{assignment.auditorName}</b> has not started this audit on the device yet.
+      {assignment.instructions ? ` Instructions: ${assignment.instructions}` : ''}
+    </p>
   );
 }
 
 function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
   const queryClient = useQueryClient();
   const [unitId, setUnitId] = useState('');
-  const [auditorUserId, setAuditorUserId] = useState('');
+  /** In the order picked. The first is the lead; each gets their own assignment. */
+  const [auditorUserIds, setAuditorUserIds] = useState<string[]>([]);
+  // Remounts the picker after each pick, so it empties itself for the next name.
+  const [pickerKey, setPickerKey] = useState(0);
   const [auditType, setAuditType] = useState<CreateAuditAssignmentRequest['auditType']>(
     'EXTERNAL_5S',
   );
@@ -313,11 +554,17 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
       (user.role === 'ZONE_LEADER' && memberIds.has(user.id)),
   );
 
+  // A Zone Leader of another Unit drops out when the Unit changes; a Consultant stays.
+  const eligible = new Set(auditors.map((user) => user.id));
+  const picked = auditorUserIds.filter((id) => eligible.has(id));
+  const byId = new Map(auditors.map((user) => [user.id, user]));
+
   const create = useMutation({
     mutationFn: () =>
       api.post<AuditAssignment>('/audit-assignments', {
         unitId,
-        auditorUserId,
+        auditorUserId: picked[0],
+        ...(picked.length > 1 ? { coAuditorUserIds: picked.slice(1) } : {}),
         auditType,
         ...(dueAt ? { dueAt: new Date(dueAt).toISOString() } : {}),
         ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
@@ -352,22 +599,49 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
         </Field>
 
         <Field
-          label="Auditor"
-          hint="Any active Consultant, or a Zone Leader who belongs to this Unit."
+          label="Auditors"
+          hint={
+            picked.length > 1
+              ? `One audit of this Unit by ${picked.length} auditors. Each gets their own assignment and phone; the unit summary combines their Zones.`
+              : 'Add one or more — any active Consultant, or a Zone Leader of this Unit. Several auditors are one audit together.'
+          }
         >
-          <Select
-            value={auditorUserId}
-            onChange={(event) => setAuditorUserId(event.target.value)}
-            required
+          <Combobox
+            key={pickerKey}
+            value=""
+            onChange={(id) => {
+              if (!id) return;
+              setAuditorUserIds((current) => (current.includes(id) ? current : [...current, id]));
+              setPickerKey((key) => key + 1);
+            }}
+            options={auditors
+              .filter((user) => !picked.includes(user.id))
+              .map((user) => ({
+                id: user.id,
+                label: `${user.fullName} (${user.loginId}) — ${user.role === 'CONSULTANT' ? 'Consultant' : 'Zone Leader'}`,
+              }))}
+            placeholder={unitId ? (picked.length ? 'Add another auditor…' : 'Search auditors…') : 'Choose a Unit first'}
             disabled={!unitId}
-          >
-            <option value="">Choose an auditor…</option>
-            {auditors.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.fullName} ({user.loginId}) — {user.role === 'CONSULTANT' ? 'Consultant' : 'Zone Leader'}
-              </option>
-            ))}
-          </Select>
+          />
+          {picked.length > 0 && (
+            <ul className="gb-picked" aria-label="Chosen auditors">
+              {picked.map((id, index) => (
+                <li key={id}>
+                  <span>
+                    {byId.get(id)?.fullName ?? 'Auditor'}
+                    {index === 0 && picked.length > 1 ? <em> lead</em> : null}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${byId.get(id)?.fullName ?? 'auditor'}`}
+                    onClick={() => setAuditorUserIds((current) => current.filter((value) => value !== id))}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </Field>
 
         <Field label="Audit type">
@@ -394,8 +668,12 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
 
       {create.error && <ErrorNotice error={create.error} />}
 
-      <Button type="submit" disabled={create.isPending || !unitId || !auditorUserId}>
-        {create.isPending ? 'Assigning…' : 'Assign'}
+      <Button type="submit" disabled={create.isPending || !unitId || picked.length === 0}>
+        {create.isPending
+          ? 'Assigning…'
+          : picked.length > 1
+            ? `Assign to ${picked.length} auditors`
+            : 'Assign'}
       </Button>
     </form>
   );

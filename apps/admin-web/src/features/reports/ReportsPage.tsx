@@ -10,9 +10,9 @@ import {
   type ReportKind,
   type ReportSnapshot,
   type Unit,
-  type Zone,
 } from '@audit5s/contracts';
 import { api, ApiError, fetchAll } from '@/lib/api';
+import { PreviewButton, SummaryZonePicker } from './SummaryZonePicker';
 import { useSession } from '@/lib/session';
 import {
   Badge,
@@ -47,6 +47,10 @@ const KIND_LABEL: Record<ReportKind, string> = {
   AFTER_EVIDENCE_ZONE: 'After-evidence report',
   MULTI_ZONE_SUMMARY: 'Unit summary report',
 };
+
+/** The kinds that name one audited Zone; the summary has its own picker. */
+const ZONE_REPORT_KINDS = ['INITIAL_ZONE', 'AFTER_EVIDENCE_ZONE'] as const;
+type ZoneReportKind = (typeof ZONE_REPORT_KINDS)[number];
 
 export function ReportsPage() {
   const { can } = useSession();
@@ -123,10 +127,10 @@ export function ReportsPage() {
 /**
  * The generation form (§8.9).
  *
- * A zone report names one completed audit-Zone; a summary names a **selection** of Zones,
- * with Select All. The selection is stored on the snapshot, so the report is reproducible
- * and its scope unambiguous — which is why this is a real multi-select rather than a
- * "whole Unit" checkbox that would have to be re-interpreted later.
+ * A zone report names one completed audit-Zone. A unit summary names a **selection** of
+ * audited Zones, chosen in `SummaryZonePicker` — any Zones, from any of the Unit's finished
+ * audits. The selection is stored on the snapshot, so the report is reproducible and its
+ * scope unambiguous.
  */
 function GeneratePanel({
   unitId,
@@ -136,13 +140,11 @@ function GeneratePanel({
   onUnitChange: (unitId: string) => void;
 }) {
   const queryClient = useQueryClient();
-  const [kind, setKind] = useState<ReportKind>('INITIAL_ZONE');
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [kind, setKind] = useState<ZoneReportKind>('INITIAL_ZONE');
   const [auditId, setAuditId] = useState('');
   const [auditZoneId, setAuditZoneId] = useState('');
-  const [selectedZoneIds, setSelectedZoneIds] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const isSummary = kind === 'MULTI_ZONE_SUMMARY';
 
   // Every audit the actor may see, not only the Unit picked at the top of the page. A
   // report names one audit-Zone and nothing else, so scoping this list to the current Unit
@@ -152,31 +154,6 @@ function GeneratePanel({
   const audits = useQuery({
     queryKey: ['audits', 'completed', 'all-units'],
     queryFn: () => fetchAll<Audit>('/audits?limit=200'),
-    enabled: !isSummary,
-  });
-
-  // This Unit's Zones. `/zones` takes no Unit filter, so it would list every Unit's. Always
-  // loaded: the one-click unit summary below needs them whatever kind is selected.
-  const zones = useQuery({
-    queryKey: ['zones', unitId],
-    queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?limit=200`),
-  });
-
-  /** The whole Unit in one click: a summary over every active Zone. */
-  const unitSummary = useMutation({
-    mutationFn: () =>
-      api.post<ReportSnapshot>('/reports/generate', {
-        kind: 'MULTI_ZONE_SUMMARY',
-        unitId,
-        selectedZoneIds: (zones.data?.data ?? []).map((zone) => zone.id),
-      }),
-    onSuccess: (snapshot) => {
-      setNotice(
-        `Unit summary report version ${snapshot.version} queued. It renders in the background; ` +
-          'the history updates when it is ready.',
-      );
-      void queryClient.invalidateQueries({ queryKey: ['reports'] });
-    },
   });
 
   // The audit's Zones come with the audit (`GET /audits/{id}`, §8.6). There is no
@@ -185,7 +162,7 @@ function GeneratePanel({
   const auditZones = useQuery({
     queryKey: ['audit-detail', auditId],
     queryFn: () => api.get<AuditDetail>(`/audits/${auditId}`),
-    enabled: Boolean(auditId) && !isSummary,
+    enabled: Boolean(auditId),
   });
 
   // Only a completed audit can be reported on (§10.2), so the picker offers no other.
@@ -199,11 +176,7 @@ function GeneratePanel({
   );
 
   const generate = useMutation({
-    mutationFn: () =>
-      api.post<ReportSnapshot>(
-        '/reports/generate',
-        isSummary ? { kind, unitId, selectedZoneIds } : { kind, auditZoneId },
-      ),
+    mutationFn: () => api.post<ReportSnapshot>('/reports/generate', { kind, auditZoneId }),
     onSuccess: (snapshot) => {
       setNotice(
         `Version ${snapshot.version} queued. It renders in the background; the history ` +
@@ -213,10 +186,6 @@ function GeneratePanel({
     },
   });
 
-  const allZoneIds = (zones.data?.data ?? []).map((zone) => zone.id);
-  const allSelected = allZoneIds.length > 0 && selectedZoneIds.length === allZoneIds.length;
-  const ready = isSummary ? selectedZoneIds.length > 0 : Boolean(auditZoneId);
-
   return (
     <Card>
       <CardHeader
@@ -224,32 +193,34 @@ function GeneratePanel({
         description="Rendering happens in the background; this returns as soon as the payload is frozen."
       />
       <div className="space-y-3 px-4 py-3">
-        <div className="flex flex-wrap items-center gap-3 border-b border-edge-soft pb-3">
-          <Button
-            onClick={() => unitSummary.mutate()}
-            disabled={unitSummary.isPending || (zones.data?.data.length ?? 0) === 0}
-          >
-            {unitSummary.isPending ? 'Queuing…' : 'Generate unit summary report'}
-          </Button>
-          <span className="text-xs text-ink-2">
-            Every active Zone of this Unit, each from its most recently completed audit. To pick
-            Zones yourself, choose “Unit summary report” as the kind below.
-          </span>
-          {unitSummary.error ? <ErrorNotice error={unitSummary.error} /> : null}
+        <div className="space-y-3 border-b border-edge-soft pb-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant={summaryOpen ? 'secondary' : 'primary'}
+              onClick={() => setSummaryOpen((open) => !open)}
+              aria-expanded={summaryOpen}
+            >
+              {summaryOpen ? 'Close unit summary' : 'Generate unit summary report'}
+            </Button>
+            <span className="text-xs text-ink-2">
+              Choose the Zones yourself: every finished audit of this Unit is listed with its
+              date, and you can take any of its Zones.
+            </span>
+          </div>
+          {summaryOpen ? <SummaryZonePicker key={unitId} unitId={unitId} /> : null}
         </div>
+
         <div className="flex flex-wrap gap-3">
           <div className="w-72">
-            <Field label="Kind">
+            <Field label="Zone report">
               <Select
                 value={kind}
                 onChange={(event) => {
-                  setKind(event.target.value as ReportKind);
-                  setAuditZoneId('');
-                  setSelectedZoneIds([]);
+                  setKind(event.target.value as ZoneReportKind);
                   setNotice(null);
                 }}
               >
-                {(Object.keys(KIND_LABEL) as ReportKind[]).map((value) => (
+                {ZONE_REPORT_KINDS.map((value) => (
                   <option key={value} value={value}>
                     {KIND_LABEL[value]}
                   </option>
@@ -257,144 +228,57 @@ function GeneratePanel({
               </Select>
             </Field>
           </div>
-
-          {!isSummary ? (
-            <>
-              <div className="w-72">
-                <Field label="Completed audit">
-                  <Select
-                    value={auditId}
-                    onChange={(event) => {
-                      const chosen = completedAudits.find((audit) => audit.id === event.target.value);
-                      setAuditId(event.target.value);
-                      setAuditZoneId('');
-                      // The audit carries the Unit with it, so the history below follows the
-                      // report that is about to be queued rather than a Unit left behind.
-                      if (chosen && chosen.unitId !== unitId) onUnitChange(chosen.unitId);
-                    }}
-                  >
-                    <option value="">Choose an audit…</option>
-                    {completedAudits.map((audit) => (
-                      <option key={audit.id} value={audit.id}>
-                        {auditLabel(audit)}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-              <div className="w-72">
-                <Field label="Zone">
-                  <Select
-                    value={auditZoneId}
-                    onChange={(event) => setAuditZoneId(event.target.value)}
-                    disabled={!auditId}
-                  >
-                    <option value="">Choose a Zone…</option>
-                    {(auditZones.data?.zones ?? []).map((zone) => (
-                      <option key={zone.id} value={zone.id}>
-                        {zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-            </>
-          ) : null}
-        </div>
-
-        {isSummary ? (
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-ink">
-                Zones ({selectedZoneIds.length} of {allZoneIds.length} selected)
-              </span>
-              <Button
-                variant="secondary"
-                onClick={() => setSelectedZoneIds(allSelected ? [] : allZoneIds)}
+          <div className="w-72">
+            <Field label="Completed audit">
+              <Select
+                value={auditId}
+                onChange={(event) => {
+                  const chosen = completedAudits.find((audit) => audit.id === event.target.value);
+                  setAuditId(event.target.value);
+                  setAuditZoneId('');
+                  // The audit carries the Unit with it, so the history below follows the
+                  // report that is about to be queued rather than a Unit left behind.
+                  if (chosen && chosen.unitId !== unitId) onUnitChange(chosen.unitId);
+                }}
               >
-                {allSelected ? 'Clear all' : 'Select all'}
-              </Button>
-            </div>
-            <div className="max-h-64 overflow-y-auto border border-edge-soft">
-              {(zones.data?.data ?? []).map((zone) => (
-                <label
-                  key={zone.id}
-                  className="flex items-center gap-2 border-b border-edge-soft px-3 py-1.5 text-sm last:border-b-0"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedZoneIds.includes(zone.id)}
-                    onChange={(event) =>
-                      setSelectedZoneIds((current) =>
-                        event.target.checked
-                          ? [...current, zone.id]
-                          : current.filter((id) => id !== zone.id),
-                      )
-                    }
-                  />
-                  {zoneDisplayLabel(zone.code, zone.name)}
-                </label>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-ink-2">
-              Every figure in the summary is computed over the selected Zones only — it is
-              never a slice of a Unit-wide number. Each Zone contributes its most recently
-              completed audit.
-            </p>
+                <option value="">Choose an audit…</option>
+                {completedAudits.map((audit) => (
+                  <option key={audit.id} value={audit.id}>
+                    {auditLabel(audit)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
-        ) : null}
+          <div className="w-72">
+            <Field label="Zone">
+              <Select
+                value={auditZoneId}
+                onChange={(event) => setAuditZoneId(event.target.value)}
+                disabled={!auditId}
+              >
+                <option value="">Choose a Zone…</option>
+                {(auditZones.data?.zones ?? []).map((zone) => (
+                  <option key={zone.id} value={zone.id}>
+                    {zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        </div>
 
         {generate.error ? <ErrorNotice error={generate.error} /> : null}
         {notice ? <p className="gb-slip">{notice}</p> : null}
 
         <div className="flex gap-2">
-          <Button onClick={() => generate.mutate()} disabled={!ready || generate.isPending}>
+          <Button onClick={() => generate.mutate()} disabled={!auditZoneId || generate.isPending}>
             {generate.isPending ? 'Queuing…' : 'Generate'}
           </Button>
-          <PreviewButton
-            disabled={!ready}
-            body={isSummary ? { kind, unitId, selectedZoneIds } : { kind, auditZoneId }}
-          />
+          <PreviewButton disabled={!auditZoneId} body={{ kind, auditZoneId }} />
         </div>
       </div>
     </Card>
-  );
-}
-
-/**
- * `POST /reports/preview` — the HTML, in a new tab, with no snapshot and no link minted.
- *
- * It goes through `fetch` rather than the JSON client because the response is a document
- * rather than a payload, and it is opened as a blob so the browser renders it without this
- * application having to host it.
- */
-function PreviewButton({ disabled, body }: { disabled: boolean; body: unknown }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-
-  async function open() {
-    setBusy(true);
-    setError(null);
-    try {
-      const html = await api.postText('/reports/preview', body);
-      const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-      window.open(url, '_blank', 'noopener');
-      // Revoked on a timer rather than immediately: the new tab has to fetch it first.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <Button variant="secondary" onClick={open} disabled={disabled || busy}>
-        {busy ? 'Rendering…' : 'Preview'}
-      </Button>
-      {error ? <ErrorNotice error={error} /> : null}
-    </>
   );
 }
 

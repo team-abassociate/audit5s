@@ -215,7 +215,17 @@ describe('the table matches the diagrams in PART 7', () => {
   });
 
   it('offers the auditor exactly abort and finish while a Zone is in progress', () => {
-    expect(nextStatuses('audit_zone', 'IN_PROGRESS', 'CONSULTANT')).toEqual(['COMPLETED']);
+    expect(nextStatuses('audit_zone', 'IN_PROGRESS', 'CONSULTANT').sort()).toEqual([
+      'COMPLETED',
+      'WITHDRAWN',
+    ]);
+    // Withdrawing is the auditor's own abort, never a way to take back a finished Zone.
+    expect(nextStatuses('audit_zone', 'DRAFT', 'CONSULTANT').sort()).toEqual([
+      'IN_PROGRESS',
+      'WITHDRAWN',
+    ]);
+    expect(nextStatuses('audit_zone', 'COMPLETED', 'CONSULTANT')).toEqual([]);
+    expect(nextStatuses('audit_zone', 'WITHDRAWN', 'CONSULTANT')).toEqual([]);
     expect(nextStatuses('audit', 'IN_PROGRESS', 'CONSULTANT').sort()).toEqual([
       'COMPLETED',
       'PAUSED',

@@ -53,6 +53,12 @@ export class ResponsesService {
     if (zone.auditStatus === 'CANCELLED') {
       throw AppError.conflict('INVALID_STATE_TRANSITION', 'This audit was cancelled');
     }
+    if (zone.status === 'WITHDRAWN') {
+      throw AppError.conflict(
+        'INVALID_STATE_TRANSITION',
+        'This Zone was withdrawn from the audit. Start the Zone again to record answers for it.',
+      );
+    }
 
     if (scope.actor.deviceId && zone.owningDeviceId && zone.owningDeviceId !== scope.actor.deviceId) {
       throw AppError.conflict(

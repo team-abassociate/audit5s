@@ -186,7 +186,11 @@ h2.section-title {
 
 /* --------------------------------------------------------------------------- tables */
 table { width: 100%; border-collapse: collapse; }
-tr { break-inside: avoid; }
+/* A checklist row is never cut across a page: the whole row moves to the next page, and
+   the header repeats above it there. \`td\` carries the rule too because Chromium honours
+   \`break-inside\` on table cells more reliably than on the row alone. */
+thead { display: table-header-group; }
+tr, th, td { break-inside: avoid; }
 tr.section-row { break-after: avoid; }
 th, td {
   border: 1px solid ${brand.hairline};
@@ -257,7 +261,7 @@ tbody tr.total-row, tbody tr.total-row td {
 /* ------------------------------------------------------------- rating-scale pills
    Outlined chips, not filled capsules: colour still marks the band, carried once more by
    a small filled swatch so it reads even where a reader's printer renders text in black. */
-.pills { display: flex; gap: 6px; margin-top: 8px; }
+.pills { display: flex; gap: 6px; margin-top: 8px; margin-bottom: 4px; }
 .pill {
   flex: 1 1 0;
   border: 1.25px solid;

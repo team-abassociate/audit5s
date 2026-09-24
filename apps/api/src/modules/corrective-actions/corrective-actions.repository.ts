@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL, ne } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   audits,
@@ -662,6 +662,8 @@ export class CorrectiveActionWork {
           eq(evidence.classification, 'NONCONFORMITY'),
           inArray(evidence.kind, ['QUESTION_EVIDENCE', 'WALK_BY_PHOTO']),
           isNull(evidence.deletedAt),
+          // A Zone the auditor withdrew was not audited: its photos raise nothing.
+          ne(auditZones.status, 'WITHDRAWN'),
         ),
       )
       .orderBy(asc(auditZones.sequenceNo), asc(evidence.id));

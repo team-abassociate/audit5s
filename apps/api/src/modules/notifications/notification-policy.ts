@@ -88,6 +88,12 @@ const AUDIT_TYPE_LABEL: Record<string, string> = {
   WALK_BY: 'Walk-by audit',
 };
 
+/** "an external 5S audit", "a walk-by audit" — the label mid-sentence, with its article. */
+function aAudit(label: string): string {
+  const lower = label.toLowerCase().replace(/\b5s\b/g, '5S');
+  return `${/^[aeiou]/.test(lower) ? 'an' : 'a'} ${lower}`;
+}
+
 /**
  * A date a person reads, from an ISO timestamp. Falls back to the leading date portion
  * rather than throwing: a malformed timestamp must not cost someone their notification.
@@ -118,24 +124,48 @@ export function renderNotification(event: DomainEventJob): { title: string; body
         title: 'Unit access removed',
         body: 'Your access to a Unit has ended; its open assignments were cancelled.',
       };
-    case 'AUDIT_ASSIGNED':
+    case 'AUDIT_ASSIGNED': {
+      const others = Number(data.coAuditors ?? 0);
       return {
         title: 'New audit assigned',
         body:
           `${auditType} at ${String(data.unitName ?? 'your Unit')}` +
           (data.dueAt ? `, due ${String(data.dueAt).slice(0, 10)}` : '') +
+          (others > 0
+            ? `, together with ${others} other auditor${others === 1 ? '' : 's'} — split the Zones between you`
+            : '') +
           '.',
       };
-    case 'AUDIT_STARTED':
+    }
+    case 'AUDIT_STARTED': {
+      // Who and where, in the title: "Audit started" repeated down a list tells a Super
+      // Admin nothing until they open each one. Both parts are optional — an event emitted
+      // before they were carried still renders a sentence.
+      const who = data.auditorName ? String(data.auditorName) : null;
+      const where = data.unitName ? String(data.unitName) : null;
       return {
-        title: 'Audit started',
+        title:
+          who && where
+            ? `${who} started ${aAudit(auditType)} at ${where}`
+            : where
+              ? `${auditType} started at ${where}`
+              : 'Audit started',
         body: `${auditType} started${data.locationSuspicious ? ' — the start location was flagged' : ''}.`,
       };
-    case 'AUDIT_PAUSED':
+    }
+    case 'AUDIT_PAUSED': {
+      const who = data.auditorName ? String(data.auditorName) : null;
+      const where = data.unitName ? String(data.unitName) : null;
       return {
-        title: 'Audit paused',
+        title:
+          who && where
+            ? `${who} paused ${aAudit(auditType)} at ${where}`
+            : where
+              ? `${auditType} paused at ${where}`
+              : 'Audit paused',
         body: `${auditType} was paused${data.reason ? `: ${String(data.reason)}` : ''}. Nothing was discarded.`,
       };
+    }
     case 'AUDIT_COMPLETED': {
       const opened = Number(data.actionsOpened ?? 0);
       // The title names the auditor and the Unit, because a list of notifications that all
@@ -151,7 +181,7 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       return {
         title:
           who && where
-            ? `${who} completed a ${auditType.toLowerCase()} at ${where}`
+            ? `${who} completed ${aAudit(auditType)} at ${where}`
             : where
               ? `${auditType} completed at ${where}`
               : 'Audit completed',

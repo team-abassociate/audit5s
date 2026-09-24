@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import {
+  auditAssignments,
   audits,
   auditZones,
   auditZoneSectionScores,
@@ -17,7 +18,7 @@ import {
   type Transaction,
 } from '@audit5s/db';
 import type { AuditStatus, ListReportsQuery, ReportKind, ReportPayload } from '@audit5s/contracts';
-import type { ScopeContext } from '@audit5s/domain';
+import { COMPLETED_AUDIT_STATUSES, type ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
@@ -435,6 +436,76 @@ export class ReportsRepository extends BaseRepository {
     return rows.map((row) => row.id);
   }
 
+  /**
+   * The `audit_zone` rows a summary names directly — one Zone of one audit each.
+   *
+   * Only finished Zones of finished audits in this Unit resolve: a summary states scores,
+   * and a Zone still being answered has none to state. An id that does not resolve is
+   * dropped here and reported by the caller, never silently summarised as something else.
+   */
+  async resolveChosenAuditZones(
+    tx: Transaction,
+    unitId: string,
+    auditZoneIds: readonly string[],
+  ): Promise<string[]> {
+    if (auditZoneIds.length === 0) return [];
+    const rows = await tx
+      .select({ id: auditZones.id })
+      .from(auditZones)
+      .innerJoin(audits, eq(audits.id, auditZones.auditId))
+      .where(
+        and(
+          eq(audits.unitId, unitId),
+          inArray(auditZones.id, [...auditZoneIds]),
+          eq(auditZones.status, 'COMPLETED'),
+          sql`${auditZones.completedAt} IS NOT NULL`,
+          inArray(audits.status, [...COMPLETED_AUDIT_STATUSES]),
+        ),
+      )
+      .orderBy(asc(audits.completedAt), asc(auditZones.sequenceNo), asc(auditZones.id));
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * The same resolution for one audit conducted by several auditors together: each
+   * selected Zone contributes its most recently completed audit-Zone **among the audits
+   * of that assignment group**, so the summary is that combined audit and not whatever
+   * was audited in the Unit since.
+   */
+  async resolveGroupAuditZones(
+    tx: Transaction,
+    unitId: string,
+    assignmentGroupId: string,
+    zoneIds: readonly string[],
+  ): Promise<string[]> {
+    if (zoneIds.length === 0) return [];
+    const rows = await tx
+      .select({ id: auditZones.id })
+      .from(auditZones)
+      .innerJoin(audits, eq(audits.id, auditZones.auditId))
+      .innerJoin(auditAssignments, eq(auditAssignments.id, audits.assignmentId))
+      .where(
+        and(
+          eq(audits.unitId, unitId),
+          eq(auditAssignments.groupId, assignmentGroupId),
+          inArray(auditZones.zoneId, [...zoneIds]),
+          sql`${auditZones.completedAt} IS NOT NULL`,
+          sql`${auditZones.id} = (
+            SELECT az.id FROM audit_zone az
+            INNER JOIN audit a ON a.id = az.audit_id
+            INNER JOIN audit_assignment aa ON aa.id = a.assignment_id
+            WHERE az.zone_id = ${auditZones.zoneId}
+              AND a.unit_id = ${unitId}
+              AND aa.group_id = ${assignmentGroupId}
+              AND az.completed_at IS NOT NULL
+            ORDER BY az.completed_at DESC, az.id DESC
+            LIMIT 1)`,
+        ),
+      )
+      .orderBy(asc(auditZones.zoneCodeSnapshot), asc(auditZones.id));
+    return rows.map((row) => row.id);
+  }
+
   private selectSnapshots(tx: Transaction) {
     return tx
       .select({
@@ -446,6 +517,8 @@ export class ReportsRepository extends BaseRepository {
         auditId: reportSnapshots.auditId,
         auditZoneId: reportSnapshots.auditZoneId,
         selectedZoneIds: reportSnapshots.selectedZoneIds,
+        selectedAuditZoneIds: reportSnapshots.selectedAuditZoneIds,
+        assignmentGroupId: reportSnapshots.assignmentGroupId,
         payload: reportSnapshots.payload,
         payloadSchemaVersion: reportSnapshots.payloadSchemaVersion,
         templateVersion: reportSnapshots.templateVersion,

@@ -41,6 +41,8 @@ export async function completedWalkBy(
     good?: number;
     /** Photos soft-deleted before completion: they raise nothing (E-4). */
     withdrawn?: number;
+    /** The assignment this walk-by fulfils — how a team audit's share is linked. */
+    assignmentId?: string;
   },
 ): Promise<{
   auditId: string;
@@ -56,7 +58,13 @@ export async function completedWalkBy(
   const created = await world.request('POST', `${base}/audits`, {
     token: options.token,
     headers,
-    body: { id: auditId, auditType: 'WALK_BY', unitId: options.unitId, deviceId: options.deviceId },
+    body: {
+      id: auditId,
+      auditType: 'WALK_BY',
+      unitId: options.unitId,
+      deviceId: options.deviceId,
+      ...(options.assignmentId ? { assignmentId: options.assignmentId } : {}),
+    },
   });
   if (created.status !== 201) throw new Error(`create: ${JSON.stringify(created.body)}`);
 

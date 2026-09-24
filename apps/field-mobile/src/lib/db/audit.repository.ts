@@ -154,7 +154,14 @@ export async function addLocalZone(
   const [repeat] = await database
     .select({ id: localAuditZones.id })
     .from(localAuditZones)
-    .where(and(eq(localAuditZones.auditId, input.auditId), eq(localAuditZones.zoneCodeSnapshot, code)))
+    .where(
+      and(
+        eq(localAuditZones.auditId, input.auditId),
+        eq(localAuditZones.zoneCodeSnapshot, code),
+        // A withdrawn Zone left the audit (0031), so it may be started again.
+        sql`${localAuditZones.status} <> 'WITHDRAWN'`,
+      ),
+    )
     .limit(1);
   if (repeat) {
     throw new Error(`Zone ${input.zoneNumber} is already part of this audit`);
@@ -378,7 +385,9 @@ export async function saveLocalResponse(
   await database
     .update(localAuditZones)
     .set({
-      status: sql`CASE WHEN ${localAuditZones.status} = 'COMPLETED' THEN 'COMPLETED' ELSE 'IN_PROGRESS' END`,
+      // A withdrawn Zone stays withdrawn too: it left the audit, and only starting the Zone
+      // again brings it back — as a new audit Zone.
+      status: sql`CASE WHEN ${localAuditZones.status} IN ('COMPLETED', 'WITHDRAWN') THEN ${localAuditZones.status} ELSE 'IN_PROGRESS' END`,
       startedAt: sql`COALESCE(${localAuditZones.startedAt}, ${now})`,
       resumeQuestionId: input.checklistQuestionId,
       clientUpdatedAt: now,
@@ -514,6 +523,44 @@ export async function completeLocalZone(
   await enqueue(database, 'audit_zone', auditZoneId, 'complete', {
     ...(zone ? { auditId: zone.auditId } : {}),
     completedAt: now,
+  });
+}
+
+/**
+ * Abort **one Zone**: an unfinished Zone leaves the audit.
+ *
+ * Nothing is deleted — its answers and photographs stay on this device and on the server
+ * (A-1). The status becomes WITHDRAWN, which takes the Zone out of the audit's score and
+ * out of what *Finish audit* waits for, and frees it so it can be started again, in this
+ * audit or another. A finished Zone is not withdrawn: it is part of the audit, and a change
+ * to it is a review.
+ *
+ * The resume cursor is cleared when it points here, so *Resume* never reopens a Zone the
+ * auditor walked away from.
+ */
+export async function withdrawLocalZone(
+  database: LocalDatabase,
+  auditZoneId: string,
+  reason: string | null,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  const [zone] = await getLocalAuditZone(database, auditZoneId);
+  if (!zone || zone.status === 'COMPLETED' || zone.status === 'WITHDRAWN') return;
+
+  await database
+    .update(localAuditZones)
+    .set({ status: 'WITHDRAWN', resumeQuestionId: null, clientUpdatedAt: now })
+    .where(eq(localAuditZones.id, auditZoneId));
+
+  await database
+    .update(audits)
+    .set({ resumeAuditZoneId: null, clientUpdatedAt: now })
+    .where(and(eq(audits.id, zone.auditId), eq(audits.resumeAuditZoneId, auditZoneId)));
+
+  await enqueue(database, 'audit_zone', auditZoneId, 'withdraw', {
+    auditId: zone.auditId,
+    ...(reason ? { reason } : {}),
+    withdrawnAt: now,
   });
 }
 
@@ -765,7 +812,7 @@ export async function listResumableAudits(database: LocalDatabase): Promise<Resu
     );
 
   return rows.map((row) => {
-    const mine = zoneRows.filter((zone) => zone.auditId === row.id);
+    const mine = zoneRows.filter((zone) => zone.auditId === row.id && zone.status !== 'WITHDRAWN');
     return {
       id: row.id,
       unitId: row.unitId,
