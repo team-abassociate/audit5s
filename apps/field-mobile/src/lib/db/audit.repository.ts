@@ -517,6 +517,13 @@ export async function completeLocalZone(
     .set({ status: 'COMPLETED', completedAt: now, resumeQuestionId: null, clientUpdatedAt: now })
     .where(eq(localAuditZones.id, auditZoneId));
 
+  if (zone) {
+    await database
+      .update(audits)
+      .set({ resumeAuditZoneId: null, clientUpdatedAt: now })
+      .where(and(eq(audits.id, zone.auditId), eq(audits.resumeAuditZoneId, auditZoneId)));
+  }
+
   // `auditId` rides in the payload because §8.6 addresses this as
   // `/audits/{auditId}/zones/{auditZoneId}/complete` — the outbox row carries the entity id
   // in its own column, and everything else the route needs has to be in the payload.
@@ -939,10 +946,20 @@ export async function resumeCursor(
   }
 
   const [zone] = await database
-    .select({ resumeQuestionId: localAuditZones.resumeQuestionId })
+    .select({
+      auditId: localAuditZones.auditId,
+      status: localAuditZones.status,
+      resumeQuestionId: localAuditZones.resumeQuestionId,
+    })
     .from(localAuditZones)
     .where(eq(localAuditZones.id, auditZoneId))
     .limit(1);
+
+  // Older device rows may still point at a Zone completed before the cursor was cleared.
+  // A draft Zone has not received its first answer yet, but is still where Resume belongs.
+  if (zone?.auditId !== auditId || (zone.status !== 'DRAFT' && zone.status !== 'IN_PROGRESS')) {
+    return { auditZoneId: null, questionId: null, answered: 0 };
+  }
 
   const answered = await database
     .select({ id: localQuestionResponses.id })

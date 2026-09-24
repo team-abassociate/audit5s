@@ -381,6 +381,29 @@ describe('saving answers', () => {
 });
 
 describe('abort and resume (N7, §9.8)', () => {
+  it('opens a newly started Zone, then returns to the audit after that Zone is finished', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+
+    await pauseLocalAudit(database, auditId, null);
+    expect((await resumeCursor(database, auditId)).auditZoneId).toBe(auditZoneId);
+
+    await resumeLocalAudit(database, auditId);
+    await completeLocalZone(database, auditZoneId);
+    expect(await executor.query('SELECT resume_audit_zone_id FROM audit WHERE id = ?', [auditId]))
+      .toEqual([[null]]);
+    await pauseLocalAudit(database, auditId, null);
+
+    expect(await resumeCursor(database, auditId)).toEqual({
+      auditZoneId: null,
+      questionId: null,
+      answered: 0,
+    });
+
+    // Existing installations can still have the old audit-level cursor on disk.
+    await executor.run('UPDATE audit SET resume_audit_zone_id = ? WHERE id = ?', [auditZoneId, auditId]);
+    expect((await resumeCursor(database, auditId)).auditZoneId).toBeNull();
+  });
+
   it('keeps every answer and reopens at the same question, with no network', async () => {
     const { auditId, auditZoneId } = await startAudit();
     const questions = await answerAll(auditId, auditZoneId, fiftyAnswers().slice(0, 23));
