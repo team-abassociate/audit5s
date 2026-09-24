@@ -48,7 +48,7 @@ function AuthGate() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { status } = useSession();
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const { auditId, auditZoneId } = useGlobalSearchParams<{ auditId?: string; auditZoneId?: string }>();
   const router = useRouter();
   const database = useLocalDatabase();
