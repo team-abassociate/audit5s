@@ -975,3 +975,141 @@ describe('devices (§8.11)', () => {
     expect(byUser.get(world.actors.ZONE_LEADER.userId)).toBeNull();
   });
 });
+
+/**
+ * The auditor's "abort this Zone" (0030, 0031), as the phone sends it: `audit_zone:withdraw`
+ * in a sync batch. The Zone leaves the audit — out of the score, out of the finish guard,
+ * its lock released — and nothing it recorded is deleted.
+ */
+describe('withdrawing an unfinished Zone', () => {
+  function withdrawItem(auditId: string, auditZoneId: string): SyncBatchRequest['items'][number] {
+    return {
+      outboxId: randomUUID(),
+      entityType: 'audit_zone',
+      entityId: auditZoneId,
+      operation: 'withdraw',
+      payload: { auditId, reason: 'Wrong Zone', withdrawnAt: new Date().toISOString() },
+    };
+  }
+
+  async function detail(auditId: string) {
+    const response = await world.request('GET', `${base}/audits/${auditId}`, { token: consultantToken });
+    expect(response.status).toBe(200);
+    return response.body as {
+      totals: { maxScore: number };
+      zones: Array<{ id: string; status: string; withdrawReason?: string | null; responses: unknown[] }>;
+    };
+  }
+
+  it('takes the Zone out of the audit and its score, keeps its answers, and frees the Zone', async () => {
+    const { auditId, auditZoneId, zoneId } = await startedAudit();
+    const answers = auditBatch({ auditId, auditZoneId, zoneId, answers: 5 }).slice(2);
+    await push(answers);
+
+    const result = await push([withdrawItem(auditId, auditZoneId)]);
+    expect(result.results[0]?.status, JSON.stringify(result.results)).toBe('ACCEPTED');
+
+    const after = await detail(auditId);
+    const zone = after.zones.find((candidate) => candidate.id === auditZoneId)!;
+    expect(zone.status).toBe('WITHDRAWN');
+    expect(zone.withdrawReason).toBe('Wrong Zone');
+    // A-1: nothing is deleted.
+    expect(zone.responses).toHaveLength(5);
+
+    // R-29's lock is released on the same write.
+    const { rows } = await world.owner.query('SELECT audit_open FROM audit_zone WHERE id = $1', [
+      auditZoneId,
+    ]);
+    expect(rows[0].audit_open).toBe(false);
+
+    // A retried withdrawal is not an error.
+    const again = await push([withdrawItem(auditId, auditZoneId)]);
+    expect(['ACCEPTED', 'DUPLICATE']).toContain(again.results[0]?.status);
+  });
+
+  it('finishes the audit on the Zones left, scored without the withdrawn one', async () => {
+    const { auditId, auditZoneId: kept, zoneId } = await startedAudit();
+    const abandoned = randomUUID();
+    const otherZoneId = await makeZone();
+
+    // Zone A: every question answered, then finished.
+    await push(auditBatch({ auditId, auditZoneId: kept, zoneId, answers: 50 }).slice(2));
+    await push([
+      {
+        outboxId: randomUUID(),
+        entityType: 'audit_zone',
+        entityId: kept,
+        operation: 'complete',
+        payload: { auditId },
+      },
+    ]);
+    const keptScore = (await detail(auditId)).totals.maxScore;
+    expect(keptScore).toBeGreaterThan(0);
+
+    // Zone B: started, half answered, then withdrawn.
+    await push([
+      {
+        outboxId: randomUUID(),
+        entityType: 'audit_zone',
+        entityId: abandoned,
+        operation: 'upsert',
+        payload: { auditId, zoneId: otherZoneId, sequenceNo: 2, checklistVersionId: versionId },
+      },
+      ...auditBatch({ auditId, auditZoneId: abandoned, zoneId: otherZoneId, answers: 20 }).slice(2),
+      withdrawItem(auditId, abandoned),
+    ]);
+
+    // Zone B no longer stands between the audit and Finish, and adds nothing to its score.
+    const finish = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(finish.status, JSON.stringify(finish.body)).toBe(200);
+    expect((await detail(auditId)).totals.maxScore).toBe(keptScore);
+  });
+
+  it('lets the same Zone be started again in the same audit, and refuses answers to the withdrawn one', async () => {
+    const { auditId, auditZoneId, zoneId } = await startedAudit();
+    await push([withdrawItem(auditId, auditZoneId)]);
+
+    const restarted = randomUUID();
+    const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${restarted}`, {
+      token: consultantToken,
+      body: { zoneId, sequenceNo: 2, checklistVersionId: versionId },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+
+    const late = await world.request(
+      'PUT',
+      `${base}/audit-zones/${auditZoneId}/responses/${randomUUID()}`,
+      {
+        token: consultantToken,
+        body: {
+          checklistQuestionId: questionIds[0],
+          value: 'SCORE_2',
+          answeredAt: new Date().toISOString(),
+        },
+      },
+    );
+    expect(late.status).toBe(409);
+  });
+
+  it('does not count a withdrawn Zone as the one Zone an audit needs to finish', async () => {
+    const { auditId, auditZoneId } = await startedAudit();
+    await push([withdrawItem(auditId, auditZoneId)]);
+
+    // The only Zone is withdrawn, so the audit has none to finish with (§7.1: ≥1 Zone).
+    const finish = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(finish.status).toBe(409);
+
+    // And the withdrawn Zone is still on record.
+    const { rows } = await world.owner.query(
+      `SELECT count(*)::int AS n FROM audit_zone WHERE audit_id = $1 AND status = 'WITHDRAWN'`,
+      [auditId],
+    );
+    expect(rows[0].n).toBe(1);
+  });
+});

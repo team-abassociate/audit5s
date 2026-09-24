@@ -355,7 +355,12 @@ export class AuditsService {
         unitId: audit.unitId,
         resourceType: 'audit',
         resourceId: auditId,
-        data: { auditType: audit.auditType, locationSuspicious: location?.suspicious ?? false },
+        data: {
+          auditType: audit.auditType,
+          locationSuspicious: location?.suspicious ?? false,
+          auditorName: audit.auditorName,
+          unitName: audit.unitName,
+        },
       }),
     );
 
@@ -410,7 +415,12 @@ export class AuditsService {
         unitId: audit.unitId,
         resourceType: 'audit',
         resourceId: auditId,
-        data: { auditType: audit.auditType, reason: request.reason ?? null },
+        data: {
+          auditType: audit.auditType,
+          reason: request.reason ?? null,
+          auditorName: audit.auditorName,
+          unitName: audit.unitName,
+        },
       }),
     );
 
@@ -562,7 +572,13 @@ export class AuditsService {
       },
     );
 
-    if (audit.assignmentId) {
+    // The assignment closes with the last of its audits, not the first. Closing it while
+    // another audit of the same assignment is still open used to end the auditor's grant
+    // on the Unit mid-audit, and that audit's next sync items were refused (0032).
+    if (
+      audit.assignmentId &&
+      !(await this.repository.hasOtherOpenAuditForAssignment(scope, audit.assignmentId, auditId))
+    ) {
       await this.assignments.setStatus(
         { ...scope, resolver: 'organization' },
         audit.assignmentId,
@@ -1073,6 +1089,7 @@ export function toAudit(row: AuditRow): Audit {
   return {
     id: row.id,
     assignmentId: row.assignmentId,
+    assignmentGroupId: row.assignmentGroupId,
     unitId: row.unitId,
     unitName: row.unitName,
     auditType: row.auditType,
@@ -1159,6 +1176,8 @@ export function toAuditZone(
     resumeQuestionId: row.resumeQuestionId,
     startedAt: row.startedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
+    withdrawnAt: row.withdrawnAt?.toISOString() ?? null,
+    withdrawReason: row.withdrawReason,
     clientUpdatedAt: row.clientUpdatedAt.toISOString(),
     version: row.version,
   };

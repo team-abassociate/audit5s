@@ -3,6 +3,7 @@ import type {
   AuditZone,
   CompleteAuditZoneRequest,
   UpsertAuditZoneRequest,
+  WithdrawAuditZoneRequest,
 } from '@audit5s/contracts';
 import {
   assertTransition,
@@ -61,6 +62,11 @@ export class AuditZonesService {
     if (existing && existing.auditId !== auditId) {
       throw AppError.conflict('CONFLICT', 'This audit Zone belongs to another audit');
     }
+    // A withdrawn Zone stays as it was left. A late upsert queued before the withdrawal is
+    // accepted and changes nothing, rather than bringing the Zone back into the audit.
+    if (existing?.status === 'WITHDRAWN') {
+      return this.get(scope, auditZoneId);
+    }
 
     /*
      * R-34: while the audit is **open**, the auditor may re-point this audit Zone at a
@@ -81,7 +87,7 @@ export class AuditZonesService {
     // still appears at most once per audit.
     if (existing && zoneId !== existing.zoneId) {
       const alreadyInAudit = await this.repository.listZones(scope, auditId);
-      if (alreadyInAudit.some((zone) => zone.zoneId === zoneId)) {
+      if (alreadyInAudit.some((zone) => zone.zoneId === zoneId && zone.status !== 'WITHDRAWN')) {
         throw AppError.conflict(
           'ZONE_ALREADY_IN_AUDIT',
           'This Zone is already part of this audit. A Zone appears at most once per audit.',
@@ -95,7 +101,7 @@ export class AuditZonesService {
     // already holds is neither: it is the ordinary upsert, checked against its own row.
     if (!existing) {
       const alreadyInAudit = await this.repository.listZones(scope, auditId);
-      if (alreadyInAudit.some((zone) => zone.zoneId === zoneId)) {
+      if (alreadyInAudit.some((zone) => zone.zoneId === zoneId && zone.status !== 'WITHDRAWN')) {
         throw AppError.conflict(
           'ZONE_ALREADY_IN_AUDIT',
           'This Zone is already part of this audit. A Zone appears at most once per audit.',
@@ -349,6 +355,70 @@ export class AuditZonesService {
     // Section scores are written on this edge (§7.2), by the same pure function the device
     // used, so the radar chart and the S-trend read a materialised copy of it.
     await this.scoring.recompute(scope, auditId);
+
+    return this.get(scope, auditZoneId);
+  }
+
+  /**
+   * The auditor's "abort this Zone": an unfinished Zone leaves its audit.
+   *
+   * Nothing is deleted (A-1). The status moves to WITHDRAWN — which takes the Zone out of
+   * the audit's score, out of the Finish-audit guard and out of the findings raised on
+   * completion — and 0031's trigger releases its R-29 lock in the same write, so another
+   * audit, or this one again, may take the Zone. Its answers and photographs stay on record.
+   *
+   * Idempotent: a retried withdrawal returns the Zone as it is.
+   */
+  async withdraw(
+    scope: ScopeContext,
+    auditZoneId: string,
+    request: WithdrawAuditZoneRequest,
+  ): Promise<AuditZone> {
+    const audit = await this.mustFindAudit(scope, request.auditId);
+    const zone = await this.repository.findZone(scope, auditZoneId);
+    if (!zone || zone.auditId !== request.auditId) {
+      throw AppError.notFound('No such audit Zone on this audit');
+    }
+    if (zone.status === 'WITHDRAWN') {
+      return this.get(scope, auditZoneId);
+    }
+
+    this.assertWritable(scope, audit);
+
+    try {
+      assertTransition('audit_zone', zone.status, 'WITHDRAWN', {
+        role: scope.actor.role,
+        satisfied: [],
+      });
+    } catch (error) {
+      if (zone.status === 'COMPLETED') {
+        throw AppError.conflict(
+          'INVALID_STATE_TRANSITION',
+          'This Zone is already finished, so it is part of the audit. Review it instead of withdrawing it.',
+        );
+      }
+      throw asAppError(error);
+    }
+
+    await this.repository.updateZone(scope, auditZoneId, {
+      status: 'WITHDRAWN',
+      withdrawnAt: request.withdrawnAt ? new Date(request.withdrawnAt) : new Date(),
+      withdrawReason: request.reason ?? null,
+      resumeQuestionId: null,
+      clientUpdatedAt: new Date(),
+    });
+
+    await this.auditLog.record({
+      action: 'audit_zone.withdrawn',
+      resourceType: 'audit_zone',
+      resourceId: auditZoneId,
+      unitId: audit.unitId,
+      before: { status: zone.status },
+      after: { status: 'WITHDRAWN', reason: request.reason ?? null },
+    });
+
+    // The audit's score no longer includes this Zone.
+    await this.scoring.recompute(scope, request.auditId);
 
     return this.get(scope, auditZoneId);
   }

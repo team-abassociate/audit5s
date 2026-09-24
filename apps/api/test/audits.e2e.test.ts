@@ -422,6 +422,84 @@ describe('assignments', () => {
     expect(again.status).toBe(404);
   });
 
+  /*
+   * Field report, 2026-09-23: three audits of one Unit on one assignment. Finishing the
+   * second closed the assignment, the Unit left the Consultant's scope, and the next Zone
+   * of the first — still open on the same phone — was refused as "No such audit", which
+   * Sync health shows as "Access was revoked mid-audit".
+   */
+  it('keeps the Unit for an open audit when another audit on the same assignment finishes', async () => {
+    const { userId, token, deviceId } = await unboundConsultant();
+    const assignment = await assign(userId);
+
+    // Both audits pick up the one open assignment, as the phone's audits do: it sends none.
+    const first = await startAuditWithZone({
+      token,
+      deviceId,
+      zoneId: await createZone('Z-93', 'First audit zone'),
+    });
+    const second = await startAuditWithZone({
+      token,
+      deviceId,
+      zoneId: await createZone('Z-94', 'Second audit zone'),
+    });
+    for (const audit of [first, second]) {
+      const read = await world.request('GET', `${base}/audits/${audit.auditId}`, { token });
+      expect((read.body as Audit).assignmentId).toBe(assignment.id);
+    }
+
+    await answer(token, second.auditZoneId, fiftyAnswers());
+    await world.request('POST', `${base}/audits/${second.auditId}/zones/${second.auditZoneId}/complete`, {
+      token,
+      body: {},
+    });
+    const finished = await world.request('POST', `${base}/audits/${second.auditId}/complete`, {
+      token,
+      body: {},
+    });
+    expect(finished.status, JSON.stringify(finished.body)).toBe(200);
+
+    // The assignment stays open while the first audit is still being conducted under it.
+    const stillOpen = await world.request('GET', `${base}/audit-assignments/${assignment.id}`, {
+      token: asSuperAdmin(),
+    });
+    expect((stillOpen.body as AuditAssignment).status).toBe('IN_PROGRESS');
+
+    // The first audit's next Zone, named by number as the phone names it.
+    const nextZoneId = randomUUID();
+    const next = await world.request('PUT', `${base}/audits/${first.auditId}/zones/${nextZoneId}`, {
+      token,
+      body: { zoneNumber: 71, sequenceNo: 2, checklistVersionId: versionId, zoneLeaderName: 'A Leader' },
+    });
+    expect(next.status, JSON.stringify(next.body)).toBe(200);
+
+    // And the Unit is still on the phone's catalogue while that audit is open.
+    const catalogue = await world.request('GET', `${base}/sync/catalogue`, { token });
+    expect(
+      (catalogue.body as { units: Array<{ id: string }> }).units.map((unit) => unit.id),
+    ).toContain(world.unitA);
+
+    // Finishing the last open audit on the assignment closes it after all.
+    for (const auditZoneId of [first.auditZoneId, nextZoneId]) {
+      await answer(token, auditZoneId, fiftyAnswers());
+      const done = await world.request(
+        'POST',
+        `${base}/audits/${first.auditId}/zones/${auditZoneId}/complete`,
+        { token, body: {} },
+      );
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+    }
+    const last = await world.request('POST', `${base}/audits/${first.auditId}/complete`, {
+      token,
+      body: {},
+    });
+    expect(last.status, JSON.stringify(last.body)).toBe(200);
+    const closed = await world.request('GET', `${base}/audit-assignments/${assignment.id}`, {
+      token: asSuperAdmin(),
+    });
+    expect((closed.body as AuditAssignment).status).toBe('COMPLETED');
+  });
+
   it('appears in the device catalogue while open and disappears once cancelled', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
 

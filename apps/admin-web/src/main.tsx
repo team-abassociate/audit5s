@@ -15,7 +15,7 @@ import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { AnalyticsPage } from '@/features/analytics/AnalyticsPage';
-import { AuditsPage } from '@/features/audits/AuditsPage';
+import { AuditsPage, type AuditsSearch } from '@/features/audits/AuditsPage';
 import { CorrectiveActionsPage } from '@/features/corrective-actions/CorrectiveActionsPage';
 import { PublicCorrectiveActionPage } from '@/features/corrective-actions/PublicCorrectiveActionPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
@@ -27,7 +27,7 @@ import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { UnitsPage } from '@/features/units/UnitsPage';
-import { UsersPage } from '@/features/users/UsersPage';
+import { UsersPage, type UsersSearch } from '@/features/users/UsersPage';
 import { SessionProvider, useSession } from '@/lib/session';
 
 const queryClient = new QueryClient({
@@ -161,6 +161,11 @@ const checklistsRoute = createRoute({
 const auditsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/audits',
+  // A notification lands on the exact audit or assignment it is about, not just the tab.
+  validateSearch: (search: Record<string, unknown>): AuditsSearch => ({
+    audit: typeof search.audit === 'string' ? search.audit : undefined,
+    assignment: typeof search.assignment === 'string' ? search.assignment : undefined,
+  }),
   component: AuditsPage,
 });
 
@@ -191,6 +196,9 @@ const syncRoute = createRoute({
 const usersRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/users',
+  validateSearch: (search: Record<string, unknown>): UsersSearch => ({
+    user: typeof search.user === 'string' ? search.user : undefined,
+  }),
   component: UsersPage,
 });
 

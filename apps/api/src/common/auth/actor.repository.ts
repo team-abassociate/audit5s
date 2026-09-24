@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   auditAssignments,
+  audits,
   unitMemberships,
   users,
   revokedAccessTokens,
@@ -89,10 +90,27 @@ export class ActorRepository {
               )
           : [];
 
+      // 0032: the grant outlives the assignment while the Consultant still has an audit
+      // open in the Unit. Finishing one audit closes the assignment it shares with the
+      // others, and those others must not lose their Unit mid-audit.
+      const auditedUnits =
+        user.role === 'CONSULTANT'
+          ? await tx
+              .select({ unitId: audits.unitId })
+              .from(audits)
+              .where(
+                and(
+                  eq(audits.auditorUserId, userId),
+                  inArray(audits.status, ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED']),
+                ),
+              )
+          : [];
+
       const unitIds = [
         ...new Set([
           ...memberships.map((membership) => membership.unitId),
           ...assignedUnits.map((assignment) => assignment.unitId),
+          ...auditedUnits.map((audit) => audit.unitId),
         ]),
       ];
 

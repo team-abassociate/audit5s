@@ -62,6 +62,9 @@ const OPERATION_PHASE: Record<SyncOperation, number> = {
   // already finished, so this batch's `complete` for it has to land first or there is
   // nothing to restart.
   restart: PHASE.FINALIZE,
+  // Finalize, beside `complete`: a Zone is withdrawn after whatever was answered in it
+  // lands, and before the audit's own `complete`, which only counts the Zones left.
+  withdraw: PHASE.FINALIZE,
 };
 
 /** Ordering within the structure phase, where two operations touch the same entity. */
@@ -84,6 +87,7 @@ const STRUCTURE_OPERATION_RANK: Record<SyncOperation, number> = {
   // correction queued before the restart was authored against the finished audit — so it
   // belongs on the near side of the reopening, not the far one.
   restart: 2,
+  withdraw: 0,
 };
 
 export interface OrderableSyncItem {

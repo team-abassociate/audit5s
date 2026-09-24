@@ -3,6 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm } from 'react-hook-form';
 import {
   ROLES,
+  type Audit,
+  type AuditAssignment,
+  type AuditStatus,
   type CreateUserRequest,
   type CreateUserResponse,
   type MembershipDetail,
@@ -15,6 +18,10 @@ import {
 import { ApiError, api } from '@/lib/api';
 import { Badge, Button, Card, CardHeader, Combobox, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { bandTextClass } from '@/lib/bands';
+import { cn } from '@/lib/cn';
+import { Link, useSearch } from '@tanstack/react-router';
+import { AUDIT_TYPE_LABELS, RowToggle, STATUS_LABELS } from '@/features/audits/AuditsPage';
 
 const mobileDigits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
 
@@ -22,8 +29,15 @@ function keepMobileDigits(event: FormEvent<HTMLInputElement>) {
   event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 10);
 }
 
+/** `/users?user=…` — opens that person's row. */
+export interface UsersSearch {
+  user?: string;
+}
+
 export function UsersPage() {
   const { can, scope } = useSession();
+  const linked = useSearch({ strict: false }) as UsersSearch;
+  const [expanded, setExpanded] = useState<string | null>(linked.user ?? null);
   const [creating, setCreating] = useState(false);
   const [issued, setIssued] = useState<CreateUserResponse | null>(null);
   const [search, setSearch] = useState('');
@@ -109,7 +123,12 @@ export function UsersPage() {
             </thead>
             <tbody>
               {list.map((user) => (
-                <UserRow key={user.id} user={user} />
+                <UserRow
+                  key={user.id}
+                  user={user}
+                  open={expanded === user.id}
+                  onToggle={() => setExpanded(expanded === user.id ? null : user.id)}
+                />
               ))}
               {list.length === 0 && (
                 <tr>
@@ -124,7 +143,7 @@ export function UsersPage() {
   );
 }
 
-function UserRow({ user }: { user: User }) {
+function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle: () => void }) {
   const { can, scope, user: self } = useSession();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -162,8 +181,12 @@ function UserRow({ user }: { user: User }) {
 
   return (
     <Fragment>
-      <tr>
-        <Td className="font-medium">{user.fullName}</Td>
+      <tr className={cn(open && 'gb-row--open')}>
+        <Td className="font-medium">
+          <RowToggle open={open} onClick={onToggle}>
+            {user.fullName}
+          </RowToggle>
+        </Td>
         <Td className="font-mono text-xs">{user.loginId}</Td>
         <Td>{user.role.replace(/_/g, ' ').toLowerCase()}</Td>
         <Td>
@@ -235,6 +258,13 @@ function UserRow({ user }: { user: User }) {
           )}
         </Td>
       </tr>
+      {open && (
+        <tr className="gb-row-expand">
+          <td colSpan={6}>
+            <UserActivity user={user} />
+          </td>
+        </tr>
+      )}
       {editing && (
         <tr>
           <td colSpan={6} className="bg-board p-0">
@@ -243,6 +273,130 @@ function UserRow({ user }: { user: User }) {
         </tr>
       )}
     </Fragment>
+  );
+}
+
+const OPEN_AUDIT_STATUSES: ReadonlySet<AuditStatus> = new Set(['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED']);
+
+/**
+ * What a person is responsible for: the Units they belong to, the assignments waiting on
+ * them, and the audits they have running and have finished. Every list is the server's
+ * scope-filtered answer, so a Coordinator opening a row sees only their own Unit's share.
+ */
+function UserActivity({ user }: { user: User }) {
+  const conducts = user.role === 'CONSULTANT' || user.role === 'ZONE_LEADER';
+
+  const memberships = useQuery({
+    queryKey: ['memberships', 'user', user.id],
+    queryFn: () =>
+      api.get<Page<MembershipDetail>>(`/memberships?userId=${user.id}&status=ACTIVE&limit=200`),
+  });
+  const assignments = useQuery({
+    queryKey: ['audit-assignments', 'auditor', user.id],
+    queryFn: () =>
+      api.get<Page<AuditAssignment>>(`/audit-assignments?auditorUserId=${user.id}&open=true&limit=200`),
+    enabled: conducts,
+  });
+  const audits = useQuery({
+    queryKey: ['audits', 'auditor', user.id],
+    queryFn: () => api.get<Page<Audit>>(`/audits?auditorId=${user.id}&limit=200`),
+    enabled: conducts,
+  });
+
+  // A Consultant's Units are their open assignments' Units (R-28): they hold no membership.
+  const units = [
+    ...new Map(
+      [
+        ...(memberships.data?.data ?? []).map((m) => [m.unitId, { name: m.unitName, via: m.role.replace(/_/g, ' ').toLowerCase() }] as const),
+        ...(assignments.data?.data ?? []).map((a) => [a.unitId, { name: a.unitName, via: 'assignment' }] as const),
+      ],
+    ).values(),
+  ];
+  const all = [...(audits.data?.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const running = all.filter((audit) => OPEN_AUDIT_STATUSES.has(audit.status));
+  const conducted = all.filter((audit) => audit.completedAt !== null);
+
+  const error = memberships.error ?? assignments.error ?? audits.error;
+  if (memberships.isLoading || assignments.isLoading || audits.isLoading) return <Spinner />;
+
+  return (
+    <div className="gb-activity">
+      {error ? <ErrorNotice error={error} /> : null}
+      <section>
+        <h3 className="gb-label">Units · {units.length}</h3>
+        {units.length === 0 ? (
+          <p className="text-ink-3">No Unit at the moment.</p>
+        ) : (
+          <ul>
+            {units.map((unit) => (
+              <li key={unit.name}>
+                {unit.name} <span className="text-ink-3">· {unit.via}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {conducts && (
+        <>
+          <section>
+            <h3 className="gb-label">Assigned, not started · {(assignments.data?.data ?? []).filter((a) => a.status !== 'IN_PROGRESS').length}</h3>
+            <AssignmentList assignments={(assignments.data?.data ?? []).filter((a) => a.status !== 'IN_PROGRESS')} />
+          </section>
+          <section>
+            <h3 className="gb-label">In progress · {running.length}</h3>
+            <AuditList audits={running} empty="Nothing running." />
+          </section>
+          <section>
+            <h3 className="gb-label">Conducted · {conducted.length}</h3>
+            <AuditList audits={conducted} empty="No finished audit yet." />
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AssignmentList({ assignments }: { assignments: AuditAssignment[] }) {
+  if (assignments.length === 0) return <p className="text-ink-3">None waiting.</p>;
+  return (
+    <ul>
+      {assignments.map((assignment) => (
+        <li key={assignment.id}>
+          <Link to="/audits" search={{ assignment: assignment.id }}>
+            {assignment.unitName}
+          </Link>
+          <span className="text-ink-3">
+            {' '}· {AUDIT_TYPE_LABELS[assignment.auditType]}
+            {assignment.dueAt ? ` · due ${new Date(assignment.dueAt).toLocaleDateString()}` : ''}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function AuditList({ audits, empty }: { audits: Audit[]; empty: string }) {
+  if (audits.length === 0) return <p className="text-ink-3">{empty}</p>;
+  return (
+    <ul>
+      {audits.slice(0, 12).map((audit) => (
+        <li key={audit.id}>
+          <Link to="/audits" search={{ audit: audit.id }}>
+            {audit.unitName}
+          </Link>
+          <span className="text-ink-3">
+            {' '}· {STATUS_LABELS[audit.status]} ·{' '}
+            {new Date(audit.completedAt ?? audit.startedAt ?? audit.createdAt).toLocaleDateString()}
+          </span>
+          {audit.scored && audit.totals.scorePercentage !== null && audit.completedAt ? (
+            <span className={cn('gb-data ml-2', bandTextClass(audit.totals.scorePercentage))}>
+              {audit.totals.scorePercentage.toFixed(1)}%
+            </span>
+          ) : null}
+        </li>
+      ))}
+      {audits.length > 12 && <li className="text-ink-3">…and {audits.length - 12} earlier</li>}
+    </ul>
   );
 }
 

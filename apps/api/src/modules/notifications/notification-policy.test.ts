@@ -91,6 +91,25 @@ describe('notification policy (§5.9)', () => {
     expect(title).toContain('external 5s audit');
   });
 
+  it('says who started an audit and in which Unit', () => {
+    const { title } = renderNotification(
+      job('AUDIT_STARTED', { auditType: 'EXTERNAL_5S', auditorName: 'Priya Nair', unitName: 'Sahney Kirkwood' }),
+    );
+    expect(title).toBe('Priya Nair started an external 5S audit at Sahney Kirkwood');
+  });
+
+  it('renders an audit start stored before the auditor and Unit were on the event', () => {
+    const { title } = renderNotification(job('AUDIT_STARTED', { auditType: 'EXTERNAL_5S' }));
+    expect(title).toBe('Audit started');
+  });
+
+  it('tells an auditor assigned with others that the Zones are shared', () => {
+    const { body } = renderNotification(
+      job('AUDIT_ASSIGNED', { auditType: 'EXTERNAL_5S', unitName: 'Nashik', coAuditors: 2 }),
+    );
+    expect(body).toContain('together with 2 other auditors');
+  });
+
   it('renders a submitted corrective action stored before the auditor was on the event', () => {
     const { title } = renderNotification(
       job('CORRECTIVE_ACTION_SUBMITTED', { zoneCode: '3', zoneName: 'Press', option: 'COMPLETED' }),

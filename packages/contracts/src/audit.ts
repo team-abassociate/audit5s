@@ -65,6 +65,12 @@ export const auditAssignmentSchema = z.object({
   instructions: z.string().nullable(),
   /** Hints for the auditor's Zone picker; they may audit others (§5.5). */
   suggestedZoneIds: z.array(uuidSchema),
+  /**
+   * Shared by the assignments of one Unit audit given to several auditors together; null
+   * for an assignment given alone. Each auditor still conducts their own audit on their
+   * own device (D7) — the group is what lets the unit summary combine their Zones.
+   */
+  groupId: uuidSchema.nullable(),
   createdByUserId: uuidSchema,
   cancelledAt: isoDateTimeSchema.nullable(),
   cancelReason: z.string().nullable(),
@@ -84,6 +90,12 @@ export const createAuditAssignmentRequestSchema = z.object({
   dueAt: isoDateTimeSchema.optional(),
   instructions: optional(z.string().trim().max(2000)),
   suggestedZoneIds: z.array(uuidSchema).max(100).optional(),
+  /**
+   * Further auditors for the same Unit audit. Each receives their own assignment with the
+   * same details, all created in one transaction and sharing one `groupId`; the response
+   * is `auditorUserId`'s. Omitted, this is the single-auditor assignment it always was.
+   */
+  coAuditorUserIds: z.array(uuidSchema).max(19).optional(),
 });
 export type CreateAuditAssignmentRequest = z.infer<typeof createAuditAssignmentRequestSchema>;
 
@@ -96,6 +108,7 @@ export const listAuditAssignmentsQuerySchema = paginationQuerySchema.extend({
   unitId: uuidSchema.optional(),
   auditorUserId: uuidSchema.optional(),
   status: assignmentStatusSchema.optional(),
+  groupId: uuidSchema.optional(),
   /** Excludes CANCELLED, COMPLETED and EXPIRED — what a device needs in its catalogue. */
   open: booleanQuery(false),
 });
@@ -164,6 +177,12 @@ export type AuditScoreSummary = z.infer<typeof auditScoreSummarySchema>;
 export const auditSchema = z.object({
   id: uuidSchema,
   assignmentId: uuidSchema.nullable(),
+  /**
+   * The assignment's group when this audit is one auditor's share of an audit several
+   * auditors conduct together; null otherwise. Optional so a payload from before it was
+   * carried still parses.
+   */
+  assignmentGroupId: uuidSchema.nullable().optional(),
   unitId: uuidSchema,
   unitName: z.string(),
   auditType: auditTypeSchema,
@@ -243,6 +262,9 @@ export const auditZoneSchema = z.object({
   resumeQuestionId: uuidSchema.nullable(),
   startedAt: isoDateTimeSchema.nullable(),
   completedAt: isoDateTimeSchema.nullable(),
+  /** Set when the auditor withdrew this unfinished Zone (status WITHDRAWN). */
+  withdrawnAt: isoDateTimeSchema.nullable().optional(),
+  withdrawReason: z.string().nullable().optional(),
   clientUpdatedAt: isoDateTimeSchema,
   version: z.number().int(),
 });
@@ -476,6 +498,18 @@ export const completeAuditZoneRequestSchema = z.object({
   completedAt: isoDateTimeSchema.optional(),
 });
 export type CompleteAuditZoneRequest = z.infer<typeof completeAuditZoneRequestSchema>;
+
+/**
+ * Withdrawing an unfinished Zone from its audit — the auditor's "abort this Zone". Carried
+ * by the sync batch as `audit_zone:withdraw`; the reason is optional because an auditor
+ * standing in the Zone should not have to type to leave it.
+ */
+export const withdrawAuditZoneRequestSchema = z.object({
+  auditId: uuidSchema,
+  reason: optional(z.string().trim().max(1000)),
+  withdrawnAt: isoDateTimeSchema.optional(),
+});
+export type WithdrawAuditZoneRequest = z.infer<typeof withdrawAuditZoneRequestSchema>;
 
 /**
  * `PUT /audit-zones/{auditZoneId}/responses/{responseId}`.

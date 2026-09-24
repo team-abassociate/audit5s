@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gte, inArray, isNull, lte, notExists, sql, type SQL } from 'drizzle-orm';
 import {
+  auditAssignments,
   auditLogs,
   auditZoneSectionScores,
   auditZones,
@@ -48,6 +49,7 @@ const auditScopeColumns = { unitId: audits.unitId, ownerUserId: audits.auditorUs
 const auditColumns = {
   id: audits.id,
   assignmentId: audits.assignmentId,
+  assignmentGroupId: auditAssignments.groupId,
   unitId: audits.unitId,
   unitName: units.name,
   auditType: audits.auditType,
@@ -106,6 +108,8 @@ const auditZoneColumns = {
   resumeQuestionId: auditZones.resumeQuestionId,
   startedAt: auditZones.startedAt,
   completedAt: auditZones.completedAt,
+  withdrawnAt: auditZones.withdrawnAt,
+  withdrawReason: auditZones.withdrawReason,
   clientUpdatedAt: auditZones.clientUpdatedAt,
   version: auditZones.version,
 };
@@ -239,7 +243,9 @@ export class AuditsRepository extends BaseRepository {
         query.active
           ? inArray(audits.status, ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'])
           : undefined,
-        query.cursor ? sql`${audits.id} > ${query.cursor}` : undefined,
+        // Newest first: ids are UUIDv7, so id order is creation order, and the cursor walks
+        // backwards from the last row of the previous page.
+        query.cursor ? sql`${audits.id} < ${query.cursor}` : undefined,
       ];
 
       return tx
@@ -247,8 +253,9 @@ export class AuditsRepository extends BaseRepository {
         .from(audits)
         .innerJoin(units, eq(units.id, audits.unitId))
         .innerJoin(users, eq(users.id, audits.auditorUserId))
+        .leftJoin(auditAssignments, eq(auditAssignments.id, audits.assignmentId))
         .where(this.scoped(scope, auditScopeColumns, ...filters))
-        .orderBy(asc(audits.id))
+        .orderBy(desc(audits.id))
         .limit(query.limit + 1);
     });
   }
@@ -428,11 +435,13 @@ export class AuditsRepository extends BaseRepository {
     scope: ScopeContext,
     auditZoneId: string,
     patch: Partial<{
-      status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
+      status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'WITHDRAWN';
       zoneRemark: string | null;
       resumeQuestionId: string | null;
       startedAt: Date | null;
       completedAt: Date | null;
+      withdrawnAt: Date | null;
+      withdrawReason: string | null;
       clientUpdatedAt: Date;
     }>,
   ): Promise<string | null> {
@@ -1065,12 +1074,45 @@ export class AuditsRepository extends BaseRepository {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [row] = await tx
         .select({
-          total: sql<number>`COUNT(*)::int`,
+          // A withdrawn Zone left the audit: it neither blocks the finish nor counts toward
+          // the "at least one Zone" it needs.
+          total: sql<number>`COUNT(*) FILTER (WHERE ${auditZones.status} <> 'WITHDRAWN')::int`,
           completed: sql<number>`COUNT(*) FILTER (WHERE ${auditZones.status} = 'COMPLETED')::int`,
         })
         .from(auditZones)
         .where(eq(auditZones.auditId, auditId));
       return { total: row?.total ?? 0, completed: row?.completed ?? 0 };
+    });
+  }
+
+  /**
+   * Whether another audit fulfilling this assignment is still open.
+   *
+   * `resolveAssignment` links an auditor's open assignment to every external audit they
+   * start in its Unit, so one assignment can carry several audits of one day. Finishing
+   * one of them must not close the assignment the others are still being conducted under.
+   */
+  async hasOtherOpenAuditForAssignment(
+    scope: ScopeContext,
+    assignmentId: string,
+    exceptAuditId: string,
+  ): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .select({ id: audits.id })
+        .from(audits)
+        .where(
+          this.scoped(
+            scope,
+            auditScopeColumns,
+            eq(audits.assignmentId, assignmentId),
+            sql`${audits.id} <> ${exceptAuditId}`,
+            inArray(audits.status, ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED']),
+          ),
+        )
+        .limit(1);
+      return row !== undefined;
     });
   }
 
@@ -1093,6 +1135,7 @@ export class AuditsRepository extends BaseRepository {
         .where(
           and(
             eq(auditZones.auditId, auditId),
+            sql`${auditZones.status} <> 'WITHDRAWN'`,
             this.scoped(scope, auditScopeColumns),
             notExists(
               tx
@@ -1223,6 +1266,7 @@ export class AuditsRepository extends BaseRepository {
       .from(audits)
       .innerJoin(units, eq(units.id, audits.unitId))
       .innerJoin(users, eq(users.id, audits.auditorUserId))
+      .leftJoin(auditAssignments, eq(auditAssignments.id, audits.assignmentId))
       .where(and(eq(audits.id, auditId), this.scoped(scope, auditScopeColumns)))
       .limit(1);
     return row ?? null;

@@ -59,6 +59,8 @@ export const AUDIT_LOG_ACTIONS = [
    */
   'device.user_added',
   'sync_conflict.resolved',
+  /** The auditor withdrew an unfinished Zone from their audit ("abort this Zone", 0031). */
+  'audit_zone.withdrawn',
 ] as const;
 export const auditLogActionSchema = z.enum(AUDIT_LOG_ACTIONS);
 export type AuditLogAction = z.infer<typeof auditLogActionSchema>;
