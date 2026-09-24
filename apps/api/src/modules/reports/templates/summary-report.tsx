@@ -68,6 +68,8 @@ export function SummaryReport({
       <h2 className="section-title">S-wise scoring</h2>
       <SectionBars sections={payload.sections} bands={payload.bands} />
       <SectionTable sections={payload.sections} bands={payload.bands} />
+      {/* The colour key sits under the table whose percentages it colours. */}
+      <RatingPills bands={payload.bands} />
 
       <h2 className="section-title">5S performance web — all selected zones</h2>
       <div className="radar-box">
@@ -77,8 +79,6 @@ export function SummaryReport({
           percentage.
         </div>
       </div>
-
-      <RatingPills bands={payload.bands} />
 
       <h2 className="section-title">Zone-wise marks per S</h2>
       <ZoneMatrix payload={payload} />

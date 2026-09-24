@@ -114,6 +114,10 @@ export class ReportsService {
             kind: 'MULTI_ZONE_SUMMARY',
             unitId: previous.unitId,
             selectedZoneIds: previous.selectedZoneIds ?? [],
+            ...(previous.selectedAuditZoneIds
+              ? { selectedAuditZoneIds: previous.selectedAuditZoneIds }
+              : {}),
+            ...(previous.assignmentGroupId ? { assignmentGroupId: previous.assignmentGroupId } : {}),
           }
         : { kind: previous.kind, auditZoneId: previous.auditZoneId! },
     );
@@ -187,7 +191,9 @@ export class ReportsService {
           unitId: target.unitId,
           auditId: target.auditId,
           auditZoneId: target.auditZoneId,
-          selectedZoneIds: request.kind === 'MULTI_ZONE_SUMMARY' ? request.selectedZoneIds : null,
+          ...chosenSelection(request),
+          assignmentGroupId:
+            request.kind === 'MULTI_ZONE_SUMMARY' ? (request.assignmentGroupId ?? null) : null,
           payload,
           payloadSchemaVersion: payload.schemaVersion,
           templateVersion: TEMPLATE_VERSION,
@@ -216,7 +222,9 @@ export class ReportsService {
           unitId: target.unitId,
           auditId: target.auditId,
           auditZoneId: target.auditZoneId,
-          selectedZoneIds: request.kind === 'MULTI_ZONE_SUMMARY' ? request.selectedZoneIds : null,
+          ...chosenSelection(request),
+          assignmentGroupId:
+            request.kind === 'MULTI_ZONE_SUMMARY' ? (request.assignmentGroupId ?? null) : null,
           payload,
           payloadSchemaVersion: payload.schemaVersion,
           templateVersion: TEMPLATE_VERSION,
@@ -249,12 +257,43 @@ export class ReportsService {
     tx: Transaction,
     request: GenerateReportRequest,
   ): Promise<{ unitId: string; auditId: string | null; auditZoneId: string | null; auditZoneIds: string[] }> {
-    if (request.kind === 'MULTI_ZONE_SUMMARY') {
-      const auditZoneIds = await this.repository.resolveLatestAuditZones(
+    if (request.kind === 'MULTI_ZONE_SUMMARY' && request.selectedAuditZoneIds) {
+      const auditZoneIds = await this.repository.resolveChosenAuditZones(
         tx,
         request.unitId,
-        request.selectedZoneIds,
+        request.selectedAuditZoneIds,
       );
+      const missing = new Set(request.selectedAuditZoneIds).size - auditZoneIds.length;
+      if (missing > 0) {
+        // Summarising the rest would print a document that quietly leaves out what was
+        // asked for. The Super Admin chose these Zones one by one; say which did not count.
+        throw AppError.validation(
+          `${missing} of the chosen Zones ${missing === 1 ? 'is' : 'are'} not a finished Zone of a ` +
+            'finished audit in this Unit',
+          [
+            {
+              field: 'selectedAuditZoneIds',
+              message: 'Choose finished Zones of finished audits in this Unit',
+            },
+          ],
+        );
+      }
+      return { unitId: request.unitId, auditId: null, auditZoneId: null, auditZoneIds };
+    }
+
+    if (request.kind === 'MULTI_ZONE_SUMMARY') {
+      const auditZoneIds = request.assignmentGroupId
+        ? await this.repository.resolveGroupAuditZones(
+            tx,
+            request.unitId,
+            request.assignmentGroupId,
+            request.selectedZoneIds,
+          )
+        : await this.repository.resolveLatestAuditZones(
+            tx,
+            request.unitId,
+            request.selectedZoneIds,
+          );
       if (auditZoneIds.length === 0) {
         throw AppError.validation('None of the selected Zones has a completed audit', [
           { field: 'selectedZoneIds', message: 'No completed audit in any selected Zone' },
@@ -501,6 +540,23 @@ export class ReportsService {
   }
 }
 
+/**
+ * What a summary is a summary *of*, as the snapshot stores it: audited Zones when they were
+ * chosen one by one, otherwise Zones. The other column is null, so a regeneration takes the
+ * same path the original did.
+ */
+function chosenSelection(request: GenerateReportRequest): {
+  selectedZoneIds: string[] | null;
+  selectedAuditZoneIds: string[] | null;
+} {
+  if (request.kind !== 'MULTI_ZONE_SUMMARY') {
+    return { selectedZoneIds: null, selectedAuditZoneIds: null };
+  }
+  return request.selectedAuditZoneIds
+    ? { selectedZoneIds: null, selectedAuditZoneIds: request.selectedAuditZoneIds }
+    : { selectedZoneIds: request.selectedZoneIds, selectedAuditZoneIds: null };
+}
+
 /** `report/{unit_id}/{snapshot_id}/v{n}.pdf` (§10.2). Stable, so a re-upload overwrites. */
 export function reportObjectKey(unitId: string, snapshotId: string, version: number): string {
   return `report/${unitId}/${snapshotId}/v${version}.pdf`;
@@ -516,6 +572,8 @@ export function toContract(row: ReportSnapshotRow): ReportSnapshot {
     auditId: row.auditId,
     auditZoneId: row.auditZoneId,
     selectedZoneIds: row.selectedZoneIds,
+    selectedAuditZoneIds: row.selectedAuditZoneIds,
+    assignmentGroupId: row.assignmentGroupId,
     payloadSchemaVersion: row.payloadSchemaVersion,
     templateVersion: row.templateVersion,
     status: row.status,

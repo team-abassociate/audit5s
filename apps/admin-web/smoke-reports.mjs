@@ -26,6 +26,21 @@ const ids = {
   action: '00000000-0000-4000-8000-000000000004',
 };
 const now = '2026-09-12T08:30:00.000Z';
+ids.audit = '00000000-0000-4000-8000-000000000006';
+ids.auditZoneOne = '00000000-0000-4000-8000-000000000007';
+ids.auditZoneTwo = '00000000-0000-4000-8000-000000000008';
+const finishedAudit = {
+  id: ids.audit,
+  unitId: ids.unit,
+  unitName: 'Nashik Plant',
+  auditType: 'EXTERNAL_5S',
+  status: 'CLOSED',
+  scored: true,
+  auditorName: 'Priya Nair',
+  completedAt: now,
+  totals: { applicableQuestions: 100, naQuestions: 0, rawScore: 120, maxScore: 200, scorePercentage: 60 },
+};
+const generated = [];
 
 await ready();
 const browser = await chromium.launch({
@@ -105,10 +120,33 @@ await page.route('**/api/v1/**', async (route) => {
       nextCursor: null,
     });
   }
-  if (path === '/api/v1/audits') return json({ data: [], nextCursor: null });
-  // The Reports page always loads this Unit's Zones — the one-click Unit summary needs
-  // their ids whatever report kind is selected. Unmocked, it fell through to the 404 below
-  // and the console error it logged failed the no-errors assertion.
+  if (path === '/api/v1/audits') return json({ data: [finishedAudit], nextCursor: null });
+  // The unit summary picker lists each finished audit's Zones from its score summary.
+  if (path === `/api/v1/audits/${ids.audit}/summary`) {
+    const zone = (auditZoneId, zoneCode, zoneName, pct) => ({
+      auditId: ids.audit,
+      auditZoneId,
+      zoneCode,
+      zoneName,
+      checklistTemplateName: 'Production',
+      status: 'COMPLETED',
+      totals: { applicableQuestions: 50, naQuestions: 0, rawScore: pct, maxScore: 100, scorePercentage: pct },
+      sections: [],
+    });
+    return json({
+      scored: true,
+      audit: { auditId: ids.audit, auditZoneId: null, totals: finishedAudit.totals, sections: [] },
+      zones: [zone(ids.auditZoneOne, '1', 'Press shop', 62), zone(ids.auditZoneTwo, '2', 'Stores', 58)],
+    });
+  }
+  if (path === '/api/v1/reports/generate') {
+    generated.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({ id: ids.report, version: 2, kind: 'MULTI_ZONE_SUMMARY' }),
+    });
+  }
   if (path === `/api/v1/units/${ids.unit}/zones`) {
     return json({
       data: [
@@ -165,6 +203,16 @@ try {
   await page.getByRole('cell', { name: 'Initial Zone report' }).waitFor();
   await page.getByRole('button', { name: 'Links' }).click();
   await page.getByRole('heading', { name: 'Links — Initial Zone report v1' }).waitFor();
+
+  // The unit summary is chosen audited Zone by audited Zone, not handed every Zone.
+  await page.getByRole('button', { name: 'Generate unit summary report' }).click();
+  await page.getByText('Priya Nair · 2 Zones').waitFor();
+  await page.getByRole('checkbox', { name: /Stores/ }).check();
+  await page.getByRole('button', { name: 'Generate summary of 1 Zone' }).click();
+  await page.getByText(/Summary of 1 Zone queued/).waitFor();
+  assert.deepEqual(generated, [
+    { kind: 'MULTI_ZONE_SUMMARY', unitId: ids.unit, selectedAuditZoneIds: [ids.auditZoneTwo] },
+  ]);
   assert.deepEqual(errors, []);
   console.log('reports and /ca camera smoke passed with no console errors');
 } finally {
