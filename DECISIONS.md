@@ -772,9 +772,9 @@ one:
   had to go and fetch a link would make the document depend on something outside the
   snapshot, and §10.5's "a two-year-old snapshot still renders with the layout it was
   designed for" would stop being true of its *content*;
-* **the same payload renders to the same bytes**, which is what PART 15.7's byte-stability
-  test asserts and what makes "regeneration leaves v1 byte-identical" checkable rather
-  than hoped for.
+* **the same payload renders the same document**: its content is frozen, and PART 15.7
+  checks the HTML and PDF structure. R-35 records why fresh PDF bytes may differ. An
+  already issued v1 stays byte-identical because RS-1 preserves its stored PDF.
 
 One ordering detail the schema forced, recorded because the obvious code is wrong:
 `report_access_token.snapshot_id` references the snapshot, so the token rows cannot be
@@ -984,7 +984,8 @@ switched off and missed the fourth.
 `freezePdfDates` rewrites both fields to the payload's frozen `generatedAt`, in place and
 at exactly the same width so every cross-reference offset stays valid. A separate test
 asserts the metadata specifically, so a regression names the cause instead of reappearing
-as intermittent failure.
+as intermittent failure. R-35 later found that Chromium's image-object sharing can still
+change fresh PDF bytes, even with frozen dates.
 
 ### (e) Draining is now allowed to finish
 
@@ -1634,35 +1635,31 @@ entry on their own audit before they finish it.
   correction reaches the Unit's Zone master the auditor created it in rather than leaving
   the two disagreeing.
 
-## R-35 — The renderer is byte-stable within a browser, not across one
+## R-35 — A frozen payload renders the same document; issued PDFs keep their bytes
 
-**Settled 2026-09-22**, after CI was red for three days on `report-render.e2e.test.ts` and
-every deploy in that window had to go out through `deploy.yml`'s manual dispatch.
+**Settled 2026-09-22; revised 2026-09-25** after the same PDF byte assertion failed twice
+on CI for commit `13eff8d`, once with two image objects in the first render and three in
+the second, then in the opposite order on rerun. Both renders used one browser.
 
-The failing assertion was that two renders of one frozen payload produce byte-identical
-PDFs **after the browser has been restarted**. It does not hold, and no arrangement of this
-repository's code makes it hold. Chromium decides whether several draws of the same JPEG
-become one shared image XObject or several separate ones, and that decision follows its
-decoded-image cache — which a freshly started browser does not have. The two renders came
-out about 825 bytes apart, in whichever direction the cache happened to fall.
+The original decision allowed different PDF bytes after a browser restart while still
+requiring byte identity inside one browser. The new failures disprove that boundary.
+Chromium decides whether several draws of the same JPEG become shared or separate image
+XObjects, and that decision can vary between consecutive renders in one browser. The
+resulting PDFs differ by about 825 bytes without a change to the frozen payload.
 
-Three earlier attempts treated it as ours: a font warm-up, an object census, then a revert
-of the warm-up when the counts said it was never fonts. The counts were right. It is not
-ours.
+**What is asserted:** two renders of one frozen payload produce identical HTML, the same
+page count and image tier, and PDFs with the same page and font counts and with images
+present. The PDF's creation and modification dates are still frozen to `generatedAt`, and
+each PDF's checksum must match its own bytes. A changed payload must still change the
+rendered artifact. These checks apply both within one browser and after a restart.
 
-**What is still asserted, strictly:** byte-identity between two renders in one browser.
-That is the renderer's own determinism, it is what PART 15.7 is about, and it passes.
+**What is not asserted:** byte identity between two newly rendered PDFs. Neither an image
+XObject count nor a checksum comparison between fresh renders measures a document change.
 
-**What replaced the cross-restart byte comparison:** the same document — page count, the
-chosen image tier, and a census of pages and embedded fonts. Those are the things whose
-change would be a real defect, and none of them depends on Chromium's image cache.
+**Why RS-1 is untouched.** RS-1 guarantees that a *stored* v1 never changes its bytes. It
+does not rest on fresh renders agreeing byte for byte: v1 is never re-rendered, and the
+database enforces that. Regeneration creates v2 beside v1. Each issued PDF keeps its own
+checksum and remains downloadable exactly as issued.
 
-**Why RS-1 is untouched.** RS-1 guarantees that a *stored* v1 never changes its bytes, and
-it does not rest on re-rendering being reproducible — it rests on v1 never being re-rendered
-at all, which the database enforces. A worker that restarts and renders a report again
-produces the same document; whether it produces the same bytes was never something a reader
-of a report could observe.
-
-**A test that cannot pass is worse than a missing one.** It was not protecting the property
-it named, it was the reason a ready fix for a field-blocking bug sat behind a manual
-override, and it trained everyone reading CI to expect red.
+PART 15.7 and R-14's earlier fresh-byte wording are superseded by this revision. The
+content and stored-byte guarantees remain separate, testable properties.

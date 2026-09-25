@@ -35,10 +35,10 @@ const INITIAL_OVERHEAD_BYTES = 200_000;
 /**
  * HTML → PDF, in `worker-report` and nowhere else (STACK.md §5).
  *
- * **Determinism is the requirement**, not a nicety: PART 15.7 asserts that a fixed payload
- * produces a byte-stable PDF, and that assertion is what makes "regeneration leaves v1
- * byte-identical" checkable rather than hoped for. Four things secure it, and each of them
- * is a way the property is usually lost:
+ * A fixed payload produces a stable document (PART 15.7, R-35). Chromium can give that
+ * document different PDF bytes through image-object sharing, even inside one browser.
+ * RS-1 instead keeps each issued PDF byte-identical by preserving its stored bytes.
+ * Four things keep the document independent of render-time state:
  *
  *   1. **No network at render time.** Photographs are fetched from object storage *before*
  *      Chromium starts and embedded as `data:` URIs, and the stylesheet uses system fonts
@@ -50,7 +50,7 @@ const INITIAL_OVERHEAD_BYTES = 200_000;
  *      PDF metadata, and `freezePdfDates` below replaces it with the same frozen instant.
  *   3. **No animation.** `prefers-reduced-motion` is forced, so nothing is captured
  *      mid-transition.
- *   4. **One browser, pinned.** Concurrency 1, the version pinned by the lockfile.
+ *   4. **Pinned browser.** Concurrency 1, the version pinned by the lockfile.
  *
  * The browser is launched per job rather than held open. That costs about a second and
  * buys the thing a 1536 MB container actually needs: a renderer that leaks nothing between
@@ -323,11 +323,10 @@ function countPages(pdf: Buffer): number | null {
 /**
  * Skia stamps the wall clock into `/CreationDate` and `/ModDate`, to the second.
  *
- * That is the one source of nondeterminism the render pipeline could not switch off, and
- * it is invisible almost all of the time: two renders inside the same second agree, so
- * PART 15.7's byte-stability test passed roughly three runs in four and failed the fourth
- * with no other explanation. It is a real defect and not a flaky test — "the same payload
- * renders to the same bytes" (R-14) was simply not true across a second boundary.
+ * This clock was invisible almost all of the time: two renders inside the same second
+ * agreed, so PART 15.7's former byte-stability test failed roughly one run in four at second
+ * boundaries. Freezing these dates removes the clock from each issued PDF's metadata;
+ * R-35 separately records Chromium's image-object variation between fresh PDFs.
  *
  * The replacement is written in place and is exactly as long as what it replaces, so every
  * byte offset in the cross-reference table stays valid: rewriting the dates to a different

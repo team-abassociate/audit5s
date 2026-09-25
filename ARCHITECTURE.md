@@ -2650,8 +2650,9 @@ Renderer choice: **HTML + headless Chromium (Playwright)**. Rationale — the la
 photo-heavy and grid-based, the same HTML powers the on-screen preview, and designers can
 iterate in a browser. A programmatic PDF library would make the two-column
 before/after layout and the flowing question tables far more expensive to maintain.
-Determinism is enforced by pinning the Chromium version, embedding fonts, and disabling
-animations; a snapshot test asserts byte-stable output for a fixed payload (PART 15.7).
+Document stability is checked with a pinned Chromium version, embedded fonts, and disabled
+animations; PART 15.7 compares content and PDF structure for a fixed payload. Chromium may
+emit different fresh PDF bytes for the same document (DECISIONS.md R-35).
 
 ## 10.3 Report types
 
@@ -3334,7 +3335,7 @@ sequencing, not commitments.
 | **Web** | Super Admin report generation UI (kind, zone multi-select with Select All, preview); version history; download; token management with revoke; **`/ca/[token]` responsive corrective-action page with `getUserMedia` live capture** |
 | **Mobile** | Consultant score-summary screen (explicitly **not** a PDF); deep-link handling for corrective-action links |
 | **Migrations** | `report_snapshot`, `report_access_token` |
-| **Tests** | **Snapshot tests: fixed payload → byte-stable PDF.** Layout: GOOD side by side; NONCONFORMITY left-aligned with an empty right half containing no text; after-evidence right half populated for A and B; **GOOD photos unchanged between v1 and v2**. Regeneration creates v2 and leaves v1 byte-identical. Expired/revoked token → `410`. Consultant `POST /reports/generate` → `403`. Summary over a Zone subset uses only those Zones. |
+| **Tests** | **Snapshot tests: fixed payload → stable HTML and PDF document.** Layout: GOOD side by side; NONCONFORMITY left-aligned with an empty right half containing no text; after-evidence right half populated for A and B; **GOOD photos unchanged between v1 and v2**. Regeneration creates v2 and leaves stored v1 byte-identical. Expired/revoked token → `410`. Consultant `POST /reports/generate` → `403`. Summary over a Zone subset uses only those Zones. |
 | **Acceptance** | Super Admin generates an Initial Zone Report matching the required layout; a Zone Leader opens the link on a phone, captures a live after-photo and submits; Super Admin verifies and regenerates an After-Evidence report as version 2 while version 1 stays downloadable and unchanged. |
 
 ---
@@ -3451,8 +3452,11 @@ multi-zone summary; plus the analytics dashboard.
 
 ## 15.7 Report snapshot tests
 
-Fixed payload fixtures → rendered PDF compared byte-for-byte (fonts embedded, Chromium
-pinned, timestamps injected). Visual regression on the HTML template at three viewport widths.
+Fixed payload fixtures → identical HTML and the same PDF page count, image tier, page/font
+census and image presence across fresh renders (DECISIONS.md R-35). Check that each PDF's
+checksum matches its bytes and its metadata uses the frozen timestamp. Stored snapshots,
+including v1 after v2 is generated, remain byte-identical to their issued copy. Visual
+regression on the HTML template at three viewport widths.
 Explicit layout assertions: GOOD side by side; **NONCONFORMITY left-aligned with an empty
 right half that contains no text**; after-evidence right half populated for both options;
 GOOD photos identical between v1 and v2; v1 unchanged after v2 is generated.

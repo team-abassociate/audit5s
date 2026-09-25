@@ -14,7 +14,7 @@ import { readImageDimensions } from "@audit5s/domain";
  * last tiers exist so that it always does.
  *
  * Jimp is pure JavaScript, so the same bytes in give the same bytes out on every machine —
- * which keeps PART 15.7's byte-stable render intact.
+ * which keeps PART 15.7's frozen document content intact.
  */
 
 /** 1 MB, counted in bytes as a phone's share sheet counts them. */

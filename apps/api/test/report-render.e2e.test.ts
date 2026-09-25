@@ -11,12 +11,11 @@ import { ObjectStorage } from '../src/infrastructure/storage/object-storage';
 import type { AppConfig } from '../src/config/env';
 
 /**
- * **Byte-stable PDFs from a fixed payload** — PART 14's Phase 7 row and PART 15.7.
+ * **Stable report documents from a fixed payload** — PART 14's Phase 7 row and PART 15.7.
  *
- * This is the assertion the whole freezing design exists to make possible, and it is what
- * turns "regeneration leaves v1 byte-identical" from a hope into a checkable property: if
- * one payload always renders to the same bytes, then v1's bytes cannot change, because v1's
- * payload cannot change (RS-1).
+ * The frozen payload must produce the same HTML and PDF document. Chromium can choose a
+ * different number of image XObjects even on consecutive renders in one browser (R-35),
+ * so fresh PDF bytes are not compared. RS-1 separately protects an issued snapshot's bytes.
  *
  * It runs a real Chromium, so it lives in the e2e suite rather than beside the layout
  * tests. Those cover the §4.1–§4.3 rules without a browser and run everywhere; this covers
@@ -150,16 +149,23 @@ function pdfCensus(pdf: Buffer): Record<string, number | boolean> {
 }
 
 describe('the renderer is deterministic (PART 15.7)', () => {
-  it('renders the same fixed payload to byte-identical PDFs', async () => {
-    const first = await renderer.render(fixtureZonePayload());
-    const second = await renderer.render(fixtureZonePayload());
+  it('renders the same document twice from one frozen payload', async () => {
+    const payload = fixtureZonePayload();
+    const html = await renderer.renderHtml(payload);
+    const first = await renderer.render(payload);
+    const second = await renderer.render(payload);
 
-    expect(describePdfDifference(first.pdf, second.pdf)).toBe('identical');
-    expect(first.checksumSha256).toBe(second.checksumSha256);
-    // Compared as bytes as well as by digest: a checksum computed over the wrong buffer
-    // would agree with itself and prove nothing.
-    expect(Buffer.compare(first.pdf, second.pdf)).toBe(0);
+    expect(await renderer.renderHtml(payload)).toBe(html);
+    expect(second.pageCount).toBe(first.pageCount);
+    expect(second.imageTier).toBe(first.imageTier);
+    expect(pdfCensus(second.pdf), describePdfDifference(first.pdf, second.pdf))
+      .toEqual(pdfCensus(first.pdf));
+    // Each issued artifact's digest must describe its own bytes, even when two fresh PDFs
+    // differ only in Chromium's image-object sharing.
+    expect(first.checksumSha256).toBe(createHash('sha256').update(first.pdf).digest('hex'));
+    expect(second.checksumSha256).toBe(createHash('sha256').update(second.pdf).digest('hex'));
     expect(first.pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(second.pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     expect(first.pageCount).toBeGreaterThan(0);
   }, 180_000);
 
@@ -177,13 +183,10 @@ describe('the renderer is deterministic (PART 15.7)', () => {
    * a revert of the warm-up). It is not ours, and no arrangement of our code makes
    * Chromium's image cache deterministic across a process start.
    *
-   * So this tests what the system actually promises. **Byte-identity within one browser is
-   * still asserted, strictly, in the test above** — that is the renderer's own determinism
-   * and it is the one the freezing design rests on. RS-1's guarantee is that v1's *stored*
-   * bytes never change, and they cannot: the database refuses to re-render v1 at all. What
-   * matters across a worker restart is that a re-render is the same document, and that is
-   * what is checked here — page count, image tier, and the census of objects, images and
-   * fonts that would move if anything real had changed.
+   * So this checks the same document after a restart, as the preceding test does within
+   * one browser. RS-1 separately guarantees that v1's *stored* bytes never change: the
+   * database refuses to re-render v1. Page count, image tier, and the presence of fonts
+   * and images catch document changes without depending on Chromium's image cache.
    *
    * If this ever fails, something genuinely differs: a font stopped embedding, an image
    * dropped out, a page appeared. Those are the bugs the byte comparison was standing in
@@ -202,11 +205,16 @@ describe('the renderer is deterministic (PART 15.7)', () => {
     expect(second.pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
   }, 180_000);
 
-  it('produces different bytes for a different payload, so the test can fail', async () => {
+  it('changes the document for a different payload, so the test can fail', async () => {
     // The control. Without it, a renderer that returned a constant would pass every
     // assertion above.
-    const initial = await renderer.render(fixtureZonePayload());
-    const after = await renderer.render(fixtureAfterEvidencePayload());
+    const initialPayload = fixtureZonePayload();
+    const afterPayload = fixtureAfterEvidencePayload();
+    expect(await renderer.renderHtml(initialPayload))
+      .not.toBe(await renderer.renderHtml(afterPayload));
+
+    const initial = await renderer.render(initialPayload);
+    const after = await renderer.render(afterPayload);
 
     expect(initial.checksumSha256).not.toBe(after.checksumSha256);
   }, 180_000);
@@ -225,10 +233,8 @@ describe('the renderer is deterministic (PART 15.7)', () => {
 
   it("stamps the payload's frozen instant into the PDF metadata, not the wall clock", async () => {
     // The one clock the render pipeline could not switch off: Skia writes /CreationDate
-    // and /ModDate itself, to the second. It made the byte-stability test above fail about
-    // one run in four — whenever two renders straddled a second boundary — which read as
-    // flakiness and was a real breach of R-14's "the same payload renders to the same
-    // bytes". Asserted separately so a regression names the cause instead of looking random.
+    // and /ModDate itself, to the second. Freezing both to the payload's generatedAt
+    // keeps each issued PDF's metadata independent of the render time.
     const payload = fixtureZonePayload();
     const { pdf } = await renderer.render(payload);
     const text = pdf.toString('latin1');
