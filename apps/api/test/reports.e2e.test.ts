@@ -661,3 +661,146 @@ describe('a team audit: several Consultants on one assignment', () => {
     expect(await zonesOf((again.body as ReportSnapshot).id)).toEqual(expected);
   }, 180_000);
 });
+
+describe('a second press, cancel, and remove (0035)', () => {
+  function post(path: string, token = superAdmin) {
+    return world.request('POST', `${base}/reports/${path}`, {
+      token,
+      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+    });
+  }
+
+  async function listed(auditZoneId: string): Promise<string[]> {
+    const page = (
+      await world.request('GET', `${base}/reports?auditZoneId=${auditZoneId}`, { token: superAdmin })
+    ).body as Page<ReportSnapshot>;
+    return page.data.map((row) => row.id);
+  }
+
+  async function markReady(snapshotId: string) {
+    await world.owner.query(
+      `UPDATE report_snapshot SET status = 'READY', pdf_object_key = $2,
+              pdf_checksum_sha256 = $3, page_count = 2 WHERE id = $1`,
+      [snapshotId, `report/${world.unitA}/${snapshotId}/v1.pdf`, 'c'.repeat(64)],
+    );
+  }
+
+  it('joins a second Generate of the same report to the one still queued', async () => {
+    const { auditZoneId } = await completedZone();
+    const first = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
+      .body as ReportSnapshot;
+    const second = await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId });
+
+    expect(second.status, JSON.stringify(second.body)).toBe(202);
+    expect((second.body as ReportSnapshot).id).toBe(first.id);
+    expect(await listed(auditZoneId)).toEqual([first.id]);
+  }, 120_000);
+
+  it('joins a summary of the same Zones ticked in a different order, not a different one', async () => {
+    const a = await completedZone({ nonconformities: 1 });
+    const b = await completedZone({ nonconformities: 1 });
+    const summary = (ids: string[]) =>
+      generate(superAdmin, { kind: 'MULTI_ZONE_SUMMARY', unitId: world.unitA, selectedAuditZoneIds: ids });
+
+    const first = (await summary([a.auditZoneId, b.auditZoneId])).body as ReportSnapshot;
+    const reordered = (await summary([b.auditZoneId, a.auditZoneId])).body as ReportSnapshot;
+    const narrower = (await summary([a.auditZoneId])).body as ReportSnapshot;
+
+    expect(reordered.id).toBe(first.id);
+    expect(narrower.id).not.toBe(first.id);
+  }, 180_000);
+
+  it('cancels a queued report, hides it, and lets the next Generate queue afresh', async () => {
+    const { auditZoneId } = await completedZone();
+    const queued = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
+      .body as ReportSnapshot;
+
+    const cancelled = await post(`${queued.id}/cancel`);
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+    expect((cancelled.body as ReportSnapshot).status).toBe('CANCELLED');
+    expect((cancelled.body as ReportSnapshot).withdrawnAt).not.toBeNull();
+    // A second press finds what it asked for.
+    expect((await post(`${queued.id}/cancel`)).status).toBe(200);
+
+    expect(await listed(auditZoneId)).toEqual([]);
+    expect((await world.request('GET', `${base}/reports/${queued.id}/download-url`, { token: superAdmin })).status).toBe(409);
+
+    const next = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId })).body as ReportSnapshot;
+    expect(next.id).not.toBe(queued.id);
+    expect(next.status).toBe('QUEUED');
+
+    // Final at the database: a cancelled report never renders.
+    await expect(
+      world.owner.query(`UPDATE report_snapshot SET status = 'RENDERING' WHERE id = $1`, [queued.id]),
+    ).rejects.toThrow(/final/);
+  }, 120_000);
+
+  it('refuses to cancel a rendered report, and to remove a queued one', async () => {
+    const { auditZoneId } = await completedZone();
+    const snapshot = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
+      .body as ReportSnapshot;
+
+    expect((await post(`${snapshot.id}/remove`)).status).toBe(409);
+    await markReady(snapshot.id);
+    expect((await post(`${snapshot.id}/cancel`)).status).toBe(409);
+  }, 120_000);
+
+  it('removes a READY report: hidden, no object, the record and checksum kept', async () => {
+    const { auditZoneId } = await completedZone();
+    const snapshot = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
+      .body as ReportSnapshot;
+    await markReady(snapshot.id);
+
+    const removed = await post(`${snapshot.id}/remove`);
+    expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+    const body = removed.body as ReportSnapshot;
+    expect(body.status).toBe('REMOVED');
+    expect(body.pdfObjectKey).toBeNull();
+    expect(body.pdfChecksumSha256).toBe('c'.repeat(64));
+
+    expect(await listed(auditZoneId)).toEqual([]);
+    expect((await world.request('GET', `${base}/reports/${snapshot.id}/download-url`, { token: superAdmin })).status).toBe(409);
+
+    const logged = await world.owner.query(
+      `SELECT action FROM audit_log WHERE resource_id = $1 AND action = 'report.removed'`,
+      [snapshot.id],
+    );
+    expect(logged.rowCount).toBe(1);
+
+    // Still never a DELETE, and REMOVED is final.
+    await expect(
+      world.owner.query(`DELETE FROM report_snapshot WHERE id = $1`, [snapshot.id]),
+    ).rejects.toThrow();
+    await expect(
+      world.owner.query(`UPDATE report_snapshot SET status = 'READY' WHERE id = $1`, [snapshot.id]),
+    ).rejects.toThrow(/final/);
+  }, 120_000);
+
+  it('allows READY → REMOVED only with nothing else changed (RS-1 carve-out)', async () => {
+    const { auditZoneId } = await completedZone();
+    const snapshot = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
+      .body as ReportSnapshot;
+    await markReady(snapshot.id);
+
+    await expect(
+      world.owner.query(
+        `UPDATE report_snapshot SET status = 'REMOVED', pdf_object_key = NULL, withdrawn_at = now(),
+                withdrawn_by_user_id = $2, pdf_checksum_sha256 = $3 WHERE id = $1`,
+        [snapshot.id, world.actors.SUPER_ADMIN.userId, 'd'.repeat(64)],
+      ),
+    ).rejects.toThrow(/READY and immutable/);
+    await expect(
+      world.owner.query(`UPDATE report_snapshot SET status = 'FAILED', failed_reason = 'x' WHERE id = $1`, [
+        snapshot.id,
+      ]),
+    ).rejects.toThrow(/READY and immutable/);
+  }, 120_000);
+
+  it('keeps cancel and remove to the Super Admin', async () => {
+    const { auditZoneId } = await completedZone();
+    const snapshot = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
+      .body as ReportSnapshot;
+    expect((await post(`${snapshot.id}/cancel`, coordinator)).status).toBe(403);
+    expect((await post(`${snapshot.id}/remove`, leader)).status).toBe(403);
+  }, 120_000);
+});

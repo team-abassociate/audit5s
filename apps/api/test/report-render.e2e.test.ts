@@ -5,6 +5,7 @@ import { REPORT_MAX_BYTES } from '../src/modules/reports/report-images';
 import {
   FIXTURE_IMAGE_KEYS,
   fixtureAfterEvidencePayload,
+  fixtureSummaryPayload,
   fixtureZonePayload,
 } from '../src/modules/reports/templates/fixture';
 import { ObjectStorage } from '../src/infrastructure/storage/object-storage';
@@ -44,6 +45,7 @@ class FixtureStorage extends ObjectStorage {
     }
     return ONE_PIXEL_JPEG;
   }
+  async delete() {}
   async presignPut() {
     return { url: '', requiredHeaders: {}, expiresIn: 0 };
   }
@@ -305,6 +307,35 @@ describe('every report fits under the size cap', () => {
     }));
     return fixtureZonePayload({ zones: [{ ...zone, good }] });
   }
+
+  /**
+   * A summary prints only each Zone's flagged photographs (§10.3-C). Its tier has to be
+   * chosen for those, not for every photograph in every Zone: budgeting for a hundred
+   * unprinted photos is what printed the ten that do appear at 200 px.
+   */
+  it('keeps a summary’s flagged photographs sharp, however many photos its Zones hold', async () => {
+    const base = fixtureSummaryPayload();
+    const template = base.zones[0]!;
+    const zones = Array.from({ length: 5 }, (_unused, z) => ({
+      ...template,
+      auditZoneId: `az-bulk-${z}`,
+      zoneCode: String(z + 1),
+      good: Array.from({ length: 20 }, (_photo, index) => ({
+        ...template.good[0]!,
+        evidenceId: `ev-bulk-${z}-${index}`,
+        objectKey: `evidence/bulk/${z * 20 + index}.jpg`,
+        isSummaryFlagged: index === 0,
+      })),
+    }));
+    const bulk = new ReportRenderer(new PhotoStorage(), config);
+    try {
+      const rendered = await bulk.render({ ...base, zones });
+      expect(rendered.pdf.byteLength).toBeLessThanOrEqual(REPORT_MAX_BYTES);
+      expect(rendered.imageTier).toBe(0);
+    } finally {
+      await bulk.onModuleDestroy();
+    }
+  }, 300_000);
 
   it.each([6, 20, 50])('keeps a %i-photo Zone report under 1 MB', async (count) => {
     const bulk = new ReportRenderer(new PhotoStorage(), config);

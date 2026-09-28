@@ -141,6 +141,36 @@ export class ReportsController {
     return this.reports.regenerate(scope, snapshotId);
   }
 
+  /**
+   * Stops a report that has not rendered — the second of two Generate presses, or one
+   * pressed by mistake. `report:generate`: whoever may queue a render may stop one.
+   */
+  @RequirePermission('report', 'generate')
+  @Scope({ param: 'snapshotId', intent: 'write' })
+  @Post(':snapshotId/cancel')
+  @HttpCode(HttpStatus.OK)
+  cancel(
+    @CurrentScope() scope: ScopeContext,
+    @Param('snapshotId', ParseUUIDPipe) snapshotId: string,
+  ): Promise<ReportSnapshot> {
+    return this.reports.cancel(scope, snapshotId);
+  }
+
+  /**
+   * Takes a rendered or failed report out of every list and deletes its PDF (0035). A
+   * status change, not a DELETE: the row stays as the record of what was issued.
+   */
+  @RequirePermission('report', 'generate')
+  @Scope({ param: 'snapshotId', intent: 'write' })
+  @Post(':snapshotId/remove')
+  @HttpCode(HttpStatus.OK)
+  remove(
+    @CurrentScope() scope: ScopeContext,
+    @Param('snapshotId', ParseUUIDPipe) snapshotId: string,
+  ): Promise<ReportSnapshot> {
+    return this.reports.remove(scope, snapshotId);
+  }
+
   @RequirePermission('report_access_token', 'mint')
   @Scope({ param: 'snapshotId', intent: 'read' })
   @Get(':snapshotId/tokens')

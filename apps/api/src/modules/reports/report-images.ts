@@ -1,4 +1,4 @@
-import { Jimp } from "jimp";
+import sharp from "sharp";
 import { readImageDimensions } from "@audit5s/domain";
 
 /**
@@ -13,9 +13,18 @@ import { readImageDimensions } from "@audit5s/domain";
  * a handful of findings keeps tier 0; one with fifty steps down until it fits, and the
  * last tiers exist so that it always does.
  *
- * Jimp is pure JavaScript, so the same bytes in give the same bytes out on every machine —
- * which keeps PART 15.7's frozen document content intact.
+ * The codec is `sharp` (libvips), not the pure-JavaScript `jimp` it replaced: decoding one
+ * 1920 px photograph in `jimp` took about three seconds, and a summary re-encodes every
+ * photograph at two or three tiers while it searches for the one that fits — minutes per
+ * report on a concurrency-1 worker. libvips does the same work in tens of milliseconds, and
+ * shrinks a JPEG *while* decoding it. The pinned version gives the same bytes for the same
+ * input on the same platform, which is all PART 15.7's frozen content needs (DECISIONS.md
+ * R-36).
  */
+
+// A long-running worker renders unrelated reports one after another; libvips' operation
+// cache would only hold memory the 1536 MB container is short of.
+sharp.cache(false);
 
 /** 1 MB, counted in bytes as a phone's share sheet counts them. */
 export const REPORT_MAX_BYTES = 1_000_000;
@@ -59,67 +68,59 @@ export interface FittedImage {
   contentType: string;
 }
 
-type Bitmap = Awaited<ReturnType<typeof Jimp.read>>;
-
 /**
- * A photograph decoded once and shrunk to the largest tier's size, ready to be encoded at
- * any tier. Decoding a 1920 px JPEG is the expensive step in pure JavaScript; doing it once
- * per photo rather than once per tier tried is what keeps a fifty-photo Zone inside the
- * worker's render timeout.
+ * A photograph checked once and ready to be encoded at any tier.
+ *
+ * `decodable` is false when the header is unreadable or declares more pixels than the
+ * decode cap; such a file is then embedded as it came rather than dropped. There is no
+ * bitmap held here: libvips re-reads the compressed bytes at each tier, shrinking on load,
+ * which is both faster and far lighter on memory than keeping fifty decoded bitmaps.
  */
 export interface PreparedImage {
   source: SourceImage;
-  /** Null when the file could not be decoded safely; it is then embedded as it came. */
-  bitmap: Bitmap | null;
+  decodable: boolean;
 }
 
 export async function prepareImage(
   source: SourceImage,
 ): Promise<PreparedImage> {
   const dimensions = readImageDimensions(source.bytes);
-  if (
-    !dimensions ||
-    dimensions.width * dimensions.height > MAX_DECODABLE_PIXELS
-  ) {
-    return { source, bitmap: null };
-  }
-  try {
-    const top = REPORT_IMAGE_TIERS[0]!;
-    const edge = source.slot === "selfie" ? top.selfiePx : top.photoPx;
-    const bitmap = await Jimp.read(source.bytes);
-    if (Math.max(bitmap.width, bitmap.height) > edge) {
-      bitmap.scaleToFit({ w: edge, h: edge });
-    }
-    return { source, bitmap };
-  } catch {
-    return { source, bitmap: null };
-  }
+  return {
+    source,
+    decodable:
+      dimensions !== null &&
+      dimensions.width * dimensions.height <= MAX_DECODABLE_PIXELS,
+  };
 }
 
 /**
- * One photograph at one tier. Never upscales, and a file that cannot be decoded safely is
- * embedded as it came rather than dropped — a larger report beats a missing finding.
+ * One photograph at one tier. Never upscales, honours the EXIF orientation the media worker
+ * kept (§12.8) by baking it into the pixels, and a file that cannot be decoded is embedded as
+ * it came rather than dropped — a larger report beats a missing finding.
  */
 export async function fitImage(
   prepared: PreparedImage,
   tier: ImageTier,
 ): Promise<FittedImage> {
-  const { source, bitmap } = prepared;
-  if (!bitmap) {
+  const { source, decodable } = prepared;
+  if (!decodable) {
     return { bytes: source.bytes, contentType: source.contentType };
   }
   try {
     const edge = source.slot === "selfie" ? tier.selfiePx : tier.photoPx;
-    let image = bitmap;
-    if (Math.max(bitmap.width, bitmap.height) > edge) {
-      // A copy: the prepared bitmap is the source for every other tier still to be tried.
-      image = bitmap.clone();
-      image.scaleToFit({ w: edge, h: edge });
-    }
-    const bytes = await image.getBuffer("image/jpeg", {
-      quality: tier.quality,
-    });
-    return { bytes: Buffer.from(bytes), contentType: "image/jpeg" };
+    const bytes = await sharp(source.bytes, {
+      limitInputPixels: MAX_DECODABLE_PIXELS,
+    })
+      .rotate()
+      .resize({
+        width: edge,
+        height: edge,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: tier.quality })
+      .toBuffer();
+    return { bytes, contentType: "image/jpeg" };
   } catch {
     return { bytes: source.bytes, contentType: source.contentType };
   }

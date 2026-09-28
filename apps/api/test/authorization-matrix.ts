@@ -997,6 +997,20 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'reports.e2e.test.ts',
   },
   {
+    method: 'POST',
+    path: '/api/v1/reports/:snapshotId/cancel',
+    description: 'report:generate — stops a report not yet rendered; AuditLog: report.cancelled',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/reports/:snapshotId/remove',
+    description: 'report:generate — 0035: a READY/FAILED report withdrawn, its PDF deleted',
+    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'reports.e2e.test.ts',
+  },
+  {
     method: 'GET',
     path: '/api/v1/reports/:snapshotId/tokens',
     description: 'report_access_token:mint — the minted links with their use counts',

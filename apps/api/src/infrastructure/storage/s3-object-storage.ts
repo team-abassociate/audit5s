@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -63,6 +64,12 @@ export class S3ObjectStorage extends ObjectStorage {
     );
     this.logger.debug(`stored ${key} (${body.byteLength} bytes)`);
     return { key, byteSize: body.byteLength, checksumSha256 };
+  }
+
+  async delete(key: string): Promise<void> {
+    // S3's DELETE succeeds for a key that is not there, which is the port's contract.
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.config.bucket, Key: key }));
+    this.logger.debug(`deleted ${key}`);
   }
 
   async get(key: string): Promise<Buffer> {

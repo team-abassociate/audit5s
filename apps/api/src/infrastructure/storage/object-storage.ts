@@ -75,6 +75,12 @@ export abstract class ObjectStorage {
   /** The presigned GET of §12.6. TTL is capped at `MAX_GET_TTL_SECONDS`. */
   abstract presignGet(key: string, options: { expiresInSeconds: number }): Promise<PresignedDownload>;
 
+  /**
+   * Removes an object. An object that is already gone is not an error. Used only for a
+   * report PDF a Super Admin deleted (0035) — media is never deleted.
+   */
+  abstract delete(key: string): Promise<void>;
+
   /** `null` when the object is not there — the "metadata without object" case of §9.4. */
   abstract head(key: string): Promise<StoredObjectHead | null>;
 

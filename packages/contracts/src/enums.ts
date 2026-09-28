@@ -143,7 +143,11 @@ export const REPORT_KINDS = ['INITIAL_ZONE', 'AFTER_EVIDENCE_ZONE', 'MULTI_ZONE_
 export const reportKindSchema = z.enum(REPORT_KINDS);
 export type ReportKind = z.infer<typeof reportKindSchema>;
 
-export const REPORT_STATUSES = ['QUEUED', 'RENDERING', 'READY', 'FAILED'] as const;
+/**
+ * `CANCELLED`: stopped before it rendered. `REMOVED`: taken out of circulation after, its PDF
+ * deleted (0035). Both are final, and neither is listed unless asked for.
+ */
+export const REPORT_STATUSES = ['QUEUED', 'RENDERING', 'READY', 'FAILED', 'CANCELLED', 'REMOVED'] as const;
 export const reportStatusSchema = z.enum(REPORT_STATUSES);
 export type ReportStatus = z.infer<typeof reportStatusSchema>;
 

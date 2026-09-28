@@ -1663,3 +1663,65 @@ checksum and remains downloadable exactly as issued.
 
 PART 15.7 and R-14's earlier fresh-byte wording are superseded by this revision. The
 content and stored-byte guarantees remain separate, testable properties.
+
+## R-36 — Report photographs are encoded with `sharp`
+
+**Settled 2026-09-28**, at the request of the product owner, after Super Admins reported
+that reports and unit summaries took minutes to arrive.
+
+Measured on one machine with the test suite's own fixtures, the old `jimp` path took 7.7 s
+for a 6-photo Zone report, 33.7 s for 20 photos and 75.1 s for 50. Almost all of it was
+`jimp` decoding and re-encoding photographs in pure JavaScript (about 3 s to decode one
+1920 px photo), several times over while the renderer searched for the sharpest tier that
+fits under the 1 MB cap. The same reports with `sharp` took 1.8 s, 3.7 s and 4.8 s.
+
+That is the trigger decision (b) of the Phase 5 notes set for revisiting the codec: image
+work measurably lengthening a job. The platform half of the original argument no longer
+applies — the host is x86-64 and the image is Alpine, for which `sharp` ships a prebuilt
+`linuxmusl-x64` binary pinned by the lockfile.
+
+**The summary's blurred photographs.** The renderer used to budget the 1 MB cap across
+every photograph in the payload, but a summary prints only each Zone's flagged ones
+(§10.3-C). A 5-Zone summary with 20 photos per Zone was therefore sized for 100 photos
+and printed its 5 at 420 px, quality 50. The images fetched are now exactly the ones the
+template asks for, so that summary prints at tier 0.
+
+**Scope.** `apps/api/src/modules/reports/report-images.ts` only. Photographs are
+downloaded and encoded four at a time. The media worker's thumbnails stay on `jimp`: they
+are one photo per job and nobody waits on them.
+
+**What still holds.** The 1 MB hard cap and the tier table are unchanged. The pinned `sharp`
+version gives identical bytes for identical input on one platform, and R-35 already
+separates content determinism from byte identity between fresh renders. EXIF orientation is
+applied into the pixels rather than carried as metadata.
+
+## R-37 — A report can be cancelled before it renders, or removed after
+
+**Settled 2026-09-28**, at the request of the product owner. A double tap on Generate
+queued the same render twice, and a report issued by mistake stayed in every list.
+
+1. **A second Generate joins the first.** When a report of the same kind, target and
+   selection is already `QUEUED` or `RENDERING`, `POST /reports/generate` and
+   `/regenerate` return that snapshot. A transaction-scoped advisory lock on the target
+   keeps two simultaneous presses from both missing each other.
+2. **Cancel** (`POST /reports/{id}/cancel`): `QUEUED | RENDERING → CANCELLED`. The worker
+   skips a cancelled snapshot, and one cancelled mid-render discards its PDF.
+3. **Remove** (`POST /reports/{id}/remove`, shown to users as *Delete*):
+   `READY | FAILED → REMOVED`. The PDF object is deleted from storage; the row stays with its
+   payload, version and checksum as the record that the report was issued. This was chosen
+   over hiding only, to free the space.
+
+Both are `report:generate` (Super Admin), both are audit-logged (`report.cancelled`,
+`report.removed`), both record who and when (`withdrawn_at`, `withdrawn_by_user_id`), and
+both are final. Lists leave `CANCELLED` and `REMOVED` rows out; the download route refuses
+them.
+
+**The RS-1 carve-out.** Migration 0035 lets a `READY` row move to `REMOVED`, changing only
+`status`, `pdf_object_key` (to NULL) and the withdrawal columns. Everything else about an
+issued report — payload, version, target and checksum — is still frozen by the database.
+D8 still holds: nothing is deleted from Postgres. What changed is that a Super Admin may
+now destroy an issued PDF. Version numbers are never reused, so a chain may show a gap
+where a removed version was.
+
+**Corrective-action links** printed in a removed report keep working. A Zone Leader may
+already be using one, and revoking a link stays a separate, deliberate act (§10.4).

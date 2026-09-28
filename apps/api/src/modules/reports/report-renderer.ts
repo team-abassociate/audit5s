@@ -33,6 +33,13 @@ export interface RenderedReport {
 const INITIAL_OVERHEAD_BYTES = 200_000;
 
 /**
+ * Photographs downloaded, and encoded, this many at a time. Enough to hide storage latency
+ * and keep libvips' threads busy on a two-vCPU box; few enough that a fifty-photo summary
+ * never holds fifty downloads and fifty encodes in memory at once.
+ */
+const IMAGE_PARALLELISM = 4;
+
+/**
  * HTML → PDF, in `worker-report` and nowhere else (STACK.md §5).
  *
  * A fixed payload produces a stable document (PART 15.7, R-35). Chromium can give that
@@ -86,13 +93,14 @@ export class ReportRenderer implements OnModuleDestroy {
     const atTier = async (tier: number) => {
       let images = fitted.get(tier);
       if (!images) {
-        images = new Map();
-        for (const [key, source] of sources) {
-          images.set(key, await fitImage(source, REPORT_IMAGE_TIERS[tier]!));
-          // Jimp is synchronous CPU work. Yielding between photographs keeps the worker's
-          // queue heartbeat alive through a fifty-photo report.
-          await new Promise((resolve) => setImmediate(resolve));
-        }
+        // libvips encodes off the event loop, so the queue heartbeat stays alive without
+        // the yielding the pure-JavaScript codec needed.
+        images = new Map(
+          await mapPool([...sources], IMAGE_PARALLELISM, async ([key, source]) => [
+            key,
+            await fitImage(source, REPORT_IMAGE_TIERS[tier]!),
+          ] as const),
+        );
         fitted.set(tier, images);
       }
       return images;
@@ -145,24 +153,22 @@ export class ReportRenderer implements OnModuleDestroy {
   /** HTML only — `POST /reports/preview` (§8.9), for template iteration. No PDF, no row. */
   async renderHtml(payload: ReportPayload): Promise<string> {
     const sources = await this.prepareImages(await this.fetchImages(payload));
-    const images = new Map<string, string>();
-    for (const [key, source] of sources) {
-      images.set(
+    const images = new Map(
+      await mapPool([...sources], IMAGE_PARALLELISM, async ([key, source]) => [
         key,
         toDataUri(await fitImage(source, REPORT_IMAGE_TIERS[0]!)),
-      );
-    }
+      ] as const),
+    );
     return renderReportHtml(payload, (key) => images.get(key) ?? null);
   }
 
-  /** Every photograph decoded once, yielding between them for the same reason as above. */
+  /** Every photograph's header checked once, before any tier is tried. */
   private async prepareImages(
     sources: Map<string, SourceImage>,
   ): Promise<Map<string, PreparedImage>> {
     const prepared = new Map<string, PreparedImage>();
     for (const [key, source] of sources) {
       prepared.set(key, await prepareImage(source));
-      await new Promise((resolve) => setImmediate(resolve));
     }
     return prepared;
   }
@@ -193,7 +199,13 @@ export class ReportRenderer implements OnModuleDestroy {
   }
 
   /**
-   * Every object key the payload names, fetched once and embedded.
+   * Every object key the document **prints**, fetched once and embedded.
+   *
+   * The keys come from the template itself — a dry render that records what it asks for —
+   * not from every photograph the payload carries. A summary carries each Zone's whole
+   * record but prints only its flagged photographs (§10.3-C); budgeting the 1 MB cap across
+   * the unprinted ones as well pushed the handful that do print down to the smallest tiers.
+   * Asking the template keeps the two from ever disagreeing again.
    *
    * Deduplicated by key: the same photograph can appear as a Zone's nonconformity and
    * again in the summary's flagged block, and downloading a 4 MB image twice per report is
@@ -207,37 +219,39 @@ export class ReportRenderer implements OnModuleDestroy {
     payload: ReportPayload,
   ): Promise<Map<string, SourceImage>> {
     const keys = new Set<string>();
-    const add = (key: string | null | undefined) => {
-      if (key) keys.add(key);
-    };
+    renderReportHtml(payload, (key) => {
+      keys.add(key);
+      return null;
+    });
 
     const selfie = payload.audit?.selfieObjectKey ?? null;
-    add(selfie);
-    for (const zone of payload.zones) {
-      for (const photo of zone.good) add(photo.objectKey);
-      for (const item of zone.nonconformities) {
-        add(item.objectKey);
-        add(item.outcome?.afterPhoto?.objectKey);
-      }
-    }
 
-    const images = new Map<string, SourceImage>();
-    for (const key of [...keys].sort()) {
-      try {
-        const bytes = await this.storage.get(key);
-        images.set(key, {
-          slot: key === selfie ? "selfie" : "photo",
-          bytes: Buffer.from(bytes),
-          contentType: contentTypeOf(key),
-        });
-      } catch (error) {
-        this.logger.warn(
-          { err: error, key },
-          "Report image could not be fetched; rendering without it",
-        );
-      }
-    }
-    return images;
+    // Fetched in parallel, inserted in key order: the map's order is what the tier search
+    // iterates, and it must not depend on which download happened to finish first.
+    const fetched = await mapPool(
+      [...keys].sort(),
+      IMAGE_PARALLELISM,
+      async (key): Promise<[string, SourceImage] | null> => {
+        try {
+          const bytes = await this.storage.get(key);
+          return [
+            key,
+            {
+              slot: key === selfie ? "selfie" : "photo",
+              bytes: Buffer.from(bytes),
+              contentType: contentTypeOf(key),
+            },
+          ];
+        } catch (error) {
+          this.logger.warn(
+            { err: error, key },
+            "Report image could not be fetched; rendering without it",
+          );
+          return null;
+        }
+      },
+    );
+    return new Map(fetched.filter((entry) => entry !== null));
   }
 
   private async printToPdf(html: string): Promise<Buffer> {
@@ -306,6 +320,26 @@ export class ReportRenderer implements OnModuleDestroy {
     });
     return this.browser;
   }
+}
+
+/**
+ * `items` through `work`, at most `limit` at a time, results in input order.
+ */
+async function mapPool<T, R>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await work(items[index]!);
+    }
+  });
+  await Promise.all(lanes);
+  return results;
 }
 
 /**

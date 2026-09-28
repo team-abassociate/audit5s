@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import {
   auditAssignments,
   audits,
@@ -17,7 +17,13 @@ import {
   type Database,
   type Transaction,
 } from '@audit5s/db';
-import type { AuditStatus, ListReportsQuery, ReportKind, ReportPayload } from '@audit5s/contracts';
+import type {
+  AuditStatus,
+  ListReportsQuery,
+  ReportKind,
+  ReportPayload,
+  ReportStatus,
+} from '@audit5s/contracts';
 import { COMPLETED_AUDIT_STATUSES, type ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
@@ -95,7 +101,10 @@ export class ReportsRepository extends BaseRepository {
     });
   }
 
-  /** §8.9's version history, newest first — the UI offers the latest and hides none. */
+  /**
+   * §8.9's version history, newest first. A CANCELLED or REMOVED report is left out: it was
+   * withdrawn so that it stops appearing, and its row stays only as the record (0035).
+   */
   async list(scope: ScopeContext, query: ListReportsQuery): Promise<ReportSnapshotRow[]> {
     return this.inTransaction(scope, async (tx) => {
       const filters: Array<SQL | undefined> = [
@@ -104,6 +113,7 @@ export class ReportsRepository extends BaseRepository {
         query.unitId ? eq(reportSnapshots.unitId, query.unitId) : undefined,
         query.kind ? eq(reportSnapshots.kind, query.kind) : undefined,
         query.cursor ? sql`${reportSnapshots.id} < ${query.cursor}` : undefined,
+        notInArray(reportSnapshots.status, ['CANCELLED', 'REMOVED']),
       ];
       return this.selectSnapshots(tx)
         .where(this.scoped(scope, snapshotScopeColumns, ...filters))
@@ -159,6 +169,34 @@ export class ReportsRepository extends BaseRepository {
     };
   }
 
+  /**
+   * Serialises every Generate for one target until the transaction ends, so two presses of
+   * the same button cannot both find nothing in flight and both queue a render. A zone
+   * report's target is its audit Zone; a summary's is its Unit.
+   */
+  async lockTarget(tx: Transaction, target: string): Promise<void> {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`report:${target}`}))`);
+  }
+
+  /** Reports of a target still QUEUED or RENDERING — a second Generate joins one of these. */
+  async findInFlight(
+    tx: Transaction,
+    scope: ScopeContext,
+    target: { auditZoneId: string | null; unitId: string; kind: ReportKind },
+  ): Promise<ReportSnapshotRow[]> {
+    return this.selectSnapshots(tx).where(
+      this.scoped(
+        scope,
+        snapshotScopeColumns,
+        target.auditZoneId
+          ? eq(reportSnapshots.auditZoneId, target.auditZoneId)
+          : and(eq(reportSnapshots.unitId, target.unitId), isNull(reportSnapshots.auditZoneId)),
+        eq(reportSnapshots.kind, target.kind),
+        inArray(reportSnapshots.status, ['QUEUED', 'RENDERING']),
+      ),
+    );
+  }
+
   async insertSnapshot(
     tx: Transaction,
     row: typeof reportSnapshots.$inferInsert,
@@ -171,13 +209,15 @@ export class ReportsRepository extends BaseRepository {
    * (pg-boss makes no at-most-once promise) cannot move a READY snapshot at all — RS-1's
    * trigger would refuse it anyway, and this turns that into a no-op rather than an error.
    *
+   * Also the Super Admin's cancel and remove, guarded the same way.
+   *
    * Returns whether a row actually moved. A caller that treats `false` as success is
    * claiming a render that no row records, so the callers in `ReportsService` do not.
    */
   async markStatus(
     scope: ScopeContext,
     snapshotId: string,
-    from: readonly ('QUEUED' | 'RENDERING' | 'FAILED')[],
+    from: readonly ReportStatus[],
     patch: Partial<typeof reportSnapshots.$inferInsert>,
   ): Promise<boolean> {
     return this.inTransaction(scope, async (tx) => {
@@ -534,6 +574,8 @@ export class ReportsRepository extends BaseRepository {
         generatedAt: reportSnapshots.generatedAt,
         renderedAt: reportSnapshots.renderedAt,
         failedReason: reportSnapshots.failedReason,
+        withdrawnAt: reportSnapshots.withdrawnAt,
+        withdrawnByUserId: reportSnapshots.withdrawnByUserId,
         createdAt: reportSnapshots.createdAt,
         updatedAt: reportSnapshots.updatedAt,
       })
