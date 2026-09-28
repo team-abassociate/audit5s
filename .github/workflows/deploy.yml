@@ -82,5 +82,19 @@ jobs:
           ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
           printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 0600 ~/.ssh/known_hosts
-          ssh -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
-            "cd /opt/audit5s && bash ./infra/deploy.sh '$RELEASE_SHA'"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+            { echo "::error::Expected a full commit SHA, got '$RELEASE_SHA'"; exit 1; }
+          # Run the release's own deploy.sh, not the checkout's. deploy.sh checks out the
+          # release partway through, and bash keeps executing the file it opened, so running
+          # it from the checkout ran the *previous* release's script — a change to deploy.sh
+          # only took effect one deploy late (2026-09-28: the image cleanup skipped its
+          # first release). A copy outside the checkout is the script this release shipped.
+          ssh -o BatchMode=yes "$VPS_USER@$VPS_HOST" bash -s -- "$RELEASE_SHA" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/audit5s
+          git fetch -q origin main
+          script="$(mktemp)"
+          trap 'rm -f "$script"' EXIT
+          git show "$1:infra/deploy.sh" > "$script"
+          bash "$script" "$1"
+          REMOTE
