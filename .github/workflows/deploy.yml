@@ -124,9 +124,11 @@ jobs:
       - name: Did this release change the field app?
         id: changed
         run: |
-          # A merge's first parent is main as it was, so this is the whole pull request.
+          # A merge's first parent is main as it was, so this is the whole pull request. A
+          # change to this workflow counts too: a fix to the publishing itself should publish.
           if git diff --quiet "$RELEASE_SHA^1" "$RELEASE_SHA" -- \
-              apps/field-mobile packages/contracts packages/domain pnpm-lock.yaml; then
+              apps/field-mobile packages/contracts packages/domain pnpm-lock.yaml \
+              .github/workflows/deploy.yml; then
             echo "The field app did not change in this release; nothing to publish."
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
