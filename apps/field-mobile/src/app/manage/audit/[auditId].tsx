@@ -18,6 +18,7 @@ import {
   Screen,
   StatusBand,
 } from '../../../components/ui';
+import { SummaryZonePicker } from '../../../components/summary-zone-picker';
 import { api, problemMessage } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
 import { formatDateTime, formatPct } from '../../../lib/format';
@@ -72,15 +73,9 @@ export default function ManageAuditScreen() {
     refetchInterval: (query) =>
       (query.state.data?.data ?? []).some((row) => row.status === 'QUEUED' || row.status === 'RENDERING') ? 4_000 : false,
   });
-  const generateSummary = useMutation({
-    mutationFn: (selectedZoneIds: string[]) =>
-      api.post<ReportSnapshot>('/reports/generate', {
-        kind: 'MULTI_ZONE_SUMMARY',
-        unitId: detail.data!.unitId,
-        selectedZoneIds,
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports', 'audit', auditId] }),
-  });
+  // The unit summary is chosen Zone by Zone from every audit of this Unit finished the same
+  // day as this one; the picker opens in place.
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const open = async (snapshot: ReportSnapshot) => {
     setOpening(snapshot.id);
@@ -200,16 +195,19 @@ export default function ManageAuditScreen() {
             {mayGenerate && audit.scored && audit.zones.some((zone) => zone.status === 'COMPLETED') ? (
               <View style={styles.itemAction}>
                 <Button
-                  title="Generate unit summary report"
+                  title={summaryOpen ? 'Close unit summary' : 'Generate unit summary report'}
                   variant="secondary"
-                  busy={generateSummary.isPending}
-                  onPress={() =>
-                    generateSummary.mutate(
-                      audit.zones.filter((zone) => zone.status === 'COMPLETED').map((zone) => zone.zoneId),
-                    )
-                  }
+                  onPress={() => setSummaryOpen((isOpen) => !isOpen)}
                 />
-                <ErrorBanner message={problemMessage(generateSummary.error)} />
+                {summaryOpen && audit.completedAt ? (
+                  <View style={styles.itemAction}>
+                    <SummaryZonePicker
+                      unitId={audit.unitId}
+                      day={audit.completedAt}
+                      onQueued={() => setSummaryOpen(false)}
+                    />
+                  </View>
+                ) : null}
               </View>
             ) : null}
             {reportRows(reports.data?.data, summaries.data?.data, audit).map((snapshot) => (
@@ -275,7 +273,8 @@ const useStyles = createThemedStyles((theme) => ({
 }));
 
 /**
- * This audit's reports plus the zone summary reports that include one of its Zones, newest
+ * This audit's reports plus the zone summary reports that include one of its Zones (by the
+ * audited Zone where the summary names those, else by the Zone), newest
  * first and each once.
  */
 function reportRows(
@@ -284,10 +283,14 @@ function reportRows(
   audit: AuditDetail,
 ): ReportSnapshot[] {
   const zoneIds = new Set(audit.zones.map((zone) => zone.zoneId));
+  const auditZoneIds = new Set(audit.zones.map((zone) => zone.id));
   const rows = new Map<string, ReportSnapshot>();
   for (const snapshot of own ?? []) rows.set(snapshot.id, snapshot);
   for (const snapshot of summaries ?? []) {
-    if ((snapshot.selectedZoneIds ?? []).some((id) => zoneIds.has(id))) rows.set(snapshot.id, snapshot);
+    const included = snapshot.selectedAuditZoneIds
+      ? snapshot.selectedAuditZoneIds.some((id) => auditZoneIds.has(id))
+      : (snapshot.selectedZoneIds ?? []).some((id) => zoneIds.has(id));
+    if (included) rows.set(snapshot.id, snapshot);
   }
   return [...rows.values()].sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
 }

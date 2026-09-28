@@ -804,6 +804,45 @@ export function ChoiceList<T extends string>({
   );
 }
 
+/**
+ * One tickable row — `ChoiceList`'s look, for a choice of several. A ticked row carries the
+ * accent rail and a ✓; an unticked one stays plain, so the count is read at a glance.
+ */
+export function CheckRow({
+  label,
+  detail,
+  value,
+  checked,
+  onChange,
+}: {
+  label: string;
+  detail?: string | null;
+  /** Right-aligned figure, e.g. the Zone's score. */
+  value?: string | null;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const styles = useStyles();
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={label}
+      onPress={() => onChange(!checked)}
+      style={[styles.choice, checked && styles.choiceSelected]}
+    >
+      <View style={styles.checkHead}>
+        <Text style={[styles.choiceLabel, styles.checkLabel]}>
+          {checked ? '✓ ' : ''}
+          {label}
+        </Text>
+        {value ? <Text style={styles.choiceDetail}>{value}</Text> : null}
+      </View>
+      {detail ? <Text style={styles.choiceDetail}>{detail}</Text> : null}
+    </Pressable>
+  );
+}
+
 /** The + menu: a ruled sheet from the bottom edge, within thumb reach. */
 export function ActionSheet({
   visible,
@@ -1282,6 +1321,8 @@ const useStyles = createThemedStyles((theme) => ({
   choiceSelected: { borderColor: theme.color.accent, borderLeftWidth: 6, backgroundColor: theme.color.accentSoft },
   choiceLabel: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
   choiceDetail: { fontFamily: theme.family.regular, fontSize: 12.5, color: theme.color.ink2, marginTop: 2 },
+  checkHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
+  checkLabel: { flexShrink: 1 },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.color.hard },
   sheet: {
     position: 'absolute',
