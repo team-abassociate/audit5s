@@ -98,3 +98,102 @@ jobs:
           git show "$1:infra/deploy.sh" > "$script"
           bash "$script" "$1"
           REMOTE
+
+  # The field app, over the air, after the server it talks to is live.
+  #
+  # An OTA update carries JavaScript only. It is published when this release changed the
+  # app, and only while the native layer still matches the APK on the phones
+  # (`apps/field-mobile/native-baseline.txt`): JavaScript sent to a binary without the native
+  # code it expects crashes on an auditor's phone, so a native change stops here, red, and
+  # asks for a new APK instead.
+  field-app-update:
+    needs: publish-and-deploy
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: field-app-update
+      cancel-in-progress: false
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 0
+
+      - name: Did this release change the field app?
+        id: changed
+        run: |
+          # A merge's first parent is main as it was, so this is the whole pull request.
+          if git diff --quiet "$RELEASE_SHA^1" "$RELEASE_SHA" -- \
+              apps/field-mobile packages/contracts packages/domain pnpm-lock.yaml; then
+            echo "The field app did not change in this release; nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the Expo token is configured
+        if: steps.changed.outputs.publish == 'true'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          [ -n "$EXPO_TOKEN" ] || {
+            echo "::error title=OTA not published::Add an EXPO_TOKEN secret (expo.dev → Access tokens) to this repository's production environment."
+            exit 1
+          }
+
+      - uses: pnpm/action-setup@v4
+        if: steps.changed.outputs.publish == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.changed.outputs.publish == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+        if: steps.changed.outputs.publish == 'true'
+
+      # The same address and settings as the production APK (the `vps` profile), from the
+      # one place they are written down, so an update can never point phones elsewhere.
+      - name: Use the production APK's build settings
+        if: steps.changed.outputs.publish == 'true'
+        run: |
+          node -e "
+            const env = require('./apps/field-mobile/eas.json').build.vps.env;
+            for (const [key, value] of Object.entries(env)) console.log(key + '=' + value);
+          " >> "$GITHUB_ENV"
+
+      - name: Native layer unchanged since the installed APK?
+        if: steps.changed.outputs.publish == 'true'
+        run: |
+          baseline="$(grep -v '^#' apps/field-mobile/native-baseline.txt | tr -d '[:space:]')"
+          git worktree add -q "$RUNNER_TEMP/apk-baseline" "$baseline"
+          (cd "$RUNNER_TEMP/apk-baseline" && pnpm install --frozen-lockfile --prefer-offline)
+          cd apps/field-mobile
+          status=0
+          node scripts/native-changed.mjs "$RUNNER_TEMP/apk-baseline/apps/field-mobile" || status=$?
+          if [ "$status" -eq 3 ]; then
+            echo "::error title=Field app needs a new APK::This release changes native code, so it cannot go out over the air. Build a new APK (eas build --profile vps), install it on the phones, then set apps/field-mobile/native-baseline.txt to the commit it was built from."
+            exit 1
+          elif [ "$status" -ne 0 ]; then
+            echo "::error title=OTA not published::The native check itself failed (exit $status)."
+            exit 1
+          fi
+
+      - uses: expo/expo-github-action@v8
+        if: steps.changed.outputs.publish == 'true'
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish the OTA update
+        if: steps.changed.outputs.publish == 'true'
+        working-directory: apps/field-mobile
+        run: |
+          # A merge commit's body is the pull request's title: the line an admin reads in Expo.
+          title="$(git log -1 --format=%b "$RELEASE_SHA" | head -n 1)"
+          [ -n "$title" ] || title="$(git log -1 --format=%s "$RELEASE_SHA")"
+          eas update --channel production --platform android --environment production \
+            --message "$title (${RELEASE_SHA:0:7})" --non-interactive
