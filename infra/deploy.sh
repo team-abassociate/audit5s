@@ -14,6 +14,7 @@ git cat-file -e "$sha^{commit}"
 git checkout --detach "$sha"
 
 # The images were published by the workflow before this script was called.
+previous_images="$(sed -nE 's/^(API|WEB)_IMAGE=//p' .env)"
 sed -i -E "s|^API_IMAGE=.*$|API_IMAGE=ghcr.io/team-abassociate/audit5s-api:$sha|" .env
 sed -i -E "s|^WEB_IMAGE=.*$|WEB_IMAGE=ghcr.io/team-abassociate/audit5s-web:$sha|" .env
 sudo -n ./infra/bootstrap.sh
@@ -30,6 +31,18 @@ for attempt in $(seq 1 30); do
      api_healthy &&
      curl -fsS "https://$objects_host/minio/health/ready" >/dev/null 2>&1; then
     echo "Deployment health checks passed: $sha"
+    # Every release pulls a ~2.5 GB API image, and nothing else ever deletes one; 18 of
+    # them filled 38 GB of the VPS disk by 2026-09-28. Keep this release and the one
+    # before it. A rollback deploys an older SHA, which pulls its image from GHCR again.
+    keep="$(printf '%s\n' "$previous_images" \
+      "ghcr.io/team-abassociate/audit5s-api:$sha" "ghcr.io/team-abassociate/audit5s-web:$sha")"
+    stale="$(docker images --format '{{.Repository}}:{{.Tag}}' |
+      grep -E '^ghcr\.io/team-abassociate/audit5s-(api|web):' | grep -vxF "$keep" || true)"
+    if [[ -n "$stale" ]]; then
+      xargs docker rmi <<<"$stale" >/dev/null ||
+        echo "Old image cleanup failed; the deploy itself succeeded" >&2
+    fi
+    docker image prune -f >/dev/null || true
     exit 0
   fi
   echo "Waiting for public HTTPS health checks ($attempt/30)"
