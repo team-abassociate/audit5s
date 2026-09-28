@@ -87,8 +87,21 @@ export const loginResponseSchema = tokenPairSchema.extend({
 });
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 
+/**
+ * A refresh token the client chose itself: 32 random bytes, base64url, no padding — the
+ * same shape the server issues.
+ */
+export const proposedRefreshTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+
 export const refreshRequestSchema = z.object({
   refreshToken: z.string().min(1),
+  /**
+   * Optional: the successor the client wants, saved on the device **before** the request
+   * goes out. When the reply is lost — a phone in a steel-framed building — the client still
+   * holds the new token, and sending the same pair again is answered as a replay rather
+   * than as reuse (R-1 still revokes the family for anyone who does not hold this secret).
+   */
+  nextRefreshToken: proposedRefreshTokenSchema.optional(),
 });
 export type RefreshRequest = z.infer<typeof refreshRequestSchema>;
 

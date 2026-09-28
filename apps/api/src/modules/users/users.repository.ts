@@ -167,6 +167,26 @@ export class UsersRepository extends BaseRepository {
     });
   }
 
+  /** The inverse of `disable`. An archived account stays removed: that is not a disable. */
+  async enable(scope: ScopeContext, userId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .update(users)
+        .set({ status: 'ACTIVE' })
+        .where(
+          and(
+            eq(users.id, userId),
+            eq(users.status, 'DISABLED'),
+            isNull(users.archivedAt),
+            this.userScope(scope),
+          ),
+        )
+        .returning();
+      return row ?? null;
+    });
+  }
+
   /**
    * R-25: archived and disabled in one statement, so no path leaves one without the other —
    * an account out of every list that could still sign in would be the worst of both.

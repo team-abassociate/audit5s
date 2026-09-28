@@ -224,6 +224,13 @@ export class AuthRepository {
     });
   }
 
+  async findRefreshTokenById(id: string) {
+    return withAuthPhase(this.db, async (tx) => {
+      const [row] = await tx.select().from(refreshTokens).where(eq(refreshTokens.id, id)).limit(1);
+      return row ?? null;
+    });
+  }
+
   /**
    * Rotation. The presented token is marked used and pointed at its replacement in one
    * transaction, so two concurrent refreshes cannot both succeed.

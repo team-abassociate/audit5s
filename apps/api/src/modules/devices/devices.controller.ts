@@ -77,4 +77,16 @@ export class DevicesController {
   ): Promise<Device> {
     return this.devices.revoke(scope, deviceId);
   }
+
+  /** Clears a revoked phone, under the permission that revoked it. A Super Admin only. */
+  @RequirePermission('device', 'revoke')
+  @Scope({ param: 'deviceId', intent: 'write' })
+  @Post(':deviceId/restore')
+  @HttpCode(HttpStatus.OK)
+  restore(
+    @CurrentScope() scope: ScopeContext,
+    @Param('deviceId', ParseUUIDPipe) deviceId: string,
+  ): Promise<Device> {
+    return this.devices.restore(scope, deviceId);
+  }
 }

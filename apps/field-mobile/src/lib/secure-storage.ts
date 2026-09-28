@@ -20,6 +20,11 @@ const KEYS = {
 export interface StoredSession {
   accessToken: string;
   refreshToken: string;
+  /**
+   * The successor this phone proposed for `refreshToken` and has not yet seen accepted. Kept
+   * until a reply confirms the rotation, so a lost reply is retried with the same pair.
+   */
+  pendingRefreshToken?: string;
 }
 
 async function readString(key: string): Promise<string | null> {

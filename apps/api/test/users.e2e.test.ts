@@ -238,6 +238,34 @@ describe('disable and password reset', () => {
     expect(phone?.people.find((person) => person.userId === userId)?.revokedAt).not.toBeNull();
   });
 
+  it('re-enables a disabled account, which can then sign in again', async () => {
+    const created = await world.request('POST', `${base}/users`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+      body: {
+        fullName: 'Restored Leader',
+        phone: '9000000406',
+        role: 'ZONE_LEADER',
+        unitId: world.unitA,
+      },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const userId = (created.body as { user: { id: string } }).user.id;
+    const loginId = (created.body as { loginId: string }).loginId;
+
+    await world.request('POST', `${base}/users/${userId}/disable`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    const enabled = await world.request('POST', `${base}/users/${userId}/enable`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    expect(enabled.status).toBe(204);
+
+    const login = await world.request('POST', `${base}/auth/login`, {
+      body: { loginId, password: '9000000406' },
+    });
+    expect(login.status, JSON.stringify(login.body)).toBe(200);
+  });
+
   it('refuses to let an actor disable themselves', async () => {
     const response = await world.request(
       'POST',

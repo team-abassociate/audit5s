@@ -10,6 +10,8 @@ import {
   saveSession,
   type StoredSession,
 } from './secure-storage';
+import { clearLastMe } from './last-me';
+import { proposeRefreshToken } from './refresh-token';
 
 /** Where this build points unless the device has been told otherwise. */
 const DEFAULT_BASE_URL =
@@ -112,6 +114,7 @@ export async function setSession(next: StoredSession | null): Promise<void> {
     await saveSession(next);
   } else {
     await clearSession();
+    await clearLastMe();
   }
 }
 
@@ -161,8 +164,15 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
   // particular TOKEN_REUSED means the family was revoked (R-1), and retrying would just
   // revoke the next one too.
   if (!options.raw && problem?.code === 'TOKEN_EXPIRED' && session) {
-    if (await refresh(session.refreshToken)) {
+    const outcome = await refresh(session.refreshToken);
+    if (outcome === 'rotated') {
       return send<T>(path, { ...options, raw: true });
+    }
+    // The server could not be reached, or could not answer. That is not the session ending:
+    // fail this request as a network error — the outbox retries it — and keep the session.
+    // It used to fall through to the 401 below and sign an auditor out mid-audit.
+    if (outcome === 'unreachable') {
+      throw new Error('Could not reach the server');
     }
   }
 
@@ -190,42 +200,59 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
  * screen's queries — each of them used to refresh with the same token: the first won and
  * the rest signed the user out. They now share the one rotation in flight.
  */
-let refreshing: Promise<boolean> | null = null;
+type RefreshOutcome = 'rotated' | 'unreachable' | 'ended';
 
-function refresh(spent: string): Promise<boolean> {
+let refreshing: Promise<RefreshOutcome> | null = null;
+
+function refresh(spent: string): Promise<RefreshOutcome> {
   refreshing ??= rotate(spent).finally(() => {
     refreshing = null;
   });
   return refreshing;
 }
 
-async function rotate(spent: string): Promise<boolean> {
+async function rotate(spent: string): Promise<RefreshOutcome> {
   // A request that started before the last rotation comes back holding the token it spent;
   // the session already carries its successor, so a plain retry is all it needs.
   const current = await getSession();
-  if (!current) return false;
-  if (current.refreshToken !== spent) return true;
+  if (!current) return 'ended';
+  if (current.refreshToken !== spent) return 'rotated';
+
+  // The successor is chosen here and saved before the request leaves. If the server rotates
+  // and the reply is lost, the next attempt sends the same pair, and the server answers it
+  // again instead of reading a spent token as theft (R-1) and ending every session.
+  const next = current.pendingRefreshToken ?? proposeRefreshToken();
+  if (!current.pendingRefreshToken) {
+    await setSession({ ...current, pendingRefreshToken: next });
+  }
 
   try {
     const response = await fetch(`${apiBaseUrl()}/auth/refresh`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ refreshToken: spent }),
+      body: JSON.stringify({ refreshToken: spent, nextRefreshToken: next }),
     });
 
-    if (!response.ok) {
-      await setSession(null);
-      onSessionLost?.();
-      return false;
+    if (response.ok) {
+      // The server's own token, not `next`: a server that predates proposals ignores the
+      // field and issues one of its own.
+      const pair = (await response.json()) as StoredSession;
+      await setSession({ accessToken: pair.accessToken, refreshToken: pair.refreshToken });
+      return 'rotated';
     }
 
-    const pair = (await response.json()) as StoredSession;
-    await setSession(pair);
-    return true;
+    // Only the server saying the session is over ends it. A 429 or a 5xx is a server that is
+    // there but not answering, and the pending successor is kept for the next try.
+    if (response.status === 401) {
+      await setSession(null);
+      onSessionLost?.();
+      return 'ended';
+    }
+    return 'unreachable';
   } catch {
     // A network failure is not an authentication failure: keep the session so the user is
     // not signed out for walking into a steel-framed building.
-    return false;
+    return 'unreachable';
   }
 }
 

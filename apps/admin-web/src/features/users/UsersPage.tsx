@@ -149,9 +149,19 @@ function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle
   const [editing, setEditing] = useState(false);
 
   const [confirmingRemoval, setConfirmingRemoval] = useState(false);
+  const [confirmingRevoke, setConfirmingRevoke] = useState(false);
 
   const revokeAccess = useMutation({
     mutationFn: () => api.post<void>(`/users/${user.id}/disable`),
+    onSuccess: async () => {
+      setConfirmingRevoke(false);
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+
+  /** Undoes "Revoke access"; the person signs in again on each phone. */
+  const restoreAccess = useMutation({
+    mutationFn: () => api.post<void>(`/users/${user.id}/enable`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 
@@ -219,9 +229,28 @@ function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle
                 variant="danger"
                 title="Disable sign-in and revoke every session and device. They stay in this list."
                 disabled={revokeAccess.isPending}
-                onClick={() => revokeAccess.mutate()}
+                onClick={() => (confirmingRevoke ? revokeAccess.mutate() : setConfirmingRevoke(true))}
               >
-                Revoke access
+                {revokeAccess.isPending
+                  ? 'Revoking…'
+                  : confirmingRevoke
+                    ? 'Confirm revoke'
+                    : 'Revoke access'}
+              </Button>
+            )}
+            {confirmingRevoke && !revokeAccess.isPending && (
+              <Button variant="secondary" onClick={() => setConfirmingRevoke(false)}>
+                Keep access
+              </Button>
+            )}
+            {can('user', 'disable') && manageable && user.status === 'DISABLED' && !isSelf && (
+              <Button
+                variant="secondary"
+                title="Let them sign in again. They sign in once on each phone they use."
+                disabled={restoreAccess.isPending}
+                onClick={() => restoreAccess.mutate()}
+              >
+                {restoreAccess.isPending ? 'Restoring…' : 'Restore access'}
               </Button>
             )}
             {can('user', 'archive') && !isSelf && (
@@ -244,6 +273,12 @@ function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle
               </Button>
             )}
           </div>
+          {confirmingRevoke && (
+            <p className="mt-2 text-xs text-ink-2">
+              {user.fullName} is signed out of every phone and cannot sign in until access is
+              restored. Work still on their phone stays there and syncs once they are back.
+            </p>
+          )}
           {confirmingRemoval && (
             <p className="mt-2 text-xs text-ink-2">
               {user.fullName} leaves every list and can no longer sign in. Everything they
@@ -251,9 +286,11 @@ function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle
               that could be erased would not be a record.
             </p>
           )}
-          {(revokeAccess.error || reset.error || remove.error) && (
+          {(revokeAccess.error || restoreAccess.error || reset.error || remove.error) && (
             <div className="mt-2">
-              <ErrorNotice error={revokeAccess.error ?? reset.error ?? remove.error} />
+              <ErrorNotice
+                error={revokeAccess.error ?? restoreAccess.error ?? reset.error ?? remove.error}
+              />
             </div>
           )}
         </Td>

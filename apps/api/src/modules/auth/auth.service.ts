@@ -170,8 +170,13 @@ export class AuthService {
    * A refresh token is single-use. Presenting one that has already been used means either
    * the client replayed it or somebody stole it, and the two are indistinguishable — so
    * the entire family is revoked and everyone re-authenticates.
+   *
+   * One exception, and it is not reuse: a client that proposed its own successor
+   * (`nextRefreshToken`) and lost the reply sends the same pair again. It proves it holds
+   * the successor — a secret that only ever travelled inside the original request — so it
+   * is the party the rotation was for, and it is answered again rather than revoked.
    */
-  async refresh(refreshToken: string): Promise<TokenPair> {
+  async refresh(refreshToken: string, nextRefreshToken?: string): Promise<TokenPair> {
     const tokenHash = hashToken(refreshToken);
     const stored = await this.repository.findRefreshTokenByHash(tokenHash);
 
@@ -181,6 +186,18 @@ export class AuthService {
 
     if (stored.revokedAt) {
       throw AppError.unauthorized('TOKEN_INVALID', 'This session has been revoked');
+    }
+
+    if (stored.usedAt && nextRefreshToken && stored.replacedById) {
+      const successor = await this.repository.findRefreshTokenById(stored.replacedById);
+      if (
+        successor &&
+        successor.tokenHash === hashToken(nextRefreshToken) &&
+        !successor.usedAt &&
+        !successor.revokedAt
+      ) {
+        return this.replayRotation(successor, nextRefreshToken);
+      }
     }
 
     if (stored.usedAt) {
@@ -210,7 +227,14 @@ export class AuthService {
       throw AppError.unauthorized('ACCOUNT_DISABLED', 'This account is not active');
     }
 
-    const next = this.tokens.issueRefreshToken();
+    const next = nextRefreshToken
+      ? { ...this.tokens.issueRefreshToken(), token: nextRefreshToken, tokenHash: hashToken(nextRefreshToken) }
+      : this.tokens.issueRefreshToken();
+    // A proposal that is already somebody's token is refused before the unique index
+    // turns it into a 500. Only a copied value can collide; 32 random bytes do not.
+    if (nextRefreshToken && (await this.repository.findRefreshTokenByHash(next.tokenHash))) {
+      throw AppError.unauthorized('TOKEN_INVALID', 'This refresh token is not valid');
+    }
     const rotated = await this.repository.rotateRefreshToken({
       currentId: stored.id,
       userId: stored.userId,
@@ -237,6 +261,39 @@ export class AuthService {
       refreshToken: next.token,
       accessTokenExpiresAt: access.expiresAt.toISOString(),
       refreshTokenExpiresAt: next.expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * The answer to a rotation whose reply never arrived: a fresh access token and the same
+   * successor the client proposed. Nothing is rotated, so the family's head is unchanged.
+   */
+  private async replayRotation(
+    successor: { userId: string; deviceId: string | null; familyId: string; expiresAt: Date },
+    successorToken: string,
+  ): Promise<TokenPair> {
+    const limit = this.rateLimits.consume(`refresh:${successor.userId}`, RATE_LIMITS.refreshPerUser);
+    if (!limit.allowed) {
+      throw AppError.rateLimited(`Try again in ${limit.retryAfterSeconds} seconds`);
+    }
+
+    const user = await this.repository.findById(successor.userId);
+    if (!user || user.archivedAt !== null || user.status !== 'ACTIVE') {
+      await this.repository.revokeFamily(successor.familyId);
+      throw AppError.unauthorized('ACCOUNT_DISABLED', 'This account is not active');
+    }
+
+    const access = await this.tokens.issueAccessToken({
+      userId: user.id,
+      role: user.role as Role,
+      deviceId: successor.deviceId,
+    });
+
+    return {
+      accessToken: access.token,
+      refreshToken: successorToken,
+      accessTokenExpiresAt: access.expiresAt.toISOString(),
+      refreshTokenExpiresAt: successor.expiresAt.toISOString(),
     };
   }
 

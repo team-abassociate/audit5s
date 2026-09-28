@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '@audit5s/contracts';
 import { FIXTURE_PASSWORD, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
@@ -196,6 +197,79 @@ describe('refresh rotation and reuse detection (invariant R-1)', () => {
       body: { refreshToken: successor },
     });
     expect(afterwards.status).toBe(401);
+  });
+
+  it('answers a lost rotation again when the client resends its own successor', async () => {
+    resetLimits();
+    const login = await world.request('POST', `${base}/auth/login`, {
+      body: { loginId: world.actors.COORDINATOR.loginId, password: 'orchard-piston-58-VQ' },
+    });
+    const original = (login.body as { refreshToken: string }).refreshToken;
+    const proposed = randomBytes(32).toString('base64url');
+
+    const first = await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: original, nextRefreshToken: proposed },
+    });
+    expect(first.status).toBe(200);
+    expect((first.body as { refreshToken: string }).refreshToken).toBe(proposed);
+
+    // The reply "never arrived": the phone sends the same pair again.
+    const again = await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: original, nextRefreshToken: proposed },
+    });
+    expect(again.status).toBe(200);
+    expect((again.body as { refreshToken: string }).refreshToken).toBe(proposed);
+
+    // And the session carries on from the successor.
+    const onward = await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: proposed },
+    });
+    expect(onward.status).toBe(200);
+  });
+
+  it('still revokes the family when a used token comes back without its successor', async () => {
+    resetLimits();
+    const login = await world.request('POST', `${base}/auth/login`, {
+      body: { loginId: world.actors.COORDINATOR.loginId, password: 'orchard-piston-58-VQ' },
+    });
+    const original = (login.body as { refreshToken: string }).refreshToken;
+    const proposed = randomBytes(32).toString('base64url');
+
+    await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: original, nextRefreshToken: proposed },
+    });
+
+    // A thief holding only the spent token guesses a successor, and is treated as reuse.
+    const stolen = await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: original, nextRefreshToken: randomBytes(32).toString('base64url') },
+    });
+    expect(stolen.status).toBe(401);
+    expect((stolen.body as { code: string }).code).toBe('TOKEN_REUSED');
+
+    const afterwards = await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: proposed },
+    });
+    expect(afterwards.status).toBe(401);
+  });
+
+  it('does not replay once the successor has itself been used', async () => {
+    resetLimits();
+    const login = await world.request('POST', `${base}/auth/login`, {
+      body: { loginId: world.actors.COORDINATOR.loginId, password: 'orchard-piston-58-VQ' },
+    });
+    const original = (login.body as { refreshToken: string }).refreshToken;
+    const proposed = randomBytes(32).toString('base64url');
+
+    await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: original, nextRefreshToken: proposed },
+    });
+    await world.request('POST', `${base}/auth/refresh`, { body: { refreshToken: proposed } });
+
+    const stale = await world.request('POST', `${base}/auth/refresh`, {
+      body: { refreshToken: original, nextRefreshToken: proposed },
+    });
+    expect(stale.status).toBe(401);
+    expect((stale.body as { code: string }).code).toBe('TOKEN_REUSED');
   });
 
   it('rejects a token that was never issued', async () => {

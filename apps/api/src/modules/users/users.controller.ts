@@ -77,6 +77,15 @@ export class UsersController {
     return this.users.disable(scope, id);
   }
 
+  /** Undoes `disable`, under the same permission: whoever may revoke access may restore it. */
+  @RequirePermission('user', 'disable')
+  @Scope({ param: 'id', intent: 'write' })
+  @Post(':id/enable')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  enable(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.users.enable(scope, id);
+  }
+
   @RequirePermission('user', 'archive')
   @Scope({ param: 'id', intent: 'write' })
   @Post(':id/archive')

@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type { LoginResponse, MeResponse, ResolvedScope, AuthenticatedUser, Role } from '@audit5s/contracts';
-import { api, loadApiBaseUrl, setSession, setSessionLostHandler, getSession } from './api';
+import { api, ApiError, loadApiBaseUrl, setSession, setSessionLostHandler, getSession } from './api';
+import { loadLastMe, saveLastMe } from './last-me';
 import { getDeviceId } from './secure-storage';
 
 interface SessionState {
@@ -51,9 +52,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const refreshMe = useCallback(async () => {
     try {
-      applyMe(await api.get<MeResponse>('/auth/me'));
-    } catch {
-      await setSession(null);
+      const me = await api.get<MeResponse>('/auth/me');
+      await saveLastMe(me);
+      applyMe(me);
+    } catch (error) {
+      // Only the server refusing the session signs out. No signal, a timeout or a 5xx opens
+      // the app as it was last seen, so an auditor whose phone restarted the app in a dead
+      // zone carries on with the audit instead of meeting the login screen.
+      const refused = error instanceof ApiError && (error.status === 401 || error.status === 403);
+      const saved = refused ? null : await loadLastMe();
+      if (saved && (await getSession())) {
+        applyMe(saved);
+        return;
+      }
+      if (refused) await setSession(null);
       setState({ status: 'signed-out', user: null, scope: null });
     }
   }, [applyMe]);
@@ -103,6 +115,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         accessToken: response.accessToken,
         refreshToken: response.refreshToken,
       });
+      await saveLastMe({ user: response.user, scope: response.scope });
 
       setState({
         status: response.mustResetPassword ? 'must-reset' : 'ready',
