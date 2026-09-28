@@ -7,6 +7,20 @@ import type { ExpoConfig } from 'expo/config';
  * `API_BASE_URL` is read from the environment at build time and surfaced through
  * `expo-constants`, so a device build points at the deployed API without a code change.
  */
+/**
+ * The field APK is installed over mobile data by testers and auditors, so its size is a
+ * product requirement: under 30 MB (136 MB at build 12; 26.5 MB at build 13). Production builds only —
+ * a development or preview build keeps every ABI so it still runs on an x86 emulator.
+ *
+ *   - `buildArchs: ['arm64-v8a']` — the one ABI a plant phone runs. x86 and x86_64 exist
+ *     only for emulators (59 MB of the 136), and armeabi-v7a only for 32-bit phones. A
+ *     32-bit-only phone cannot install this APK; build a separate one for it if needed.
+ *   - `useLegacyPackaging` — native libraries are stored compressed in the APK rather than
+ *     page-aligned and uncompressed. A smaller download; Android unpacks them on install.
+ *   - R8 minify and resource shrinking — the Java/Kotlin code shrank from 57 MB raw.
+ */
+const productionBuild = process.env.APP_DEPLOYMENT === 'production';
+
 const config: ExpoConfig = {
   // The Expo account that builds and signs the APK. The project and its signing key moved
   // here from abassociatess-team, so builds keep the key testers' phones already trust.
@@ -63,7 +77,17 @@ const config: ExpoConfig = {
          * Deployed behind a real hostname the API is HTTPS end to end, and this goes back to
          * the default — it is here for testing, not for the field.
          */
-        android: { usesCleartextTraffic: process.env.ALLOW_CLEARTEXT === '1' },
+        android: {
+          usesCleartextTraffic: process.env.ALLOW_CLEARTEXT === '1',
+          ...(productionBuild
+            ? {
+                buildArchs: ['arm64-v8a'],
+                useLegacyPackaging: true,
+                enableMinifyInReleaseBuilds: true,
+                enableShrinkResourcesInReleaseBuilds: true,
+              }
+            : {}),
+        },
       },
     ],
     // Gradle needs more metaspace than the default since expo-updates arrived; see the file.
@@ -80,6 +104,9 @@ const config: ExpoConfig = {
         // Stills only. The flows take photographs, and a microphone permission the app
         // never uses is one an auditor has no reason to grant.
         recordAudioAndroid: false,
+        // Nothing scans a barcode. Note: with expo-camera 57 the ML Kit library
+        // (libbarhopper, ~5 MB) is still packaged at build 13 despite this flag.
+        barcodeScannerEnabled: false,
       },
     ],
     [
