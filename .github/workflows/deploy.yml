@@ -155,6 +155,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
         if: steps.changed.outputs.publish == 'true'
 
+      # The app imports these as compiled `dist/`, and a fresh checkout has none. The APK build
+      # does the same in `eas-build-post-install`; without it the bundle fails to resolve them.
+      - name: Build the shared packages the app imports
+        if: steps.changed.outputs.publish == 'true'
+        run: pnpm --filter @audit5s/domain --filter @audit5s/contracts build
+
       # The same address and settings as the production APK (the `vps` profile), from the
       # one place they are written down, so an update can never point phones elsewhere.
       - name: Use the production APK's build settings
