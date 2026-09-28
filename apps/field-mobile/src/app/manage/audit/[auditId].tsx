@@ -9,6 +9,7 @@ import {
   Card,
   CardHeader,
   Chip,
+  ConfirmAction,
   Data,
   EmptyState,
   ErrorBanner,
@@ -61,6 +62,13 @@ export default function ManageAuditScreen() {
   const generate = useMutation({
     mutationFn: (auditZoneId: string) => api.post<ReportSnapshot>('/reports/generate', { kind: 'INITIAL_ZONE', auditZoneId }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports', 'audit', auditId] }),
+  });
+  // Cancel a report still in the queue; delete (remove) one rendered or failed. Both take it
+  // out of the list; a deleted one's PDF is gone for good (0035).
+  const withdraw = useMutation({
+    mutationFn: (snapshot: ReportSnapshot) =>
+      api.post<ReportSnapshot>(`/reports/${snapshot.id}/${inFlight(snapshot) ? 'cancel' : 'remove'}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports'] }),
   });
   // The zone summary report (`MULTI_ZONE_SUMMARY`) spans Zones rather than one audit, so its
   // snapshots carry no audit of their own: they are listed from the Unit, and the ones that
@@ -172,6 +180,9 @@ export default function ManageAuditScreen() {
                       title="Generate report"
                       variant="secondary"
                       busy={generate.isPending && generate.variables === zone.id}
+                      // One request at a time: a second tap while the first is in flight
+                      // is how a report came to be queued twice.
+                      disabled={generate.isPending}
                       onPress={() => generate.mutate(zone.id)}
                     />
                   </View>
@@ -235,9 +246,31 @@ export default function ManageAuditScreen() {
                 ) : snapshot.failedReason ? (
                   <Muted>{snapshot.failedReason}</Muted>
                 ) : null}
+                {mayGenerate ? (
+                  <View style={styles.itemAction}>
+                    {inFlight(snapshot) ? (
+                      <Button
+                        title="Cancel"
+                        variant="danger"
+                        busy={withdraw.isPending && withdraw.variables?.id === snapshot.id}
+                        onPress={() => withdraw.mutate(snapshot)}
+                      />
+                    ) : (
+                      <ConfirmAction
+                        compact
+                        title="Delete"
+                        question={`Delete ${REPORT_KIND[snapshot.kind]} v${snapshot.version}? It leaves every list and its PDF is deleted. This cannot be undone.`}
+                        confirmLabel="Delete report"
+                        busy={withdraw.isPending && withdraw.variables?.id === snapshot.id}
+                        onConfirm={() => withdraw.mutate(snapshot)}
+                      />
+                    )}
+                  </View>
+                ) : null}
               </View>
             ))}
             <ErrorBanner message={problemMessage(openError)} />
+            <ErrorBanner message={problemMessage(withdraw.error)} />
           </Card>
         ) : null}
 
@@ -271,6 +304,11 @@ const useStyles = createThemedStyles((theme) => ({
   itemAction: { marginTop: theme.space.sm },
   actions: { gap: theme.space.sm, marginTop: theme.space.sm },
 }));
+
+/** Queued or rendering: cancellable, not yet a document. */
+function inFlight(snapshot: ReportSnapshot): boolean {
+  return snapshot.status === 'QUEUED' || snapshot.status === 'RENDERING';
+}
 
 /**
  * This audit's reports plus the zone summary reports that include one of its Zones (by the

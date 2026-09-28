@@ -71,23 +71,44 @@ export class ReportWorker {
       this.logger.log(`${data.snapshotId}: already READY; redelivered job ignored`);
       return;
     }
+    if (snapshot.status === 'CANCELLED' || snapshot.status === 'REMOVED') {
+      // Cancelled while it waited: the job is left in the queue and skipped here, which
+      // costs one row read rather than a render.
+      this.logger.log(`${data.snapshotId}: ${snapshot.status}; nothing rendered`);
+      return;
+    }
 
-    await this.reports.markRendering(scope, data.snapshotId);
+    if (!(await this.reports.markRendering(scope, data.snapshotId))) {
+      this.logger.log(`${data.snapshotId}: cancelled before rendering started`);
+      return;
+    }
 
     try {
       const rendered = await this.renderer.render(snapshot.payload);
       const key = reportObjectKey(snapshot.unitId, snapshot.id, snapshot.version);
+
+      // Cancelled while Chromium was printing: nothing to store.
+      if ((await this.reports.findForWorker(scope, data.snapshotId)).status === 'CANCELLED') {
+        this.logger.log(`${data.snapshotId}: cancelled while rendering; PDF discarded`);
+        return;
+      }
 
       // The object first, the row second. A row pointing at an object that is not there
       // would be a download that 404s; an object no row points at is 40 kB of garbage a
       // lifecycle rule collects. Only one of those is visible to a user.
       await this.storage.put(key, rendered.pdf, 'application/pdf');
 
-      await this.reports.markReady(scope, snapshot, {
+      const outcome = await this.reports.markReady(scope, snapshot, {
         objectKey: key,
         checksumSha256: rendered.checksumSha256,
         pageCount: rendered.pageCount,
       });
+      if (outcome === 'CANCELLED') {
+        // Cancelled in the moment between the check above and the write-back.
+        await this.storage.delete(key).catch(() => undefined);
+        this.logger.log(`${data.snapshotId}: cancelled while rendering; PDF discarded`);
+        return;
+      }
 
       this.logger.log(
         `${data.snapshotId}: rendered v${snapshot.version} (${rendered.pdf.byteLength} bytes, ` +

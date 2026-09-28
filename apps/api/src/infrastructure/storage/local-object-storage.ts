@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdir, open, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import {
@@ -110,6 +110,14 @@ export class LocalObjectStorage extends ObjectStorage {
 
   async get(key: string): Promise<Buffer> {
     return readFile(this.pathFor(key));
+  }
+
+  async delete(key: string): Promise<void> {
+    const path = this.pathFor(key);
+    // `force`: a file that is already gone is not an error, as on S3.
+    await rm(path, { force: true });
+    await rm(`${path}.meta`, { force: true });
+    this.logger.debug(`deleted ${key}`);
   }
 
   async head(key: string): Promise<StoredObjectHead | null> {

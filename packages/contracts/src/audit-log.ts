@@ -38,6 +38,8 @@ export const AUDIT_LOG_ACTIONS = [
   'audit.device_released',
   'report.generated',
   'report.token_revoked',
+  'report.cancelled',
+  'report.removed',
   'corrective_action.verified',
   'corrective_action.reopened',
   'corrective_action.reassigned',

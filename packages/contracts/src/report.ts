@@ -263,6 +263,8 @@ export const reportSnapshotSchema = z.object({
   generatedAt: isoDateTimeSchema,
   renderedAt: isoDateTimeSchema.nullable(),
   failedReason: z.string().nullable(),
+  /** When it was CANCELLED or REMOVED; null otherwise. */
+  withdrawnAt: isoDateTimeSchema.nullable(),
 });
 export type ReportSnapshot = z.infer<typeof reportSnapshotSchema>;
 

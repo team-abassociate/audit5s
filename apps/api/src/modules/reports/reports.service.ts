@@ -50,6 +50,9 @@ const KIND_LABEL: Record<ReportKind, string> = {
  */
 const RETRYABLE = ['QUEUED', 'RENDERING', 'FAILED'] as const;
 
+/** What a Super Admin can still cancel: anything not yet rendered. */
+const IN_FLIGHT = ['QUEUED', 'RENDERING'] as const;
+
 /**
  * Reports (§8.9, PART 10).
  *
@@ -84,7 +87,13 @@ export class ReportsService {
   async generate(scope: ScopeContext, request: GenerateReportRequest): Promise<ReportSnapshot> {
     const snapshotId = uuidv7();
 
-    const row = await this.freezeAndQueue(scope, await this.withAnswers(scope, request), snapshotId, null);
+    const { row, joined } = await this.freezeAndQueue(
+      scope,
+      await this.withAnswers(scope, request),
+      snapshotId,
+      null,
+    );
+    if (joined) return toContract(row);
 
     await this.auditLog.record({
       action: 'report.generated',
@@ -123,7 +132,8 @@ export class ReportsService {
     );
 
     const newId = uuidv7();
-    const row = await this.freezeAndQueue(scope, request, newId, previous.id);
+    const { row, joined } = await this.freezeAndQueue(scope, request, newId, previous.id);
+    if (joined) return toContract(row);
 
     await this.auditLog.record({
       action: 'report.generated',
@@ -160,16 +170,34 @@ export class ReportsService {
    * All four or none. A snapshot with no job never renders and looks like a hung report; a
    * job with no snapshot dead-letters on a missing row. pg-boss enqueues on this very
    * transaction (R-2), which is the whole reason it is the queue.
+   *
+   * **A second press joins the first.** When the same report — same kind, same target, same
+   * selection — is already QUEUED or RENDERING, that snapshot is returned (`joined`) and
+   * nothing new is frozen or queued. A double tap on Generate used to render the document
+   * twice, one after the other on a concurrency-1 worker. The target lock makes the check
+   * and the insert one act, so two simultaneous presses cannot both miss each other.
    */
   private async freezeAndQueue(
     scope: ScopeContext,
     request: GenerateReportRequest,
     snapshotId: string,
     supersedes: string | null,
-  ): Promise<ReportSnapshotRow> {
+  ): Promise<{ row: ReportSnapshotRow; joined: boolean }> {
     try {
       return await this.repository.inTransaction(scope, async (tx) => {
+        await this.repository.lockTarget(
+          tx,
+          request.kind === 'MULTI_ZONE_SUMMARY' ? request.unitId : request.auditZoneId,
+        );
         const target = await this.resolveTarget(tx, request);
+        const inFlight = await this.repository.findInFlight(tx, scope, {
+          auditZoneId: target.auditZoneId,
+          unitId: target.unitId,
+          kind: request.kind,
+        });
+        const same = inFlight.find((row) => sameSelection(row, request));
+        if (same) return { row: same, joined: true };
+
         const { version, supersedesSnapshotId } = await this.repository.nextVersion(tx, {
           auditZoneId: target.auditZoneId,
           unitId: target.unitId,
@@ -214,7 +242,7 @@ export class ReportsService {
           { retryLimit: 1, expireInSeconds: Math.ceil(this.config.REPORT_RENDER_TIMEOUT_MS / 1000) },
         );
 
-        return {
+        const row: ReportSnapshotRow = {
           id: snapshotId,
           kind: request.kind,
           version,
@@ -237,9 +265,12 @@ export class ReportsService {
           generatedAt: new Date(payload.generatedAt),
           renderedAt: null,
           failedReason: null,
+          withdrawnAt: null,
+          withdrawnByUserId: null,
           createdAt: new Date(payload.generatedAt),
           updatedAt: new Date(payload.generatedAt),
         };
+        return { row, joined: false };
       });
     } catch (error) {
       if (isUniqueViolation(error, 'report_snapshot_zone_version_key')) {
@@ -451,7 +482,11 @@ export class ReportsService {
         'CONFLICT',
         snapshot.status === 'FAILED'
           ? `This report failed to render: ${snapshot.failedReason ?? 'unknown reason'}`
-          : 'This report is still rendering. It will be ready shortly.',
+          : snapshot.status === 'CANCELLED'
+            ? 'This report was cancelled before it rendered.'
+            : snapshot.status === 'REMOVED'
+              ? 'This report was deleted.'
+              : 'This report is still rendering. It will be ready shortly.',
       );
     }
 
@@ -470,6 +505,98 @@ export class ReportsService {
     return (await this.mustFind(scope, snapshotId)).payload;
   }
 
+  // ----------------------------------------------------------------- cancel and remove
+
+  /**
+   * `POST /reports/{snapshotId}/cancel` — stop a report that has not rendered yet.
+   *
+   * A queued job is not pulled from pg-boss: the worker reads the row before it starts and
+   * skips a CANCELLED snapshot, and one cancelled mid-render throws its PDF away rather than
+   * storing it. Cancelling twice is not an error — the second press finds what it asked for.
+   */
+  async cancel(scope: ScopeContext, snapshotId: string): Promise<ReportSnapshot> {
+    const snapshot = await this.mustFind(scope, snapshotId);
+    if (snapshot.status === 'CANCELLED') return toContract(snapshot);
+
+    const moved = await this.repository.markStatus(scope, snapshotId, IN_FLIGHT, {
+      status: 'CANCELLED',
+      withdrawnAt: new Date(),
+      withdrawnByUserId: scope.actor.userId,
+    });
+    if (!moved) {
+      const now = await this.mustFind(scope, snapshotId);
+      if (now.status === 'CANCELLED') return toContract(now);
+      throw AppError.conflict(
+        'CONFLICT',
+        now.status === 'READY' || now.status === 'FAILED'
+          ? 'This report has already finished rendering. Delete it instead.'
+          : 'This report was deleted.',
+      );
+    }
+
+    await this.auditLog.record({
+      action: 'report.cancelled',
+      resourceType: 'report',
+      resourceId: snapshotId,
+      unitId: snapshot.unitId,
+      before: { status: snapshot.status },
+      after: { status: 'CANCELLED' },
+    });
+    return toContract(await this.mustFind(scope, snapshotId));
+  }
+
+  /**
+   * `POST /reports/{snapshotId}/remove` — take a rendered or failed report out of
+   * circulation and delete its PDF (0035, the RS-1 carve-out).
+   *
+   * The row stays, with its payload and checksum, as the record that it was issued; lists
+   * stop showing it and the download route refuses it. The row moves first and the object
+   * goes second: a PDF left behind by a failed delete is garbage, while a READY row pointing
+   * at a deleted PDF would be a download that 404s.
+   */
+  async remove(scope: ScopeContext, snapshotId: string): Promise<ReportSnapshot> {
+    const snapshot = await this.mustFind(scope, snapshotId);
+    if (snapshot.status === 'REMOVED') return toContract(snapshot);
+
+    const moved = await this.repository.markStatus(scope, snapshotId, ['READY', 'FAILED'], {
+      status: 'REMOVED',
+      pdfObjectKey: null,
+      withdrawnAt: new Date(),
+      withdrawnByUserId: scope.actor.userId,
+    });
+    if (!moved) {
+      const now = await this.mustFind(scope, snapshotId);
+      if (now.status === 'REMOVED') return toContract(now);
+      throw AppError.conflict(
+        'CONFLICT',
+        now.status === 'CANCELLED'
+          ? 'This report was cancelled before it rendered.'
+          : 'This report is still in the queue. Cancel it instead.',
+      );
+    }
+
+    if (snapshot.pdfObjectKey) {
+      try {
+        await this.storage.delete(snapshot.pdfObjectKey);
+      } catch (error) {
+        this.logger.warn(
+          `report ${snapshotId} removed, but its PDF ${snapshot.pdfObjectKey} could not be ` +
+            `deleted from storage: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    await this.auditLog.record({
+      action: 'report.removed',
+      resourceType: 'report',
+      resourceId: snapshotId,
+      unitId: snapshot.unitId,
+      before: { status: snapshot.status, version: snapshot.version },
+      after: { status: 'REMOVED' },
+    });
+    return toContract(await this.mustFind(scope, snapshotId));
+  }
+
   // ------------------------------------------------------------- the worker's callbacks
 
   async markRendering(scope: ScopeContext, snapshotId: string): Promise<boolean> {
@@ -482,7 +609,7 @@ export class ReportsService {
     scope: ScopeContext,
     snapshot: ReportSnapshotRow,
     result: { objectKey: string; checksumSha256: string; pageCount: number | null },
-  ): Promise<void> {
+  ): Promise<'READY' | 'CANCELLED'> {
     const moved = await this.repository.markStatus(scope, snapshot.id, RETRYABLE, {
       status: 'READY',
       pdfObjectKey: result.objectKey,
@@ -493,8 +620,12 @@ export class ReportsService {
 
     // A write-back that moved nothing is not a rendered report, however well the render
     // itself went: the PDF is in storage and no row points at it. Silently returning here
-    // is what left a retried snapshot FAILED next to its own finished document.
+    // is what left a retried snapshot FAILED next to its own finished document. The one
+    // expected case is a Super Admin cancelling while it rendered; the worker then throws
+    // the PDF away.
     if (!moved) {
+      const now = await this.mustFind(scope, snapshot.id);
+      if (now.status === 'CANCELLED') return 'CANCELLED';
       throw new Error(
         `report.render ${snapshot.id}: the PDF was stored but the snapshot did not leave ` +
           `its status behind, so nothing points at it`,
@@ -519,6 +650,7 @@ export class ReportsService {
         },
       });
     });
+    return 'READY';
   }
 
   async markFailed(scope: ScopeContext, snapshotId: string, reason: string): Promise<void> {
@@ -557,6 +689,29 @@ function chosenSelection(request: GenerateReportRequest): {
     : { selectedZoneIds: request.selectedZoneIds, selectedAuditZoneIds: null };
 }
 
+/**
+ * Whether an in-flight snapshot is the report `request` asks for. Selections compare as
+ * sets: ticking Zones in a different order is still the same summary.
+ */
+function sameSelection(row: ReportSnapshotRow, request: GenerateReportRequest): boolean {
+  if (row.kind !== request.kind) return false;
+  if (request.kind !== 'MULTI_ZONE_SUMMARY') return row.auditZoneId === request.auditZoneId;
+  const chosen = chosenSelection(request);
+  return (
+    row.unitId === request.unitId &&
+    (row.assignmentGroupId ?? null) === (request.assignmentGroupId ?? null) &&
+    sameSet(row.selectedAuditZoneIds, chosen.selectedAuditZoneIds) &&
+    sameSet(row.selectedZoneIds, chosen.selectedZoneIds)
+  );
+}
+
+function sameSet(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size === right.size && [...left].every((id) => right.has(id));
+}
+
 /** `report/{unit_id}/{snapshot_id}/v{n}.pdf` (§10.2). Stable, so a re-upload overwrites. */
 export function reportObjectKey(unitId: string, snapshotId: string, version: number): string {
   return `report/${unitId}/${snapshotId}/v${version}.pdf`;
@@ -585,5 +740,6 @@ export function toContract(row: ReportSnapshotRow): ReportSnapshot {
     generatedAt: row.generatedAt.toISOString(),
     renderedAt: row.renderedAt?.toISOString() ?? null,
     failedReason: row.failedReason,
+    withdrawnAt: row.withdrawnAt?.toISOString() ?? null,
   };
 }

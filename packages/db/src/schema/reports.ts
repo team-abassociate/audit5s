@@ -59,6 +59,11 @@ export const reportSnapshots = pgTable(
     generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
     renderedAt: timestamp('rendered_at', { withTimezone: true }),
     failedReason: text('failed_reason'),
+    /** When a report was CANCELLED or REMOVED (0035); null otherwise. */
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+    withdrawnByUserId: uuid('withdrawn_by_user_id').references(() => users.id, {
+      onDelete: 'restrict',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
