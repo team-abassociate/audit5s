@@ -8,10 +8,11 @@ import { Badge, Button, ErrorNotice, Field, Select, Spinner } from '@/components
 /**
  * The unit summary's selection, made one audited Zone at a time.
  *
- * A Unit is audited several times a month, and the summary a Super Admin wants is rarely
- * "the latest of every Zone": it is Zones 1 and 2 from the first audit and Zones 3, 4 and 5
- * from the second. So the choice is laid out the way the work happened — each finished
- * audit with its date and auditor, and under it the Zones that audit finished — and what is
+ * A Unit is often audited more than once on the same day — a team audit, or a second walk —
+ * and the summary a Super Admin wants is rarely "the latest of every Zone": it is Zones 1
+ * and 2 from the first audit and Zones 3, 4 and 5 from the second. So the choice is one day
+ * at a time, laid out the way the work happened — every finished audit of the Unit on that
+ * day with its time and auditor, and under it the Zones that audit finished — and what is
  * sent is exactly the audited Zones ticked (`selectedAuditZoneIds`). The server stores that
  * list on the snapshot, so a regeneration is the same document.
  *
@@ -28,7 +29,7 @@ export function SummaryZonePicker({
   onQueued?: (snapshot: ReportSnapshot) => void;
 }) {
   const queryClient = useQueryClient();
-  const [month, setMonth] = useState<string | null>(null);
+  const [day, setDay] = useState<string | null>(null);
   const [chosen, setChosen] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -48,16 +49,17 @@ export function SummaryZonePicker({
     [audits.data, unitId, auditIds],
   );
 
-  const months = useMemo(
-    () => [...new Set(finished.map((audit) => monthKey(audit.completedAt!)))],
+  const days = useMemo(
+    () => [...new Set(finished.map((audit) => dayKey(audit.completedAt!)))],
     [finished],
   );
-  // The newest month by default: "five audits this month" is the case this is for, and a
-  // year of audits on one screen buries it. A team audit is one day, so it shows whole.
-  const shownMonth = auditIds ? 'ALL' : (month ?? months[0] ?? 'ALL');
-  const shown = finished.filter(
-    (audit) => shownMonth === 'ALL' || monthKey(audit.completedAt!) === shownMonth,
-  );
+  // One day's audits at a time, the newest day by default: a summary covers the audits of a
+  // Unit taken on the same day. A team audit is one day already, so it shows whole.
+  const shownDay = auditIds ? 'ALL' : (day ?? days[0] ?? 'ALL');
+  const shown = finished
+    .filter((audit) => shownDay === 'ALL' || dayKey(audit.completedAt!) === shownDay)
+    // Earliest first within the day — the order the day happened in.
+    .reverse();
 
   const summaries = useQueries({
     queries: shown.map((audit) => ({
@@ -110,16 +112,22 @@ export function SummaryZonePicker({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
-        {!auditIds && months.length > 1 ? (
-          <div className="w-56">
-            <Field label="Audits finished in">
-              <Select value={shownMonth} onChange={(event) => setMonth(event.target.value)}>
-                {months.map((key) => (
+        {!auditIds ? (
+          <div className="w-64">
+            <Field label="Audits finished on">
+              <Select
+                value={shownDay}
+                onChange={(event) => {
+                  // A summary is one day's Zones; ticks from another day do not carry over.
+                  setDay(event.target.value);
+                  setChosen([]);
+                }}
+              >
+                {days.map((key) => (
                   <option key={key} value={key}>
-                    {monthLabel(key)}
+                    {dayLabel(key)} ({countOn(finished, key)} audit{countOn(finished, key) === 1 ? '' : 's'})
                   </option>
                 ))}
-                <option value="ALL">Any month</option>
               </Select>
             </Field>
           </div>
@@ -132,7 +140,7 @@ export function SummaryZonePicker({
             variant="secondary"
             onClick={() => toggle(shownZoneIds, !shownZoneIds.every((id) => chosen.includes(id)))}
           >
-            {shownZoneIds.every((id) => chosen.includes(id)) ? 'Clear all shown' : 'Choose all shown'}
+            {shownZoneIds.every((id) => chosen.includes(id)) ? 'Clear all' : 'Choose all Zones'}
           </Button>
         ) : null}
         {chosen.length > 0 ? (
@@ -205,7 +213,7 @@ export function SummaryZonePicker({
 
       <p className="text-xs text-ink-2">
         Every figure in the summary is computed over the Zones chosen here only. The same Zone
-        may be taken from one audit and left out of another.
+        may be taken from one audit of the day and left out of another.
       </p>
 
       {generate.error ? <ErrorNotice error={generate.error} /> : null}
@@ -260,15 +268,24 @@ export function PreviewButton({ disabled, body }: { disabled: boolean; body: unk
   );
 }
 
-/** `2026-09`, in the viewer's own calendar — the month an auditor would name. */
-function monthKey(iso: string): string {
+/** `2026-09-28`, in the viewer's own calendar — the day an auditor would name. */
+function dayKey(iso: string): string {
   const at = new Date(iso);
-  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
 }
 
-function monthLabel(key: string): string {
-  const [year, month] = key.split('-').map(Number);
-  return new Date(year!, month! - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+function dayLabel(key: string): string {
+  const [year, month, date] = key.split('-').map(Number);
+  return new Date(year!, month! - 1, date!).toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function countOn(audits: readonly Audit[], key: string): number {
+  return audits.filter((audit) => dayKey(audit.completedAt!) === key).length;
 }
 
 function formatDay(iso: string): string {
