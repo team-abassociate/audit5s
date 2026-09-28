@@ -11,7 +11,7 @@ import {
   type SyncStatus,
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER } from '@audit5s/domain';
-import { captureEvidence, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
+import { FIXTURE_PASSWORD, captureEvidence, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 
 /**
@@ -930,6 +930,46 @@ describe('devices (§8.11)', () => {
     });
     expect(again.status).toBe(403);
     expect((again.body as { code: string }).code).toBe('DEVICE_REVOKED');
+  });
+
+  it('lets a Super Admin restore a revoked phone, and nobody else', async () => {
+    const deviceId = randomUUID();
+    await world.request('POST', `${base}/devices/register`, {
+      token: consultantToken,
+      body: { deviceId, platform: 'android' },
+    });
+    await world.request('POST', `${base}/devices/${deviceId}/revoke`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+
+    const refused = await world.request('POST', `${base}/devices/${deviceId}/restore`, {
+      token: consultantToken,
+    });
+    expect([403, 404]).toContain(refused.status);
+
+    const restored = await world.request('POST', `${base}/devices/${deviceId}/restore`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+    expect((restored.body as Device).revokedAt).toBeNull();
+
+    // The phone is usable again.
+    world.app.get(RateLimitService).reset();
+    const back = await world.request('POST', `${base}/auth/login`, {
+      body: {
+        loginId: world.actors.CONSULTANT.loginId,
+        password: FIXTURE_PASSWORD,
+        deviceId,
+        platform: 'android',
+      },
+    });
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+
+    const { rows } = await world.owner.query(
+      `SELECT action FROM audit_log WHERE resource_id = $1 ORDER BY occurred_at`,
+      [deviceId],
+    );
+    expect(rows.map((row) => row.action)).toEqual(['device.revoked', 'device.restored']);
   });
 
   it('shows a Consultant only their own devices', async () => {

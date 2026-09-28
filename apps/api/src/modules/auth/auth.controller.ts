@@ -51,7 +51,7 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   refresh(@Body(new ZodValidationPipe(refreshRequestSchema)) body: RefreshRequest): Promise<TokenPair> {
-    return this.auth.refresh(body.refreshToken);
+    return this.auth.refresh(body.refreshToken, body.nextRefreshToken);
   }
 
   @Public()

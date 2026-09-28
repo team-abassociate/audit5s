@@ -299,8 +299,20 @@ function ConflictRow({
 function DeviceTable({ devices }: { devices: Device[] }) {
   const queryClient = useQueryClient();
 
+  // Revoking stops the phone for everybody on it, so it takes a second press. It used to be
+  // one click beside the table's other rows, with nothing to undo it (2026-09-28).
+  const [confirming, setConfirming] = useState<string | null>(null);
+
   const revoke = useMutation({
     mutationFn: (deviceId: string) => api.post<Device>(`/devices/${deviceId}/revoke`),
+    onSuccess: async () => {
+      setConfirming(null);
+      await queryClient.invalidateQueries({ queryKey: ['devices'] });
+    },
+  });
+
+  const restore = useMutation({
+    mutationFn: (deviceId: string) => api.post<Device>(`/devices/${deviceId}/restore`),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['devices'] });
     },
@@ -312,9 +324,9 @@ function DeviceTable({ devices }: { devices: Device[] }) {
 
   return (
     <>
-      {revoke.error && (
+      {(revoke.error || restore.error) && (
         <div className="p-4">
-          <ErrorNotice error={revoke.error} />
+          <ErrorNotice error={revoke.error ?? restore.error} />
         </div>
       )}
       <Table>
@@ -355,13 +367,33 @@ function DeviceTable({ devices }: { devices: Device[] }) {
               <Td>{device.appVersion ?? '—'}</Td>
               <Td>
                 {device.revokedAt ? (
-                  <Badge tone="bad">revoked</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge tone="bad">revoked</Badge>
+                    <Button
+                      variant="secondary"
+                      title="Let this phone be used again. Each person signs in on it once more."
+                      disabled={restore.isPending}
+                      onClick={() => restore.mutate(device.id)}
+                    >
+                      Restore
+                    </Button>
+                  </div>
+                ) : confirming === device.id ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="danger"
+                      title="Signs out everybody on this phone. Use for a lost or stolen handset."
+                      disabled={revoke.isPending}
+                      onClick={() => revoke.mutate(device.id)}
+                    >
+                      {revoke.isPending ? 'Revoking…' : 'Confirm revoke'}
+                    </Button>
+                    <Button variant="secondary" onClick={() => setConfirming(null)}>
+                      Keep
+                    </Button>
+                  </div>
                 ) : (
-                  <Button
-                    variant="secondary"
-                    disabled={revoke.isPending}
-                    onClick={() => revoke.mutate(device.id)}
-                  >
+                  <Button variant="secondary" onClick={() => setConfirming(device.id)}>
                     Revoke
                   </Button>
                 )}

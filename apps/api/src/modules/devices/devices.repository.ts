@@ -196,6 +196,17 @@ export class DevicesRepository extends BaseRepository {
   }
 
   /**
+   * Clears a revoked phone. Its sessions stay dead: each person signs in on it again, which
+   * is what puts them back on its list and hands them a new session (0025).
+   */
+  async restore(scope: ScopeContext, deviceId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      await tx.update(devices).set({ revokedAt: null }).where(eq(devices.id, deviceId));
+    });
+  }
+
+  /**
    * One person off a shared phone: their place on its list and their sessions bound to
    * it. Everybody else on the phone carries on (0025).
    */

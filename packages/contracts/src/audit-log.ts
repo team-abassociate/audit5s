@@ -11,6 +11,8 @@ export const AUDIT_LOG_ACTIONS = [
   'user.created',
   'user.updated',
   'user.disabled',
+  /** An administrator undid a disable: the account signs in again (2026-09-28). */
+  'user.enabled',
   /** Removal, as far as D8 allows: archived and disabled, never deleted (R-25). */
   'user.archived',
   'user.password_reset',
@@ -49,6 +51,8 @@ export const AUDIT_LOG_ACTIONS = [
   'unit.updated',
   'unit.archived',
   'device.revoked',
+  /** An administrator cleared a revoked phone; its people sign in on it again (2026-09-28). */
+  'device.restored',
   /**
    * Before 0025: a handset changed hands, and login moved it to the new user. Kept so the
    * entries written then still parse; nothing writes it now.

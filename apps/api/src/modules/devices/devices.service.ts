@@ -101,6 +101,36 @@ export class DevicesService {
     return this.get(scope, deviceId);
   }
 
+  /**
+   * Undoes a whole-phone revocation — the "An administrator must clear it" the phone shows.
+   * A Super Admin only, because only a Super Admin revokes a whole phone; a person who took
+   * themselves off one gets back on by signing in.
+   */
+  async restore(scope: ScopeContext, deviceId: string): Promise<Device> {
+    const device = await this.repository.findById(scope, deviceId);
+    if (!device) {
+      throw AppError.notFound('No such device');
+    }
+    if (scope.actor.role !== 'SUPER_ADMIN') {
+      throw AppError.forbidden('FORBIDDEN', 'Only a Super Admin can restore a revoked phone');
+    }
+    if (!device.revokedAt) {
+      return toDevice(device);
+    }
+
+    await this.repository.restore(scope, deviceId);
+
+    await this.auditLog.record({
+      action: 'device.restored',
+      resourceType: 'device',
+      resourceId: deviceId,
+      before: { revokedAt: device.revokedAt.toISOString() },
+      after: { revokedAt: null },
+    });
+
+    return this.get(scope, deviceId);
+  }
+
   async touchSync(scope: ScopeContext, deviceId: string): Promise<void> {
     await this.repository.touchSync(scope, deviceId);
   }

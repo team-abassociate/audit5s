@@ -231,6 +231,38 @@ export class UsersService {
   }
 
   /**
+   * Undoes "Revoke access". The account signs in again; nothing else comes back on its own —
+   * its old sessions stay dead, so the person proves their password on each phone, which
+   * also puts them back on that phone's list (0025).
+   */
+  async enable(scope: ScopeContext, userId: string): Promise<void> {
+    const before = await this.repository.findById(scope, userId);
+    if (!before) {
+      throw AppError.notFound('No such user');
+    }
+
+    if (scope.actor.role === 'COORDINATOR' && before.role !== 'ZONE_LEADER') {
+      throw AppError.forbidden('FORBIDDEN', 'A Coordinator may only re-enable Zone Leaders');
+    }
+    if (before.status !== 'DISABLED') {
+      return;
+    }
+
+    const enabled = await this.repository.enable(scope, userId);
+    if (!enabled) {
+      throw AppError.notFound('No such user');
+    }
+
+    await this.auditLog.record({
+      action: 'user.enabled',
+      resourceType: 'user',
+      resourceId: userId,
+      before: { status: before.status },
+      after: { status: 'ACTIVE' },
+    });
+  }
+
+  /**
    * "Remove from the system", as far as D8 allows (R-25).
    *
    * Nothing here is ever hard-deleted: every audit, photograph and log row names the person

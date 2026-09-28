@@ -199,6 +199,16 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'POST',
+    path: '/api/v1/users/:id/enable',
+    description: 'user:disable — undoes a disable, under the rules that allowed it',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
+      COORDINATOR: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'users.e2e.test.ts',
+  },
+  {
+    method: 'POST',
     path: '/api/v1/users/:id/archive',
     description: 'user:archive — a Super Admin only; removal is archival, never deletion (R-25, D8)',
     expected: {
@@ -1247,6 +1257,17 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description:
       'device:revoke — revokes the device and its sessions. The audits it owns are released ' +
       'separately, because a credential decision is not an audit decision',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: NOT_FOUND, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: NOT_FOUND, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/devices/:deviceId/restore',
+    description: 'device:revoke — clears a revoked phone; a Super Admin only',
     expected: {
       SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: NOT_FOUND, outOfScope: NOT_FOUND },
