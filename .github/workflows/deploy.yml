@@ -124,9 +124,11 @@ jobs:
       - name: Did this release change the field app?
         id: changed
         run: |
-          # A merge's first parent is main as it was, so this is the whole pull request.
+          # A merge's first parent is main as it was, so this is the whole pull request. A
+          # change to this workflow counts too: a fix to the publishing itself should publish.
           if git diff --quiet "$RELEASE_SHA^1" "$RELEASE_SHA" -- \
-              apps/field-mobile packages/contracts packages/domain pnpm-lock.yaml; then
+              apps/field-mobile packages/contracts packages/domain pnpm-lock.yaml \
+              .github/workflows/deploy.yml; then
             echo "The field app did not change in this release; nothing to publish."
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
@@ -154,6 +156,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
         if: steps.changed.outputs.publish == 'true'
+
+      # The app imports these as compiled `dist/`, and a fresh checkout has none. The APK build
+      # does the same in `eas-build-post-install`; without it the bundle fails to resolve them.
+      - name: Build the shared packages the app imports
+        if: steps.changed.outputs.publish == 'true'
+        run: pnpm --filter @audit5s/domain --filter @audit5s/contracts build
 
       # The same address and settings as the production APK (the `vps` profile), from the
       # one place they are written down, so an update can never point phones elsewhere.
