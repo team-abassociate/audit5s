@@ -27,8 +27,18 @@ RUN pnpm --filter @audit5s/contracts build \
  && pnpm --filter @audit5s/db build \
  && pnpm --filter @audit5s/api build
 
-# Drops dev dependencies from the tree that gets copied forward.
-RUN CI=true pnpm install --frozen-lockfile --prod
+# Reinstalls only the API and the workspace packages it depends on, without dev
+# dependencies. drizzle-orm has an optional expo-sqlite peer that the lockfile links
+# for every importer, because the mobile app installs it — and through it Expo, React
+# Native and Hermes rode along into this image (node_modules was 816 MB; now ~200 MB).
+# Nothing server-side imports drizzle-orm/expo-sqlite, so the link is cut here, in this
+# stage only; the repository's lockfile and the mobile app are untouched. The install
+# is unfrozen only so it can drop that link — it resolves no version the lockfile lacks.
+RUN node -e 'const fs = require("fs"), p = JSON.parse(fs.readFileSync("package.json")); \
+      p.pnpm.overrides["drizzle-orm>expo-sqlite"] = "-"; \
+      fs.writeFileSync("package.json", JSON.stringify(p, null, 2))' \
+ && rm -rf node_modules apps/api/node_modules packages/*/node_modules \
+ && CI=true pnpm install --no-frozen-lockfile --prefer-offline --prod --filter '@audit5s/api...'
 
 # ---- runtime ----------------------------------------------------------------
 FROM node:22-alpine AS runtime
