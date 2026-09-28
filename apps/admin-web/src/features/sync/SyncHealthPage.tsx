@@ -196,6 +196,9 @@ function ConflictRow({
         </Td>
         <Td>
           <Badge tone={REASON_TONE[conflict.reason] ?? 'warn'}>{REASON_LABEL[conflict.reason]}</Badge>
+          {/* The server's own sentence, in the list and not only under Review: the badge is a
+              category, and one category covers several different refusals. */}
+          {conflict.detail && <div className="mt-1 text-xs text-ink-2">{conflict.detail}</div>}
         </Td>
         <Td>
           {conflict.userName ?? conflict.userId}
@@ -445,7 +448,10 @@ const REASON_LABEL: Record<string, string> = {
   AUDIT_ALREADY_COMPLETED: 'Arrived after completion',
   DEVICE_NOT_OWNER: 'Sent by a second device',
   CHECKLIST_VERSION_MISMATCH: 'Question not in the pinned version',
-  SCOPE_REVOKED: 'Access was revoked mid-audit',
+  // Not only a revoked Unit: the server files every "not found" and "not allowed" refusal
+  // under this code (`sync-batch.service.ts`), so it read as an administrator having cut
+  // somebody off when nobody had (2026-09-28). The row's own sentence says which it was.
+  SCOPE_REVOKED: 'Refused: not found or not allowed',
   VALIDATION_FAILED: 'Payload could not be read',
 };
 

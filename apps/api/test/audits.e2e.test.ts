@@ -426,7 +426,7 @@ describe('assignments', () => {
    * Field report, 2026-09-23: three audits of one Unit on one assignment. Finishing the
    * second closed the assignment, the Unit left the Consultant's scope, and the next Zone
    * of the first — still open on the same phone — was refused as "No such audit", which
-   * Sync health shows as "Access was revoked mid-audit".
+   * Sync health showed as "Access was revoked mid-audit" (now "Refused: not found or not allowed").
    */
   it('keeps the Unit for an open audit when another audit on the same assignment finishes', async () => {
     const { userId, token, deviceId } = await unboundConsultant();
