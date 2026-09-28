@@ -39,8 +39,11 @@ for attempt in $(seq 1 30); do
     stale="$(docker images --format '{{.Repository}}:{{.Tag}}' |
       grep -E '^ghcr\.io/team-abassociate/audit5s-(api|web):' | grep -vxF "$keep" || true)"
     if [[ -n "$stale" ]]; then
-      xargs docker rmi <<<"$stale" >/dev/null ||
+      if xargs docker rmi <<<"$stale" >/dev/null; then
+        echo "Removed $(wc -l <<<"$stale") old release image(s)"
+      else
         echo "Old image cleanup failed; the deploy itself succeeded" >&2
+      fi
     fi
     docker image prune -f >/dev/null || true
     exit 0
