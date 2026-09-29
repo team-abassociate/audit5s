@@ -18,6 +18,7 @@ import {
   SlipText,
   StatGrid,
 } from './ui';
+import { LanguageSwitcher } from './language-switcher';
 import { syncCatalogue } from '../lib/catalogue';
 import {
   listLocalAudits,
@@ -169,6 +170,11 @@ export function FieldOverview() {
           </Link>
         ) : null}
 
+        {/* Where an operator lands, so the language is chosen before the first question. */}
+        <View style={styles.language}>
+          <LanguageSwitcher />
+        </View>
+
         {open.length === 0 ? (
           <Card>
             <EmptyState
@@ -258,6 +264,7 @@ function firstName(fullName: string): string {
 
 const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.xl },
+  language: { marginBottom: theme.space.md },
   section: { marginTop: theme.space.lg },
   actions: { marginTop: theme.space.md, flexDirection: 'row', gap: theme.space.sm },
   action: { flex: 1 },
