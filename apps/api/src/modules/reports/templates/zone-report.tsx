@@ -1,4 +1,4 @@
-import { S_SECTION_ORDER, S_SECTION_LABELS, sectionLabel } from '@audit5s/domain';
+import { S_SECTION_ORDER, S_SECTION_LABELS, reportZoneLabel, sectionLabel } from '@audit5s/domain';
 import type {
   ReportNonconformity,
   ReportPayload,
@@ -65,7 +65,8 @@ export function ZoneReport({
       <div className="meta-grid">
         <MetaCell label="Company / Unit" value={payload.unit.name} />
         <MetaCell label="Department" value={zone.departmentName ?? '—'} />
-        <MetaCell label="Zone" value={`Zone ${zone.zoneCode} — ${zone.zoneName}`} />
+        {/* Named as the summary names it: "Zone 1 — Press Shop", the auditor's own words. */}
+        <MetaCell label="Zone" value={reportZoneLabel(zone)} />
         <MetaCell label="Audit date" value={formatDate(zone.auditDate)} />
         <MetaCell label="Auditor name" value={`${zone.auditorName} (${zone.auditorLoginId})`} />
         <MetaCell label="Zone leader" value={zone.zoneLeaderName ?? '—'} />

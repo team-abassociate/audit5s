@@ -21,7 +21,9 @@
 // page, and no checklist row is split across a page break.
 // 1.4.0 — the summary names each Zone as the auditor did: `Zone 1 — Press Shop` rather than
 // `Z-01 — Zone 1`, in the matrix, the comparison chart, the rankings and the flagged photos.
-export const TEMPLATE_VERSION = '1.4.0';
+// 1.5.0 — the Zone report's Zone box reads the same way: `Zone 1 — Press Shop`, where it
+// printed `Zone Z-01 — Zone 1` and left out what the auditor typed.
+export const TEMPLATE_VERSION = '1.5.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

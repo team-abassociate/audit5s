@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ReportPayload } from '@audit5s/contracts';
+import { reportZoneLabel } from '@audit5s/domain';
 import type { ImageResolver } from './components';
 import { reportStyles } from './styles';
 import { SummaryReport } from './summary-report';
@@ -36,10 +37,13 @@ export function renderReportHtml(payload: ReportPayload, resolve: ImageResolver)
     ),
   );
 
+  // The PDF's own title, which a viewer shows in its tab — so it names the Zone the way
+  // the page does, not by the stored code.
+  const zone = payload.zones[0];
   const title =
     payload.kind === 'MULTI_ZONE_SUMMARY'
       ? `Lean 5S Summary Report — ${payload.unit.name}`
-      : `Lean 5S Zone Report — ${payload.zones[0]?.zoneCode ?? ''}`;
+      : `Lean 5S Zone Report — ${zone ? reportZoneLabel(zone) : ''}`;
 
   // Assembled as a string rather than rendered: `<html>` carries no React state, and
   // hand-writing it keeps the doctype and the charset exactly where a PDF engine expects

@@ -96,6 +96,26 @@ describe('§4.1 — the initial Zone report', () => {
     expect(html).toContain('On Track');
   });
 
+  it('names a Zone added by number as the auditor did: "Zone 1 — Press Shop" (template 1.5.0)', () => {
+    const base = fixtureZonePayload();
+    const numbered = renderReportHtml(
+      {
+        ...base,
+        zones: base.zones.map((zone) => ({
+          ...zone,
+          zoneCode: 'Z-01',
+          zoneName: 'Zone 1',
+          zoneDescription: 'Press Shop',
+        })),
+      },
+      resolve,
+    );
+    expect(numbered).toContain('Zone 1 — Press Shop');
+    // Neither the stored code nor the automatic name said twice.
+    expect(numbered).not.toContain('Z-01');
+    expect(numbered).not.toContain('Zone 1 — Zone 1');
+  });
+
   it('prints a fully-NA section as N/A rather than 0% (D4)', () => {
     const table = sectionOf(html, 'S-wise scoring');
     // The cell reads N/A and carries the neutral class, not a band: `bandFor(null)` is
