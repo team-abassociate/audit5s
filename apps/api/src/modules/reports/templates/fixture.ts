@@ -153,7 +153,7 @@ const ZONE: ReportZone = {
   auditZoneId: 'az-1',
   auditId: 'audit-1',
   auditType: 'EXTERNAL_5S',
-  zoneCode: '1',
+  zoneCode: 'Z-01',
   zoneName: 'Press',
   zoneDescription: 'Press shop, bays 1–4',
   zoneLeaderName: 'R. Deshmukh',
@@ -240,7 +240,7 @@ export function fixtureSummaryPayload(): ReportPayload {
   const second: ReportZone = {
     ...ZONE,
     auditZoneId: 'az-2',
-    zoneCode: '2',
+    zoneCode: 'Z-02',
     zoneName: 'Assembly',
     totals: { applicableQuestions: 40, naQuestions: 10, rawScore: 40, maxScore: 80, scorePercentage: 50 },
     sections: SECTIONS.map((section, index) =>
@@ -284,8 +284,8 @@ export function fixtureSummaryPayload(): ReportPayload {
     },
     auditorNames: ['A. Kulkarni'],
     summaryExtras: {
-      highest: [{ zoneCode: '1', zoneName: 'Press', pct: 82.5 }],
-      lowest: [{ zoneCode: '2', zoneName: 'Assembly', pct: 50, weakestSection: 'S1_SORT' }],
+      highest: [{ zoneCode: 'Z-01', zoneName: 'Press', pct: 82.5 }],
+      lowest: [{ zoneCode: 'Z-02', zoneName: 'Assembly', pct: 50, weakestSection: 'S1_SORT' }],
       histogram: RATING_BANDS.map((band) => ({
         token: band.token,
         label: band.label,
