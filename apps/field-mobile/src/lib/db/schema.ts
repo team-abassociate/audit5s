@@ -65,6 +65,16 @@ export const checklistQuestions = sqliteTable('checklist_question', {
   allowsNa: integer('allows_na').notNull().default(1),
 });
 
+/**
+ * A question in Hindi / Marathi (0036), one row per translated question. Replaced with the
+ * catalogue; a question with no row, or a null column, is shown in English.
+ */
+export const checklistQuestionTranslations = sqliteTable('checklist_question_translation', {
+  questionId: text('question_id').primaryKey(),
+  textHi: text('text_hi'),
+  textMr: text('text_mr'),
+});
+
 /** `last_catalogue_sync_at`, `catalogue_version`, `server_time_offset_ms`. */
 export const syncMeta = sqliteTable('sync_meta', {
   key: text('key').primaryKey(),

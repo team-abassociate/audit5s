@@ -16,6 +16,7 @@ import {
 import type { LocalDatabase } from './local-database';
 import {
   audits,
+  checklistQuestionTranslations,
   checklistQuestions,
   units,
   checklistVersions,
@@ -905,6 +906,8 @@ export async function listQuestionsWithAnswers(
       orderInSection: checklistQuestions.orderInSection,
       globalOrder: checklistQuestions.globalOrder,
       text: checklistQuestions.text,
+      textHi: checklistQuestionTranslations.textHi,
+      textMr: checklistQuestionTranslations.textMr,
       guidance: checklistQuestions.guidance,
       allowsNa: checklistQuestions.allowsNa,
       value: localQuestionResponses.value,
@@ -919,6 +922,10 @@ export async function listQuestionsWithAnswers(
         eq(localQuestionResponses.checklistQuestionId, checklistQuestions.id),
         eq(localQuestionResponses.auditZoneId, auditZoneId),
       ),
+    )
+    .leftJoin(
+      checklistQuestionTranslations,
+      eq(checklistQuestionTranslations.questionId, checklistQuestions.id),
     )
     .where(eq(checklistQuestions.versionId, checklistVersionId))
     .orderBy(asc(checklistQuestions.globalOrder));

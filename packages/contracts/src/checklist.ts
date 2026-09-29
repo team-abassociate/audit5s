@@ -43,16 +43,34 @@ export const checklistTemplateSchema = z.object({
 });
 export type ChecklistTemplate = z.infer<typeof checklistTemplateSchema>;
 
+/**
+ * The languages a question may be shown in besides English (0036). English is the source —
+ * what was published, answered, reported — so it is never in this list.
+ */
+export const TRANSLATED_LANGUAGES = ['hi', 'mr'] as const;
+export const translatedLanguageSchema = z.enum(TRANSLATED_LANGUAGES);
+export type TranslatedLanguage = z.infer<typeof translatedLanguageSchema>;
+
+/** A question's wording per language. A language with no translation is simply absent. */
+export const questionTranslationsSchema = z.partialRecord(translatedLanguageSchema, z.string());
+export type QuestionTranslations = z.infer<typeof questionTranslationsSchema>;
+
 export const checklistQuestionSchema = z.object({
   id: uuidSchema,
   versionId: uuidSchema,
   section: sSectionSchema,
   orderInSection: z.number().int(),
   globalOrder: z.number().int(),
+  /** The English question — the record. A translation never replaces it. */
   text: z.string(),
   guidance: z.string().nullable(),
   allowsNa: z.boolean(),
   requiresEvidenceOnNonconformity: z.boolean(),
+  /**
+   * Display text for the field app, keyed by language (0036). Optional so a device on an
+   * older server, or a server reply that omits it, still reads the question in English.
+   */
+  translations: questionTranslationsSchema.optional(),
 });
 export type ChecklistQuestion = z.infer<typeof checklistQuestionSchema>;
 

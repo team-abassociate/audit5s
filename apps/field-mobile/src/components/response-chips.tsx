@@ -1,6 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
 import type { ResponseValue } from '@audit5s/contracts';
 import { RESPONSE_TOKENS } from '@audit5s/domain';
+import { useLanguage } from '../lib/language-provider';
 import { createThemedStyles, useTheme } from '../lib/theme';
 
 /**
@@ -34,6 +35,7 @@ export function ResponseChips({
 }) {
   const styles = useStyles();
   const theme = useTheme();
+  const { strings: t } = useLanguage();
   return (
     <View style={styles.row} accessibilityRole="radiogroup">
       {ORDER.filter((option) => option !== 'NA' || allowsNa).map((option) => {
@@ -46,7 +48,7 @@ export function ResponseChips({
             key={option}
             accessibilityRole="radio"
             accessibilityState={{ checked: selected, disabled: Boolean(readOnly) }}
-            accessibilityLabel={`${marks}, ${token.label}`}
+            accessibilityLabel={`${marks}, ${t.response[option]}`}
             disabled={readOnly}
             onPress={() => onChange(option)}
             style={({ pressed }) => [

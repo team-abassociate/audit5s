@@ -7,6 +7,7 @@ import type {
   ListChecklistTemplatesQuery,
   ListChecklistVersionsQuery,
   Page,
+  QuestionTranslations,
   UpdateChecklistTemplateRequest,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
@@ -101,7 +102,11 @@ export class ChecklistsService {
       throw AppError.notFound('No such checklist version');
     }
     const questions = await this.repository.listQuestions(scope, [versionId]);
-    return { ...toVersion(row), questions: questions.map(toQuestion) };
+    const translations = await this.translationsFor(scope, questions);
+    return {
+      ...toVersion(row),
+      questions: questions.map((question) => toQuestion(question, translations)),
+    };
   }
 
   /** Every published version with its questions — the offline catalogue. */
@@ -112,10 +117,12 @@ export class ChecklistsService {
       versions.map((version) => version.id),
     );
 
+    const translations = await this.translationsFor(scope, questions);
+
     const byVersion = new Map<string, ChecklistQuestion[]>();
     for (const question of questions) {
       const list = byVersion.get(question.versionId) ?? [];
-      list.push(toQuestion(question));
+      list.push(toQuestion(question, translations));
       byVersion.set(question.versionId, list);
     }
 
@@ -123,6 +130,22 @@ export class ChecklistsService {
       ...toVersion(version),
       questions: byVersion.get(version.id) ?? [],
     }));
+  }
+
+  /** English text → its translations, for the questions given. */
+  private async translationsFor(
+    scope: ScopeContext,
+    questions: ChecklistQuestionRow[],
+  ): Promise<Map<string, QuestionTranslations>> {
+    const rows = await this.repository.listTranslations(
+      scope,
+      questions.map((question) => question.text),
+    );
+    const bySource = new Map<string, QuestionTranslations>();
+    for (const row of rows) {
+      bySource.set(row.sourceText, { ...bySource.get(row.sourceText), [row.language]: row.text });
+    }
+    return bySource;
   }
 
   /**
@@ -275,7 +298,10 @@ function toVersion(row: ChecklistVersionRow): ChecklistVersion {
   };
 }
 
-function toQuestion(row: ChecklistQuestionRow): ChecklistQuestion {
+function toQuestion(
+  row: ChecklistQuestionRow,
+  translations: ReadonlyMap<string, QuestionTranslations>,
+): ChecklistQuestion {
   return {
     id: row.id,
     versionId: row.versionId,
@@ -286,5 +312,6 @@ function toQuestion(row: ChecklistQuestionRow): ChecklistQuestion {
     guidance: row.guidance,
     allowsNa: row.allowsNa,
     requiresEvidenceOnNonconformity: row.requiresEvidenceOnNonconformity,
+    translations: translations.get(row.text) ?? {},
   };
 }

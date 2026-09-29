@@ -21,6 +21,13 @@ import { api } from '../../lib/api';
 import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { formatDateTime } from '../../lib/format';
+import {
+  APP_LANGUAGES,
+  LANGUAGE_ENGLISH_NAMES,
+  LANGUAGE_NAMES,
+  type AppLanguage,
+} from '../../lib/language';
+import { useLanguage } from '../../lib/language-provider';
 import { ROLE_LABELS } from '../../lib/labels';
 import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
@@ -37,6 +44,7 @@ export default function ProfileScreen() {
   const styles = useStyles();
   const { user, scope, signOut } = useSession();
   const theme = useThemeChoice();
+  const language = useLanguage();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   // Named `pushWork` rather than `sync`: this screen already has a `sync` mutation for the
@@ -169,6 +177,28 @@ export default function ProfileScreen() {
             }))}
             value={theme.preference}
             onChange={theme.choose}
+          />
+        </Card>
+
+        {/*
+          The questionnaire's language, for this person only. It changes the audit screen —
+          the questions and the words around them — and nothing else: the report, the
+          admin web and the record stay English, which is why English stays under each
+          translated question.
+        */}
+        <Card>
+          <CardHeader
+            title="Checklist language"
+            description="Questions are shown in this language, with the English beneath. Reports stay in English."
+          />
+          <ChoiceList<AppLanguage>
+            options={APP_LANGUAGES.map((option) => ({
+              value: option,
+              label: LANGUAGE_NAMES[option],
+              detail: option === 'en' ? null : LANGUAGE_ENGLISH_NAMES[option],
+            }))}
+            value={language.language}
+            onChange={language.choose}
           />
         </Card>
 

@@ -3,6 +3,7 @@ import type { SyncCatalogue } from '@audit5s/contracts';
 import type { LocalDatabase } from './local-database';
 import {
   SYNC_META_KEYS,
+  checklistQuestionTranslations,
   checklistQuestions,
   checklistVersions,
   localCorrectiveActions,
@@ -35,6 +36,7 @@ export async function replaceCatalogue(
   }
 
   await database.delete(localCorrectiveActions);
+  await database.delete(checklistQuestionTranslations);
   await database.delete(checklistQuestions);
   await database.delete(checklistVersions);
   await database.delete(zones);
@@ -97,6 +99,19 @@ export async function replaceCatalogue(
           allowsNa: question.allowsNa ? 1 : 0,
         })),
       );
+
+      const translated = version.questions.filter(
+        (question) => question.translations?.hi || question.translations?.mr,
+      );
+      if (translated.length > 0) {
+        await database.insert(checklistQuestionTranslations).values(
+          translated.map((question) => ({
+            questionId: question.id,
+            textHi: question.translations?.hi ?? null,
+            textMr: question.translations?.mr ?? null,
+          })),
+        );
+      }
     }
   }
 

@@ -15,6 +15,7 @@ import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'reac
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { getLocalAudit, getLocalAuditZone, pauseLocalAudit } from '../lib/db/audit.repository';
 import { LocalDatabaseProvider, useLocalDatabase } from '../lib/db/provider';
+import { LanguageProvider } from '../lib/language-provider';
 import { SessionProvider, useSession } from '../lib/session';
 import { SyncProvider, useSync } from '../lib/sync/provider';
 import { SyncStatusBar } from '../components/sync-status-bar';
@@ -222,12 +223,15 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           {/* Session first: each person on a shared phone has their own database (0025). */}
           <SessionProvider>
-            <LocalDatabaseProvider>
-              <SyncProvider>
-                <ThemedStatusBar />
-                <AuthGate />
-              </SyncProvider>
-            </LocalDatabaseProvider>
+            {/* Per person, like the database: a shared phone speaks each auditor's language. */}
+            <LanguageProvider>
+              <LocalDatabaseProvider>
+                <SyncProvider>
+                  <ThemedStatusBar />
+                  <AuthGate />
+                </SyncProvider>
+              </LocalDatabaseProvider>
+            </LanguageProvider>
           </SessionProvider>
         </QueryClientProvider>
       </ThemeProvider>
