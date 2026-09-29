@@ -1,6 +1,6 @@
-# The commit the APK on the phones was built from (Leanstack 0.1.0, versionCode 4).
+# The commit the APK on the phones was built from (Leanstack 0.1.0, versionCode 14).
 #
 # Every deploy publishes the field app as an OTA update, but only while the native layer
 # still matches this commit's (`scripts/native-changed.mjs`). After building and handing
 # out a new APK, replace the line below with the commit that APK was built from.
-448fb7f17753464c67a93f399ac8eb019f84d6e0
+86edfd92b27daabda7f66be00e39fb42fab3476e
