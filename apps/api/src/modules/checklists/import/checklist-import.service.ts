@@ -13,6 +13,7 @@ import type {
   ImportSeverity,
   ListChecklistImportsQuery,
   Page,
+  QuestionTranslations,
 } from '@audit5s/contracts';
 import {
   QUESTIONS_PER_SECTION,
@@ -34,6 +35,7 @@ import { ChecklistErrorReportWriter } from './error-report.writer';
 import {
   ChecklistImportRepository,
   type ImportJobRow,
+  type QuestionToCommit,
   type SheetToPersist,
 } from './checklist-import.repository';
 import { WorkbookReader, WorkbookRejected } from './workbook-reader';
@@ -180,7 +182,10 @@ export class ChecklistImportService {
       const templateCode = validated.parsed.templateCode;
       const template = existingTemplates.get(templateCode) ?? null;
 
+      // Translations are not part of the signature: they are display text, not the record,
+      // so a sheet that only adds Hindi to the published English is still that checklist.
       const contentHash = hashQuestions(canonicalChecklistSignature(validated.questions));
+      const counts = translationCounts(validated.questions.map((question) => question.translations));
       const messages = [...validated.messages];
       let severity = validated.severity;
       let duplicateOfVersionId: string | null = null;
@@ -193,7 +198,14 @@ export class ChecklistImportService {
         if (duplicate) {
           duplicateOfVersionId = duplicate.id;
           duplicateIsPublished = duplicate.status === 'PUBLISHED';
-          if (duplicateIsPublished) {
+          if (duplicateIsPublished && counts.hi + counts.mr > 0) {
+            // Still no new version — the English is v(n) word for word — but the sheet has
+            // something to contribute, and saying "no changes" would hide it.
+            messages.push(
+              `The English is identical to published version ${duplicate.versionNumber}, so no new version is made. ` +
+                `Committing saves its translations: ${counts.hi} Hindi, ${counts.mr} Marathi.`,
+            );
+          } else if (duplicateIsPublished) {
             // BLOCK: importing the published checklist again would create a v(n+1) that
             // is word-for-word v(n), and every audit in flight would be re-pinned for no
             // reason. Not an ERROR — the file is fine, there is simply nothing to do.
@@ -229,6 +241,7 @@ export class ChecklistImportService {
           parsedOrder: row.orderInSection,
           parsedGlobalOrder: row.globalOrder,
           parsedText: row.text,
+          parsedTranslations: row.translations,
           severity: row.severity,
           messages: row.messages,
         })),
@@ -297,7 +310,13 @@ export class ChecklistImportService {
     return {
       job: toJob(job),
       sheets: sheetRows.map(({ sheet, duplicateVersionNumber }) =>
-        toSheet(sheet, duplicateVersionNumber),
+        toSheet(
+          sheet,
+          duplicateVersionNumber,
+          translationCounts(
+            mapped.filter((row) => row.sheetId === sheet.id).map((row) => row.parsedTranslations),
+          ),
+        ),
       ),
       skippedSheets: job.skippedSheets,
       rows: mapped,
@@ -398,11 +417,20 @@ export class ChecklistImportService {
     }
 
     // Stage 4's BLOCK, applied at the moment of writing rather than only reported: a
-    // sheet identical to the published version has nothing to contribute.
+    // sheet identical to the published version makes no new version. It may still carry
+    // translations, and those are its whole contribution.
     const unchanged = selected.filter((sheet) => sheet.duplicateIsPublished);
     const committable = selected.filter((sheet) => !sheet.duplicateIsPublished);
 
-    if (committable.length === 0) {
+    const translationOnly: Array<{ sheet: (typeof unchanged)[number]; questions: QuestionToCommit[] }> =
+      [];
+    for (const sheet of unchanged) {
+      const questions = await this.repository.incomingQuestionsOfSheet(scope, sheet.id);
+      const counts = translationCounts(questions.map((question) => question.translations));
+      if (counts.hi + counts.mr > 0) translationOnly.push({ sheet, questions });
+    }
+
+    if (committable.length === 0 && translationOnly.length === 0) {
       throw AppError.conflict(
         'IMPORT_NO_CHANGES',
         `No changes to import: ${unchanged
@@ -411,12 +439,24 @@ export class ChecklistImportService {
       );
     }
 
+    let translationsSaved = 0;
+    for (const { sheet, questions } of translationOnly) {
+      const saved = await this.repository.commitTranslationsOnly(scope, questions);
+      translationsSaved += saved;
+      await this.auditLog.record({
+        action: 'checklist.translations_imported',
+        resourceType: 'checklist_template',
+        resourceId: sheet.templateId ?? sheet.id,
+        after: { jobId, sheetName: sheet.sheetName, translationsSaved: saved },
+      });
+    }
+
     let nextSortOrder = (await this.repository.maxTemplateSortOrder(scope)) + 1;
     const versionIds: string[] = [];
 
     for (const sheet of committable) {
       const questions = await this.repository.incomingQuestionsOfSheet(scope, sheet.id);
-      const versionId = await this.repository.commitSheet(scope, {
+      const { versionId, translationsSaved: saved } = await this.repository.commitSheet(scope, {
         jobId,
         sheetId: sheet.id,
         templateId: sheet.templateId,
@@ -430,6 +470,7 @@ export class ChecklistImportService {
       });
       if (!sheet.templateId) nextSortOrder += 1;
       versionIds.push(versionId);
+      translationsSaved += saved;
 
       await this.auditLog.record({
         action: 'checklist.imported',
@@ -440,6 +481,7 @@ export class ChecklistImportService {
           sheetName: sheet.sheetName,
           templateCode: sheet.templateCode,
           questionCount: questions.length,
+          translationsSaved: saved,
         },
       });
     }
@@ -455,7 +497,7 @@ export class ChecklistImportService {
       );
     }
 
-    return { jobId, versions };
+    return { jobId, versions, translationsSaved };
   }
 
   // ---------------------------------------------------------------- accessors
@@ -488,6 +530,14 @@ function worst(a: ImportSeverity, b: ImportSeverity): ImportSeverity {
   return 'OK';
 }
 
+/** How many questions carry a translation, per language. */
+function translationCounts(translations: readonly QuestionTranslations[]): { hi: number; mr: number } {
+  return {
+    hi: translations.filter((entry) => Boolean(entry.hi)).length,
+    mr: translations.filter((entry) => Boolean(entry.mr)).length,
+  };
+}
+
 /** SHA-256 over the canonical signature `packages/domain` produces. */
 export function hashQuestions(signature: string): string {
   return createHash('sha256').update(signature, 'utf8').digest('hex');
@@ -515,7 +565,11 @@ function toJob(row: ImportJobRow): ChecklistImportJob {
 
 type SheetEntity = Awaited<ReturnType<ChecklistImportRepository['findSheets']>>[number]['sheet'];
 
-function toSheet(row: SheetEntity, duplicateVersionNumber: number | null): ChecklistImportSheet {
+function toSheet(
+  row: SheetEntity,
+  duplicateVersionNumber: number | null,
+  counts: { hi: number; mr: number },
+): ChecklistImportSheet {
   return {
     id: row.id,
     jobId: row.jobId,
@@ -532,6 +586,7 @@ function toSheet(row: SheetEntity, duplicateVersionNumber: number | null): Check
     duplicateIsPublished: row.duplicateIsPublished,
     committedVersionId: row.committedVersionId,
     messages: row.messages,
+    translationCounts: counts,
   };
 }
 
@@ -547,6 +602,7 @@ function toImportRow(row: RowEntity, sheetName: string): ChecklistImportRow {
     parsedOrder: row.parsedOrder,
     parsedGlobalOrder: row.parsedGlobalOrder,
     parsedText: row.parsedText,
+    parsedTranslations: row.parsedTranslations,
     severity: row.severity,
     messages: row.messages,
   };

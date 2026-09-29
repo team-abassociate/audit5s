@@ -31,6 +31,14 @@ export interface SheetSpec {
   sr?: (sr: number) => number;
   /** Written into A1 instead of the checklist title, so the sheet is skipped. */
   title?: string;
+  /**
+   * Translation columns appended after `Remarks / Observations` (0037): their headers, and
+   * each question's cells in the same order. `null` leaves a cell blank.
+   */
+  translations?: {
+    headers: string[];
+    cells: (section: number, position: number) => Array<string | null>;
+  };
 }
 
 export function buildWorkbook(sheets: SheetSpec[]): Promise<Buffer> {
@@ -43,7 +51,14 @@ export function buildWorkbook(sheets: SheetSpec[]): Promise<Buffer> {
     worksheet.addRow(['Area / Dept.:', spec.name, 'Auditor Name:']);
     worksheet.addRow(['Shift:', null, 'Auditee / Area Owner:']);
     worksheet.addRow([]);
-    worksheet.addRow(['Sr.', 'Check Point', 'Yes / No', 'Marks', 'Remarks / Observations']);
+    worksheet.addRow([
+      'Sr.',
+      'Check Point',
+      'Yes / No',
+      'Marks',
+      'Remarks / Observations',
+      ...(spec.translations?.headers ?? []),
+    ]);
 
     const counts = spec.counts ?? [10, 10, 10, 10, 10];
     const text = spec.text ?? ((section, position) => `${spec.name} S${section} Q${position}`);
@@ -54,7 +69,14 @@ export function buildWorkbook(sheets: SheetSpec[]): Promise<Buffer> {
       worksheet.addRow([SECTION_HEADERS[section - 1]]);
       for (let position = 1; position <= (counts[section - 1] ?? 10); position += 1) {
         sr += 1;
-        worksheet.addRow([spec.sr ? spec.sr(sr) : sr, text(section, position), null, 0, null]);
+        worksheet.addRow([
+          spec.sr ? spec.sr(sr) : sr,
+          text(section, position),
+          null,
+          0,
+          null,
+          ...(spec.translations?.cells(section, position) ?? []),
+        ]);
       }
       worksheet.addRow([`Sub-total ${section}S (out of 20)`, null, null, 0, null]);
     }

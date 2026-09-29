@@ -29,6 +29,7 @@ export const AUDIT_LOG_ACTIONS = [
   'zone.archived',
   'zone.leader_assigned',
   'checklist.imported',
+  'checklist.translations_imported',
   'checklist.published',
   'checklist.deactivated',
   'checklist.template_updated',

@@ -245,6 +245,11 @@ export const checklistImportRows = pgTable(
     parsedOrder: integer('parsed_order'),
     parsedGlobalOrder: integer('parsed_global_order'),
     parsedText: text('parsed_text'),
+    /** Hindi / Marathi from the sheet's translation columns (0037); `{}` when none. */
+    parsedTranslations: jsonb('parsed_translations')
+      .$type<{ hi?: string; mr?: string }>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     severity: text('severity').$type<'OK' | 'WARNING' | 'ERROR'>().notNull(),
     messages: text('messages').array().notNull().default(sql`ARRAY[]::text[]`),
   },

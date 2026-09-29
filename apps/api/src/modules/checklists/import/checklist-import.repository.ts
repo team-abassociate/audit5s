@@ -4,13 +4,20 @@ import {
   checklistImportJobs,
   checklistImportRows,
   checklistImportSheets,
+  checklistQuestionTranslations,
   checklistQuestions,
   checklistTemplates,
   checklistVersions,
   type Database,
   type Transaction,
 } from '@audit5s/db';
-import type { ImportSeverity, ListChecklistImportsQuery, SSection } from '@audit5s/contracts';
+import type {
+  ImportSeverity,
+  ListChecklistImportsQuery,
+  QuestionTranslations,
+  SSection,
+  TranslatedLanguage,
+} from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../../common/auth/resolvers';
@@ -37,6 +44,7 @@ export interface SheetToPersist {
     parsedOrder: number | null;
     parsedGlobalOrder: number | null;
     parsedText: string | null;
+    parsedTranslations: QuestionTranslations;
     severity: ImportSeverity;
     messages: string[];
   }>;
@@ -47,6 +55,32 @@ export interface QuestionToCommit {
   orderInSection: number;
   globalOrder: number;
   text: string;
+  translations: QuestionTranslations;
+}
+
+/**
+ * Writes the translations of these questions, keyed by their English (0036).
+ *
+ * An upsert: the Super Admin's file is the latest word on a translation, so it replaces
+ * what was there. A blank cell was never read into `translations`, so it replaces nothing
+ * — an import cannot erase a translation, only improve one. Returns how many it wrote.
+ */
+async function writeTranslations(tx: Transaction, questions: QuestionToCommit[]): Promise<number> {
+  const rows = questions.flatMap((question) =>
+    (Object.entries(question.translations) as Array<[TranslatedLanguage, string | undefined]>)
+      .filter((entry): entry is [TranslatedLanguage, string] => Boolean(entry[1]))
+      .map(([language, text]) => ({ sourceText: question.text, language, text })),
+  );
+  if (rows.length === 0) return 0;
+
+  await tx
+    .insert(checklistQuestionTranslations)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [checklistQuestionTranslations.sourceText, checklistQuestionTranslations.language],
+      set: { text: sql`excluded.text` },
+    });
+  return rows.length;
 }
 
 @Injectable()
@@ -152,6 +186,7 @@ export class ChecklistImportRepository extends BaseRepository {
           orderInSection: checklistImportRows.parsedOrder,
           globalOrder: checklistImportRows.parsedGlobalOrder,
           text: checklistImportRows.parsedText,
+          translations: checklistImportRows.parsedTranslations,
         })
         .from(checklistImportRows)
         .where(and(eq(checklistImportRows.sheetId, sheetId), this.everything(scope)))
@@ -159,7 +194,15 @@ export class ChecklistImportRepository extends BaseRepository {
 
       return rows
         .filter(
-          (row): row is { section: SSection; orderInSection: number; globalOrder: number; text: string } =>
+          (
+            row,
+          ): row is {
+            section: SSection;
+            orderInSection: number;
+            globalOrder: number;
+            text: string;
+            translations: QuestionTranslations;
+          } =>
             row.section !== null &&
             row.orderInSection !== null &&
             row.globalOrder !== null &&
@@ -170,6 +213,7 @@ export class ChecklistImportRepository extends BaseRepository {
           orderInSection: row.orderInSection,
           globalOrder: row.globalOrder,
           text: row.text,
+          translations: row.translations,
         }));
     });
   }
@@ -296,6 +340,7 @@ export class ChecklistImportRepository extends BaseRepository {
                 parsedOrder: row.parsedOrder,
                 parsedGlobalOrder: row.parsedGlobalOrder,
                 parsedText: row.parsedText,
+                parsedTranslations: row.parsedTranslations,
                 severity: row.severity,
                 messages: row.messages,
               };
@@ -428,7 +473,7 @@ export class ChecklistImportRepository extends BaseRepository {
       questionsPerSection: number;
       questions: QuestionToCommit[];
     },
-  ): Promise<string> {
+  ): Promise<{ versionId: string; translationsSaved: number }> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
 
@@ -477,12 +522,31 @@ export class ChecklistImportRepository extends BaseRepository {
         })),
       );
 
+      // In the version's transaction: a checklist is never committed without the wording
+      // its sheet carried, and a failed commit leaves no translation behind either.
+      const translationsSaved = await writeTranslations(tx as Transaction, input.questions);
+
       await tx
         .update(checklistImportSheets)
         .set({ committedVersionId: versionId, templateId })
         .where(eq(checklistImportSheets.id, input.sheetId));
 
-      return versionId;
+      return { versionId, translationsSaved };
+    });
+  }
+
+  /**
+   * A sheet whose English matches the published checklist, committed for its translations
+   * alone. No version is made — the questions did not change, so neither does anything an
+   * audit is pinned to — only the Hindi and Marathi beside them.
+   */
+  async commitTranslationsOnly(
+    scope: ScopeContext,
+    questions: QuestionToCommit[],
+  ): Promise<number> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      return writeTranslations(tx as Transaction, questions);
     });
   }
 
