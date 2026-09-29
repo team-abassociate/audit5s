@@ -17,17 +17,11 @@ import {
   Screen,
   StatGrid,
 } from '../../components/ui';
+import { LanguageSwitcher } from '../../components/language-switcher';
 import { api } from '../../lib/api';
 import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { formatDateTime } from '../../lib/format';
-import {
-  APP_LANGUAGES,
-  LANGUAGE_ENGLISH_NAMES,
-  LANGUAGE_NAMES,
-  type AppLanguage,
-} from '../../lib/language';
-import { useLanguage } from '../../lib/language-provider';
 import { ROLE_LABELS } from '../../lib/labels';
 import { useSession } from '../../lib/session';
 import { useSync } from '../../lib/sync/provider';
@@ -44,7 +38,6 @@ export default function ProfileScreen() {
   const styles = useStyles();
   const { user, scope, signOut } = useSession();
   const theme = useThemeChoice();
-  const language = useLanguage();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   // Named `pushWork` rather than `sync`: this screen already has a `sync` mutation for the
@@ -188,18 +181,10 @@ export default function ProfileScreen() {
         */}
         <Card>
           <CardHeader
-            title="Checklist language"
-            description="Questions are shown in this language, with the English beneath. Reports stay in English."
+            title="Checklist language · भाषा"
+            description="Questions are shown in this language, with the English beneath. Reports stay in English. The same choice as on Overview."
           />
-          <ChoiceList<AppLanguage>
-            options={APP_LANGUAGES.map((option) => ({
-              value: option,
-              label: LANGUAGE_NAMES[option],
-              detail: option === 'en' ? null : LANGUAGE_ENGLISH_NAMES[option],
-            }))}
-            value={language.language}
-            onChange={language.choose}
-          />
+          <LanguageSwitcher showLabel={false} />
         </Card>
 
         <Card>
