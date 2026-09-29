@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAuditCompleted, zoneDisplayLabel } from '@audit5s/domain';
+import { isAuditCompleted, reportZoneLabel } from '@audit5s/domain';
 import type { Audit, AuditScoreSummary, ReportSnapshot } from '@audit5s/contracts';
 import { api, fetchAll } from '@/lib/api';
 import { Badge, Button, ErrorNotice, Field, Select, Spinner } from '@/components/ui';
@@ -195,7 +195,8 @@ export function SummaryZonePicker({
                     checked={chosen.includes(zone.auditZoneId!)}
                     onChange={(event) => toggle([zone.auditZoneId!], event.target.checked)}
                   />
-                  <span className="text-ink">{zoneDisplayLabel(zone.zoneCode, zone.zoneName)}</span>
+                  {/* Named as the summary will name it: the auditor's own words for the Zone. */}
+                  <span className="text-ink">{reportZoneLabel(zone)}</span>
                   {zone.checklistTemplateName ? (
                     <span className="text-xs text-ink-2">{zone.checklistTemplateName}</span>
                   ) : null}

@@ -228,6 +228,7 @@ export class AuditsService {
           ...toScoreSummary(audit.id, zone.id, breakdown),
           zoneCode: zone.zoneCodeSnapshot,
           zoneName: zone.zoneNameSnapshot,
+          zoneDescription: zone.zoneDescriptionSnapshot,
           checklistTemplateName: zone.checklistTemplateNameSnapshot,
           status: zone.status,
         };

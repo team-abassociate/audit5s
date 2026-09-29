@@ -49,6 +49,37 @@ export function zoneDisplayLabel(code: string, name: string): string {
 }
 
 /**
+ * How the reports name a Zone: `zoneDisplayLabel`, then what the auditor called it.
+ *
+ * A Zone added by number (R-19) is named just "Zone 7", and what the auditor typed about it
+ * on the phone — "Press shop", "Dispatch bay" — lives in its description. Printing the
+ * number alone tells a reader of a twenty-Zone summary nothing, so the auditor's words
+ * follow it, after any name somebody chose:
+ *
+ * - `Z-07`, "Zone 7", "Press shop"       → `Zone 7 — Press shop`
+ * - `Z-07`, "Press", "Line 2, dies 4–6"  → `Zone 7 — Press — Line 2, dies 4–6`
+ * - `Z-07`, "Press", "press"             → `Zone 7 — Press`
+ * - `Z-07`, "Zone 7", nothing typed      → `Zone 7`
+ * - `BOILER`, "Boiler house", nothing    → `BOILER — Boiler house` (a code a Unit chose)
+ *
+ * The number is written "Zone 7", never the stored `Z-07`, as on the Zone report and in the
+ * sample reports (HANDOFF.md §4.1). The description is a multi-line field on the phone; it
+ * is printed on one line here.
+ */
+export function reportZoneLabel(zone: {
+  zoneCode: string;
+  zoneName: string;
+  zoneDescription?: string | null;
+}): string {
+  const label = zoneDisplayLabel(zone.zoneCode, zone.zoneName);
+  const described = (zone.zoneDescription ?? '').replace(/\s+/g, ' ').trim();
+  if (described === '') return label;
+  // Not said twice: a description that only repeats the name adds nothing.
+  if (described.toLocaleLowerCase() === zone.zoneName.trim().toLocaleLowerCase()) return label;
+  return `${label} — ${described}`;
+}
+
+/**
  * The leader an audit Zone snapshots when the auditor may have typed a name (R-19).
  *
  * The typed name is what the reports print. The Zone's leader account is kept only when the

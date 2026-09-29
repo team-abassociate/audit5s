@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Audit, AuditDetail, Page, ReportSnapshot } from '@audit5s/contracts';
-import { isAuditCompleted, zoneDisplayLabel } from '@audit5s/domain';
+import { isAuditCompleted, reportZoneLabel } from '@audit5s/domain';
 import { Button, CheckRow, Data, ErrorBanner, Muted } from './ui';
 import { api, problemMessage } from '../lib/api';
 import { formatDate, formatDateTime, formatPct } from '../lib/format';
@@ -141,7 +141,12 @@ export function SummaryZonePicker({
             {zones.map((zone) => (
               <CheckRow
                 key={zone.id}
-                label={zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
+                // Named as the summary will name it: the auditor's own words for the Zone.
+                label={reportZoneLabel({
+                  zoneCode: zone.zoneCodeSnapshot,
+                  zoneName: zone.zoneNameSnapshot,
+                  zoneDescription: zone.zoneDescriptionSnapshot,
+                })}
                 detail={zone.zoneLeaderNameSnapshot ? `Leader ${zone.zoneLeaderNameSnapshot}` : null}
                 value={formatPct(zone.totals.scorePercentage)}
                 checked={chosen.includes(zone.id)}

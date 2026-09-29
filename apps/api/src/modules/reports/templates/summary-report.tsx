@@ -1,4 +1,4 @@
-import { S_SECTION_ORDER, S_SECTION_SHORT_LABELS } from '@audit5s/domain';
+import { S_SECTION_ORDER, S_SECTION_SHORT_LABELS, reportZoneLabel } from '@audit5s/domain';
 import type { ReportPayload, ReportZone } from './payload-types';
 import {
   Footer,
@@ -86,8 +86,7 @@ export function SummaryReport({
       <h2 className="section-title">Zone score comparison</h2>
       <ZoneComparisonBars
         zones={payload.zones.map((zone) => ({
-          zoneCode: zone.zoneCode,
-          zoneName: zone.zoneName,
+          label: reportZoneLabel(zone),
           pct: zone.totals.scorePercentage,
         }))}
         bands={payload.bands}
@@ -109,9 +108,7 @@ export function SummaryReport({
                 <tbody>
                   {extras.highest.map((zone) => (
                     <tr key={`hi-${zone.zoneCode}`}>
-                      <td>
-                        {zone.zoneCode} — {zone.zoneName}
-                      </td>
+                      <td>{reportZoneLabel(zone)}</td>
                       <td className={`num band-${bandOf(payload.bands, zone.pct)?.token ?? ''}`}>
                         {formatPercentage(zone.pct)}
                       </td>
@@ -127,7 +124,7 @@ export function SummaryReport({
                   {extras.lowest.map((zone) => (
                     <tr key={`lo-${zone.zoneCode}`}>
                       <td>
-                        {zone.zoneCode} — {zone.zoneName}
+                        {reportZoneLabel(zone)}
                         {zone.weakestSection ? (
                           <span className="q-remark">
                             Weakest: {S_SECTION_SHORT_LABELS[zone.weakestSection]}
@@ -213,9 +210,7 @@ function ZoneMatrix({ payload }: { payload: ReportPayload }) {
       <tbody>
         {payload.zones.map((zone) => (
           <tr key={zone.auditZoneId}>
-            <td>
-              {zone.zoneCode} — {zone.zoneName}
-            </td>
+            <td>{reportZoneLabel(zone)}</td>
             <td>{zone.departmentName ?? '—'}</td>
             {S_SECTION_ORDER.map((section) => {
               const score = zone.sections.find((entry) => entry.section === section);
@@ -291,9 +286,7 @@ function FlaggedPhotos({
       <h2 className="section-title">Flagged photographs</h2>
       {rows.map(({ zone, good, nonconformity }) => (
         <div key={`flag-${zone.auditZoneId}`} className="avoid-break">
-          <div className="photo-caption">
-            Zone {zone.zoneCode} — {zone.zoneName}
-          </div>
+          <div className="photo-caption">{reportZoneLabel(zone)}</div>
           <div className="good-grid">
             {good ? (
               <div className="photo-card">

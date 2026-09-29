@@ -367,6 +367,71 @@ describe('§4.3 — the multi-Zone summary', () => {
   });
 });
 
+describe('§4.3 — the summary names each Zone as the auditor did (template 1.4.0)', () => {
+  /**
+   * The case the field produces: Zones added by number (R-19), so each is named just
+   * "Zone N", and what the auditor typed on the phone — the Zone's description — is the
+   * only thing that says which part of the plant it is.
+   */
+  function byNumber(): ReturnType<typeof fixtureSummaryPayload> {
+    const payload = fixtureSummaryPayload();
+    const typed = ['Press Shop', 'Dispatch bay'];
+    return {
+      ...payload,
+      zones: payload.zones.map((zone, index) => ({
+        ...zone,
+        zoneCode: `Z-0${index + 1}`,
+        zoneName: `Zone ${index + 1}`,
+        zoneDescription: typed[index] ?? null,
+      })),
+      summaryExtras: {
+        ...payload.summaryExtras!,
+        highest: [{ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: 'Press Shop', pct: 82.5 }],
+        lowest: [
+          {
+            zoneCode: 'Z-02',
+            zoneName: 'Zone 2',
+            zoneDescription: 'Dispatch bay',
+            pct: 50,
+            weakestSection: 'S1_SORT',
+          },
+        ],
+      },
+    };
+  }
+
+  const html = renderReportHtml(byNumber(), resolve);
+
+  it('prints "Zone 1 — Press Shop", and never the stored code "Z-01"', () => {
+    expect(html).toContain('Zone 1 — Press Shop');
+    expect(html).toContain('Zone 2 — Dispatch bay');
+    expect(html).not.toContain('Z-01');
+    expect(html).not.toContain('Z-02');
+  });
+
+  it('uses that name in every place the summary names a Zone', () => {
+    for (const heading of ['Zone-wise marks per S', 'Zone score comparison', 'Flagged photographs']) {
+      expect(sectionOf(html, heading), heading).toContain('Zone 1 — Press Shop');
+    }
+    expect(sectionOf(html, 'Highest performing')).toContain('Zone 1 — Press Shop');
+    expect(sectionOf(html, 'Lowest performing')).toContain('Zone 2 — Dispatch bay');
+    // The flagged-photo caption is the label itself, not "Zone Zone 1".
+    expect(html).not.toContain('Zone Zone');
+  });
+
+  it('still renders a summary frozen before the rankings carried the description (R-35)', () => {
+    const older = byNumber();
+    older.summaryExtras = {
+      ...older.summaryExtras!,
+      highest: [{ zoneCode: 'Z-01', zoneName: 'Zone 1', pct: 82.5 }],
+    };
+    const rendered = renderReportHtml(older, resolve);
+    expect(sectionOf(rendered, 'Highest performing')).toContain('Zone 1');
+    // The rest of the document still has the description, which was always frozen.
+    expect(sectionOf(rendered, 'Zone-wise marks per S')).toContain('Zone 1 — Press Shop');
+  });
+});
+
 describe('the renderer refuses a payload it has no layout for (§10.5)', () => {
   it('throws rather than rendering half a document', () => {
     const future = { ...fixtureZonePayload(), schemaVersion: 99 } as never;
