@@ -285,6 +285,98 @@ describe('validation (§8.5 stage 3, CQ-1)', () => {
   });
 });
 
+/**
+ * The same sheet with translation columns appended beside `Remarks / Observations`, as a
+ * Super Admin would add them. `cells` gives each question's Hindi and Marathi by `Sr.`.
+ */
+function withTranslationColumns(
+  sheet: SheetGrid,
+  headers: string[],
+  cells: (sr: number) => CellValue[],
+): SheetGrid {
+  const rows = sheet.rows.map((row) => {
+    if (row[0] === 'Sr.') return [...row, ...headers];
+    return typeof row[0] === 'number' ? [...row, ...cells(row[0])] : row;
+  });
+  return { ...sheet, rows };
+}
+
+describe('Hindi and Marathi columns (0037)', () => {
+  const translated = withTranslationColumns(
+    buildSheet('Premises'),
+    ['Check Point (Hindi)', 'Check Point (मराठी)'],
+    (sr) => [`  प्रश्न  ${sr} `, sr === 3 ? null : `प्रश्न ${sr} (मराठी)`],
+  );
+
+  it('changes nothing for a workbook without them', () => {
+    const parsed = parseChecklistSheet(buildSheet('Premises'));
+    expect(parsed.translationColumns).toEqual({});
+    expect(parsed.questions.every((question) => Object.keys(question.translations).length === 0)).toBe(
+      true,
+    );
+  });
+
+  it('finds the columns by header, in English or in Devanagari, and reads each row', () => {
+    const parsed = parseChecklistSheet(translated);
+    expect(parsed.translationColumns).toEqual({ hi: 5, mr: 6 });
+    // Whitespace is normalised exactly as the English is.
+    expect(parsed.questions[0]?.translations).toEqual({ hi: 'प्रश्न 1', mr: 'प्रश्न 1 (मराठी)' });
+  });
+
+  it('reads a blank cell as no translation, so an import never erases one', () => {
+    const parsed = parseChecklistSheet(translated);
+    expect(parsed.questions[2]?.translations).toEqual({ hi: 'प्रश्न 3' });
+    expect(parsed.questions[2]?.raw).not.toHaveProperty('mr');
+  });
+
+  it('validates a well-formed translated sheet with no messages', () => {
+    const validated = validateChecklistSheet(parseChecklistSheet(translated));
+    expect(validated.severity).toBe('OK');
+    expect(validated.questions[0]?.translations.hi).toBe('प्रश्न 1');
+  });
+
+  it('warns when a translation cell holds no Devanagari — a column in the wrong place', () => {
+    const misplaced = withTranslationColumns(buildSheet('Premises'), ['Hindi'], (sr) => [
+      sr === 4 ? 'Only required materials' : `प्रश्न ${sr}`,
+    ]);
+    const validated = validateChecklistSheet(parseChecklistSheet(misplaced));
+    expect(validated.severity).toBe('WARNING');
+    expect(validated.rows[3]?.messages.join(' ')).toContain('The Hindi column has no Devanagari');
+  });
+
+  it('rejects a translation longer than the database accepts', () => {
+    const long = withTranslationColumns(buildSheet('Premises'), ['Marathi'], (sr) => [
+      sr === 1 ? 'म'.repeat(1001) : `प्रश्न ${sr}`,
+    ]);
+    const validated = validateChecklistSheet(parseChecklistSheet(long));
+    expect(validated.severity).toBe('ERROR');
+    expect(validated.rows[0]?.messages.join(' ')).toContain('the limit is 1000');
+  });
+
+  it('reads the first of two columns for one language, and says so', () => {
+    const twice = withTranslationColumns(buildSheet('Premises'), ['Hindi', 'हिंदी'], (sr) => [
+      `प्रश्न ${sr}`,
+      'दूसरा',
+    ]);
+    const validated = validateChecklistSheet(parseChecklistSheet(twice));
+    expect(validated.parsed.translationColumns).toEqual({ hi: 5 });
+    expect(validated.questions[0]?.translations.hi).toBe('प्रश्न 1');
+    expect(validated.severity).toBe('WARNING');
+    expect(validated.messages.join(' ')).toContain('More than one Hindi column');
+  });
+
+  it('never reads Check Point or Remarks as a translation', () => {
+    const parsed = parseChecklistSheet(buildSheet('Premises'));
+    expect(parsed.translationColumns).toEqual({});
+  });
+
+  it('leaves the content signature alone: a translation is not the record', () => {
+    const plain = validateChecklistSheet(parseChecklistSheet(buildSheet('Premises'))).questions;
+    const withHindi = validateChecklistSheet(parseChecklistSheet(translated)).questions;
+    expect(canonicalChecklistSignature(withHindi)).toBe(canonicalChecklistSignature(plain));
+  });
+});
+
 describe('content signature (§8.5 stage 4)', () => {
   const questions = validateChecklistSheet(parseChecklistSheet(buildSheet('Premises'))).questions;
 

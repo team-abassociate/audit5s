@@ -142,6 +142,8 @@ export const checklistImportRowSchema = z.object({
   parsedOrder: z.number().int().nullable(),
   parsedGlobalOrder: z.number().int().nullable(),
   parsedText: z.string().nullable(),
+  /** The row's Hindi / Marathi wording, when the sheet has those columns (0037). */
+  parsedTranslations: questionTranslationsSchema,
   severity: importSeveritySchema,
   messages: z.array(z.string()),
 });
@@ -173,6 +175,12 @@ export const checklistImportSheetSchema = z.object({
   duplicateIsPublished: z.boolean(),
   committedVersionId: uuidSchema.nullable(),
   messages: z.array(z.string()),
+  /**
+   * How many of the sheet's questions carry a translation, per language (0037). A sheet
+   * identical to the published checklist is still worth committing when these are not
+   * zero: its translations are saved without making a new version.
+   */
+  translationCounts: z.object({ hi: z.number().int(), mr: z.number().int() }),
 });
 export type ChecklistImportSheet = z.infer<typeof checklistImportSheetSchema>;
 
@@ -252,6 +260,8 @@ export type CommitChecklistImportRequest = z.infer<typeof commitChecklistImportR
 export const commitChecklistImportResponseSchema = z.object({
   jobId: uuidSchema,
   versions: z.array(checklistVersionSchema),
+  /** Hindi and Marathi translations written, across every committed sheet (0037). */
+  translationsSaved: z.number().int(),
 });
 export type CommitChecklistImportResponse = z.infer<typeof commitChecklistImportResponseSchema>;
 

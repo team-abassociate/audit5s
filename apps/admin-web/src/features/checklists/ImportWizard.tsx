@@ -123,6 +123,12 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
             One sheet per department. A sheet is read as a checklist only when cell A1 reads
             <span className="font-mono"> 5S AUDIT CHECK SHEET – …</span>; anything else is skipped.
           </p>
+          <p className="text-sm text-ink-2">
+            Optional: add <span className="font-mono">Check Point (Hindi)</span> and{' '}
+            <span className="font-mono">Check Point (Marathi)</span> columns beside the header row.
+            Auditors who choose those languages see them above the English. A blank cell keeps the
+            translation already saved.
+          </p>
           <input
             type="file"
             accept=".xlsx"
@@ -158,8 +164,17 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
       {step === 'committed' && (
         <div className="space-y-3 p-4">
           <p className="text-sm font-medium text-ink">
-            Imported and published. Devices pick the new version up on their next catalogue sync.
+            {commit.data && commit.data.versions.length === 0
+              ? 'Translations saved.'
+              : 'Imported and published.'}{' '}
+            Devices pick the change up on their next catalogue sync.
           </p>
+          {commit.data && commit.data.translationsSaved > 0 && (
+            <p className="text-sm text-ink-2">
+              {commit.data.translationsSaved} Hindi and Marathi translation
+              {commit.data.translationsSaved === 1 ? '' : 's'} saved.
+            </p>
+          )}
           <Button onClick={onFinished}>Done</Button>
         </div>
       )}
@@ -253,13 +268,14 @@ function PreviewStep({
             <Th>Department</Th>
             <Th>Questions</Th>
             <Th>Change</Th>
+            <Th>Translations</Th>
             <Th>Notes</Th>
           </tr>
         </thead>
         <tbody>
           {preview.sheets.map((sheet) => {
             const diff = preview.diffs.find((candidate) => candidate.sheetId === sheet.id);
-            const blocked = sheet.severity === 'ERROR' || sheet.duplicateIsPublished;
+            const blocked = !isCommittable(sheet);
             return (
               <Fragment key={sheet.id}>
                 <tr>
@@ -294,13 +310,18 @@ function PreviewStep({
                       '—'
                     )}
                   </Td>
+                  <Td className="whitespace-nowrap text-xs">
+                    {hasTranslations(sheet)
+                      ? `Hindi ${sheet.translationCounts.hi} · Marathi ${sheet.translationCounts.mr}`
+                      : '—'}
+                  </Td>
                   <Td>
                     <SheetVerdict sheet={sheet} />
                   </Td>
                 </tr>
                 {openSheet === sheet.id && diff && (
                   <tr>
-                    <td colSpan={6} className="bg-board p-0">
+                    <td colSpan={7} className="bg-board p-0">
                       <SideBySideDiff diff={diff} />
                     </td>
                   </tr>
@@ -315,11 +336,11 @@ function PreviewStep({
         <Button disabled={committing || selected.size === 0} onClick={onCommit}>
           {committing
             ? 'Committing…'
-            : `Commit and publish ${selected.size} checklist${selected.size === 1 ? '' : 's'}`}
+            : `Commit ${selected.size} sheet${selected.size === 1 ? '' : 's'}`}
         </Button>
         <span className="text-xs text-ink-3">
           {committable.length === 0
-            ? 'Nothing to import — every sheet either has errors or matches the published checklist.'
+            ? 'Nothing to import — every sheet either has errors or matches the published checklist, translations included.'
             : 'Nothing has been written yet.'}
         </span>
       </div>
@@ -337,6 +358,17 @@ function SheetVerdict({ sheet }: { sheet: ChecklistImportSheet }) {
             {message}
           </p>
         ))}
+      </div>
+    );
+  }
+  if (sheet.duplicateIsPublished && hasTranslations(sheet)) {
+    return (
+      <div className="space-y-1">
+        <Badge tone="neutral">Translations only</Badge>
+        <p className="text-xs text-ink-2">
+          The English matches the published checklist, so no new version is made. Committing
+          saves the translations.
+        </p>
       </div>
     );
   }
@@ -428,10 +460,21 @@ function SideBySideDiff({ diff }: { diff: ChecklistSheetDiff }) {
   );
 }
 
+function hasTranslations(sheet: ChecklistImportSheet): boolean {
+  return sheet.translationCounts.hi + sheet.translationCounts.mr > 0;
+}
+
+/**
+ * A sheet that would make a new version, or one whose English matches the published
+ * checklist but carries translations to save. A sheet identical in both has nothing to add.
+ */
+function isCommittable(sheet: ChecklistImportSheet): boolean {
+  if (sheet.severity === 'ERROR') return false;
+  return !sheet.duplicateIsPublished || hasTranslations(sheet);
+}
+
 function committableSheets(preview: ChecklistImportPreview): ChecklistImportSheet[] {
-  return preview.sheets.filter(
-    (sheet) => sheet.severity !== 'ERROR' && !sheet.duplicateIsPublished,
-  );
+  return preview.sheets.filter(isCommittable);
 }
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api/v1';

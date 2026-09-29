@@ -1,4 +1,10 @@
-import type { ChecklistDiffEntry, ImportSeverity, SSection } from '@audit5s/contracts';
+import type {
+  ChecklistDiffEntry,
+  ImportSeverity,
+  QuestionTranslations,
+  SSection,
+  TranslatedLanguage,
+} from '@audit5s/contracts';
 import { QUESTIONS_PER_SECTION, S_SECTION_ORDER, TOTAL_QUESTIONS } from './sections';
 
 /**
@@ -36,6 +42,31 @@ export const SECTION_HEADER_PATTERN =
   /^([1-5])S\s*[–—-]\s*(SEIRI|SEITON|SEISO|SEIKETSU|SHITSUKE)\b/i;
 
 export const MAX_QUESTION_TEXT_LENGTH = 500;
+
+/**
+ * Optional translation columns (0036), found by their header, never by position: a
+ * `Check Point (Hindi)` column may sit anywhere right of `Check Point`, and a workbook
+ * without one imports exactly as it always has. The header may name the language in
+ * English or in its own script.
+ */
+export const TRANSLATION_COLUMN_PATTERNS: Readonly<Record<TranslatedLanguage, RegExp>> = {
+  hi: /hindi|हिन्दी|हिंदी/i,
+  mr: /marathi|मराठी/i,
+};
+
+const LANGUAGE_NAMES: Readonly<Record<TranslatedLanguage, string>> = {
+  hi: 'Hindi',
+  mr: 'Marathi',
+};
+
+/** The database's cap on a translation: Devanagari runs longer than the English. */
+export const MAX_TRANSLATION_TEXT_LENGTH = 1000;
+
+/** Hindi and Marathi are both written in Devanagari; a cell with none is likely misplaced. */
+const DEVANAGARI = /[ऀ-ॿ]/;
+
+/** The header row: `Sr.` in column A, above the first question. */
+const HEADER_ROW_PATTERN = /^sr\.?$/i;
 
 const SECTION_BY_NUMBER: Readonly<Record<string, SSection>> = {
   '1': 'S1_SORT',
@@ -144,8 +175,10 @@ export interface ParsedQuestionRow {
   /** The `Sr.` value, i.e. the global order the sheet claims. */
   globalOrder: number;
   text: string;
+  /** The Hindi / Marathi wording from the translation columns, when the sheet has them. */
+  translations: QuestionTranslations;
   /** The original cells, kept verbatim for `checklist_import_row.raw`. */
-  raw: { sr: CellValue; checkPoint: CellValue };
+  raw: { sr: CellValue; checkPoint: CellValue; hi?: CellValue; mr?: CellValue };
   notes: string[];
 }
 
@@ -159,6 +192,43 @@ export interface ParsedSheet {
   sectionsSeen: Array<{ section: SSection; sourceRowNumber: number }>;
   /** Sub-totals, the trailing totals block, notes and signatures. Counted, not stored. */
   skippedRowCount: number;
+  /** Which translation column each language was read from (0-based), if any. */
+  translationColumns: Partial<Record<TranslatedLanguage, number>>;
+  /** Problems with the translation headers themselves — a language named twice. */
+  columnMessages: string[];
+}
+
+/**
+ * Finds the translation columns in the header row.
+ *
+ * Columns A and B are `Sr.` and `Check Point` and are never read as a translation. A
+ * language named by two headers is read from the first, and the second is reported rather
+ * than silently merged: two Hindi columns is a workbook someone should look at.
+ */
+export function findTranslationColumns(rows: readonly CellValue[][]): {
+  columns: Partial<Record<TranslatedLanguage, number>>;
+  messages: string[];
+} {
+  const columns: Partial<Record<TranslatedLanguage, number>> = {};
+  const messages: string[] = [];
+  const header = rows.find((row) => HEADER_ROW_PATTERN.test(cellText(row[0]).trim()));
+  if (!header) return { columns, messages };
+
+  for (let column = 2; column < header.length; column += 1) {
+    const title = cellText(header[column]).trim();
+    if (title === '') continue;
+    for (const language of Object.keys(TRANSLATION_COLUMN_PATTERNS) as TranslatedLanguage[]) {
+      if (!TRANSLATION_COLUMN_PATTERNS[language].test(title)) continue;
+      if (columns[language] === undefined) {
+        columns[language] = column;
+      } else {
+        messages.push(
+          `More than one ${LANGUAGE_NAMES[language]} column ("${title}"); only the first is read`,
+        );
+      }
+    }
+  }
+  return { columns, messages };
 }
 
 /**
@@ -180,6 +250,9 @@ export function parseChecklistSheet(grid: SheetGrid): ParsedSheet {
 
   let currentSection: SSection | null = null;
   let orderInSection = 0;
+  const { columns: translationColumns, messages: columnMessages } = findTranslationColumns(
+    grid.rows,
+  );
 
   for (let index = 0; index < grid.rows.length; index += 1) {
     const sourceRowNumber = index + 1;
@@ -205,6 +278,20 @@ export function parseChecklistSheet(grid: SheetGrid): ParsedSheet {
     }
 
     const normalized = normalizeQuestionText(cellText(columnB));
+    // Translations are normalised the same way but silently: they are display text, not
+    // the record, and a warning per stray space in 900 cells would bury the real ones.
+    const translations: QuestionTranslations = {};
+    const raw: ParsedQuestionRow['raw'] = { sr: columnA, checkPoint: columnB };
+    for (const [language, column] of Object.entries(translationColumns) as Array<
+      [TranslatedLanguage, number]
+    >) {
+      const cell = row[column] ?? null;
+      const text = normalizeQuestionText(cellText(cell)).text;
+      if (text === '') continue;
+      translations[language] = text;
+      raw[language] = cell;
+    }
+
     orderInSection += 1;
     questions.push({
       sourceRowNumber,
@@ -212,7 +299,8 @@ export function parseChecklistSheet(grid: SheetGrid): ParsedSheet {
       orderInSection: currentSection ? orderInSection : null,
       globalOrder: sr,
       text: normalized.text,
-      raw: { sr: columnA, checkPoint: columnB },
+      translations,
+      raw,
       notes: normalized.notes,
     });
   }
@@ -225,6 +313,8 @@ export function parseChecklistSheet(grid: SheetGrid): ParsedSheet {
     questions,
     sectionsSeen,
     skippedRowCount,
+    translationColumns,
+    columnMessages,
   };
 }
 
@@ -236,6 +326,7 @@ export interface ValidatedRow {
   orderInSection: number | null;
   globalOrder: number | null;
   text: string | null;
+  translations: QuestionTranslations;
   raw: unknown;
   severity: ImportSeverity;
   messages: string[];
@@ -247,6 +338,8 @@ export interface ValidatedQuestion {
   orderInSection: number;
   globalOrder: number;
   text: string;
+  /** Display text only. Never part of the content signature: it is not the record. */
+  translations: QuestionTranslations;
 }
 
 export interface ValidatedSheet {
@@ -274,8 +367,8 @@ function worst(a: ImportSeverity, b: ImportSeverity): ImportSeverity {
  */
 export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
   const rows: ValidatedRow[] = [];
-  const messages: string[] = [];
-  let severity: ImportSeverity = 'OK';
+  const messages: string[] = [...parsed.columnMessages];
+  let severity: ImportSeverity = parsed.columnMessages.length > 0 ? 'WARNING' : 'OK';
 
   const seenInSection = new Map<string, Set<string>>();
   const seenAnywhere = new Map<string, number>();
@@ -305,6 +398,23 @@ export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
         `Check Point is ${question.text.length} characters; the limit is ${MAX_QUESTION_TEXT_LENGTH}`,
       );
       rowSeverity = 'ERROR';
+    }
+
+    for (const [language, text] of Object.entries(question.translations) as Array<
+      [TranslatedLanguage, string]
+    >) {
+      const name = LANGUAGE_NAMES[language];
+      if (text.length > MAX_TRANSLATION_TEXT_LENGTH) {
+        rowMessages.push(
+          `${name} translation is ${text.length} characters; the limit is ${MAX_TRANSLATION_TEXT_LENGTH}`,
+        );
+        rowSeverity = 'ERROR';
+      } else if (!DEVANAGARI.test(text)) {
+        rowMessages.push(
+          `The ${name} column has no Devanagari text here — is it in the right column?`,
+        );
+        rowSeverity = worst(rowSeverity, 'WARNING');
+      }
     }
 
     expectedSr += 1;
@@ -343,6 +453,7 @@ export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
       orderInSection: question.orderInSection,
       globalOrder: question.globalOrder,
       text: question.text,
+      translations: question.translations,
       raw: question.raw,
       severity: rowSeverity,
       messages: rowMessages,
@@ -395,6 +506,7 @@ export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
           orderInSection: question.orderInSection as number,
           globalOrder: question.globalOrder,
           text: question.text,
+          translations: question.translations,
         }));
 
   return { parsed, rows, messages, severity, questions };
@@ -410,7 +522,9 @@ export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
  * Hashing itself is left to the caller: `packages/domain` stays free of Node built-ins so
  * the device can run every rule here unchanged.
  */
-export function canonicalChecklistSignature(questions: readonly ValidatedQuestion[]): string {
+export function canonicalChecklistSignature(
+  questions: ReadonlyArray<Pick<ValidatedQuestion, 'section' | 'orderInSection' | 'text'>>,
+): string {
   return [...questions]
     .sort(
       (a, b) =>

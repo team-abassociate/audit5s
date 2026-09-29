@@ -428,6 +428,142 @@ describe('stage 6 — commit and publish', () => {
   });
 });
 
+describe('Hindi and Marathi columns (0037)', () => {
+  beforeEach(async () => {
+    await clearChecklists();
+    // The synthetic questions' translations; 0036's seeded rows are left alone.
+    await world.owner.query(
+      `DELETE FROM checklist_question_translation WHERE source_text LIKE 'Premises S%'`,
+    );
+  });
+
+  const BOTH = {
+    headers: ['Check Point (Hindi)', 'Check Point (Marathi)'],
+    cells: (section: number, position: number) => [
+      `परिसर S${section} प्रश्न ${position}`,
+      `परिसर S${section} प्रश्न ${position} (मराठी)`,
+    ],
+  };
+
+  async function commit(jobId: string, body: object = { publish: true }) {
+    const committed = await world.request('POST', `${base}/checklist-imports/${jobId}/commit`, {
+      token: token(),
+      body,
+    });
+    expect(committed.status, JSON.stringify(committed.body)).toBe(201);
+    return committed.body as CommitChecklistImportResponse;
+  }
+
+  async function importAndPublish(body: Buffer): Promise<CommitChecklistImportResponse> {
+    const uploaded = await upload(body);
+    const jobId = (uploaded.body as ChecklistImportJob).id;
+    await validate(jobId);
+    return commit(jobId);
+  }
+
+  async function questionsOf(versionId: string) {
+    const detail = await world.request('GET', `${base}/checklist-versions/${versionId}`, {
+      token: token(),
+    });
+    return (detail.body as ChecklistVersionDetail).questions;
+  }
+
+  it('reads the columns in the preview, and saves them with the new version', async () => {
+    const body = await buildWorkbook([{ name: 'Premises', translations: BOTH }]);
+    const previewed = await run(body);
+
+    expect(previewed.sheets[0]?.severity).toBe('OK');
+    expect(previewed.sheets[0]?.translationCounts).toEqual({ hi: 50, mr: 50 });
+    expect(previewed.rows[0]?.parsedTranslations).toEqual({
+      hi: 'परिसर S1 प्रश्न 1',
+      mr: 'परिसर S1 प्रश्न 1 (मराठी)',
+    });
+
+    const committed = await importAndPublish(body);
+    expect(committed.translationsSaved).toBe(100);
+
+    const questions = await questionsOf(committed.versions[0]!.id);
+    expect(questions[0]).toMatchObject({
+      text: 'Premises S1 Q1',
+      translations: { hi: 'परिसर S1 प्रश्न 1', mr: 'परिसर S1 प्रश्न 1 (मराठी)' },
+    });
+  });
+
+  it('saves translations for the published English without making a new version', async () => {
+    const published = await importAndPublish(await validWorkbook('Premises'));
+    const versionId = published.versions[0]!.id;
+
+    const body = await buildWorkbook([{ name: 'Premises', translations: BOTH }]);
+    const previewed = await run(body);
+    expect(previewed.sheets[0]?.duplicateIsPublished).toBe(true);
+    // A sheet that only adds translations is not "no changes", and is not a warning.
+    expect(previewed.sheets[0]?.severity).toBe('OK');
+    expect(previewed.sheets[0]?.messages.join(' ')).toContain('saves its translations');
+
+    const uploaded = await upload(body);
+    const jobId = (uploaded.body as ChecklistImportJob).id;
+    await validate(jobId);
+    const committed = await commit(jobId);
+    expect(committed.versions).toEqual([]);
+    expect(committed.translationsSaved).toBe(100);
+
+    // The version audits are pinned to is the same one, now with its Hindi and Marathi.
+    const questions = await questionsOf(versionId);
+    expect(questions[49]?.translations).toEqual({
+      hi: 'परिसर S5 प्रश्न 10',
+      mr: 'परिसर S5 प्रश्न 10 (मराठी)',
+    });
+    const versions = await world.owner.query(
+      `SELECT count(*)::int AS n FROM checklist_version`,
+    );
+    expect(versions.rows[0]?.n).toBe(1);
+  });
+
+  it('keeps a translation whose cell is blank, and replaces one that was changed', async () => {
+    const published = await importAndPublish(
+      await buildWorkbook([{ name: 'Premises', translations: BOTH }]),
+    );
+
+    await importAndPublish(
+      await buildWorkbook([
+        {
+          name: 'Premises',
+          translations: {
+            headers: ['Hindi'],
+            cells: (section, position) =>
+              section === 1 && position === 1
+                ? [null]
+                : section === 1 && position === 2
+                  ? ['नया अनुवाद']
+                  : [`परिसर S${section} प्रश्न ${position}`],
+          },
+        },
+      ]),
+    );
+
+    const questions = await questionsOf(published.versions[0]!.id);
+    expect(questions[0]?.translations?.hi).toBe('परिसर S1 प्रश्न 1');
+    expect(questions[1]?.translations?.hi).toBe('नया अनुवाद');
+    // The Marathi column was absent from the second file, so every Marathi row is untouched.
+    expect(questions[1]?.translations?.mr).toBe('परिसर S1 प्रश्न 2 (मराठी)');
+  });
+
+  it('still blocks a re-import that brings neither new wording nor translations', async () => {
+    const body = await validWorkbook('Premises');
+    await importAndPublish(body);
+
+    const uploaded = await upload(body);
+    const jobId = (uploaded.body as ChecklistImportJob).id;
+    await validate(jobId);
+    const again = await world.request('POST', `${base}/checklist-imports/${jobId}/commit`, {
+      token: token(),
+      body: {},
+    });
+    expect(again.status).toBe(409);
+    expect((again.body as { code: string }).code).toBe('IMPORT_NO_CHANGES');
+  });
+});
+
 describe('the real department workbook', () => {
   beforeEach(clearChecklists);
 

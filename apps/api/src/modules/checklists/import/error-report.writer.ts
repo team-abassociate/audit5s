@@ -58,6 +58,8 @@ export class ChecklistErrorReportWriter {
       { header: 'Sr.', key: 'sr', width: 8 },
       { header: 'Section', key: 'section', width: 20 },
       { header: 'Check Point as read', key: 'text', width: 70 },
+      { header: 'Hindi as read', key: 'hi', width: 50 },
+      { header: 'Marathi as read', key: 'mr', width: 50 },
       { header: 'Verdict', key: 'severity', width: 12 },
       { header: 'What is wrong', key: 'messages', width: 90 },
     ];
@@ -72,6 +74,8 @@ export class ChecklistErrorReportWriter {
           sr: row.parsedGlobalOrder,
           section: row.parsedSection,
           text: row.parsedText,
+          hi: row.parsedTranslations.hi ?? null,
+          mr: row.parsedTranslations.mr ?? null,
           severity: row.severity,
           messages: row.messages.join(' · '),
         });
