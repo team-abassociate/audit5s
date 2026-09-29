@@ -286,7 +286,7 @@ function FlaggedPhotos({
       <h2 className="section-title">Flagged photographs</h2>
       {rows.map(({ zone, good, nonconformity }) => (
         <div key={`flag-${zone.auditZoneId}`} className="avoid-break">
-          <div className="photo-caption">Zone {reportZoneLabel(zone)}</div>
+          <div className="photo-caption">{reportZoneLabel(zone)}</div>
           <div className="good-grid">
             {good ? (
               <div className="photo-card">

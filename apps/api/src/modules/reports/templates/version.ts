@@ -19,7 +19,7 @@
 // 1.2.0 — reference-led maroon report theme, quieter layout and single page footer.
 // 1.3.0 — the rating key sits under the S-wise table, the zone checklist opens its own
 // page, and no checklist row is split across a page break.
-// 1.4.0 — the summary names each Zone as the auditor did: `Z-01 — Press shop` rather than
+// 1.4.0 — the summary names each Zone as the auditor did: `Zone 1 — Press Shop` rather than
 // `Z-01 — Zone 1`, in the matrix, the comparison chart, the rankings and the flagged photos.
 export const TEMPLATE_VERSION = '1.4.0';
 

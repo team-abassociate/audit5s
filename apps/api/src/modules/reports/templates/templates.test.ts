@@ -375,7 +375,7 @@ describe('§4.3 — the summary names each Zone as the auditor did (template 1.4
    */
   function byNumber(): ReturnType<typeof fixtureSummaryPayload> {
     const payload = fixtureSummaryPayload();
-    const typed = ['Press shop', 'Dispatch bay'];
+    const typed = ['Press Shop', 'Dispatch bay'];
     return {
       ...payload,
       zones: payload.zones.map((zone, index) => ({
@@ -386,7 +386,7 @@ describe('§4.3 — the summary names each Zone as the auditor did (template 1.4
       })),
       summaryExtras: {
         ...payload.summaryExtras!,
-        highest: [{ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: 'Press shop', pct: 82.5 }],
+        highest: [{ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: 'Press Shop', pct: 82.5 }],
         lowest: [
           {
             zoneCode: 'Z-02',
@@ -402,18 +402,21 @@ describe('§4.3 — the summary names each Zone as the auditor did (template 1.4
 
   const html = renderReportHtml(byNumber(), resolve);
 
-  it('prints "Z-01 — Press shop", never the bare "Z-01 — Zone 1"', () => {
-    expect(html).toContain('Z-01 — Press shop');
-    expect(html).toContain('Z-02 — Dispatch bay');
-    expect(html).not.toContain('Z-01 — Zone 1');
+  it('prints "Zone 1 — Press Shop", and never the stored code "Z-01"', () => {
+    expect(html).toContain('Zone 1 — Press Shop');
+    expect(html).toContain('Zone 2 — Dispatch bay');
+    expect(html).not.toContain('Z-01');
+    expect(html).not.toContain('Z-02');
   });
 
   it('uses that name in every place the summary names a Zone', () => {
     for (const heading of ['Zone-wise marks per S', 'Zone score comparison', 'Flagged photographs']) {
-      expect(sectionOf(html, heading), heading).toContain('Z-01 — Press shop');
+      expect(sectionOf(html, heading), heading).toContain('Zone 1 — Press Shop');
     }
-    expect(sectionOf(html, 'Highest performing')).toContain('Z-01 — Press shop');
-    expect(sectionOf(html, 'Lowest performing')).toContain('Z-02 — Dispatch bay');
+    expect(sectionOf(html, 'Highest performing')).toContain('Zone 1 — Press Shop');
+    expect(sectionOf(html, 'Lowest performing')).toContain('Zone 2 — Dispatch bay');
+    // The flagged-photo caption is the label itself, not "Zone Zone 1".
+    expect(html).not.toContain('Zone Zone');
   });
 
   it('still renders a summary frozen before the rankings carried the description (R-35)', () => {
@@ -423,9 +426,9 @@ describe('§4.3 — the summary names each Zone as the auditor did (template 1.4
       highest: [{ zoneCode: 'Z-01', zoneName: 'Zone 1', pct: 82.5 }],
     };
     const rendered = renderReportHtml(older, resolve);
-    expect(sectionOf(rendered, 'Highest performing')).toContain('Z-01 — Zone 1');
+    expect(sectionOf(rendered, 'Highest performing')).toContain('Zone 1');
     // The rest of the document still has the description, which was always frozen.
-    expect(sectionOf(rendered, 'Zone-wise marks per S')).toContain('Z-01 — Press shop');
+    expect(sectionOf(rendered, 'Zone-wise marks per S')).toContain('Zone 1 — Press Shop');
   });
 });
 

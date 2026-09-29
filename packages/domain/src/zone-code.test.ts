@@ -44,16 +44,30 @@ describe('zone codes', () => {
 });
 
 describe('reportZoneLabel — the name the auditor gave the Zone, on the reports', () => {
-  it('replaces the automatic "Zone N" with what the auditor typed', () => {
+  it('writes the number as "Zone 1", then what the auditor typed', () => {
     expect(
-      reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: 'Press shop' }),
-    ).toBe('Z-01 — Press shop');
+      reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: 'Press Shop' }),
+    ).toBe('Zone 1 — Press Shop');
+    expect(
+      reportZoneLabel({ zoneCode: 'Z-12', zoneName: 'Zone 12', zoneDescription: 'Dispatch bay' }),
+    ).toBe('Zone 12 — Dispatch bay');
   });
 
-  it('keeps a name somebody chose, beside the auditor’s words', () => {
+  it('never prints the stored code "Z-01" for a numbered Zone', () => {
+    for (const description of ['Press Shop', null]) {
+      expect(
+        reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: description }),
+      ).not.toContain('Z-01');
+    }
+  });
+
+  it('keeps a name somebody chose, before the auditor’s words', () => {
     expect(
       reportZoneLabel({ zoneCode: 'Z-07', zoneName: 'Press', zoneDescription: 'Line 2, dies 4–6' }),
-    ).toBe('Z-07 — Press — Line 2, dies 4–6');
+    ).toBe('Zone 7 — Press — Line 2, dies 4–6');
+  });
+
+  it('keeps a code a Unit chose for itself, which has no number to write', () => {
     expect(
       reportZoneLabel({ zoneCode: 'BOILER', zoneName: 'Boiler house', zoneDescription: null }),
     ).toBe('BOILER — Boiler house');
@@ -62,23 +76,23 @@ describe('reportZoneLabel — the name the auditor gave the Zone, on the reports
   it('does not repeat a description that is the name again', () => {
     expect(
       reportZoneLabel({ zoneCode: 'Z-07', zoneName: 'Press', zoneDescription: '  press ' }),
-    ).toBe('Z-07 — Press');
+    ).toBe('Zone 7 — Press');
   });
 
-  it('prints exactly what it printed before when nothing was typed', () => {
+  it('is just "Zone 1" when nothing was typed', () => {
     expect(reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: null })).toBe(
-      'Z-01 — Zone 1',
+      'Zone 1',
     );
     expect(reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: '   ' })).toBe(
-      'Z-01 — Zone 1',
+      'Zone 1',
     );
-    expect(reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1' })).toBe('Z-01 — Zone 1');
+    expect(reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1' })).toBe('Zone 1');
   });
 
   it('prints a multi-line description on one line', () => {
     expect(
       reportZoneLabel({ zoneCode: 'Z-03', zoneName: 'Zone 3', zoneDescription: 'Dispatch\n  bay 2' }),
-    ).toBe('Z-03 — Dispatch bay 2');
+    ).toBe('Zone 3 — Dispatch bay 2');
   });
 });
 
