@@ -278,6 +278,29 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
          ON audit_zone (audit_id, zone_id) WHERE status <> 'WITHDRAWN'`,
     ],
   },
+  {
+    /*
+     * 0036 on the phone: a question's Hindi and Marathi wording, cached beside the English
+     * so the questionnaire can show either without a network.
+     *
+     * A table of its own rather than two `ADD COLUMN`s on `checklist_question`, because
+     * SQLite has no `ADD COLUMN IF NOT EXISTS`: a step interrupted after COMMIT but before
+     * `user_version` moved would re-run, fail on the duplicate column, and fail again on
+     * every launch after. `CREATE TABLE IF NOT EXISTS` re-runs cleanly.
+     *
+     * The stored catalogue version is forgotten in the same step. A phone that updates
+     * after the server has already started sending translations would otherwise hold a
+     * token that still matches, be told "nothing changed", and never fetch them; with no
+     * token, the next sync downloads the catalogue whole, as a first sync does.
+     */
+    version: 8,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS checklist_question_translation (
+         question_id TEXT PRIMARY KEY, text_hi TEXT, text_mr TEXT
+       )`,
+      `DELETE FROM sync_meta WHERE key = 'catalogue_version'`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

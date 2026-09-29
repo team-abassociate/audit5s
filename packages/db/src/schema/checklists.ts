@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -167,6 +168,24 @@ export const checklistQuestions = pgTable(
     uniqueIndex('checklist_question_global_key').on(table.versionId, table.globalOrder),
     index('checklist_question_version_order_idx').on(table.versionId, table.globalOrder),
   ],
+);
+
+/**
+ * A question in Hindi or Marathi (0036) — display text for the field app, never the record.
+ *
+ * Keyed by the English sentence as stored, not by question id, so a re-imported version
+ * keeps the translation of every question whose wording did not change. CV-1 does not
+ * reach this table: correcting a translation changes nothing anybody answered.
+ */
+export const checklistQuestionTranslations = pgTable(
+  'checklist_question_translation',
+  {
+    sourceText: text('source_text').notNull(),
+    language: text('language').$type<'hi' | 'mr'>().notNull(),
+    text: text('text').notNull(),
+    ...timestamps,
+  },
+  (table) => [primaryKey({ columns: [table.sourceText, table.language] })],
 );
 
 /**

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import type { SyncCatalogue, SyncCatalogueQuery, Unit } from '@audit5s/contracts';
+import { TRANSLATED_LANGUAGES, type SyncCatalogue, type SyncCatalogueQuery, type Unit } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { scopeFor } from '../../common/auth/scope-for';
 import { AssignmentsRepository } from '../audit-assignments/assignments.repository';
@@ -69,6 +69,17 @@ export class SyncService {
       // A published version is immutable (CV-1), so its content hash is a complete
       // description of it: no timestamp is needed to notice a change.
       ...versions.map((version) => `v:${version.id}:${version.contentHash}`),
+      // A translation is not part of that hash — it may be corrected after publishing
+      // (0036) — so a changed wording has to move the token on its own, or no device
+      // would ever fetch it.
+      ...versions.map(
+        (version) =>
+          `vt:${version.id}:${JSON.stringify(
+            version.questions.map((question) =>
+              TRANSLATED_LANGUAGES.map((language) => question.translations?.[language] ?? null),
+            ),
+          )}`,
+      ),
       ...templatePage.data.map((template) => `t:${template.id}:${template.updatedAt}`),
       ...assignmentRows.map((assignment) => `a:${assignment.id}:${assignment.status}:${assignment.updatedAt.toISOString()}`),
       ...actions.map((action) => `c:${action.id}:${action.status}:${action.version}`),

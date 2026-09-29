@@ -6,7 +6,6 @@ import { HeaderBackButton } from 'expo-router/react-navigation';
 import type { ResponseValue, SSection } from '@audit5s/contracts';
 import {
   RESPONSE_TOKENS,
-  S_SECTION_LABELS,
   S_SECTION_SHORT_LABELS,
   TOTAL_QUESTIONS,
   bandFor,
@@ -47,7 +46,7 @@ import {
   reclassifyLocalEvidence,
   responseIdFor,
 } from '../../lib/db/evidence.repository';
-import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
+import { ZONE_PHOTO_LIMIT, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import {
@@ -62,6 +61,8 @@ import {
 } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { formatPct } from '../../lib/format';
+import { questionWording } from '../../lib/language';
+import { useLanguage } from '../../lib/language-provider';
 import { isFinished } from '../../lib/labels';
 import { useSync } from '../../lib/sync/provider';
 import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
@@ -97,6 +98,7 @@ export default function QuestionnaireScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const { sync } = useSync();
+  const { strings: t } = useLanguage();
   const list = useRef<FlatList<Row>>(null);
 
   const [page, setPage] = useState(0);
@@ -215,7 +217,7 @@ export default function QuestionnaireScreen() {
   const correct = useMutation({
     mutationFn: async (input: { row: Row; value: ResponseValue; remark: string | null }) => {
       if (!input.row.responseId) {
-        throw new Error('This question has no saved answer to correct.');
+        throw new Error(t.noAnswerToCorrect);
       }
       await applyLocalOverride(database, {
         auditId: zone.data!.auditId,
@@ -338,7 +340,7 @@ export default function QuestionnaireScreen() {
   if (!zone.data) {
     return (
       <Screen>
-        <Muted>This Zone is not on the device.</Muted>
+        <Muted>{t.notOnDevice}</Muted>
       </Screen>
     );
   }
@@ -350,7 +352,7 @@ export default function QuestionnaireScreen() {
     return (
       <Screen>
         <Stack.Screen options={{ title }} />
-        <Muted>This Zone has no checklist pinned to it.</Muted>
+        <Muted>{t.noChecklist}</Muted>
       </Screen>
     );
   }
@@ -416,7 +418,7 @@ export default function QuestionnaireScreen() {
               ? ({ tintColor }) => (
                   <HeaderBackButton
                     tintColor={tintColor}
-                    accessibilityLabel="Pause audit and go to Overview"
+                    accessibilityLabel={t.pauseAudit}
                     disabled={abortMenu.busy}
                     onPress={abortMenu.pauseAudit}
                   />
@@ -430,18 +432,22 @@ export default function QuestionnaireScreen() {
       {/* Frozen above the questions, so the S and its progress stay in view while scrolling. */}
       <View style={styles.pinned}>
         <SectionHead
-          title={section ? S_SECTION_LABELS[section] : 'Questions'}
-          description={`Questions ${page * PAGE_SIZE + 1}–${page * PAGE_SIZE + pageRows.length} of ${rows.length || TOTAL_QUESTIONS}`}
+          title={section ? t.sectionTitle[section] : t.questions}
+          description={t.questionRange(
+            page * PAGE_SIZE + 1,
+            page * PAGE_SIZE + pageRows.length,
+            rows.length || TOTAL_QUESTIONS,
+          )}
         />
         <View
           style={styles.progressRow}
           accessible
           accessibilityRole="progressbar"
-          accessibilityLabel={`${pageAnswered} of ${pageRows.length} answered on this page`}
+          accessibilityLabel={t.answeredOnPage(pageAnswered, pageRows.length)}
           accessibilityValue={{ min: 0, max: pageRows.length, now: pageAnswered }}
         >
           <Text style={styles.progressLabel}>
-            {section ? S_SECTION_SHORT_LABELS[section] : ''} progress
+            {t.progress(section ? S_SECTION_SHORT_LABELS[section] : '')}
           </Text>
           {/* Answering progress is not a score, so it is ink, never a band colour. */}
           <View style={styles.progressTrack}>
@@ -469,15 +475,11 @@ export default function QuestionnaireScreen() {
               audit is editable and says what makes the change count.
             */}
             {correcting !== null ? (
-              <Slip title="Correcting a finished audit">
-                <SlipText>
-                  Every mark you change is sent with your reason and written to the audit
-                  log, with what it was and what you made it (A-2). The score is recomputed
-                  for the dashboard and the report.
-                </SlipText>
+              <Slip title={t.correctingTitle}>
+                <SlipText>{t.correctingBody}</SlipText>
                 <View style={styles.slipAction}>
                   <Button
-                    title="Done correcting"
+                    title={t.doneCorrecting}
                     variant="secondary"
                     onPress={() => {
                       setCorrecting(null);
@@ -487,23 +489,20 @@ export default function QuestionnaireScreen() {
                 </View>
               </Slip>
             ) : !auditOpen ? (
-              <Slip title="This audit is finished">
-                <SlipText>
-                  The marks below are the record. You may still correct one you got wrong —
-                  it is logged with your reason, and nothing is overwritten quietly (A-2).
-                </SlipText>
+              <Slip title={t.finishedTitle}>
+                <SlipText>{t.finishedBody}</SlipText>
                 {correctable ? (
                   <View style={styles.slipAction}>
                     <Field
-                      label="Why the correction is needed"
+                      label={t.reasonLabel}
                       multiline
-                      placeholder="What was wrong with the mark, in your words"
+                      placeholder={t.reasonPlaceholder}
                       value={reasonDraft}
                       onChangeText={setReasonDraft}
-                      hint="At least ten characters. It is written to the audit log."
+                      hint={t.reasonHint}
                     />
                     <Button
-                      title="Correct a mark"
+                      title={t.correctMark}
                       disabled={reasonDraft.trim().length < MIN_JUSTIFICATION}
                       onPress={() => setCorrecting(reasonDraft.trim())}
                     />
@@ -511,27 +510,24 @@ export default function QuestionnaireScreen() {
                 ) : null}
               </Slip>
             ) : reviewingFinishedZone ? (
-              <Slip title="Reviewing a finished Zone">
-                <SlipText>
-                  Change any answer you need to, then press Submit again. The score is
-                  recomputed and the Zone counts as finished once more.
-                </SlipText>
+              <Slip title={t.reviewingTitle}>
+                <SlipText>{t.reviewingBody}</SlipText>
               </Slip>
             ) : null}
-            <Muted>{zonePhotoCount} / {ZONE_PHOTO_LIMIT} photos in this Zone — shared across all 50 questions.</Muted>
+            <Muted>{t.zonePhotos(zonePhotoCount, ZONE_PHOTO_LIMIT)}</Muted>
             {auditOpen && zonePhotoCount >= ZONE_PHOTO_LIMIT ? (
               <Card>
                 <ErrorBanner message={zonePhotoCount > ZONE_PHOTO_LIMIT
-                  ? `This Zone has ${zonePhotoCount} photos. Remove ${zonePhotoCount - ZONE_PHOTO_LIMIT} to meet the 25-photo limit. Remove another to take a new photo.`
-                  : ZONE_PHOTO_LIMIT_MESSAGE} />
-                <Muted>Tap a photo below, then Delete photo. No photos are removed automatically.</Muted>
+                  ? t.tooManyPhotos(zonePhotoCount, ZONE_PHOTO_LIMIT)
+                  : t.photoLimitReached(ZONE_PHOTO_LIMIT)} />
+                <Muted>{t.deletePhotoHint}</Muted>
                 <PhotoThumbs photos={zonePhotos} onOpen={setPreviewId} />
               </Card>
             ) : null}
             <MarkingScheme />
             {showMissing && unanswered > 0 ? (
               <ErrorBanner
-                message={`${unanswered} question${unanswered === 1 ? '' : 's'} still need${unanswered === 1 ? 's' : ''} an answer. ${unanswered === 1 ? 'It is' : 'They are'} marked in red.`}
+                message={t.unanswered(unanswered)}
               />
             ) : null}
           </View>
@@ -568,9 +564,9 @@ export default function QuestionnaireScreen() {
               <SummaryPhotosCard photos={zonePhotos} onOpen={setPreviewId} />
               <Card>
                 <Field
-                  label="Overall remark (optional)"
+                  label={t.overallRemark}
                   multiline
-                  placeholder="Anything the report should carry about this Zone"
+                  placeholder={t.overallRemarkPlaceholder}
                   value={zoneRemarkDraft}
                   onChangeText={setZoneRemarkDraft}
                   containerStyle={styles.lastField}
@@ -579,7 +575,7 @@ export default function QuestionnaireScreen() {
               <ErrorBanner message={finish.error instanceof Error ? finish.error.message : null} />
             </View>
           ) : (
-            <Muted>Answers save on this device as you tap, and sync as soon as there is a connection.</Muted>
+            <Muted>{t.savesOffline}</Muted>
           )
         }
       />
@@ -588,7 +584,7 @@ export default function QuestionnaireScreen() {
         <View style={styles.navRow}>
           <View style={styles.navButton}>
             <Button
-              title="Previous"
+              title={t.previous}
               variant="secondary"
               disabled={page === 0}
               onPress={() => goTo(page - 1)}
@@ -596,19 +592,19 @@ export default function QuestionnaireScreen() {
           </View>
           <View style={styles.navButton}>
             {!lastPage ? (
-              <Button title="Next" onPress={() => goTo(page + 1)} testID="next-page" />
+              <Button title={t.next} onPress={() => goTo(page + 1)} testID="next-page" />
             ) : auditOpen ? (
               <Button
                 // The word changes because the act does: the first pass finishes the Zone,
                 // a review commits the revision and rescores it.
-                title={reviewingFinishedZone ? 'Save changes' : 'Submit'}
+                title={reviewingFinishedZone ? t.saveChanges : t.submit}
                 busy={finish.isPending}
                 onPress={submit}
                 testID="submit-zone"
               />
             ) : (
               <Button
-                title={correcting !== null ? 'Done' : 'Close'}
+                title={correcting !== null ? t.done : t.close}
                 variant="secondary"
                 onPress={() => router.back()}
               />
@@ -626,7 +622,7 @@ export default function QuestionnaireScreen() {
         <View style={styles.cameraLayer}>
           <CameraCapture
             beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
-            prompt={`Photograph for question ${cameraFor.globalOrder}`}
+            prompt={t.cameraPrompt(cameraFor.globalOrder)}
             onCaptured={async (image) => {
               await capture.mutateAsync(image);
             }}
@@ -641,23 +637,22 @@ export default function QuestionnaireScreen() {
 /** The four answers, said once at the top of every page instead of under every question. */
 function MarkingScheme() {
   const styles = useStyles();
+  const { strings: t } = useLanguage();
   return (
     <View style={styles.scheme}>
-      <Label>Marking scheme</Label>
+      <Label>{t.markingScheme}</Label>
       <View style={styles.schemeGrid}>
         {(['SCORE_2', 'SCORE_1', 'SCORE_0', 'NA'] as ResponseValue[]).map((value) => {
           const token = RESPONSE_TOKENS[value]!;
           return (
             <View key={value} style={styles.schemeItem}>
               <Text style={styles.schemeMark}>{token.marks === null ? 'NA' : token.marks}</Text>
-              <Text style={styles.schemeText}>{token.label}</Text>
+              <Text style={styles.schemeText}>{t.response[value]}</Text>
             </View>
           );
         })}
       </View>
-      <Text style={styles.schemeNote}>
-        Every question is compulsory. Use NA only when the checkpoint does not apply here.
-      </Text>
+      <Text style={styles.schemeNote}>{t.schemeNote}</Text>
     </View>
   );
 }
@@ -695,6 +690,8 @@ function QuestionCard({
   onPhoto: () => void;
 }) {
   const styles = useStyles();
+  const { language, strings: t } = useLanguage();
+  const wording = questionWording(row, language);
   const [remark, setRemark] = useState(row.remark ?? '');
   const [remarkOpen, setRemarkOpen] = useState(Boolean(row.remark));
 
@@ -704,24 +701,28 @@ function QuestionCard({
     <Card rail={missing ? 'crit' : undefined}>
       <View style={styles.questionHead}>
         <Text style={styles.questionNumber}>Q{row.globalOrder}</Text>
-        <Text style={styles.question}>{row.text}</Text>
+        <View style={styles.questionText}>
+          <Text style={styles.question}>{wording.text}</Text>
+          {/* The English is the record the report prints, so a translation never hides it. */}
+          {wording.english ? <Text style={styles.questionEnglish}>{wording.english}</Text> : null}
+        </View>
       </View>
       {row.guidance ? <Muted>{row.guidance}</Muted> : null}
 
       <View style={styles.responses}>
-        <Label>Response / marks</Label>
+        <Label>{t.responseMarks}</Label>
         <ResponseChips
           value={value}
           allowsNa={row.allowsNa === 1}
           readOnly={readOnly}
           onChange={(next) => onAnswer(next, remark.trim() || null)}
         />
-        {missing ? <Text style={styles.missing}>Answer required</Text> : null}
+        {missing ? <Text style={styles.missing}>{t.answerRequired}</Text> : null}
       </View>
 
       <View style={styles.questionFoot}>
         <Text style={styles.photoCount}>
-          {photos.length} photo{photos.length === 1 ? '' : 's'}
+          {t.photoCount(photos.length)}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -729,14 +730,14 @@ function QuestionCard({
           style={styles.remarkToggle}
         >
           <Text style={styles.remarkToggleText}>
-            {remarkOpen ? 'Hide remark' : remark ? 'Edit remark' : 'Add remark'}
+            {remarkOpen ? t.hideRemark : remark ? t.editRemark : t.addRemark}
           </Text>
         </Pressable>
         {canPhoto ? (
           <Button
-            title="Take photo"
+            title={t.takePhoto}
             variant="secondary"
-            accessibilityLabel={`Take a photograph for question ${row.globalOrder}`}
+            accessibilityLabel={t.takePhotoFor(row.globalOrder)}
             onPress={onPhoto}
           />
         ) : null}
@@ -747,10 +748,10 @@ function QuestionCard({
 
       {remarkOpen ? (
         <Field
-          label="Remark"
+          label={t.remark}
           multiline
           editable={!readOnly}
-          placeholder="What you saw, in your words"
+          placeholder={t.remarkPlaceholder}
           value={remark}
           onChangeText={setRemark}
           onBlur={() => onRemark(remark.trim() || null)}
@@ -776,22 +777,23 @@ function ScoreCard({
   answered: number;
 }) {
   const styles = useStyles();
+  const { strings: t } = useLanguage();
   if (!breakdown) return null;
   const { totals } = breakdown;
   const band = bandOf(totals.scorePercentage);
+  const rating = bandFor(totals.scorePercentage);
 
   return (
     <Card>
       <CardHeader
-        title="Score so far"
-        description="Worked out on this device as a guide. The server recomputes it when the audit syncs."
-        action={band === 'none' ? null : <Chip tone={band}>{bandFor(totals.scorePercentage)?.label}</Chip>}
+        title={t.scoreSoFar}
+        description={t.scoreNote}
+        action={band === 'none' || !rating ? null : <Chip tone={band}>{t.band[rating.token]}</Chip>}
       />
       <View style={styles.scoreRow}>
         <Figure band={band}>{formatPct(totals.scorePercentage)}</Figure>
         <Text style={styles.scoreMeta}>
-          {totals.rawScore}/{totals.maxScore} marks{'\n'}
-          {answered} answered, {totals.naQuestions} NA
+          {t.marksLine(totals.rawScore, totals.maxScore, answered, totals.naQuestions)}
         </Text>
       </View>
       <StatusBand band={band} />
@@ -881,12 +883,19 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.color.ink3,
     fontVariant: ['tabular-nums'],
   },
+  questionText: { flex: 1 },
   question: {
-    flex: 1,
     fontFamily: theme.family.medium,
     fontSize: theme.font.panel,
     lineHeight: 23,
     color: theme.color.ink,
+  },
+  questionEnglish: {
+    fontFamily: theme.family.regular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: theme.color.ink2,
+    marginTop: 4,
   },
   responses: { marginTop: theme.space.md },
   missing: {

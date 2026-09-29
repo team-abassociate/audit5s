@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gt, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
+  checklistQuestionTranslations,
   checklistQuestions,
   checklistTemplates,
   checklistVersions,
@@ -181,6 +182,27 @@ export class ChecklistsRepository extends BaseRepository {
         .from(checklistQuestions)
         .where(this.everything(scope, inArray(checklistQuestions.versionId, versionIds)))
         .orderBy(asc(checklistQuestions.versionId), asc(checklistQuestions.globalOrder));
+    });
+  }
+
+  /**
+   * The Hindi and Marathi wording of these questions (0036), matched on the English text.
+   * Organization-wide like the questions they translate, so the predicate is `TRUE`.
+   */
+  async listTranslations(scope: ScopeContext, sourceTexts: string[]) {
+    const distinct = [...new Set(sourceTexts)];
+    if (distinct.length === 0) return [];
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      return tx
+        .select({
+          sourceText: checklistQuestionTranslations.sourceText,
+          language: checklistQuestionTranslations.language,
+          text: checklistQuestionTranslations.text,
+        })
+        .from(checklistQuestionTranslations)
+        .where(this.everything(scope, inArray(checklistQuestionTranslations.sourceText, distinct)))
+        .orderBy(asc(checklistQuestionTranslations.sourceText), asc(checklistQuestionTranslations.language));
     });
   }
 

@@ -150,6 +150,24 @@ describe('the local schema', () => {
     expect(zone?.status).toBe('IN_PROGRESS');
     expect(await executor.userVersion()).toBe(LOCAL_SCHEMA_VERSION);
   });
+
+  it('re-runs step 8 cleanly and makes the next sync fetch the whole catalogue (0036)', async () => {
+    await executor.exec(
+      `INSERT OR REPLACE INTO sync_meta (key, value) VALUES ('catalogue_version', 'before-0036')`,
+    );
+
+    // A step interrupted after COMMIT but before `user_version` moved runs again on launch.
+    await executor.setUserVersion(7);
+    await migrateLocalDatabase(executor);
+    await executor.setUserVersion(7);
+    await expect(migrateLocalDatabase(executor)).resolves.toBe(LOCAL_SCHEMA_VERSION);
+
+    const token = await executor.query(
+      `SELECT value FROM sync_meta WHERE key = 'catalogue_version'`,
+      [],
+    );
+    expect(token).toEqual([]);
+  });
 });
 
 describe('uuidv7', () => {
@@ -377,6 +395,25 @@ describe('saving answers', () => {
     // Unanswered questions come back with a null value rather than being absent, so the
     // questionnaire can page through all fifty from one query.
     expect(rows[3]?.value).toBeNull();
+  });
+
+  it('carries each question in Hindi and Marathi, and English where none was sent (0036)', async () => {
+    const translated = catalogue();
+    const [first, second] = translated.checklistVersions[0]!.questions;
+    first!.translations = { hi: 'प्रश्न 1', mr: 'प्रश्न 1 (मराठी)' };
+    second!.translations = { hi: 'प्रश्न 2' };
+    await replaceCatalogue(database, { ...translated, catalogueVersion: 'v2' });
+
+    const { auditZoneId } = await startAudit();
+    const rows = await listQuestionsWithAnswers(database, auditZoneId, VERSION);
+
+    expect(rows[0]).toMatchObject({ text: 'Question 1', textHi: 'प्रश्न 1', textMr: 'प्रश्न 1 (मराठी)' });
+    expect(rows[1]).toMatchObject({ text: 'Question 2', textHi: 'प्रश्न 2', textMr: null });
+    expect(rows[2]).toMatchObject({ text: 'Question 3', textHi: null, textMr: null });
+    // The English is untouched: it is the record, whatever the phone shows above it.
+    expect(rows.map((row) => row.text)).toEqual(
+      translated.checklistVersions[0]!.questions.map((question) => question.text),
+    );
   });
 });
 

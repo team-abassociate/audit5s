@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { isAppLanguage, type AppLanguage } from './language';
 import { isThemePreference, type ThemePreference } from './theme-choice';
 
 /**
@@ -16,6 +17,9 @@ const KEYS = {
   serverAddress: 'audit5s.serverAddress',
   themePreference: 'audit5s.themePreference',
 } as const;
+
+/** One key per person: a shared phone holds several people's choices side by side. */
+const languageKey = (userId: string): string => `audit5s.language.${userId}`;
 
 export interface StoredSession {
   accessToken: string;
@@ -112,6 +116,27 @@ export async function saveThemePreference(value: ThemePreference): Promise<void>
   } catch {
     // A keystore that refuses the write still leaves the person the theme they chose for
     // this session. A display setting is not worth an error dialog.
+  }
+}
+
+/**
+ * The questionnaire language, per person rather than per install.
+ *
+ * Unlike the theme, this follows whoever is signed in. Phones are shared (0025): the
+ * Marathi-reading auditor on the morning shift and the English-reading one after them use
+ * the same handset, and neither should find the other's choice waiting for them. Keyed by
+ * user id, so each person's choice survives the other signing in and out.
+ */
+export async function loadLanguage(userId: string): Promise<AppLanguage | null> {
+  const stored = await readString(languageKey(userId));
+  return isAppLanguage(stored) ? stored : null;
+}
+
+export async function saveLanguage(userId: string, value: AppLanguage): Promise<void> {
+  try {
+    await writeString(languageKey(userId), value);
+  } catch {
+    // As with the theme: the choice holds for this session even if it is not remembered.
   }
 }
 
