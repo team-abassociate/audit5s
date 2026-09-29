@@ -145,14 +145,9 @@ export class EvidenceService {
       remark: request.remark ?? null,
       isLiveCapture: request.isLiveCapture,
       capturedAt: new Date(request.capturedAt),
-      location: request.location
-        ? {
-            latitude: request.location.latitude,
-            longitude: request.location.longitude,
-            accuracyM: request.location.accuracyM ?? null,
-            provider: request.location.provider,
-          }
-        : null,
+      // Location is not recorded (dropped 2026-09-29). An older app may still send one;
+      // it is accepted by the contract and discarded here.
+      location: null,
     });
 
     if (auditZoneId) {
@@ -247,14 +242,9 @@ export class EvidenceService {
       remark: request.remark ?? null,
       isLiveCapture: true,
       capturedAt: new Date(request.capturedAt),
-      location: request.location
-        ? {
-            latitude: request.location.latitude,
-            longitude: request.location.longitude,
-            accuracyM: request.location.accuracyM ?? null,
-            provider: request.location.provider,
-          }
-        : null,
+      // Location is not recorded (dropped 2026-09-29). An older app may still send one;
+      // it is accepted by the contract and discarded here.
+      location: null,
     });
 
     const upload = await this.storage.presignPut(objectKey, {

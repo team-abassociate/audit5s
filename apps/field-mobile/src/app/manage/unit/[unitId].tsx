@@ -135,8 +135,7 @@ export default function ManageUnitScreen() {
             <LedgerRow label="City" value={[u.city, u.state, u.postalCode].filter(Boolean).join(', ') || '—'} />
             <LedgerRow label="Contact" value={u.contactName ?? '—'} />
             <LedgerRow label="Phone" value={u.contactPhone ?? '—'} />
-            <LedgerRow label="Email" value={u.contactEmail ?? '—'} />
-            <LedgerRow label="Geofence" value={u.geofenceRadiusM ? `${u.geofenceRadiusM} m` : 'Off'} last />
+            <LedgerRow label="Email" value={u.contactEmail ?? '—'} last />
           </Card>
         )}
 

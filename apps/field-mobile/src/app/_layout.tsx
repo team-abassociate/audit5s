@@ -24,6 +24,8 @@ import { ThemedStatusBar, ThemeProvider } from '../lib/theme-provider';
 import { useTheme } from '../lib/theme';
 import { RouteErrorBoundary } from '../components/route-error-boundary';
 import { leaveScreen } from '../lib/leave-screen';
+import { permissionPromptOpen } from '../lib/permission-prompt';
+import { requestPermissionsAtLaunch } from '../components/camera-capture';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -129,6 +131,8 @@ function AuthGate() {
         }
       }
       if (state !== 'background' || pausingOnBackground.current || status !== 'ready') return;
+      // A permission dialog is not the auditor leaving: see `permission-prompt.ts`.
+      if (permissionPromptOpen()) return;
 
       const onZones = segments[0] === 'audit' && segments[1] === 'zones';
       const inZone =
@@ -205,6 +209,11 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
+  // Every permission the app needs, asked the moment it opens and never mid-audit.
+  useEffect(() => {
+    void requestPermissionsAtLaunch();
+  }, []);
+
   const [fontsLoaded, fontError] = useFonts({
     Archivo_400Regular,
     Archivo_600SemiBold,

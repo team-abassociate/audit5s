@@ -278,7 +278,6 @@ describe('Phase 4 acceptance', () => {
       localFileUri: 'file:///data/audit5s/selfie.jpg',
       byteSize: TINY_JPEG.byteLength,
       checksumSha256: createHash('sha256').update(TINY_JPEG).digest('hex'),
-      location: { latitude: 19.9975, longitude: 73.7898, accuracyM: 12, provider: 'FUSED' },
     });
 
     for (const index of zoneIds.keys()) {

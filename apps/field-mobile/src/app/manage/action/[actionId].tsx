@@ -20,6 +20,7 @@ import {
 import { api, problemMessage } from '../../../lib/api';
 import { formatDate, formatDateTime } from '../../../lib/format';
 import { humanize } from '../../../lib/labels';
+import { useRequiredFields } from '../../../lib/required-fields';
 import { useSession } from '../../../lib/session';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 
@@ -39,6 +40,7 @@ export default function ReviewActionScreen() {
   const { can } = useSession();
   const { actionId } = useLocalSearchParams<{ actionId: string }>();
   const [note, setNote] = useState('');
+  const required = useRequiredFields<'note'>();
   const mayReview = can('corrective_action', 'verify');
   const mayAnswer = can('corrective_action', 'submit');
 
@@ -88,7 +90,7 @@ export default function ReviewActionScreen() {
   return (
     <Screen>
       <Stack.Screen options={{ title: `Zone ${action.zoneCode}` }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card rail={late ? 'crit' : reviewing ? 'warn' : 'none'}>
           <CardHeader
             title={`Zone ${action.zoneCode} — ${action.zoneName}`}
@@ -156,16 +158,22 @@ export default function ReviewActionScreen() {
               title="Your review"
               description="Verify closes it. Reopen sends it back to the Zone leader with your note."
             />
-            <Field label="Note (required to reopen)" multiline value={note} onChangeText={setNote} />
+            <Field
+              label="Note (required to reopen)"
+              inputRef={required.input('note')}
+              error={required.error('note', 'Say why it is being reopened.', note.trim() !== '')}
+              multiline
+              value={note}
+              onChangeText={setNote}
+            />
             <ErrorBanner message={problemMessage(review.error)} />
             <View style={styles.row}>
               <View style={styles.rowItem}>
                 <Button
                   title="Reopen"
                   variant="danger"
-                  disabled={note.trim() === ''}
                   busy={review.isPending && review.variables === 'reopen'}
-                  onPress={() => review.mutate('reopen')}
+                  onPress={() => required.check([['note', note.trim() !== '']]) && review.mutate('reopen')}
                 />
               </View>
               <View style={styles.rowItem}>

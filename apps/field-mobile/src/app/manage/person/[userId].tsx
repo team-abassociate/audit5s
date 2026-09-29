@@ -31,6 +31,7 @@ import {
   ROLE_LABELS,
   USER_STATUS,
 } from '../../../lib/labels';
+import { useRequiredFields } from '../../../lib/required-fields';
 import { useSession } from '../../../lib/session';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 
@@ -302,6 +303,8 @@ function EditPerson({ user, onDone }: { user: User; onDone: () => void }) {
   const [fullName, setFullName] = useState(user.fullName);
   const [phone, setPhone] = useState(user.phoneE164);
   const [email, setEmail] = useState(user.email ?? '');
+  // No scroll ref here: focusing the box is enough, Android scrolls a focused input into view.
+  const required = useRequiredFields<'name'>();
 
   const save = useMutation({
     mutationFn: () =>
@@ -320,12 +323,19 @@ function EditPerson({ user, onDone }: { user: User; onDone: () => void }) {
   return (
     <Card>
       <CardHeader title="Edit details" />
-      <Field label="Full name" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
+      <Field
+        label="Full name"
+        inputRef={required.input('name')}
+        error={required.error('name', 'Enter their full name.', fullName.trim() !== '')}
+        value={fullName}
+        onChangeText={setFullName}
+        autoCapitalize="words"
+      />
       <Field label="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
       <Field label="Email (optional)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
       <ErrorBanner message={problemMessage(save.error)} />
       <View style={styles.accountActions}>
-        <Button title="Save changes" busy={save.isPending} disabled={fullName.trim() === ''} onPress={() => save.mutate()} />
+        <Button title="Save changes" busy={save.isPending} onPress={() => required.check([['name', fullName.trim() !== '']]) && save.mutate()} />
         <Button title="Cancel" variant="secondary" onPress={onDone} />
       </View>
     </Card>

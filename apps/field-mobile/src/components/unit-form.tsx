@@ -3,12 +3,13 @@ import { View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Unit } from '@audit5s/contracts';
 import { api, problemMessage } from '../lib/api';
+import { useRequiredFields } from '../lib/required-fields';
 import { createThemedStyles } from '../lib/theme';
 import { Button, Card, CardHeader, ErrorBanner, Field } from './ui';
 
 /**
- * Create or edit a Unit. The same fields as the web's Unit form, minus the map pin and
- * geofence, which want a map and belong on the web.
+ * Create or edit a Unit. The same fields as the web's Unit form, minus the map pin, which
+ * wants a map and belongs on the web.
  *
  * `canRename` is false for a Coordinator (U-1, §6.3): the name is shown but not editable, and
  * is left out of the update so the server's FIELD_NOT_EDITABLE is never provoked.
@@ -36,6 +37,9 @@ export function UnitForm({
     contactPhone: unit?.contactPhone ?? '',
     contactEmail: unit?.contactEmail ?? '',
   });
+  // Focus alone reveals the box: this card sits inside the screen's own ScrollView.
+  const required = useRequiredFields<'name'>();
+  const nameGiven = values.name.trim() !== '';
   const set = (key: keyof typeof values) => (text: string) =>
     setValues((current) => ({ ...current, [key]: text }));
 
@@ -70,6 +74,8 @@ export function UnitForm({
       <CardHeader title={unit ? 'Edit details' : 'Unit details'} />
       <Field
         label="Name"
+        inputRef={required.input('name')}
+        error={required.error('name', 'Enter the Unit’s name.', nameGiven)}
         value={values.name}
         onChangeText={set('name')}
         placeholder="e.g. Chakan Plant 2"
@@ -100,8 +106,7 @@ export function UnitForm({
         <Button
           title={unit ? 'Save changes' : 'Create Unit'}
           busy={save.isPending}
-          disabled={values.name.trim() === ''}
-          onPress={() => save.mutate()}
+          onPress={() => required.check([['name', nameGiven]]) && save.mutate()}
         />
         {onCancel ? <Button title="Cancel" variant="secondary" onPress={onCancel} /> : null}
       </View>

@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Alert, ScrollView, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, BackHandler, ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { HeaderBackButton } from 'expo-router/react-navigation';
 import type { AuditType } from '@audit5s/contracts';
 import {
   ActionBar,
@@ -20,13 +21,11 @@ import { CameraCapture } from '../../components/camera-capture';
 import {
   createLocalAudit,
   listResumableAudits,
-  recordAuditStartLocation,
   resumeLocalAudit,
 } from '../../lib/db/audit.repository';
 import { getLocalUnit } from '../../lib/db/catalogue.repository';
 import { captureLocalEvidence } from '../../lib/db/evidence.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { useSession } from '../../lib/session';
 import { createThemedStyles } from '../../lib/theme';
@@ -102,6 +101,16 @@ export default function UnitStartScreen() {
   // opens, and the audit is only usable once the selfie is in SQLite.
   const [pendingAuditId, setPendingAuditId] = useState<string | null>(null);
 
+  // Back over the selfie camera closes the camera and returns to this Unit.
+  useEffect(() => {
+    if (!pendingAuditId) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setPendingAuditId(null);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [pendingAuditId]);
+
   const startAudit = useMutation({
     mutationFn: (type: AuditType) =>
       // No audit-level checklist: the department is chosen per Zone, and that is the
@@ -116,11 +125,6 @@ export default function UnitStartScreen() {
   const saveSelfie = useMutation({
     mutationFn: async (image: ProcessedImage) => {
       const auditId = pendingAuditId!;
-      // The location reading rides with the selfie. It never waits for a fix: the camera
-      // warmed one up while the auditor framed the shot, `readLocation` takes whatever is
-      // ready, and §12.9 requires an absent fix be recorded and flagged, never a failure.
-      const location = await readLocation();
-
       await captureLocalEvidence(database, {
         auditId,
         kind: 'AUDITOR_SELFIE',
@@ -129,19 +133,7 @@ export default function UnitStartScreen() {
         width: image.width,
         height: image.height,
         checksumSha256: image.checksumSha256,
-        ...(location
-          ? {
-              location: {
-                latitude: location.latitude,
-                longitude: location.longitude,
-                accuracyM: location.accuracyM ?? null,
-                provider: location.provider,
-              },
-            }
-          : {}),
       });
-
-      await recordAuditStartLocation(database, auditId, location);
       return auditId;
     },
     onSuccess: (auditId) => {
@@ -156,6 +148,14 @@ export default function UnitStartScreen() {
 
   if (pendingAuditId) {
     return (
+      <>
+      <Stack.Screen
+        options={{
+          headerLeft: ({ tintColor }) => (
+            <HeaderBackButton tintColor={tintColor} onPress={() => setPendingAuditId(null)} />
+          ),
+        }}
+      />
       <CameraCapture
         facing="front"
         prompt={`Take your selfie to begin the ${walkBy ? 'walk-by' : 'audit'}`}
@@ -168,6 +168,7 @@ export default function UnitStartScreen() {
           setPendingAuditId(null);
         }}
       />
+      </>
     );
   }
 
@@ -175,7 +176,7 @@ export default function UnitStartScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ title, headerBackTitle: 'Units' }} />
+      <Stack.Screen options={{ title, headerBackTitle: 'Units', headerLeft: undefined }} />
 
       <ScrollView contentContainerStyle={styles.content}>
         {existing ? (
@@ -213,7 +214,7 @@ export default function UnitStartScreen() {
         <Card>
           <CardHeader
             title="1 · Take your selfie"
-            description="A live photograph at the Unit. It starts the audit and records where you are."
+            description="A live photograph at the Unit. It starts the audit."
           />
         </Card>
         <Card>

@@ -1219,30 +1219,6 @@ export class AuditsRepository extends BaseRepository {
   }
 
   /**
-   * The Unit's geofence anchor (§12.9).
-   *
-   * Read under the actor's `unit:read` grant rather than the one that admitted the audit
-   * write, for the same reason `readZoneSnapshot` does: reusing `own_audits` here would
-   * ask `unit` for an `ownerUserId` column it does not have.
-   */
-  async readUnitGeofence(scope: ScopeContext, unitId: string) {
-    const unitScope = scopeFor(scope, 'unit:read');
-    return this.db.transaction(async (tx) => {
-      await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const [row] = await tx
-        .select({
-          latitude: units.latitude,
-          longitude: units.longitude,
-          geofenceRadiusM: units.geofenceRadiusM,
-        })
-        .from(units)
-        .where(and(eq(units.id, unitId), this.scoped(unitScope, { unitId: units.id })))
-        .limit(1);
-      return row ?? null;
-    });
-  }
-
-  /**
    * A phone this actor has signed in on and may still use (0025): neither the phone nor
    * their place on it is revoked. Other people using the same handset do not matter.
    */

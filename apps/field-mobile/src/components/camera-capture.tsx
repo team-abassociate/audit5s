@@ -1,11 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
+import { Camera, CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
 import { Button } from './ui';
-import { warmLocation } from '../lib/capture/location';
 import { MAX_LONG_EDGE_PX, processCapturedPhoto, type ProcessedImage } from '../lib/capture/media';
 import { ZONE_PHOTO_LIMIT_MESSAGE } from '../lib/db/photo-limit';
 import { gemba, gembaFonts } from '../lib/gemba';
+import { whilePrompting } from '../lib/permission-prompt';
+
+/**
+ * Every permission the app uses, asked once when it opens — today that is the camera alone.
+ *
+ * Asked up front so that no system dialog appears in the middle of an audit. Asked again on
+ * a later launch only while Android still allows it (`canAskAgain`), so a person who has
+ * refused twice is not nagged; the camera screen still offers to ask from there.
+ */
+export async function requestPermissionsAtLaunch(): Promise<void> {
+  try {
+    const camera = await Camera.getCameraPermissionsAsync();
+    if (!camera.granted && camera.canAskAgain) {
+      await whilePrompting(() => Camera.requestCameraPermissionsAsync());
+    }
+  } catch {
+    // The camera screen asks again when it is opened; a failure here costs nothing.
+  }
+}
 
 /**
  * The live-capture camera (§12.10).
@@ -44,12 +62,6 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
   const taking = useRef(false);
   const camera = useRef<CameraView>(null);
   const [pictureSize, setPictureSize] = useState<string | undefined>(undefined);
-
-  // The location fix starts while the auditor frames the shot, so the shutter never waits
-  // for satellites (§12.9: a missing fix is recorded, never a reason to stall).
-  useEffect(() => {
-    warmLocation();
-  }, []);
 
   // The smallest frame the sensor offers that still covers §9.4's 1920 px long edge. The
   // default is the full sensor — 12 MP and up — which is several times more to encode,
@@ -93,7 +105,7 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
           Photographs are the record of what was found. Without the camera an audit cannot be
           completed.
         </Text>
-        <Button title="Allow the camera" onPress={() => void requestPermission()} />
+        <Button title="Allow the camera" onPress={() => void whilePrompting(requestPermission)} />
         <Button title="Back" variant="secondary" onPress={onCancel} />
       </View>
     );

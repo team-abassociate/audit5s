@@ -1,4 +1,4 @@
-import { Children, memo, useState, type ReactNode } from 'react';
+import { Children, memo, useState, type ReactNode, type Ref } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -487,8 +487,11 @@ export function Field({
   hint,
   containerStyle,
   revealable,
+  inputRef,
   ...rest
 }: TextInputProps & {
+  /** The text box itself — `useRequiredFields().input(key)` scrolls to it and focuses it. */
+  inputRef?: Ref<TextInput>;
   label: string;
   error?: string;
   hint?: string;
@@ -502,6 +505,7 @@ export function Field({
   const [revealed, setRevealed] = useState(false);
   const input = (
     <TextInput
+      ref={inputRef}
       accessibilityLabel={label}
       style={[
         styles.input,
@@ -879,6 +883,45 @@ export function ActionSheet({
           </Pressable>
         ))}
         <Button title="Cancel" variant="secondary" onPress={onClose} />
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * A blocking notice (GEMBA-BOARD.md §6 "Dialog"): 2px ink border, 6px hard shadow, and the
+ * crit rail of `gb-notice` because it reports something the auditor must fix before going
+ * on. One action, right-aligned — it is a stop sign, not a question.
+ */
+export function NoticeDialog({
+  visible,
+  title,
+  message,
+  actionLabel,
+  onClose,
+}: {
+  visible: boolean;
+  title: string;
+  message: string;
+  actionLabel: string;
+  onClose: () => void;
+}) {
+  const styles = useStyles();
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={actionLabel} />
+      <View style={styles.dialogShell} pointerEvents="box-none">
+        <Magnet offset={6}>
+          <View style={styles.dialog} accessibilityRole="alert" accessibilityLiveRegion="assertive">
+            <Text style={styles.h2} accessibilityRole="header">
+              {title}
+            </Text>
+            <Text style={styles.noticeText}>{message}</Text>
+            <View style={styles.dialogActions}>
+              <Button title={actionLabel} onPress={onClose} />
+            </View>
+          </View>
+        </Magnet>
       </View>
     </Modal>
   );
@@ -1323,6 +1366,17 @@ const useStyles = createThemedStyles((theme) => ({
   choiceDetail: { fontFamily: theme.family.regular, fontSize: 12.5, color: theme.color.ink2, marginTop: 2 },
   checkHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
   checkLabel: { flexShrink: 1 },
+  dialogShell: { flex: 1, justifyContent: 'center', padding: theme.space.md },
+  dialog: {
+    backgroundColor: theme.color.tile,
+    borderWidth: 2,
+    borderColor: theme.color.edge,
+    borderLeftWidth: 6,
+    borderLeftColor: theme.color.critBand,
+    padding: theme.space.md,
+    gap: theme.space.sm,
+  },
+  dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.space.sm },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.color.hard },
   sheet: {
     position: 'absolute',

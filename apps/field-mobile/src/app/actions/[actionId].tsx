@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, BackHandler, Image, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { HeaderBackButton } from 'expo-router/react-navigation';
 import type { CorrectiveOption, EvidenceViewUrl, SSection } from '@audit5s/contracts';
 import { awaitsResponse, sectionLabel } from '@audit5s/domain';
 import { CameraCapture } from '../../components/camera-capture';
@@ -18,7 +19,7 @@ import {
   Screen,
 } from '../../components/ui';
 import { api } from '../../lib/api';
-import { readLocation } from '../../lib/capture/location';
+import { useRequiredFields } from '../../lib/required-fields';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { uuidv7 } from '../../lib/db/audit.repository';
 import {
@@ -59,6 +60,17 @@ export default function CorrectiveActionScreen() {
   const [text, setText] = useState('');
   const [photo, setPhoto] = useState<{ evidenceId: string; uri: string } | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const required = useRequiredFields<'name' | 'photo' | 'text'>();
+
+  // Back over the camera closes the camera and returns to the response, never leaves it.
+  useEffect(() => {
+    if (!cameraOpen) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setCameraOpen(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [cameraOpen]);
 
   const action = useQuery({
     queryKey: ['local', 'corrective-action', actionId],
@@ -76,7 +88,6 @@ export default function CorrectiveActionScreen() {
 
   const capture = useMutation({
     mutationFn: async (image: ProcessedImage) => {
-      const location = await readLocation();
       const evidenceId = await captureAfterPhoto(database, {
         action: action.data!,
         submissionId,
@@ -85,14 +96,6 @@ export default function CorrectiveActionScreen() {
         width: image.width,
         height: image.height,
         checksumSha256: image.checksumSha256,
-        location: location
-          ? {
-              latitude: location.latitude,
-              longitude: location.longitude,
-              accuracyM: location.accuracyM ?? null,
-              provider: location.provider,
-            }
-          : null,
       });
       setPhoto({ evidenceId, uri: image.uri });
     },
@@ -130,18 +133,38 @@ export default function CorrectiveActionScreen() {
   if (!action.data) return <Screen><Muted>This corrective action is not on the device.</Muted></Screen>;
   if (cameraOpen) {
     return (
-      <CameraCapture
-        prompt="Photograph the corrected condition"
-        onCaptured={(image) => capture.mutateAsync(image)}
-        onCancel={() => setCameraOpen(false)}
-      />
+      <>
+        <Stack.Screen
+          options={{
+            headerLeft: ({ tintColor }) => (
+              <HeaderBackButton tintColor={tintColor} onPress={() => setCameraOpen(false)} />
+            ),
+          }}
+        />
+        <CameraCapture
+          prompt="Photograph the corrected condition"
+          onCaptured={(image) => capture.mutateAsync(image)}
+          onCancel={() => setCameraOpen(false)}
+        />
+      </>
     );
   }
 
   const item = action.data;
   const open = awaitsResponse(item.effectiveStatus) && !item.pendingSubmissionId;
-  const ready =
-    option === 'COMPLETED' ? Boolean(photo) && name.trim().length > 0 && text.trim().length > 0 : text.trim().length > 0;
+  const nameGiven = name.trim().length > 0;
+  const textGiven = text.trim().length > 0;
+  const trySubmit = () => {
+    const complete =
+      option === 'COMPLETED'
+        ? required.check([
+            ['name', nameGiven],
+            ['photo', Boolean(photo)],
+            ['text', textGiven],
+          ])
+        : required.check([['text', textGiven]]);
+    if (complete) submit.mutate();
+  };
   const facts = [
     item.dueAt ? `Due ${formatDate(item.dueAt)}` : null,
     item.reopenCount > 0 ? `Reopened ×${item.reopenCount}` : null,
@@ -149,8 +172,9 @@ export default function CorrectiveActionScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: `Zone ${item.zoneCode}` }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* `headerLeft: undefined` puts the ordinary back arrow back after the camera's. */}
+      <Stack.Screen options={{ title: `Zone ${item.zoneCode}`, headerLeft: undefined }} />
+      <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card rail={open ? 'warn' : 'none'}>
           <CardHeader
             title={`Zone ${item.zoneCode} — ${item.zoneName}`}
@@ -203,8 +227,18 @@ export default function CorrectiveActionScreen() {
 
             {option === 'COMPLETED' ? (
               <>
-                <Field label="Your name" value={name} onChangeText={setName} />
+                <Field
+                  label="Your name"
+                  inputRef={required.input('name')}
+                  error={required.error('name', 'Enter your name.', nameGiven)}
+                  value={name}
+                  onChangeText={setName}
+                />
+                <View ref={required.anchor('photo')} collapsable={false}>
                 <Label>After photograph</Label>
+                {required.flagged('photo', Boolean(photo)) ? (
+                  <ErrorBanner message="Take a photograph of the corrected condition." />
+                ) : null}
                 {photo ? (
                   <Image source={{ uri: photo.uri }} style={styles.photo} accessibilityLabel="After photograph" />
                 ) : (
@@ -219,23 +253,29 @@ export default function CorrectiveActionScreen() {
                     onPress={() => setCameraOpen(true)}
                   />
                 </View>
-                <Field label="What was done" value={text} onChangeText={setText} multiline />
+                </View>
+                <Field
+                  label="What was done"
+                  inputRef={required.input('text')}
+                  error={required.error('text', 'Describe what was done.', textGiven)}
+                  value={text}
+                  onChangeText={setText}
+                  multiline
+                />
               </>
             ) : (
-              <Field label="Why it is not possible" value={text} onChangeText={setText} multiline />
+              <Field
+                label="Why it is not possible"
+                inputRef={required.input('text')}
+                error={required.error('text', 'Explain why the fix is not possible.', textGiven)}
+                value={text}
+                onChangeText={setText}
+                multiline
+              />
             )}
 
             <ErrorBanner message={submit.error?.message ?? capture.error?.message ?? null} />
-            <Button title="Submit" busy={submit.isPending} disabled={!ready} onPress={() => submit.mutate()} />
-            {!ready ? (
-              <View style={styles.hint}>
-                <Muted>
-                  {option === 'COMPLETED'
-                    ? 'Add your name, a photograph and a description to submit.'
-                    : 'Explain why the fix is not possible to submit.'}
-                </Muted>
-              </View>
-            ) : null}
+            <Button title="Submit" busy={submit.isPending} onPress={trySubmit} />
           </Card>
         ) : (
           <Card>
@@ -277,5 +317,4 @@ const useStyles = createThemedStyles((theme) => ({
   },
   choice: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.md },
   choiceItem: { flex: 1 },
-  hint: { marginTop: theme.space.sm },
 }));

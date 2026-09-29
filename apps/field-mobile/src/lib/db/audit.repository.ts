@@ -1,7 +1,6 @@
 import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import type {
   AuditType,
-  LocationReading,
   ResponseValue,
   SSection,
 } from '@audit5s/contracts';
@@ -410,64 +409,6 @@ export async function saveLocalResponse(
   });
 
   return id;
-}
-
-/**
- * Stores the start location on the audit, and re-queues the creation payload with it.
- *
- * §12.9 computes the distance and the flag **server-side**, from the Unit's own
- * coordinates — so the device sends the raw reading and nothing derived from it. A null
- * reading is stored as null and flagged by the server as `LOCATION_ABSENT`; it is never a
- * reason to stop.
- */
-export async function recordAuditStartLocation(
-  database: LocalDatabase,
-  auditId: string,
-  location: LocationReading | null,
-  now: string = new Date().toISOString(),
-): Promise<void> {
-  await database
-    .update(audits)
-    .set({
-      startLatitude: location?.latitude ?? null,
-      startLongitude: location?.longitude ?? null,
-      startAccuracyM: location?.accuracyM ?? null,
-      startLocationProvider: location?.provider ?? null,
-      startLocationIsMocked: location?.isMocked ? 1 : 0,
-      clientUpdatedAt: now,
-    })
-    .where(eq(audits.id, auditId));
-
-  const [audit] = await getLocalAudit(database, auditId);
-  if (!audit) return;
-
-  await enqueue(
-    database,
-    'audit',
-    auditId,
-    'upsert',
-    {
-      id: auditId,
-      auditType: audit.auditType,
-      unitId: audit.unitId,
-      ...(audit.assignmentId ? { assignmentId: audit.assignmentId } : {}),
-      ...(audit.checklistVersionId ? { checklistVersionId: audit.checklistVersionId } : {}),
-      clientCreatedAt: audit.clientCreatedAt,
-      ...(location
-        ? {
-            location: {
-              latitude: location.latitude,
-              longitude: location.longitude,
-              accuracyM: location.accuracyM ?? null,
-              provider: location.provider,
-              isMocked: location.isMocked,
-              capturedAt: location.capturedAt ?? now,
-            },
-          }
-        : {}),
-    },
-    now,
-  );
 }
 
 /** The optional overall remark, saved after the fifty questions. */

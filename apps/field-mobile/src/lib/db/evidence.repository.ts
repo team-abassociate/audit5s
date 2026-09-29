@@ -53,12 +53,6 @@ export interface CaptureEvidenceInput {
   remark?: string | null;
   /** False only if a flow ever admits a gallery pick. None of these do (§12.10). */
   isLiveCapture?: boolean;
-  location?: {
-    latitude: number;
-    longitude: number;
-    accuracyM?: number | null;
-    provider?: string;
-  } | null;
   id?: string;
   now?: string;
 }
@@ -111,10 +105,11 @@ export async function captureLocalEvidence(
     classification,
     remark: input.remark ?? null,
     isLiveCapture: (input.isLiveCapture ?? true) ? 1 : 0,
-    latitude: input.location?.latitude ?? null,
-    longitude: input.location?.longitude ?? null,
-    accuracyM: input.location?.accuracyM ?? null,
-    locationProvider: input.location?.provider ?? null,
+    // No location is read or recorded (dropped 2026-09-29); the columns stay, always null.
+    latitude: null,
+    longitude: null,
+    accuracyM: null,
+    locationProvider: null,
     capturedAt: now,
     clientUpdatedAt: now,
   });
@@ -165,17 +160,6 @@ export async function captureLocalEvidence(
         ? { classification: input.classification }
         : {}),
       ...(input.remark ? { remark: input.remark } : {}),
-      ...(input.location
-        ? {
-            location: {
-              latitude: input.location.latitude,
-              longitude: input.location.longitude,
-              accuracyM: input.location.accuracyM ?? null,
-              provider: input.location.provider ?? 'UNKNOWN',
-              capturedAt: now,
-            },
-          }
-        : {}),
     },
     now,
     { queue: 'media', priority: 200 },

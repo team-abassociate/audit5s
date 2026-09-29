@@ -17,7 +17,6 @@ import {
   Screen,
   StatGrid,
 } from '../../components/ui';
-import { LanguageSwitcher } from '../../components/language-switcher';
 import { api } from '../../lib/api';
 import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
 import { useLocalDatabase } from '../../lib/db/provider';
@@ -171,20 +170,6 @@ export default function ProfileScreen() {
             value={theme.preference}
             onChange={theme.choose}
           />
-        </Card>
-
-        {/*
-          The questionnaire's language, for this person only. It changes the audit screen —
-          the questions and the words around them — and nothing else: the report, the
-          admin web and the record stay English, which is why English stays under each
-          translated question.
-        */}
-        <Card>
-          <CardHeader
-            title="Checklist language · भाषा"
-            description="Questions are shown in this language, with the English beneath. Reports stay in English. The same choice as on Overview."
-          />
-          <LanguageSwitcher showLabel={false} />
         </Card>
 
         <Card>

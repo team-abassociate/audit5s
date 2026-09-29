@@ -23,6 +23,7 @@ import { formatDateTime } from '../../lib/format';
 import { ROLE_LABELS } from '../../lib/labels';
 import { useSession } from '../../lib/session';
 import { createThemedStyles } from '../../lib/theme';
+import { useRequiredFields } from '../../lib/required-fields';
 
 type PeopleRole = 'CONSULTANT' | 'COORDINATOR' | 'ZONE_LEADER';
 const ROLES = [
@@ -71,7 +72,9 @@ export default function NewPersonScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 
-  const ready = fullName.trim() !== '' && /^\d{10}$/.test(phone.trim()) && unitId !== null;
+  const required = useRequiredFields<'name' | 'phone' | 'unit'>();
+  const nameGiven = fullName.trim() !== '';
+  const phoneValid = /^\d{10}$/.test(phone.trim());
 
   if (create.data) {
     const created = create.data;
@@ -114,16 +117,25 @@ export default function NewPersonScreen() {
   return (
     <Screen>
       <Stack.Screen options={{ title: `New ${ROLE_LABELS[role].toLowerCase()}` }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {roles.length > 1 ? (
           <>
             <Label>Role</Label>
             <Segmented options={roles} value={role} onChange={setRole} />
           </>
         ) : null}
-        <Field label="Full name" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
+        <Field
+          label="Full name"
+          inputRef={required.input('name')}
+          error={required.error('name', 'Enter their full name.', nameGiven)}
+          value={fullName}
+          onChangeText={setFullName}
+          autoCapitalize="words"
+        />
         <Field
           label="Mobile number"
+          inputRef={required.input('phone')}
+          error={required.error('phone', 'Enter a 10-digit mobile number.', phoneValid)}
           hint="10 digits. It is also their first password."
           value={phone}
           onChangeText={setPhone}
@@ -137,7 +149,11 @@ export default function NewPersonScreen() {
           keyboardType="email-address"
           autoCapitalize="none"
         />
+        <View ref={required.anchor('unit')} collapsable={false}>
         <Label>Unit</Label>
+        {required.flagged('unit', unitId !== null) ? (
+          <ErrorBanner message="Choose the Unit they work at." />
+        ) : null}
         <ChoiceList
           value={unitId}
           onChange={setUnitId}
@@ -148,6 +164,7 @@ export default function NewPersonScreen() {
             detail: [unit.city, unit.state].filter(Boolean).join(', ') || null,
           }))}
         />
+        </View>
         <View>
           <ErrorBanner message={problemMessage(create.error)} />
         </View>
@@ -156,8 +173,13 @@ export default function NewPersonScreen() {
         <Button
           title={`Create ${ROLE_LABELS[role].toLowerCase()}`}
           busy={create.isPending}
-          disabled={!ready}
-          onPress={() => create.mutate()}
+          onPress={() =>
+            required.check([
+              ['name', nameGiven],
+              ['phone', phoneValid],
+              ['unit', unitId !== null],
+            ]) && create.mutate()
+          }
         />
       </ActionBar>
     </Screen>

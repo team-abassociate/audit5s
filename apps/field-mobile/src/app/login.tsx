@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Button, ErrorBanner, Field, GateCard, Screen } from '../components/ui';
 import { ApiError } from '../lib/api';
+import { useRequiredFields } from '../lib/required-fields';
 import { useSession } from '../lib/session';
 import { createThemedStyles } from '../lib/theme';
 
@@ -13,10 +14,12 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const required = useRequiredFields<'loginId' | 'password'>();
 
   async function submit() {
     if (busy) return;
     setError(null);
+    if (!required.check([['loginId', loginId.trim() !== ''], ['password', password !== '']])) return;
     setBusy(true);
     try {
       await signIn(loginId, password);
@@ -38,11 +41,13 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <Screen bare>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <GateCard>
             <Field
               testID="login-id"
               label="Login ID"
+              inputRef={required.input('loginId')}
+              error={required.error('loginId', 'Enter your login ID.', loginId.trim() !== '')}
               hint="Issued when your account was created, e.g. RA3210"
               value={loginId}
               onChangeText={setLoginId}
@@ -57,6 +62,8 @@ export default function LoginScreen() {
             <Field
               testID="password"
               label="Password"
+              inputRef={required.input('password')}
+              error={required.error('password', 'Enter your password.', password !== '')}
               hint="First time? Your password is your phone number, and you will be asked to change it straight away."
               value={password}
               onChangeText={setPassword}

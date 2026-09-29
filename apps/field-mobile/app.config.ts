@@ -36,16 +36,21 @@ const config: ExpoConfig = {
     package: 'in.abassociate.audit5s',
     versionCode: 1,
     /*
-     * Exactly the permissions Phase 4's code asks for, and no more.
+     * Exactly the permissions the code asks for, and no more: `CAMERA`, for live capture
+     * (§12.10), asked once at launch.
      *
-     * `CAMERA` for live capture (§12.10) and the two location permissions for §12.9's
-     * reading. There is deliberately **no** `READ_MEDIA_IMAGES`: §12.10 requires that no
-     * gallery picker exists in these flows, and a permission the app cannot use is a
-     * permission an auditor is asked to grant for nothing.
+     * Location is **blocked**, not merely absent: the product owner dropped location
+     * capture entirely on 2026-09-29, and blocking it stops any library from adding it
+     * back through its own manifest. There is deliberately no `READ_MEDIA_IMAGES` either:
+     * §12.10 requires that no gallery picker exists in these flows.
      */
-    permissions: ['android.permission.CAMERA', 'android.permission.ACCESS_FINE_LOCATION',
-                  'android.permission.ACCESS_COARSE_LOCATION'],
-    blockedPermissions: ['android.permission.RECORD_AUDIO'],
+    permissions: ['android.permission.CAMERA'],
+    blockedPermissions: [
+      'android.permission.RECORD_AUDIO',
+      'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.ACCESS_COARSE_LOCATION',
+      'android.permission.ACCESS_BACKGROUND_LOCATION',
+    ],
     /*
      * Corrective-action links open in the app when it is installed (PART 14, Phase 7).
      *
@@ -107,14 +112,6 @@ const config: ExpoConfig = {
         // Nothing scans a barcode. Note: with expo-camera 57 the ML Kit library
         // (libbarhopper, ~5 MB) is still packaged at build 13 despite this flag.
         barcodeScannerEnabled: false,
-      },
-    ],
-    [
-      'expo-location',
-      {
-        locationAlwaysAndWhenInUsePermission:
-          'audit5s records where an audit was started. Location is supporting evidence for ' +
-          'a reviewer, never an automated gate — an audit is never blocked on it.',
       },
     ],
   ],

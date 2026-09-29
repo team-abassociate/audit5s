@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   Pressable,
   ScrollView,
@@ -9,6 +10,7 @@ import {
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { HeaderBackButton } from 'expo-router/react-navigation';
 import type { EvidenceClassification } from '@audit5s/contracts';
 import { zoneDisplayLabel } from '@audit5s/domain';
 import { CameraCapture } from '../../components/camera-capture';
@@ -27,7 +29,6 @@ import {
 } from '../../components/ui';
 import { useAbortMenu } from '../../components/abort-menu';
 import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
-import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import {
   completeLocalZone,
@@ -47,6 +48,7 @@ import {
 import { useLocalDatabase } from '../../lib/db/provider';
 import { bandInk, createThemedStyles, useTheme, type Band } from '../../lib/theme';
 import { leaveScreen } from '../../lib/leave-screen';
+import { useRequiredFields } from '../../lib/required-fields';
 
 const CLASSIFICATIONS: EvidenceClassification[] = ['GOOD', 'NONCONFORMITY', 'NEUTRAL'];
 
@@ -61,6 +63,17 @@ export default function WalkByScreen() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [classification, setClassification] = useState<EvidenceClassification>('NEUTRAL');
   const [zoneRemark, setZoneRemark] = useState('');
+  const required = useRequiredFields<'photo'>();
+
+  // Back over the camera closes the camera and returns here, never leaves the Zone.
+  useEffect(() => {
+    if (!cameraOpen) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setCameraOpen(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [cameraOpen]);
 
   const zone = useQuery({
     queryKey: ['local', 'audit-zone', auditZoneId],
@@ -75,7 +88,6 @@ export default function WalkByScreen() {
 
   const capture = useMutation({
     mutationFn: async (image: ProcessedImage) => {
-      const location = await readLocation();
       await captureLocalEvidence(database, {
         auditId: zone.data!.auditId,
         auditZoneId,
@@ -86,16 +98,6 @@ export default function WalkByScreen() {
         width: image.width,
         height: image.height,
         checksumSha256: image.checksumSha256,
-        ...(location
-          ? {
-              location: {
-                latitude: location.latitude,
-                longitude: location.longitude,
-                accuracyM: location.accuracyM ?? null,
-                provider: location.provider,
-              },
-            }
-          : {}),
       });
     },
     onSuccess: () => {
@@ -141,12 +143,21 @@ export default function WalkByScreen() {
   if (!zone.data) return <Screen><Muted>This walk-by Zone is not on the device.</Muted></Screen>;
   if (cameraOpen) {
     return (
-      <CameraCapture
-            beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
-        prompt={`Capture a ${classificationLabel(classification).toLowerCase()} observation`}
-        onCaptured={(image) => capture.mutateAsync(image)}
-        onCancel={() => setCameraOpen(false)}
-      />
+      <>
+        <Stack.Screen
+          options={{
+            headerLeft: ({ tintColor }) => (
+              <HeaderBackButton tintColor={tintColor} onPress={() => setCameraOpen(false)} />
+            ),
+          }}
+        />
+        <CameraCapture
+          beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
+          prompt={`Capture a ${classificationLabel(classification).toLowerCase()} observation`}
+          onCaptured={(image) => capture.mutateAsync(image)}
+          onCancel={() => setCameraOpen(false)}
+        />
+      </>
     );
   }
 
@@ -158,10 +169,11 @@ export default function WalkByScreen() {
   return (
     <Screen>
       <Stack.Screen
-        options={{ title, headerRight: () => (editable ? abortMenu.trigger : null) }}
+        // `headerLeft: undefined` puts the ordinary back arrow back after the camera's.
+        options={{ title, headerLeft: undefined, headerRight: () => (editable ? abortMenu.trigger : null) }}
       />
       {abortMenu.sheet}
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
           {zone.data.zoneDescriptionSnapshot ? <Text style={styles.body}>{zone.data.zoneDescriptionSnapshot}</Text> : null}
           <Muted>
@@ -172,18 +184,23 @@ export default function WalkByScreen() {
         </Card>
 
         {editable ? (
-          <Card>
+          <View ref={required.anchor('photo')} collapsable={false}>
+          <Card rail={required.flagged('photo', count > 0) ? 'crit' : undefined}>
             <CardHeader
               title="Classify the next photograph"
               description="Live camera only. Photos may include people and are retained as audit records."
             />
             <View style={styles.stack}>
+              {required.flagged('photo', count > 0) ? (
+                <ErrorBanner message="Take at least one photograph before saving this Zone." />
+              ) : null}
               <ClassificationChoices value={classification} onChange={setClassification} />
               <ErrorBanner message={count >= ZONE_PHOTO_LIMIT ? ZONE_PHOTO_LIMIT_MESSAGE : null} />
               <Muted>{count} / {ZONE_PHOTO_LIMIT} photos. Use Delete photo below to free a space.</Muted>
               <Button disabled={!photos.isSuccess || count >= ZONE_PHOTO_LIMIT} title={count ? 'Take another photo' : 'Open camera'} onPress={() => setCameraOpen(true)} />
             </View>
           </Card>
+          </View>
         ) : null}
 
         <SectionHead
@@ -221,7 +238,11 @@ export default function WalkByScreen() {
       </ScrollView>
       {editable ? (
         <ActionBar>
-          <Button title="Save Zone" busy={finish.isPending} onPress={() => finish.mutate()} />
+          <Button
+            title="Save Zone"
+            busy={finish.isPending}
+            onPress={() => required.check([['photo', count > 0]]) && finish.mutate()}
+          />
         </ActionBar>
       ) : null}
     </Screen>

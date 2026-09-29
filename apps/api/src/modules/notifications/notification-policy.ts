@@ -150,7 +150,7 @@ export function renderNotification(event: DomainEventJob): { title: string; body
             : where
               ? `${auditType} started at ${where}`
               : 'Audit started',
-        body: `${auditType} started${data.locationSuspicious ? ' — the start location was flagged' : ''}.`,
+        body: `${auditType} started.`,
       };
     }
     case 'AUDIT_PAUSED': {

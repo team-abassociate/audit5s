@@ -127,12 +127,7 @@ export default function ManageAuditScreen() {
             action={<Chip tone={AUDIT_STATUS_TONE[audit.status]}>{AUDIT_STATUS_LABELS[audit.status]}</Chip>}
           />
           <LedgerRow label="Started" value={audit.startedAt ? formatDateTime(audit.startedAt) : '—'} />
-          <LedgerRow label="Completed" value={audit.completedAt ? formatDateTime(audit.completedAt) : '—'} />
-          <LedgerRow
-            label="Location"
-            value={audit.startLatitude === null ? 'Not recorded' : audit.locationSuspicious ? 'Recorded, check it' : 'Recorded'}
-            last
-          />
+          <LedgerRow label="Completed" value={audit.completedAt ? formatDateTime(audit.completedAt) : '—'} last />
         </Card>
 
         {audit.scored && finished ? (

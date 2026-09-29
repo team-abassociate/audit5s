@@ -66,7 +66,6 @@ export function UnitsPage() {
                 <Th>Name</Th>
                 <Th>City</Th>
                 <Th>Timezone</Th>
-                <Th>Geofence</Th>
                 <Th>Actions</Th>
               </tr>
             </thead>
@@ -129,7 +128,6 @@ function UnitRow({
         </Td>
         <Td>{unit.city ?? '—'}</Td>
         <Td>{unit.timezone}</Td>
-        <Td>{unit.geofenceRadiusM === null ? 'disabled' : `${unit.geofenceRadiusM} m`}</Td>
         <Td>
           <div className="flex gap-2">
             {can('unit', 'update_profile') && (

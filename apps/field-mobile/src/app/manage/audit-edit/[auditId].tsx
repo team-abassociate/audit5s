@@ -21,6 +21,7 @@ import { listLocalQuestions } from '../../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 import { leaveScreen } from '../../../lib/leave-screen';
+import { useRequiredFields } from '../../../lib/required-fields';
 
 /**
  * Correcting a completed audit — `PATCH /audits/{id}/post-completion`, the only way one
@@ -39,6 +40,7 @@ export default function EditAuditScreen() {
   const [changes, setChanges] = useState<Record<string, ResponseValue>>({});
   const [remark, setRemark] = useState('');
   const [justification, setJustification] = useState('');
+  const required = useRequiredFields<'reason'>();
 
   const detail = useQuery({ queryKey: ['audit', auditId], queryFn: () => api.get<AuditDetail>(`/audits/${auditId}`) });
   const zones = useMemo(() => (detail.data?.zones ?? []).filter((zone) => zone.status === 'COMPLETED'), [detail.data]);
@@ -106,7 +108,7 @@ export default function EditAuditScreen() {
   return (
     <Screen>
       <Stack.Screen options={{ title: 'Correct audit' }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <SectionHead title="Zone" description="Only a completed Zone can be corrected." />
         <ChoiceList
           value={zoneId}
@@ -163,6 +165,12 @@ export default function EditAuditScreen() {
 
         <Field
           label="Reason for the change"
+          inputRef={required.input('reason')}
+          error={required.error(
+            'reason',
+            'Give a reason of at least 10 characters.',
+            justification.trim().length >= 10,
+          )}
           hint="At least 10 characters. It is kept with the change in the activity log."
           multiline
           value={justification}
@@ -174,8 +182,9 @@ export default function EditAuditScreen() {
         <Button
           title="Save correction"
           busy={save.isPending}
-          disabled={!dirty || justification.trim().length < 10}
-          onPress={() => save.mutate()}
+          // Disabled only while there is nothing to save; a short reason is shown, not hidden.
+          disabled={!dirty}
+          onPress={() => required.check([['reason', justification.trim().length >= 10]]) && save.mutate()}
         />
       </ActionBar>
     </Screen>

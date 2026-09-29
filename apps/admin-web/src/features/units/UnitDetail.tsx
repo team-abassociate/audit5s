@@ -73,7 +73,7 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
           title="Master data"
           description={
             isCoordinator
-              ? 'You may edit address, contact, geofence and timezone. Name and code are set by a Super Admin (U-1).'
+              ? 'You may edit address, contact and timezone. Name and code are set by a Super Admin (U-1).'
               : undefined
           }
         />
@@ -136,13 +136,6 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
                 </option>
               ))}
             </Select>
-          </Field>
-          <Field
-            label="Geofence radius (m)"
-            hint="Blank disables geofencing. Location is never a gate (§12.9)."
-            error={fieldErrors.geofenceRadiusM}
-          >
-            <Input type="number" {...register('geofenceRadiusM', { valueAsNumber: true })} />
           </Field>
 
           <div className="sm:col-span-2">

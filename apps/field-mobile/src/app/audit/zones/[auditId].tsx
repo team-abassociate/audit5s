@@ -49,6 +49,7 @@ import { useLocalDatabase } from '../../../lib/db/provider';
 import { api } from '../../../lib/api';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 import { leaveScreen } from '../../../lib/leave-screen';
+import { useRequiredFields } from '../../../lib/required-fields';
 
 type CatalogueZone = Awaited<ReturnType<typeof listCatalogueZones>>[number];
 
@@ -111,6 +112,7 @@ export default function AuditZonesScreen() {
   const [drafts, setDrafts] = useState<Record<number, ZoneDraft>>({});
   const [picking, setPicking] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  const required = useRequiredFields<'zone' | 'leader' | 'department'>();
 
   const draftKey = zoneNumber ?? NO_ZONE;
   const draft = drafts[draftKey] ?? EMPTY_DRAFT;
@@ -372,7 +374,13 @@ export default function AuditZonesScreen() {
   };
 
   const submit = () => {
-    if (zoneNumber === null || errors.leader || errors.department || lockOnSelection) {
+    const complete = required.check([
+      // A Zone somebody else holds is not a Zone chosen: its slip is shown right there.
+      ['zone', zoneNumber !== null && !lockOnSelection],
+      ['leader', !errors.leader],
+      ['department', !errors.department],
+    ]);
+    if (!complete || zoneNumber === null) {
       setShowErrors(true);
       return;
     }
@@ -390,6 +398,7 @@ export default function AuditZonesScreen() {
         }
       />
 
+      <View ref={required.anchor('zone')} collapsable={false}>
       <Label>Zone</Label>
       <Pressable
         testID="zone-number"
@@ -408,6 +417,7 @@ export default function AuditZonesScreen() {
         <Text style={styles.selectChevron}>▾</Text>
       </Pressable>
       {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
+      </View>
 
       {/* R-29, said before the questions rather than after them. */}
       {lockOnSelection ? (
@@ -431,6 +441,7 @@ export default function AuditZonesScreen() {
 
       <Field
         testID="zone-leader-name"
+        inputRef={required.input('leader')}
         label="Zone Leader’s name"
         value={draft.leaderName}
         onChangeText={(value) => editDraft({ leaderName: value })}
@@ -440,7 +451,7 @@ export default function AuditZonesScreen() {
       />
 
       {!walkBy ? (
-        <>
+        <View ref={required.anchor('department')} collapsable={false}>
           <Label>Department</Label>
           <ChoiceList
             options={(versions.data ?? []).map((version) => ({
@@ -455,7 +466,7 @@ export default function AuditZonesScreen() {
           {showErrors && errors.department ? (
             <Text style={styles.error}>{errors.department}</Text>
           ) : null}
-        </>
+        </View>
       ) : null}
 
       <ErrorBanner message={addZone.error ? addZone.error.message : null} />
@@ -502,6 +513,7 @@ export default function AuditZonesScreen() {
       />
 
       <FlatList
+        ref={required.scroll}
         data={zonesInAudit}
         keyExtractor={(zone) => zone.id}
         keyboardShouldPersistTaps="handled"
@@ -776,6 +788,7 @@ function RestartPrompt({
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const tooShort = reason.trim().length < MIN_RESTART_REASON;
+  const required = useRequiredFields<'reason'>();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
@@ -796,18 +809,23 @@ function RestartPrompt({
           </Muted>
           <Field
             label="Why are you restarting it?"
+            inputRef={required.input('reason')}
+            error={required.error(
+              'reason',
+              `A few more words — at least ${MIN_RESTART_REASON} characters.`,
+              !tooShort,
+            )}
             value={reason}
             onChangeText={onChange}
             multiline
             placeholder="Finished before auditing the packing bay"
           />
-          {tooShort && reason.length > 0 ? (
-            <Text style={styles.error}>
-              A few more words — at least {MIN_RESTART_REASON} characters.
-            </Text>
-          ) : null}
           <ErrorBanner message={error} />
-          <Button title="Restart audit" disabled={tooShort} busy={busy} onPress={onConfirm} />
+          <Button
+            title="Restart audit"
+            busy={busy}
+            onPress={() => required.check([['reason', !tooShort]]) && onConfirm()}
+          />
           <Button title="Leave it finished" variant="secondary" onPress={onCancel} />
         </View>
       </View>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { AuditAssignment, Page, Unit, User } from '@audit5s/contracts';
@@ -18,6 +18,7 @@ import {
 import { api, problemMessage } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { createThemedStyles } from '../../lib/theme';
+import { useRequiredFields } from '../../lib/required-fields';
 
 type Due = 'NONE' | 'TODAY' | 'WEEK' | 'FORTNIGHT';
 const DUES = [
@@ -54,6 +55,7 @@ export default function AssignScreen() {
   const [auditType, setAuditType] = useState<'EXTERNAL_5S' | 'WALK_BY'>('EXTERNAL_5S');
   const [due, setDue] = useState<Due>('WEEK');
   const [instructions, setInstructions] = useState('');
+  const required = useRequiredFields<'unit' | 'consultant'>();
 
   const units = useQuery({ queryKey: ['units'], queryFn: () => api.get<Page<Unit>>('/units?limit=200') });
   const consultants = useQuery({
@@ -101,8 +103,10 @@ export default function AssignScreen() {
   return (
     <Screen>
       <Stack.Screen options={{ title: 'Assign an audit' }} />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View ref={required.anchor('unit')} collapsable={false}>
         <Label>Unit</Label>
+        {required.flagged('unit', unitId !== null) ? <ErrorBanner message="Choose a Unit." /> : null}
         <ChoiceList
           value={unitId}
           onChange={(next) => {
@@ -112,9 +116,13 @@ export default function AssignScreen() {
           empty={units.isLoading ? 'Loading Units…' : 'Add a Unit first.'}
           options={(units.data?.data ?? []).map((unit) => ({ value: unit.id, label: unit.name }))}
         />
+        </View>
         {unitId ? (
-          <>
+          <View ref={required.anchor('consultant')} collapsable={false}>
             <Label>Consultant</Label>
+            {required.flagged('consultant', auditorUserId !== null) ? (
+              <ErrorBanner message="Choose the consultant who will do the audit." />
+            ) : null}
             <ChoiceList
               value={auditorUserId}
               onChange={setAuditorUserId}
@@ -129,7 +137,7 @@ export default function AssignScreen() {
                 detail: user.loginId,
               }))}
             />
-          </>
+          </View>
         ) : null}
         <Label>Type</Label>
         <Segmented options={TYPES} value={auditType} onChange={setAuditType} />
@@ -148,8 +156,12 @@ export default function AssignScreen() {
         <Button
           title="Assign audit"
           busy={create.isPending}
-          disabled={!unitId || !auditorUserId}
-          onPress={() => create.mutate()}
+          onPress={() =>
+            required.check([
+              ['unit', unitId !== null],
+              ['consultant', auditorUserId !== null],
+            ]) && create.mutate()
+          }
         />
       </ActionBar>
     </Screen>

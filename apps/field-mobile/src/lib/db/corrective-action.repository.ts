@@ -66,7 +66,6 @@ export async function captureAfterPhoto(
     checksumSha256: string;
     width?: number | null;
     height?: number | null;
-    location?: { latitude: number; longitude: number; accuracyM?: number | null; provider?: string } | null;
     now?: string;
   },
 ): Promise<string> {
@@ -81,7 +80,6 @@ export async function captureAfterPhoto(
     width: input.width ?? null,
     height: input.height ?? null,
     isLiveCapture: true,
-    location: input.location ?? null,
     ...(input.now ? { now: input.now } : {}),
   });
 }

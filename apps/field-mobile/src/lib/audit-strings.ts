@@ -67,6 +67,10 @@ export interface AuditStrings {
   noChecklist: string;
   noAnswerToCorrect: string;
   pauseAudit: string;
+  /** The stop on Next/Submit while this S has unanswered questions; numbers are Q numbers. */
+  unansweredTitle: string;
+  unansweredGate: (questions: readonly number[]) => string;
+  ok: string;
 }
 
 const EN: AuditStrings = {
@@ -144,6 +148,10 @@ const EN: AuditStrings = {
   noChecklist: 'This Zone has no checklist pinned to it.',
   noAnswerToCorrect: 'This question has no saved answer to correct.',
   pauseAudit: 'Pause audit and go to Overview',
+  unansweredTitle: 'Questions not answered',
+  unansweredGate: (questions) =>
+    `You have not answered question number${questions.length === 1 ? '' : 's'} ${questions.join(', ')}. Please answer all questions to proceed.`,
+  ok: 'OK',
 };
 
 const HI: AuditStrings = {
@@ -223,6 +231,10 @@ const HI: AuditStrings = {
   noChecklist: 'इस ज़ोन के साथ कोई चेकलिस्ट जुड़ी नहीं है।',
   noAnswerToCorrect: 'इस प्रश्न का कोई सेव किया हुआ उत्तर नहीं है जिसे सुधारा जा सके।',
   pauseAudit: 'ऑडिट रोकें और ओवरव्यू पर जाएँ',
+  unansweredTitle: 'प्रश्नों के उत्तर बाक़ी हैं',
+  unansweredGate: (questions) =>
+    `आपने प्रश्न क्रमांक ${questions.join(', ')} का उत्तर नहीं दिया है। आगे बढ़ने के लिए सभी प्रश्नों के उत्तर दें।`,
+  ok: 'ठीक है',
 };
 
 const MR: AuditStrings = {
@@ -302,6 +314,10 @@ const MR: AuditStrings = {
   noChecklist: 'या झोनला कोणतीही चेकलिस्ट जोडलेली नाही.',
   noAnswerToCorrect: 'या प्रश्नाचे दुरुस्त करता येईल असे जतन केलेले उत्तर नाही.',
   pauseAudit: 'ऑडिट थांबवा आणि ओव्हरव्ह्यूवर जा',
+  unansweredTitle: 'प्रश्नांची उत्तरे बाकी आहेत',
+  unansweredGate: (questions) =>
+    `तुम्ही प्रश्न क्रमांक ${questions.join(', ')} चे उत्तर दिलेले नाही. पुढे जाण्यासाठी सर्व प्रश्नांची उत्तरे द्या.`,
+  ok: 'ठीक आहे',
 };
 
 export const AUDIT_STRINGS: Record<AppLanguage, AuditStrings> = { en: EN, hi: HI, mr: MR };

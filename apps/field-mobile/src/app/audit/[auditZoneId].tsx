@@ -22,6 +22,7 @@ import {
   Figure,
   Label,
   Muted,
+  NoticeDialog,
   Screen,
   SectionHead,
   SectionRows,
@@ -47,7 +48,6 @@ import {
   responseIdFor,
 } from '../../lib/db/evidence.repository';
 import { ZONE_PHOTO_LIMIT, isZoneAuditPhoto } from '../../lib/db/photo-limit';
-import { readLocation } from '../../lib/capture/location';
 import type { ProcessedImage } from '../../lib/capture/media';
 import {
   applyLocalOverride,
@@ -67,6 +67,7 @@ import { isFinished } from '../../lib/labels';
 import { useSync } from '../../lib/sync/provider';
 import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
 import { leaveScreen } from '../../lib/leave-screen';
+import { useRequiredFields } from '../../lib/required-fields';
 
 /** Ten questions to a page: with a five-by-ten checklist, a page is one S. */
 const PAGE_SIZE = 10;
@@ -107,6 +108,10 @@ export default function QuestionnaireScreen() {
   const [cameraFor, setCameraFor] = useState<Row | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [showMissing, setShowMissing] = useState(false);
+  /** The Q numbers the unanswered-questions stop is naming, or null when it is closed. */
+  const [blockedOn, setBlockedOn] = useState<number[] | null>(null);
+  /** A question to bring into view once its page has rendered — the first one left blank. */
+  const [scrollTo, setScrollTo] = useState<string | null>(null);
   /**
    * R-30's correction mode, on a finished audit.
    *
@@ -117,6 +122,8 @@ export default function QuestionnaireScreen() {
    */
   const [correcting, setCorrecting] = useState<string | null>(null);
   const [reasonDraft, setReasonDraft] = useState('');
+  // The reason box sits at the top of the list; focusing it is enough to bring it into view.
+  const required = useRequiredFields<'reason'>();
 
   const zone = useQuery({
     queryKey: ['local', 'audit-zone', auditZoneId],
@@ -259,7 +266,6 @@ export default function QuestionnaireScreen() {
     mutationFn: async (image: ProcessedImage) => {
       const row = cameraFor!;
       const responseId = await responseIdFor(database, auditZoneId, row.questionId);
-      const location = await readLocation();
       const value = picked[row.questionId] ?? (row.value as ResponseValue | null);
 
       return captureLocalEvidence(database, {
@@ -273,16 +279,6 @@ export default function QuestionnaireScreen() {
         width: image.width,
         height: image.height,
         checksumSha256: image.checksumSha256,
-        ...(location
-          ? {
-              location: {
-                latitude: location.latitude,
-                longitude: location.longitude,
-                accuracyM: location.accuracyM ?? null,
-                provider: location.provider,
-              },
-            }
-          : {}),
       });
     },
     onSuccess: (evidenceId) => {
@@ -304,6 +300,20 @@ export default function QuestionnaireScreen() {
       : 'this Zone',
     zoneFinished: zone.data?.status === 'COMPLETED',
   });
+
+  // Runs after the page holding the question has rendered, so the index is on this page.
+  useEffect(() => {
+    const rows = questions.data;
+    if (!scrollTo || !rows) return;
+    const index = rows
+      .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+      .findIndex((row) => row.questionId === scrollTo);
+    setScrollTo(null);
+    if (index < 0) return;
+    requestAnimationFrame(() =>
+      list.current?.scrollToIndex({ index, animated: true, viewPosition: 0, viewOffset: 8 }),
+    );
+  }, [scrollTo, page, questions.data]);
 
   const goTo = useCallback((next: number) => {
     setPage(next);
@@ -394,13 +404,35 @@ export default function QuestionnaireScreen() {
    */
   const correctable = Boolean(audit.data) && audit.data!.status !== 'CANCELLED' && !auditOpen;
   const editable = auditOpen || correcting !== null;
+  const reasonGiven = reasonDraft.trim().length >= MIN_JUSTIFICATION;
   const reviewingFinishedZone = auditOpen && zone.data.status === 'COMPLETED';
 
-  const submit = () => {
-    const firstMissing = rows.findIndex((row) => valueOf(row) === null);
-    if (firstMissing >= 0) {
+  /**
+   * The stop between one S and the next: every question on this page is answered before the
+   * auditor may leave it forwards. Hunting for the one skipped question across fifty at the
+   * end cost more time than answering it while standing in front of it.
+   *
+   * Only while answers can be given — a finished audit's pages are read, not filled in.
+   */
+  const next = () => {
+    const missing = auditOpen ? pageRows.filter((row) => valueOf(row) === null) : [];
+    if (missing.length > 0) {
       setShowMissing(true);
-      goTo(Math.floor(firstMissing / PAGE_SIZE));
+      setBlockedOn(missing.map((row) => row.globalOrder));
+      setScrollTo(missing[0]!.questionId);
+      return;
+    }
+    goTo(page + 1);
+  };
+
+  const submit = () => {
+    const missing = rows.filter((row) => valueOf(row) === null);
+    if (missing.length > 0) {
+      setShowMissing(true);
+      setBlockedOn(missing.map((row) => row.globalOrder));
+      const firstPage = Math.floor(rows.indexOf(missing[0]!) / PAGE_SIZE);
+      if (firstPage !== page) goTo(firstPage);
+      setScrollTo(missing[0]!.questionId);
       return;
     }
     finish.mutate();
@@ -420,7 +452,10 @@ export default function QuestionnaireScreen() {
                     tintColor={tintColor}
                     accessibilityLabel={t.pauseAudit}
                     disabled={abortMenu.busy}
-                    onPress={abortMenu.pauseAudit}
+                    // Over the camera, back closes the camera and returns to the question —
+                    // the same as Android's back gesture. Only from the questions does it
+                    // pause the audit.
+                    onPress={() => (cameraFor ? setCameraFor(null) : abortMenu.pauseAudit())}
                   />
                 )
               : undefined,
@@ -466,6 +501,15 @@ export default function QuestionnaireScreen() {
         data={pageRows}
         keyExtractor={(row) => row.questionId}
         keyboardShouldPersistTaps="handled"
+        // A question below the rendered window has no measured frame yet: land near it by
+        // the average height, then aim again once it has rendered.
+        onScrollToIndexFailed={(info) => {
+          list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+          setTimeout(
+            () => list.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0, viewOffset: 8 }),
+            100,
+          );
+        }}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View>
@@ -495,6 +539,8 @@ export default function QuestionnaireScreen() {
                   <View style={styles.slipAction}>
                     <Field
                       label={t.reasonLabel}
+                      inputRef={required.input('reason')}
+                      error={required.error('reason', t.reasonHint, reasonGiven)}
                       multiline
                       placeholder={t.reasonPlaceholder}
                       value={reasonDraft}
@@ -503,8 +549,9 @@ export default function QuestionnaireScreen() {
                     />
                     <Button
                       title={t.correctMark}
-                      disabled={reasonDraft.trim().length < MIN_JUSTIFICATION}
-                      onPress={() => setCorrecting(reasonDraft.trim())}
+                      onPress={() =>
+                        required.check([['reason', reasonGiven]]) && setCorrecting(reasonDraft.trim())
+                      }
                     />
                   </View>
                 ) : null}
@@ -592,7 +639,7 @@ export default function QuestionnaireScreen() {
           </View>
           <View style={styles.navButton}>
             {!lastPage ? (
-              <Button title={t.next} onPress={() => goTo(page + 1)} testID="next-page" />
+              <Button title={t.next} onPress={next} testID="next-page" />
             ) : auditOpen ? (
               <Button
                 // The word changes because the act does: the first pass finishes the Zone,
@@ -612,6 +659,14 @@ export default function QuestionnaireScreen() {
           </View>
         </View>
       </ActionBar>
+
+      <NoticeDialog
+        visible={blockedOn !== null}
+        title={t.unansweredTitle}
+        message={blockedOn ? t.unansweredGate(blockedOn) : ''}
+        actionLabel={t.ok}
+        onClose={() => setBlockedOn(null)}
+      />
 
       <PhotoPreview photo={previewPhoto} editable={auditOpen} onClose={() => setPreviewId(null)} />
 
@@ -646,7 +701,7 @@ function MarkingScheme() {
           const token = RESPONSE_TOKENS[value]!;
           return (
             <View key={value} style={styles.schemeItem}>
-              <Text style={styles.schemeMark}>{token.marks === null ? 'NA' : token.marks}</Text>
+              <Text style={styles.schemeMark} numberOfLines={1}>{token.marks === null ? 'NA' : token.marks}</Text>
               <Text style={styles.schemeText}>{t.response[value]}</Text>
             </View>
           );
@@ -861,7 +916,8 @@ const useStyles = createThemedStyles((theme) => ({
   schemeGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 6 },
   schemeItem: { width: '50%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8 },
   schemeMark: {
-    width: 24,
+    // Wide enough for "NA" in Archivo Black on one line; at 24 it broke N over A.
+    width: 34,
     fontFamily: theme.family.black,
     fontSize: 15,
     color: theme.color.ink,

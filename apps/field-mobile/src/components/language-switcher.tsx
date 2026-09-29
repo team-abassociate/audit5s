@@ -7,8 +7,8 @@ import { Label } from './ui';
 /**
  * The checklist language, as three side-by-side options: English · हिन्दी · मराठी.
  *
- * One component for every place it appears (Overview, Profile), so the two can never show
- * different choices — both read and write the same per-person setting.
+ * It lives on Overview only. Profile carried a second copy until 2026-09-29, when it was
+ * removed as redundant; the setting itself is per person either way.
  *
  * `Segmented`'s look — an ink-ruled strip, the chosen option filled in ink, shape as well
  * as colour — but a radio group rather than tabs, because this is a setting and not a view
@@ -17,13 +17,13 @@ import { Label } from './ui';
  * Each language is named in its own script, so an operator who reads no English still
  * finds theirs; the label above says "Language" in both scripts for the same reason.
  */
-export function LanguageSwitcher({ showLabel = true }: { showLabel?: boolean }) {
+export function LanguageSwitcher() {
   const styles = useStyles();
   const { language, choose } = useLanguage();
 
   return (
     <View>
-      {showLabel ? <Label>Checklist language · भाषा</Label> : null}
+      <Label>Checklist language · भाषा</Label>
       <View style={styles.strip} accessibilityRole="radiogroup" accessibilityLabel="Checklist language">
         {APP_LANGUAGES.map((option, index) => {
           const selected = option === language;

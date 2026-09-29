@@ -4,6 +4,7 @@ import { PASSWORD_MIN_LENGTH } from '@audit5s/contracts';
 import { PASSWORD_REJECTION_MESSAGES, checkPassword } from '@audit5s/domain';
 import { Button, ErrorBanner, Field, GateCard, Heading, Muted, Screen } from '../components/ui';
 import { ApiError } from '../lib/api';
+import { useRequiredFields } from '../lib/required-fields';
 import { useSession } from '../lib/session';
 import { createThemedStyles } from '../lib/theme';
 
@@ -22,6 +23,7 @@ export default function ResetPasswordScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const required = useRequiredFields<'current' | 'new' | 'confirm'>();
 
   const localCheck =
     newPassword.length > 0 && user
@@ -45,6 +47,13 @@ export default function ResetPasswordScreen() {
     if (busy) return;
     setError(null);
 
+    const complete = required.check([
+      ['current', currentPassword !== ''],
+      ['new', newPassword !== '' && !localMessage],
+      ['confirm', confirmPassword !== '' && !mismatch],
+    ]);
+    if (!complete) return;
+
     if (localMessage || mismatch) {
       setError(localMessage ?? mismatch ?? null);
       return;
@@ -67,7 +76,7 @@ export default function ResetPasswordScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <Screen bare>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <GateCard>
             <View style={styles.intro}>
               <Heading>Choose a password</Heading>
@@ -79,6 +88,8 @@ export default function ResetPasswordScreen() {
 
             <Field
               label="Current password"
+              inputRef={required.input('current')}
+              error={required.error('current', 'Enter your current password.', currentPassword !== '')}
               value={currentPassword}
               onChangeText={setCurrentPassword}
               revealable
@@ -88,20 +99,22 @@ export default function ResetPasswordScreen() {
 
             <Field
               label="New password"
+              inputRef={required.input('new')}
               value={newPassword}
               onChangeText={setNewPassword}
               revealable
               autoCapitalize="none"
-              error={localMessage}
+              error={localMessage ?? required.error('new', 'Choose a new password.', newPassword !== '')}
             />
 
             <Field
               label="Confirm new password"
+              inputRef={required.input('confirm')}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               revealable
               autoCapitalize="none"
-              error={mismatch}
+              error={mismatch ?? required.error('confirm', 'Type the new password again.', confirmPassword !== '')}
               onSubmitEditing={submit}
             />
 
