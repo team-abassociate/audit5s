@@ -329,6 +329,7 @@ function summaryExtrasOf(zones: readonly ReportZone[]): ReportSummaryExtras {
     .map((zone) => ({
       zoneCode: zone.zoneCode,
       zoneName: zone.zoneName,
+      zoneDescription: zone.zoneDescription,
       pct: zone.totals.scorePercentage!,
       weakestSection: weakestSectionOf(zone),
     }))
@@ -354,7 +355,14 @@ function summaryExtrasOf(zones: readonly ReportZone[]): ReportSummaryExtras {
   }
 
   return {
-    highest: ranked.slice(0, top).map(({ zoneCode, zoneName, pct }) => ({ zoneCode, zoneName, pct })),
+    highest: ranked
+      .slice(0, top)
+      .map(({ zoneCode, zoneName, zoneDescription, pct }) => ({
+        zoneCode,
+        zoneName,
+        zoneDescription,
+        pct,
+      })),
     lowest: ranked.slice(-top).reverse(),
     histogram: RATING_BANDS.map((band) => ({
       token: band.token,

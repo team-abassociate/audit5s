@@ -329,13 +329,15 @@ export function ZoneComparisonBars({
   bands,
   brand,
 }: {
-  zones: readonly { zoneCode: string; zoneName: string; pct: number | null }[];
+  /** `label` is the finished Zone name (`reportZoneLabel`), not assembled here. */
+  zones: readonly { label: string; pct: number | null }[];
   bands: readonly ReportBand[];
   brand: Record<string, string>;
 }) {
   const rowHeight = 16;
-  const labelWidth = 132;
-  const trackWidth = 330;
+  // Wide enough for the auditor's own name for the Zone, not just its code.
+  const labelWidth = 190;
+  const trackWidth = 290;
   const height = Math.max(rowHeight, zones.length * rowHeight + 6);
 
   return (
@@ -351,9 +353,9 @@ export function ZoneComparisonBars({
         const y = index * rowHeight + 3;
         const width = zone.pct === null ? 0 : round((zone.pct / 100) * trackWidth);
         return (
-          <g key={`${zone.zoneCode}-${index}`}>
+          <g key={`${zone.label}-${index}`}>
             <text x={0} y={y + 9} fontSize={7.5} fill={brand.ink ?? '#101112'}>
-              {truncate(`${zone.zoneCode} — ${zone.zoneName}`, 30)}
+              {truncate(zone.label, 44)}
             </text>
             <rect
               x={labelWidth}

@@ -367,6 +367,68 @@ describe('§4.3 — the multi-Zone summary', () => {
   });
 });
 
+describe('§4.3 — the summary names each Zone as the auditor did (template 1.4.0)', () => {
+  /**
+   * The case the field produces: Zones added by number (R-19), so each is named just
+   * "Zone N", and what the auditor typed on the phone — the Zone's description — is the
+   * only thing that says which part of the plant it is.
+   */
+  function byNumber(): ReturnType<typeof fixtureSummaryPayload> {
+    const payload = fixtureSummaryPayload();
+    const typed = ['Press shop', 'Dispatch bay'];
+    return {
+      ...payload,
+      zones: payload.zones.map((zone, index) => ({
+        ...zone,
+        zoneCode: `Z-0${index + 1}`,
+        zoneName: `Zone ${index + 1}`,
+        zoneDescription: typed[index] ?? null,
+      })),
+      summaryExtras: {
+        ...payload.summaryExtras!,
+        highest: [{ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: 'Press shop', pct: 82.5 }],
+        lowest: [
+          {
+            zoneCode: 'Z-02',
+            zoneName: 'Zone 2',
+            zoneDescription: 'Dispatch bay',
+            pct: 50,
+            weakestSection: 'S1_SORT',
+          },
+        ],
+      },
+    };
+  }
+
+  const html = renderReportHtml(byNumber(), resolve);
+
+  it('prints "Z-01 — Press shop", never the bare "Z-01 — Zone 1"', () => {
+    expect(html).toContain('Z-01 — Press shop');
+    expect(html).toContain('Z-02 — Dispatch bay');
+    expect(html).not.toContain('Z-01 — Zone 1');
+  });
+
+  it('uses that name in every place the summary names a Zone', () => {
+    for (const heading of ['Zone-wise marks per S', 'Zone score comparison', 'Flagged photographs']) {
+      expect(sectionOf(html, heading), heading).toContain('Z-01 — Press shop');
+    }
+    expect(sectionOf(html, 'Highest performing')).toContain('Z-01 — Press shop');
+    expect(sectionOf(html, 'Lowest performing')).toContain('Z-02 — Dispatch bay');
+  });
+
+  it('still renders a summary frozen before the rankings carried the description (R-35)', () => {
+    const older = byNumber();
+    older.summaryExtras = {
+      ...older.summaryExtras!,
+      highest: [{ zoneCode: 'Z-01', zoneName: 'Zone 1', pct: 82.5 }],
+    };
+    const rendered = renderReportHtml(older, resolve);
+    expect(sectionOf(rendered, 'Highest performing')).toContain('Z-01 — Zone 1');
+    // The rest of the document still has the description, which was always frozen.
+    expect(sectionOf(rendered, 'Zone-wise marks per S')).toContain('Z-01 — Press shop');
+  });
+});
+
 describe('the renderer refuses a payload it has no layout for (§10.5)', () => {
   it('throws rather than rendering half a document', () => {
     const future = { ...fixtureZonePayload(), schemaVersion: 99 } as never;

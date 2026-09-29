@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  reportZoneLabel,
   zoneCodeChoices,
   zoneCodeForNumber,
   zoneDisplayLabel,
@@ -39,6 +40,45 @@ describe('zone codes', () => {
     expect(zoneDisplayLabel('Z-07', 'Zone 7')).toBe('Zone 7');
     expect(zoneDisplayLabel('Z-07', 'zone 7')).toBe('Zone 7');
     expect(zoneDisplayLabel('Z-07', '')).toBe('Zone 7');
+  });
+});
+
+describe('reportZoneLabel — the name the auditor gave the Zone, on the reports', () => {
+  it('replaces the automatic "Zone N" with what the auditor typed', () => {
+    expect(
+      reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: 'Press shop' }),
+    ).toBe('Z-01 — Press shop');
+  });
+
+  it('keeps a name somebody chose, beside the auditor’s words', () => {
+    expect(
+      reportZoneLabel({ zoneCode: 'Z-07', zoneName: 'Press', zoneDescription: 'Line 2, dies 4–6' }),
+    ).toBe('Z-07 — Press — Line 2, dies 4–6');
+    expect(
+      reportZoneLabel({ zoneCode: 'BOILER', zoneName: 'Boiler house', zoneDescription: null }),
+    ).toBe('BOILER — Boiler house');
+  });
+
+  it('does not repeat a description that is the name again', () => {
+    expect(
+      reportZoneLabel({ zoneCode: 'Z-07', zoneName: 'Press', zoneDescription: '  press ' }),
+    ).toBe('Z-07 — Press');
+  });
+
+  it('prints exactly what it printed before when nothing was typed', () => {
+    expect(reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: null })).toBe(
+      'Z-01 — Zone 1',
+    );
+    expect(reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1', zoneDescription: '   ' })).toBe(
+      'Z-01 — Zone 1',
+    );
+    expect(reportZoneLabel({ zoneCode: 'Z-01', zoneName: 'Zone 1' })).toBe('Z-01 — Zone 1');
+  });
+
+  it('prints a multi-line description on one line', () => {
+    expect(
+      reportZoneLabel({ zoneCode: 'Z-03', zoneName: 'Zone 3', zoneDescription: 'Dispatch\n  bay 2' }),
+    ).toBe('Z-03 — Dispatch bay 2');
   });
 });
 

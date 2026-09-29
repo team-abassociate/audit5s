@@ -165,6 +165,8 @@ export const auditScoreSummarySchema = z.object({
     scoreSummarySchema.extend({
       zoneCode: z.string(),
       zoneName: z.string(),
+      /** What the auditor typed about the Zone (R-19), so a picker can name it as the report does. */
+      zoneDescription: z.string().nullable().optional(),
       checklistTemplateName: z.string().nullable(),
       status: auditZoneStatusSchema,
     }),

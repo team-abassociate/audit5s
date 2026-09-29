@@ -151,11 +151,23 @@ export type ReportClosure = z.infer<typeof reportClosureSchema>;
 /** §10.3-C's added blocks, on the summary only. */
 export const reportSummaryExtrasSchema = z.object({
   /** Descending by percentage; Zones with a null percentage are in neither list. */
-  highest: z.array(z.object({ zoneCode: z.string(), zoneName: z.string(), pct: z.number() })),
+  highest: z.array(
+    z.object({
+      zoneCode: z.string(),
+      zoneName: z.string(),
+      /**
+       * What the auditor typed about the Zone, so the ranking can name it as the other
+       * tables do. Optional: a payload frozen before it existed still parses (R-35).
+       */
+      zoneDescription: z.string().nullable().optional(),
+      pct: z.number(),
+    }),
+  ),
   lowest: z.array(
     z.object({
       zoneCode: z.string(),
       zoneName: z.string(),
+      zoneDescription: z.string().nullable().optional(),
       pct: z.number(),
       /** The S with the lowest percentage in that Zone. Null when none is applicable. */
       weakestSection: sSectionSchema.nullable(),

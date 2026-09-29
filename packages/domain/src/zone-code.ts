@@ -49,6 +49,44 @@ export function zoneDisplayLabel(code: string, name: string): string {
 }
 
 /**
+ * How the reports name a Zone: its number, then what the auditor called it.
+ *
+ * A Zone added by number (R-19) is named just "Zone 7", and what the auditor typed about it
+ * on the phone — "Press shop", "Dispatch bay" — lives in its description. Printing code and
+ * name alone gave `Z-07 — Zone 7`, which tells a reader of a twenty-Zone summary nothing.
+ * So the automatic name gives way to the auditor's words, and a name somebody chose is kept
+ * beside them:
+ *
+ * - `Z-07`, "Zone 7", "Press shop"       → `Z-07 — Press shop`
+ * - `Z-07`, "Press", "Line 2, dies 4–6"  → `Z-07 — Press — Line 2, dies 4–6`
+ * - `Z-07`, "Press", "press"             → `Z-07 — Press`
+ * - `Z-07`, "Zone 7", nothing typed      → `Z-07 — Zone 7`, exactly as before
+ *
+ * The description is a multi-line field on the phone; it is printed on one line here.
+ */
+export function reportZoneLabel(zone: {
+  zoneCode: string;
+  zoneName: string;
+  zoneDescription?: string | null;
+}): string {
+  const name = zone.zoneName.trim();
+  const zoneNumber = zoneNumberFromCode(zone.zoneCode);
+  const automatic =
+    name === '' ||
+    (zoneNumber !== null && name.toLocaleLowerCase() === `zone ${zoneNumber}`.toLocaleLowerCase());
+  const described = (zone.zoneDescription ?? '').replace(/\s+/g, ' ').trim();
+
+  const parts = [zone.zoneCode];
+  if (!automatic) parts.push(name);
+  if (described !== '' && described.toLocaleLowerCase() !== name.toLocaleLowerCase()) {
+    parts.push(described);
+  }
+  // Nothing but the code: say "Zone 7" rather than leave a bare code.
+  if (parts.length === 1 && name !== '') parts.push(name);
+  return parts.join(' — ');
+}
+
+/**
  * The leader an audit Zone snapshots when the auditor may have typed a name (R-19).
  *
  * The typed name is what the reports print. The Zone's leader account is kept only when the
