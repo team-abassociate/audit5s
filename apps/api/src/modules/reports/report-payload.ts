@@ -259,7 +259,13 @@ function outcomeOf(
           remark: null,
           capturedAt: action.afterCapturedAt?.toISOString() ?? null,
           isSummaryFlagged: false,
-          ...question,
+          // Named, never spread. A finding passes its whole before-photo here, and a spread
+          // copied that photo's `objectKey`, `evidenceId` and `capturedAt` over the after
+          // photo's own — every after-evidence report printed the finding's photograph in
+          // the AFTER PHOTO slot. `Pick` narrows the type, not the object.
+          questionGlobalOrder: question.questionGlobalOrder,
+          questionText: question.questionText,
+          section: question.section,
           scoreAtCapture: null,
         }
       : null,

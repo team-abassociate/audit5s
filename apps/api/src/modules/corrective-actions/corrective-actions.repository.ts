@@ -220,6 +220,59 @@ export class CorrectiveActionsRepository extends BaseRepository {
   }
 
   /**
+   * Completed audits carrying a finding that never got its corrective action.
+   *
+   * The shape `materialize` would have raised and did not: a live NONCONFORMITY photograph
+   * of a Zone that was audited, with no action row, or an overall suggestion with none.
+   * Reachable only through the defect fixed alongside this — completion raising actions
+   * under the auditor's RLS, which hid the Zones from a Consultant whose grant on the
+   * Unit had just lapsed. What it lists, `CorrectiveActionsService.raiseMissing` repairs.
+   */
+  async findAuditsWithUnraisedFindings(scope: ScopeContext) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      return tx
+        .select({
+          auditId: audits.id,
+          unitId: audits.unitId,
+          unitName: units.name,
+          status: audits.status,
+          completedAt: audits.completedAt,
+          auditorName: sql<string | null>`app_audit_auditor_name(${audits.id})`,
+          findings: sql<number>`(
+            SELECT count(*)::int FROM evidence e
+              JOIN audit_zone az ON az.id = e.audit_zone_id
+             WHERE e.audit_id = ${audits.id}
+               AND e.classification = 'NONCONFORMITY'
+               AND e.kind IN ('QUESTION_EVIDENCE', 'WALK_BY_PHOTO')
+               AND e.deleted_at IS NULL
+               AND az.status <> 'WITHDRAWN'
+               AND NOT EXISTS (SELECT 1 FROM corrective_action ca WHERE ca.evidence_id = e.id))`,
+          suggestions: sql<number>`(
+            SELECT count(*)::int FROM audit_zone az
+              CROSS JOIN LATERAL unnest(az.overall_action_suggestions)
+                         WITH ORDINALITY AS s(text, no)
+             WHERE az.audit_id = ${audits.id}
+               AND az.status <> 'WITHDRAWN'
+               AND btrim(s.text) <> ''
+               AND NOT EXISTS (SELECT 1 FROM corrective_action ca
+                                WHERE ca.audit_zone_id = az.id AND ca.suggestion_no = s.no))`,
+        })
+        .from(audits)
+        .innerJoin(units, eq(units.id, audits.unitId))
+        .where(
+          this.scoped(
+            scope,
+            { unitId: audits.unitId, ownerUserId: audits.auditorUserId },
+            inArray(audits.status, ['COMPLETED', 'CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED', 'CLOSED']),
+          ),
+        )
+        .orderBy(asc(audits.completedAt))
+        .then((rows) => rows.filter((row) => row.findings > 0 || row.suggestions > 0));
+    });
+  }
+
+  /**
    * The two names the public page shows that the action row does not carry: the Unit's
    * name and the auditor's.
    *

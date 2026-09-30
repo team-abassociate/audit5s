@@ -12,6 +12,7 @@
     "worker:report": "node dist/worker.report.js",
     "seed": "pnpm build && node dist/seed.js",
     "reissue-links": "pnpm build && node dist/reissue-report-links.js",
+    "raise-missing-actions": "pnpm build && node dist/raise-missing-corrective-actions.js",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },

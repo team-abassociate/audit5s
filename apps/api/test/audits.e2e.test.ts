@@ -500,6 +500,82 @@ describe('assignments', () => {
     expect((closed.body as AuditAssignment).status).toBe('COMPLETED');
   });
 
+  /*
+   * Field report, 2026-09-30: a Consultant's reports printed every nonconformity with no
+   * link to close it. The audits had completed with no corrective actions at all.
+   *
+   * Completion sets the audit COMPLETED and raises the actions on the same transaction.
+   * Once COMPLETED, the audit no longer holds the Unit for its Consultant (0032), and when
+   * the assignment has already closed nothing else does — so `materialize`, run under the
+   * Consultant's RLS, joined `zone` against a Unit they could no longer see and raised
+   * nothing. The assignment is closed here the way the audits in the field had it: by an
+   * earlier completion on the same assignment, before 0032 kept it open.
+   */
+  it('raises the corrective actions when completing the audit ends the Consultant’s grant', async () => {
+    const { userId, token, deviceId } = await unboundConsultant();
+    const assignment = await assign(userId);
+    const { auditId, auditZoneId } = await startAuditWithZone({
+      token,
+      deviceId,
+      zoneId: await createZone('Z-92', 'Lapsing grant zone'),
+      assignmentId: assignment.id,
+    });
+    await world.owner.query(`UPDATE audit_assignment SET status = 'COMPLETED' WHERE id = $1`, [
+      assignment.id,
+    ]);
+
+    // Question 1 is a 0 with a photograph: a finding. The rest answered as usual.
+    const findingResponseId = randomUUID();
+    const zero = await world.request(
+      'PUT',
+      `${base}/audit-zones/${auditZoneId}/responses/${findingResponseId}`,
+      {
+        token,
+        body: { checklistQuestionId: questionIds[0], value: 'SCORE_0', answeredAt: new Date().toISOString() },
+      },
+    );
+    expect(zero.status, JSON.stringify(zero.body)).toBe(200);
+    const { evidenceId } = await captureEvidence(world, {
+      token,
+      evidenceId: randomUUID(),
+      auditId,
+      kind: 'QUESTION_EVIDENCE',
+      auditZoneId,
+      questionResponseId: findingResponseId,
+      deviceId,
+    });
+    for (let index = 1; index < TOTAL_QUESTIONS; index += 1) {
+      const response = await world.request(
+        'PUT',
+        `${base}/audit-zones/${auditZoneId}/responses/${randomUUID()}`,
+        {
+          token,
+          body: { checklistQuestionId: questionIds[index], value: 'SCORE_2', answeredAt: new Date().toISOString() },
+        },
+      );
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+    }
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token,
+      body: {},
+    });
+
+    const completed = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token,
+      body: {},
+    });
+    expect(completed.status, JSON.stringify(completed.body)).toBe(200);
+
+    const actions = await world.request('GET', `${base}/corrective-actions?auditId=${auditId}`, {
+      token: asSuperAdmin(),
+    });
+    expect((actions.body as Page<CorrectiveAction>).data.map((action) => action.evidenceId)).toEqual([
+      evidenceId,
+    ]);
+    const audit = await world.request('GET', `${base}/audits/${auditId}`, { token: asSuperAdmin() });
+    expect((audit.body as Audit).status).toBe('CORRECTIVE_ACTION_OPEN');
+  });
+
   it('appears in the device catalogue while open and disappears once cancelled', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
 
