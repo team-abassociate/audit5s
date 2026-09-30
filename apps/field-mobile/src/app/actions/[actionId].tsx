@@ -21,9 +21,11 @@ import {
 import { api } from '../../lib/api';
 import { useRequiredFields } from '../../lib/required-fields';
 import type { ProcessedImage } from '../../lib/capture/media';
+import { pickFromGallery } from '../../lib/capture/gallery';
 import { uuidv7 } from '../../lib/db/audit.repository';
 import {
   captureAfterPhoto,
+  discardAfterPhoto,
   getLocalCorrectiveAction,
   statusLabel,
   submitLocalCorrectiveAction,
@@ -45,8 +47,8 @@ import { leaveScreen } from '../../lib/leave-screen';
  *
  * An **overall** action (R-38) — the auditor's suggestion for the Zone as a whole — is
  * answered with what was done, and its photograph is optional: some fixes, a smell, cannot
- * be photographed. The report's link offers the gallery as well; this screen keeps to the
- * in-app camera, the only capture path the app has.
+ * be photographed. For it, and only for it, the photograph may also come from the gallery
+ * (`pickFromGallery`), as it may on the report's link page.
  */
 export default function CorrectiveActionScreen() {
   const styles = useStyles();
@@ -92,7 +94,7 @@ export default function CorrectiveActionScreen() {
   });
 
   const capture = useMutation({
-    mutationFn: async (image: ProcessedImage) => {
+    mutationFn: async ({ image, live }: { image: ProcessedImage; live: boolean }) => {
       const evidenceId = await captureAfterPhoto(database, {
         action: action.data!,
         submissionId,
@@ -101,10 +103,28 @@ export default function CorrectiveActionScreen() {
         width: image.width,
         height: image.height,
         checksumSha256: image.checksumSha256,
+        isLiveCapture: live,
       });
+      // The photograph it replaces will never be cited, so it is not uploaded either.
+      if (photo) await discardAfterPhoto(database, photo.evidenceId);
       setPhoto({ evidenceId, uri: image.uri });
     },
     onSuccess: () => setCameraOpen(false),
+  });
+
+  // R-38: an overall action's photograph may come from the gallery.
+  const gallery = useMutation({
+    mutationFn: async () => {
+      const image = await pickFromGallery();
+      if (image) await capture.mutateAsync({ image, live: false });
+    },
+  });
+
+  const removePhoto = useMutation({
+    mutationFn: async () => {
+      if (photo) await discardAfterPhoto(database, photo.evidenceId);
+      setPhoto(null);
+    },
   });
 
   const submit = useMutation({
@@ -148,7 +168,7 @@ export default function CorrectiveActionScreen() {
         />
         <CameraCapture
           prompt="Photograph the corrected condition"
-          onCaptured={(image) => capture.mutateAsync(image)}
+          onCaptured={(image) => capture.mutateAsync({ image, live: true })}
           onCancel={() => setCameraOpen(false)}
         />
       </>
@@ -277,6 +297,28 @@ export default function CorrectiveActionScreen() {
                     onPress={() => setCameraOpen(true)}
                   />
                 </View>
+                {overall ? (
+                  <>
+                    <View style={styles.block}>
+                      <Button
+                        title={photo ? 'Choose another from gallery' : 'Choose from gallery'}
+                        variant="secondary"
+                        busy={gallery.isPending}
+                        onPress={() => gallery.mutate()}
+                      />
+                    </View>
+                    {photo ? (
+                      <View style={styles.block}>
+                        <Button
+                          title="Remove photograph"
+                          variant="secondary"
+                          busy={removePhoto.isPending}
+                          onPress={() => removePhoto.mutate()}
+                        />
+                      </View>
+                    ) : null}
+                  </>
+                ) : null}
                 </View>
                 <Field
                   label={overall ? 'Corrective action taken' : 'What was done'}
@@ -298,7 +340,11 @@ export default function CorrectiveActionScreen() {
               />
             )}
 
-            <ErrorBanner message={submit.error?.message ?? capture.error?.message ?? null} />
+            <ErrorBanner
+              message={
+                submit.error?.message ?? capture.error?.message ?? gallery.error?.message ?? null
+              }
+            />
             <Button title="Submit" busy={submit.isPending} onPress={trySubmit} />
           </Card>
         ) : (

@@ -6,6 +6,7 @@ import { replaceCatalogue } from './catalogue.repository';
 import {
   captureAfterPhoto,
   confirmLocalSubmission,
+  discardAfterPhoto,
   getLocalCorrectiveAction,
   listLocalCorrectiveActions,
   settleLocalSubmission,
@@ -208,5 +209,39 @@ describe('an overall action (R-38)', () => {
     const payload = JSON.parse(item!.payload);
     expect(payload).toMatchObject({ id, correctiveActionId: OVERALL, option: 'COMPLETED' });
     expect(payload).not.toHaveProperty('afterEvidenceId');
+  });
+
+  it('records a gallery photograph as not a live capture, all the way to the intent', async () => {
+    const photo = await captureAfterPhoto(database, {
+      action: { id: OVERALL, auditId: AUDIT },
+      submissionId: 'bbbbbbbb-0000-4000-8000-000000000038',
+      localFileUri: 'file:///gallery.jpg',
+      byteSize: 1000,
+      checksumSha256: 'c'.repeat(64),
+      isLiveCapture: false,
+    });
+
+    const intent = (await listOutbox(database)).find(
+      (row) => row.entityType === 'evidence' && row.entityId === photo,
+    )!;
+    expect(JSON.parse(intent.payload)).toMatchObject({ kind: 'CORRECTIVE_AFTER', isLiveCapture: false });
+  });
+
+  it('drops a removed photograph from the queue without asking the server to delete it', async () => {
+    const photo = await captureAfterPhoto(database, {
+      action: { id: OVERALL, auditId: AUDIT },
+      submissionId: 'bbbbbbbb-0000-4000-8000-000000000039',
+      localFileUri: 'file:///gallery.jpg',
+      byteSize: 1000,
+      checksumSha256: 'd'.repeat(64),
+      isLiveCapture: false,
+    });
+    await discardAfterPhoto(database, photo);
+
+    // Neither its upload nor a delete item: the server refuses deletes on a completed audit.
+    const queued = (await listOutbox(database)).filter((row) => row.entityId === photo);
+    expect(queued).toEqual([]);
+    const rows = await executor.query(`SELECT deleted_at FROM evidence WHERE id = ?`, [photo]);
+    expect(rows[0]?.[0]).not.toBeNull();
   });
 });

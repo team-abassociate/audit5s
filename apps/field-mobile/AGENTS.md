@@ -4,8 +4,10 @@ Read the root [`AGENTS.md`](../../AGENTS.md) first; it is not repeated here. Thi
 only what is specific to the field mobile app.
 
 - React Native 0.8x + Expo (prebuild / custom dev client), expo-router, TypeScript.
-  expo-camera for in-app live capture only — there is no gallery path. expo-sqlite + Drizzle
-  with a hand-written `outbox` and `media_queue`.
+  expo-camera for in-app live capture. The **only** gallery path is an overall corrective
+  action's optional after-photo (`DECISIONS.md` R-38), through `src/lib/capture/gallery.ts`,
+  the sole importer of `expo-image-picker`; every other photograph is a live capture.
+  expo-sqlite + Drizzle with a hand-written `outbox` and `media_queue`.
 - **Offline is the normal condition, not an error state.** Anything that can fail silently must
   be visible in the queue instead. Never show an auditor a spinner where a queued item belongs.
 - **The device is not authoritative about scores.** Numbers computed on-device are display-only;
