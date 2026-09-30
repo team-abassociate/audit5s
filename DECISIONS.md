@@ -35,6 +35,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-24 | A Coordinator uses the field app too | Settled |
 | R-25 | Removing a user is archiving them | Settled |
 | R-26 | An audit may be assigned to anyone who can conduct one | Settled |
+| R-39 | Coordinator: no reports; Zone Leader created with a Zone; closures named | Settled |
 
 ---
 
@@ -1818,3 +1819,64 @@ gallery* and *Remove photograph* on an overall action, and on nothing else.
   fail in the queue; an uploaded, uncited photo is harmless.
 - **A native change.** Phones need a new APK; the deploy's OTA step refuses to publish until
   `native-baseline.txt` names the commit that APK was built from.
+
+## R-39 — Coordinator and Zone Leader: no reports, a Zone on creation, closures named
+
+**Settled 2026-09-30 by the product owner.** **Changes `ARCHITECTURE.md` §6.3** (the
+Coordinator cells of `report:read_snapshot` and `report:download`), **§10.2**
+(`REPORT_GENERATED`'s recipient) and **R-24** ("a Coordinator reads audits and opens
+reports"). Four requests, in the owner's words:
+
+> coordinator shouldnt be able to see the pdf reports · coordinator must add for the zone
+> leader the zone to which that zone leader belongs to. but no need to restrict them to
+> their specific zone … any zone leader can resolve nonconformities and audit any other
+> zone · add a nonconformities tab for the zone leader in the mobile app · upon fixing
+> non-conformities … the coordinator should be able to view who close it and when
+
+### (a) A Coordinator reads no report
+
+`report:read_snapshot` and `report:download` no longer name the role, so every report route
+refuses a Coordinator with 403 — including their own Unit's. Migration `0039` narrows
+`report_snapshot_select` to match (defence in depth; a Zone Leader still passes it).
+`REPORT_GENERATED` reached only Coordinators and now reaches nobody: the Super Admin who
+generated it is the actor. The web hides Reports from `can()` as it always did; the field
+app's audit screen now hides its Reports card the same way. Audits, scores, findings and
+their photographs are unchanged for the role.
+
+### (b) A Zone Leader is created with the Zone they lead
+
+`POST /users` accepts an optional `zoneId` (a `packages/contracts` change). For a Zone
+Leader it must be an active Zone of the new user's Unit, checked **before** the account is
+created; the Zone is then pointed at them through `zones.assignLeader`, so it is logged as
+`zone.leader_assigned` like any other. It is refused for every other role.
+
+The web and field forms require it of a Coordinator and offer it to a Super Admin, whose
+Unit may have no Zones yet (R-19). The server does not require it, because the Create Zone
+form makes a leader for a Zone that does not exist yet and points the new Zone at them.
+
+**It grants nothing.** "No need to restrict them to their specific zone" is already the
+rule: `audit:create_cross` is any active Zone of the Unit (D9), and `assigned_actions`
+admits every corrective action of the Unit (R-3b). Neither was changed. As before, "any
+other zone" means any Zone of the leader's own Unit (M-1: one active Unit per Zone Leader).
+
+### (c) The Zone Leader's Nonconformities tab
+
+The field app gives a Zone Leader a fifth tab, between Units and History: the same list
+`/actions` shows, now with pull-to-refresh. The bar reads **NCs** — "Nonconformities" does
+not fit a fifth of a phone's width — and the header spells it out. `/actions` stays, for
+the Units tab's slip and a signed link.
+
+### (d) Who closed it, and when
+
+`CorrectiveAction` gains `closedByName`: on a VERIFIED action, the name on the latest
+response, as its author gave it (R-22); null otherwise. With `resolvedAt` it answers "who
+closed it and when" without opening the item. The web list has a Closed column and the
+detail panel a *Closed by* / *Closed at* pair — the date and the time, 24-hour, to the
+minute ("30 Sept 2026, 14:05"), in the same format the field app prints; the field app's Actions tab gains a
+**Closed** filter, newest first, and both item screens print the line.
+
+Since R-23 an after-photo closes a finding on submission, so the name is the Zone Leader's
+(or the link-holder's) in the common case. An accepted "not possible" is closed by a Super
+Admin's verification; it still names the person who answered, and the full history —
+verifier included — is on the item. The field is optional in the contract, so a response
+from an older API still parses.

@@ -175,10 +175,18 @@ const correctiveActionsRoute = createRoute({
   component: CorrectiveActionsPage,
 });
 
+/**
+ * R-39: a Coordinator holds no report permission, so a typed or bookmarked `/reports` goes
+ * home instead of opening a page whose every query the server refuses. The rail already
+ * hides the link; this is the same courtesy for the address bar.
+ */
 const reportsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/reports',
-  component: ReportsPage,
+  component: function Reports() {
+    const { can } = useSession();
+    return can('report', 'read_snapshot') ? <ReportsPage /> : <Navigate to="/" replace />;
+  },
 });
 
 const notificationsRoute = createRoute({

@@ -939,8 +939,9 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
    * rather than 404 by a scope. That distinction is the point of the row and is asserted
    * explicitly in reports.e2e.test.ts.
    *
-   * Coordinator and Zone Leader read and download their own Unit's reports (`own_unit`)
-   * and can do nothing else here.
+   * A Zone Leader reads and downloads their own Unit's reports (`own_unit`) and can do
+   * nothing else here. A Coordinator holds no report cell at all since R-39, so every row
+   * below refuses them 403.
    */
   {
     method: 'POST',
@@ -962,7 +963,6 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description: 'report:read_snapshot — the version history, newest first (§10.5)',
     expected: {
       SUPER_ADMIN: { inScope: OK },
-      COORDINATOR: { inScope: OK },
       ZONE_LEADER: { inScope: OK },
     },
   },
@@ -972,7 +972,6 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description: 'report:read_snapshot — metadata and status',
     expected: {
       SUPER_ADMIN: { inScope: OK, outOfScope: OK },
-      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
     coveredBy: 'reports.e2e.test.ts',
@@ -983,7 +982,6 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description: 'report:read_snapshot — the frozen payload, for the on-screen preview',
     expected: {
       SUPER_ADMIN: { inScope: OK, outOfScope: OK },
-      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
     coveredBy: 'reports.e2e.test.ts',
@@ -994,7 +992,6 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description: 'report:download — a short-TTL presigned GET, minted after the scope check',
     expected: {
       SUPER_ADMIN: { inScope: OK, outOfScope: OK },
-      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
     coveredBy: 'reports.e2e.test.ts',

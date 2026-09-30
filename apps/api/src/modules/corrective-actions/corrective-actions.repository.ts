@@ -64,6 +64,13 @@ const actionColumns = {
   lastSubmittedAt: correctiveActions.lastSubmittedAt,
   resolvedAt: correctiveActions.resolvedAt,
   verifiedByUserId: correctiveActions.verifiedByUserId,
+  // R-39: who closed it, for the Coordinator's list. The latest attempt's name is the one
+  // that settled a VERIFIED action — since R-23 an after-photo closes the item itself. A
+  // correlated read of at most a handful of attempts, on `(corrective_action_id, …)`.
+  closedByName: sql<string | null>`CASE WHEN ${correctiveActions.status} = 'VERIFIED' THEN (
+    SELECT s.submitted_by_name FROM corrective_action_submission s
+    WHERE s.corrective_action_id = ${correctiveActions.id}
+    ORDER BY s.attempt_no DESC LIMIT 1) END`,
   reopenCount: correctiveActions.reopenCount,
   version: correctiveActions.version,
   auditType: audits.auditType,

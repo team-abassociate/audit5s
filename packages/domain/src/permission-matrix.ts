@@ -668,16 +668,18 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: { SUPER_ADMIN: org },
   },
   {
+    // R-39: a Coordinator reads no report. The findings, scores and answers stay theirs to
+    // read; the PDF is a Super Admin deliverable handed to whoever answers it.
     resource: 'report',
     action: 'read_snapshot',
     description: 'Read report snapshot metadata',
-    grants: { SUPER_ADMIN: org, COORDINATOR: ownUnit, ZONE_LEADER: ownUnit },
+    grants: { SUPER_ADMIN: org, ZONE_LEADER: ownUnit },
   },
   {
     resource: 'report',
     action: 'download',
     description: 'Download a report PDF',
-    grants: { SUPER_ADMIN: org, COORDINATOR: ownUnit, ZONE_LEADER: ownUnit },
+    grants: { SUPER_ADMIN: org, ZONE_LEADER: ownUnit },
   },
   {
     resource: 'report',

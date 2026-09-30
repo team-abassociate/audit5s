@@ -14,6 +14,7 @@ import {
   type Unit,
   type UpdateUserRequest,
   type User,
+  type Zone,
 } from '@audit5s/contracts';
 import { ApiError, api } from '@/lib/api';
 import { Badge, Button, Card, CardHeader, Combobox, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
@@ -670,10 +671,13 @@ export function CreateUserForm({
   onCreated,
   fixedRole,
   fixedUnitId,
+  forNewZone = false,
 }: {
   onCreated: (response: CreateUserResponse) => void;
   fixedRole?: Role;
   fixedUnitId?: string;
+  /** The leader is being made for a Zone not created yet, which will point at them. */
+  forNewZone?: boolean;
 }) {
   const { scope } = useSession();
   const queryClient = useQueryClient();
@@ -692,6 +696,15 @@ export function CreateUserForm({
   });
   const selectedRole = fixedRole ?? watch('role');
   const requiresUnit = selectedRole === 'COORDINATOR' || selectedRole === 'ZONE_LEADER';
+  // R-39: a Zone Leader is created with the Zone they lead — required of a Coordinator,
+  // optional for a Super Admin, whose Units may not have Zones yet (R-19).
+  const leaderUnitId = fixedUnitId ?? (isCoordinator ? scope?.unitIds[0] : watch('unitId'));
+  const picksZone = selectedRole === 'ZONE_LEADER' && !forNewZone && Boolean(leaderUnitId);
+  const zones = useQuery({
+    queryKey: ['zones', leaderUnitId, 'active'],
+    queryFn: () => api.get<Page<Zone>>(`/units/${leaderUnitId}/zones?active=true&limit=200`),
+    enabled: picksZone,
+  });
 
   const units = useQuery({
     queryKey: ['units'],
@@ -701,9 +714,10 @@ export function CreateUserForm({
 
   const create = useMutation({
     mutationFn: (body: CreateUserRequest) => {
-      const { unitId: selectedUnitId, ...person } = body;
+      const { unitId: selectedUnitId, zoneId, ...person } = body;
       return api.post<CreateUserResponse>('/users', {
         ...person,
+        ...(picksZone && zoneId ? { zoneId } : {}),
         ...(fixedRole ? { role: fixedRole } : {}),
         ...(fixedUnitId
           ? { unitId: fixedUnitId }
@@ -783,6 +797,30 @@ export function CreateUserForm({
               />
             )}
           />
+        </Field>
+      )}
+
+      {picksZone && (
+        <Field
+          label={isCoordinator ? 'Leads Zone' : 'Leads Zone (optional)'}
+          hint={
+            zones.data && zones.data.data.length === 0
+              ? 'This Unit has no Zones yet. Create the Zone first, and make its leader there.'
+              : 'Their Zone. They may still audit, and fix the findings of, every Zone of the Unit.'
+          }
+          error={errors.zoneId?.message}
+        >
+          <Select
+            {...register('zoneId', { required: isCoordinator ? 'Choose the Zone they lead' : false })}
+          >
+            <option value="">{isCoordinator ? 'Choose a Zone' : 'No Zone yet'}</option>
+            {(zones.data?.data ?? []).map((zone) => (
+              <option key={zone.id} value={zone.id}>
+                {`Zone ${zone.code} — ${zone.name}`}
+                {zone.zoneLeaderName ? ` (now ${zone.zoneLeaderName})` : ''}
+              </option>
+            ))}
+          </Select>
         </Field>
       )}
 

@@ -11,6 +11,10 @@ import { useTheme } from '../../lib/theme';
  *   the phone opens: an auditor who paused in Zone 3 yesterday wants the way back into it,
  *   not a list of Units to search. The other three stay exactly as N1 has them, and an
  *   auditor holding a phone in a plant is still not browsing.
+ * - **Zone Leader (R-39):** Nonconformities as well, between Units and History — the work
+ *   they owe, one tap away rather than behind a slip that only shows while something waits.
+ *   "Nonconformities" does not fit a fifth of a phone's width, so the bar says "NCs" and the
+ *   header spells it out.
  * - **Super Admin and Coordinator (R-24):** Overview · Audits · Actions · Units · People — the
  *   admin web's rail (Unit board, Audits, Corrective actions, Units & zones, Users & roles) at
  *   five, as the product owner settled on 2026-09-13. A Coordinator sees their own Unit only,
@@ -29,11 +33,29 @@ export default function TabsLayout() {
   const theme = useTheme();
   const { scope } = useSession();
   const admin = managesOnPhone(scope?.role);
+  const zoneLeader = scope?.role === 'ZONE_LEADER';
   const icon = (glyph: string) =>
     function TabIcon({ color }: { color: ColorValue }) {
       return <Text style={{ color, fontFamily: theme.family.bold, fontSize: 18 }}>{glyph}</Text>;
     };
   const shownTo = (show: boolean) => (show ? {} : { href: null });
+  const tabLabel = (text: string, color: ColorValue, focused: boolean) => (
+    <Text
+      numberOfLines={1}
+      style={{
+        color,
+        fontFamily: theme.family.bold,
+        fontSize: 10,
+        letterSpacing: 0.8,
+        textTransform: 'uppercase',
+        paddingBottom: 2,
+        borderBottomWidth: 2,
+        borderBottomColor: focused ? theme.color.ink : 'transparent',
+      }}
+    >
+      {text}
+    </Text>
+  );
 
   return (
     <Tabs
@@ -52,23 +74,7 @@ export default function TabsLayout() {
           elevation: 0,
         },
         // Selected is ink with a 2px underline — shape as well as colour — never a filled box.
-        tabBarLabel: ({ children, color, focused }) => (
-          <Text
-            numberOfLines={1}
-            style={{
-              color,
-              fontFamily: theme.family.bold,
-              fontSize: 10,
-              letterSpacing: 0.8,
-              textTransform: 'uppercase',
-              paddingBottom: 2,
-              borderBottomWidth: 2,
-              borderBottomColor: focused ? theme.color.ink : 'transparent',
-            }}
-          >
-            {children}
-          </Text>
-        ),
+        tabBarLabel: ({ children, color, focused }) => tabLabel(children, color, focused),
         tabBarActiveTintColor: theme.color.ink,
         tabBarInactiveTintColor: theme.color.ink3,
       }}
@@ -80,6 +86,15 @@ export default function TabsLayout() {
       <Tabs.Screen name="units" options={{ title: 'Units', tabBarIcon: icon('▣'), ...shownTo(admin) }} />
       <Tabs.Screen name="people" options={{ title: 'People', tabBarIcon: icon('◉'), ...shownTo(admin) }} />
       <Tabs.Screen name="index" options={{ tabBarButtonTestID: 'field-units-tab', title: 'Units', tabBarIcon: icon('▣'), ...shownTo(!admin) }} />
+      <Tabs.Screen
+        name="nonconformities"
+        options={{
+          title: 'Nonconformities',
+          tabBarLabel: ({ color, focused }) => tabLabel('NCs', color, focused),
+          tabBarIcon: icon('⚑'),
+          ...shownTo(zoneLeader),
+        }}
+      />
       <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: icon('◷'), ...shownTo(!admin) }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: icon('◧'), ...shownTo(!admin) }} />
     </Tabs>

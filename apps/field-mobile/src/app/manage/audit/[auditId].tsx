@@ -45,16 +45,18 @@ export default function ManageAuditScreen() {
   const { auditId } = useLocalSearchParams<{ auditId: string }>();
   const [opening, setOpening] = useState<string | null>(null);
   const [openError, setOpenError] = useState<unknown>(null);
-  // R-24: a Coordinator reads audits and opens reports; generating and correcting are the Super Admin's.
+  // R-24: a Coordinator reads audits; generating and correcting are the Super Admin's.
+  // R-39: and the reports are not the Coordinator's at all, so the card is not shown.
   const { can } = useSession();
   const mayGenerate = can('report', 'generate');
+  const mayReadReports = can('report', 'read_snapshot');
 
   const detail = useQuery({ queryKey: ['audit', auditId], queryFn: () => api.get<AuditDetail>(`/audits/${auditId}`) });
   const finished = detail.data ? isFinished(detail.data.status) : false;
   const reports = useQuery({
     queryKey: ['reports', 'audit', auditId],
     queryFn: () => api.get<Page<ReportSnapshot>>(`/reports?limit=50&auditId=${auditId}`),
-    enabled: finished,
+    enabled: finished && mayReadReports,
     // A queued report renders in the background; the list notices without a reload.
     refetchInterval: (query) =>
       (query.state.data?.data ?? []).some((row) => row.status === 'QUEUED' || row.status === 'RENDERING') ? 4_000 : false,
@@ -77,7 +79,7 @@ export default function ManageAuditScreen() {
     queryKey: ['reports', 'audit', auditId, 'summaries', detail.data?.unitId],
     queryFn: () =>
       api.get<Page<ReportSnapshot>>(`/reports?limit=50&kind=MULTI_ZONE_SUMMARY&unitId=${detail.data!.unitId}`),
-    enabled: finished && Boolean(detail.data?.unitId),
+    enabled: finished && mayReadReports && Boolean(detail.data?.unitId),
     refetchInterval: (query) =>
       (query.state.data?.data ?? []).some((row) => row.status === 'QUEUED' || row.status === 'RENDERING') ? 4_000 : false,
   });
@@ -188,7 +190,7 @@ export default function ManageAuditScreen() {
           <ErrorBanner message={problemMessage(generate.error)} />
         </Card>
 
-        {finished ? (
+        {finished && mayReadReports ? (
           <Card>
             <CardHeader
               title="Reports"
@@ -280,7 +282,8 @@ export default function ManageAuditScreen() {
           </View>
         ) : !finished && audit.status !== 'CANCELLED' ? (
           <Muted>
-            Running on {audit.auditorName}'s phone. Scores and reports appear once it is completed.
+            Running on {audit.auditorName}'s phone.{' '}
+            {mayReadReports ? 'Scores and reports appear' : 'Scores appear'} once it is completed.
           </Muted>
         ) : null}
       </ScrollView>

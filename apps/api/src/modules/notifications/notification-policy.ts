@@ -41,9 +41,10 @@ export const RECIPIENT_ROLES: Record<NotificationEventType, Role[]> = {
   SYNC_FAILURE: ['SUPER_ADMIN'],
   CHECKLIST_PUBLISHED: ['SUPER_ADMIN'],
   // §10.2's REPORT_GENERATED. The Super Admin who asked for it is the actor and is never
-  // notified of their own act, so this reaches the Unit's Coordinator — the person who has
-  // to act on a report they did not commission.
-  REPORT_GENERATED: ['COORDINATOR'],
+  // notified of their own act. It used to reach the Unit's Coordinator; R-39 took reports
+  // away from that role, and a "ready to download" they cannot open is noise. Nobody else
+  // is told: the Super Admin sends the PDF on himself.
+  REPORT_GENERATED: [],
   // §16.4: orphan evidence, stale audits, quiet devices and score drift are all
   // "surfaced to Super Admin", and to nobody else — a Coordinator cannot act on any of
   // them and a nightly alert they cannot act on is a nightly alert they stop reading.

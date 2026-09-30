@@ -16,6 +16,9 @@ import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { PasswordService } from '../auth/password.service';
 import { AuthRepository } from '../auth/auth.repository';
+import { scopeFor } from '../../common/auth/scope-for';
+import { ZonesRepository } from '../zones/zones.repository';
+import { ZonesService } from '../zones/zones.service';
 import { UsersRepository } from './users.repository';
 
 @Injectable()
@@ -26,6 +29,8 @@ export class UsersService {
     private readonly passwords: PasswordService,
     private readonly auth: AuthRepository,
     private readonly auditLog: AuditLogService,
+    private readonly zones: ZonesService,
+    private readonly zoneRows: ZonesRepository,
   ) {}
 
   /**
@@ -62,6 +67,25 @@ export class UsersService {
 
     if (request.role === 'SUPER_ADMIN' && actor.role !== 'SUPER_ADMIN') {
       throw AppError.forbidden('FORBIDDEN', 'Only a Super Admin may create a Super Admin');
+    }
+
+    // R-39: a Zone Leader is created with the Zone they lead. Checked before the account
+    // exists, so a bad Zone refuses the request rather than leaving a leader with no Zone.
+    // Not required here: the Create Zone form makes a leader for a Zone that does not exist
+    // yet, and points the new Zone at them. The forms require it everywhere else.
+    const zoneId = request.zoneId ?? null;
+    if (zoneId && request.role !== 'ZONE_LEADER') {
+      throw AppError.validation('Only a Zone Leader leads a Zone', [
+        { field: 'zoneId', message: 'Only a Zone Leader leads a Zone' },
+      ]);
+    }
+    if (zoneId) {
+      const zone = await this.zoneRows.findById(scopeFor(scope, 'zone:assign_leader'), zoneId);
+      if (!zone || zone.unitId !== unitId || zone.archivedAt) {
+        throw AppError.validation('Not an active Zone of this Unit', [
+          { field: 'zoneId', message: 'Not an active Zone of this Unit' },
+        ]);
+      }
     }
 
     const bootstrapExpiresAt = new Date(
@@ -116,6 +140,14 @@ export class UsersService {
         resourceId: created.userId,
         unitId,
         after: { userId: created.userId, unitId, role: request.role },
+      });
+    }
+
+    // The pointer is the Zone's, through the same path the Zones page uses, so it is
+    // validated and written to the log as `zone.leader_assigned` like any other.
+    if (zoneId) {
+      await this.zones.assignLeader(scopeFor(scope, 'zone:assign_leader'), zoneId, {
+        zoneLeaderId: created.userId,
       });
     }
 

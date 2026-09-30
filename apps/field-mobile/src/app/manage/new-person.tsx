@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import type { CreateUserResponse, Page, Unit } from '@audit5s/contracts';
+import type { CreateUserResponse, Page, Unit, Zone } from '@audit5s/contracts';
 import {
   ActionBar,
   Button,
@@ -39,6 +39,10 @@ const ROLES = [
  *
  * A Coordinator (R-24) creates Zone leaders only, in their own Unit — the server takes the
  * Unit from their membership, whatever is chosen here (AZ-2).
+ *
+ * A Zone leader is created with the Zone they lead (R-39): required of a Coordinator,
+ * optional for a Super Admin, whose Unit may have no Zones yet (R-19). It names who answers
+ * for the Zone and grants nothing — they still audit, and fix, every Zone of the Unit.
  */
 export default function NewPersonScreen() {
   const styles = useStyles();
@@ -59,6 +63,16 @@ export default function NewPersonScreen() {
   // One Unit in reach — a Coordinator's own — is the Unit; there is nothing to choose.
   const onlyUnit = units.data?.data.length === 1 ? units.data.data[0]!.id : null;
   const unitId = pickedUnitId ?? onlyUnit;
+  const [zonePick, setZonePick] = useState<{ unitId: string; zoneId: string } | null>(null);
+  // A Zone belongs to one Unit, so a Unit change drops the Zone picked under the last one.
+  const zoneId = zonePick && zonePick.unitId === unitId ? zonePick.zoneId : null;
+  const picksZone = role === 'ZONE_LEADER' && unitId !== null;
+  const zoneRequired = picksZone && scope?.role === 'COORDINATOR';
+  const zones = useQuery({
+    queryKey: ['zones', unitId, 'active'],
+    queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?active=true&limit=200`),
+    enabled: picksZone,
+  });
 
   const create = useMutation({
     mutationFn: () =>
@@ -68,11 +82,12 @@ export default function NewPersonScreen() {
         ...(email.trim() ? { email: email.trim() } : {}),
         role,
         ...(unitId ? { unitId } : {}),
+        ...(picksZone && zoneId ? { zoneId } : {}),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 
-  const required = useRequiredFields<'name' | 'phone' | 'unit'>();
+  const required = useRequiredFields<'name' | 'phone' | 'unit' | 'zone'>();
   const nameGiven = fullName.trim() !== '';
   const phoneValid = /^\d{10}$/.test(phone.trim());
 
@@ -107,6 +122,7 @@ export default function NewPersonScreen() {
               setFullName('');
               setPhone('');
               setEmail('');
+              setZonePick(null);
             }}
           />
         </ActionBar>
@@ -165,6 +181,28 @@ export default function NewPersonScreen() {
           }))}
         />
         </View>
+        {picksZone ? (
+          <View ref={required.anchor('zone')} collapsable={false}>
+            <Label>{zoneRequired ? 'Leads Zone' : 'Leads Zone (optional)'}</Label>
+            {required.flagged('zone', !zoneRequired || zoneId !== null) ? (
+              <ErrorBanner message="Choose the Zone they lead." />
+            ) : null}
+            <ChoiceList
+              value={zoneId}
+              onChange={(picked) => setZonePick(unitId && picked ? { unitId, zoneId: picked } : null)}
+              empty={
+                zones.isLoading
+                  ? 'Loading Zones…'
+                  : 'This Unit has no Zones yet. Add the Zone first, from the Unit.'
+              }
+              options={(zones.data?.data ?? []).map((zone) => ({
+                value: zone.id,
+                label: `Zone ${zone.code} — ${zone.name}`,
+                detail: zone.zoneLeaderName ? `Now led by ${zone.zoneLeaderName}` : 'No leader yet',
+              }))}
+            />
+          </View>
+        ) : null}
         <View>
           <ErrorBanner message={problemMessage(create.error)} />
         </View>
@@ -178,6 +216,7 @@ export default function NewPersonScreen() {
               ['name', nameGiven],
               ['phone', phoneValid],
               ['unit', unitId !== null],
+              ['zone', !zoneRequired || zoneId !== null],
             ]) && create.mutate()
           }
         />

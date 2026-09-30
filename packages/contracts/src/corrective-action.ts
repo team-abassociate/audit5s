@@ -55,6 +55,12 @@ export const correctiveActionSchema = z.object({
   /** Set on VERIFIED — which is also how an accepted NOT_POSSIBLE ends (§7.3). */
   resolvedAt: isoDateTimeSchema.nullable(),
   verifiedByUserId: uuidSchema.nullable(),
+  /**
+   * R-39: who closed it — the name on the response that settled it, as they gave it
+   * (R-22), beside `resolvedAt` for when. Null until the action is VERIFIED. Optional so a
+   * response from an API older than this still parses.
+   */
+  closedByName: z.string().nullable().optional(),
   reopenCount: z.number().int().nonnegative(),
   /** Optimistic lock (§15.8): the second of two concurrent reviewers gets VERSION_CONFLICT. */
   version: z.number().int().positive(),
