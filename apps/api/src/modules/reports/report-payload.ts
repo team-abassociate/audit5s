@@ -18,6 +18,7 @@ import {
   RATING_BANDS,
   RESPONSE_TOKENS,
   S_SECTION_ORDER,
+  awaitsResponse,
   bandFor,
   percentageOf,
 } from '@audit5s/domain';
@@ -240,12 +241,19 @@ function toOverallAction(
   };
 }
 
-/** The latest attempt, as the right half of a row prints it. Null while unanswered. */
+/**
+ * The latest attempt, as the right half of a row prints it. Null while unanswered.
+ *
+ * An item waiting for an answer is unanswered **whatever attempts it has**: a Super Admin
+ * who deletes a response (R-40) — which is a reopen — is saying that answer does not stand,
+ * so the next report prints the row blank until the Zone Leader answers again, rather than
+ * printing the rejected photograph as the outcome. The attempt itself stays in the history.
+ */
 function outcomeOf(
   action: FreezeInput['actions'][number],
   question: Pick<ReportPhoto, 'questionGlobalOrder' | 'questionText' | 'section'>,
 ): ReportOutcome | null {
-  if (!action.submissionOption) return null;
+  if (!action.submissionOption || awaitsResponse(action.status)) return null;
   return {
     option: action.submissionOption,
     submittedByName: action.submittedByName ?? '',
