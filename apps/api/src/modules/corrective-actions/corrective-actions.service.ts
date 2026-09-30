@@ -720,6 +720,7 @@ export function toCorrectiveAction(row: CorrectiveActionRow): CorrectiveAction {
     lastSubmittedAt: row.lastSubmittedAt?.toISOString() ?? null,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     verifiedByUserId: row.verifiedByUserId,
+    closedByName: row.closedByName,
     reopenCount: row.reopenCount,
     version: row.version,
     auditType: row.auditType,

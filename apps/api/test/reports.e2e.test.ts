@@ -11,7 +11,8 @@ import {
   type ReportPayload,
   type ReportSnapshot,
 } from '@audit5s/contracts';
-import { FIXTURE_PASSWORD, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
+import { Client } from 'pg';
+import { APP_URL, FIXTURE_PASSWORD, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import { completedWalkBy, makeZone } from './corrective-fixtures';
 
 /**
@@ -428,15 +429,48 @@ describe('a Unit audited by two Consultants reads back as one summary', () => {
 });
 
 describe('reading and downloading', () => {
-  it('lets a Coordinator and a Zone Leader read their own Unit’s report', async () => {
+  it('lets a Zone Leader read their own Unit’s report', async () => {
     const { auditZoneId } = await completedZone();
     const snapshot = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
       .body as ReportSnapshot;
 
-    for (const token of [coordinator, leader]) {
-      const response = await world.request('GET', `${base}/reports/${snapshot.id}`, { token });
-      expect(response.status).toBe(200);
+    const response = await world.request('GET', `${base}/reports/${snapshot.id}`, { token: leader });
+    expect(response.status).toBe(200);
+  }, 120_000);
+
+  it('refuses a Coordinator every report, their own Unit’s included (R-39)', async () => {
+    const { auditZoneId } = await completedZone();
+    const snapshot = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
+      .body as ReportSnapshot;
+
+    for (const path of [
+      `${base}/reports`,
+      `${base}/reports/${snapshot.id}`,
+      `${base}/reports/${snapshot.id}/payload`,
+      `${base}/reports/${snapshot.id}/download-url`,
+    ]) {
+      const response = await world.request('GET', path, { token: coordinator });
+      expect(response.status, path).toBe(403);
     }
+
+    // Behind the guard, the database agrees (0039): the row is invisible to the role, and
+    // still visible to the Unit's Zone Leader through the same policy.
+    const visibleTo = async (actor: 'COORDINATOR' | 'ZONE_LEADER') => {
+      const app = new Client({ connectionString: APP_URL });
+      await app.connect();
+      try {
+        await app.query('BEGIN');
+        await app.query(`SELECT set_config('app.actor_id', $1, true)`, [world.actors[actor].userId]);
+        await app.query(`SELECT set_config('app.actor_role', $1, true)`, [actor]);
+        const result = await app.query(`SELECT 1 FROM report_snapshot WHERE id = $1`, [snapshot.id]);
+        await app.query('ROLLBACK');
+        return result.rowCount;
+      } finally {
+        await app.end();
+      }
+    };
+    expect(await visibleTo('COORDINATOR')).toBe(0);
+    expect(await visibleTo('ZONE_LEADER')).toBe(1);
   }, 120_000);
 
   it('hides another Unit’s report behind a 404, never a 403 (AZ-3)', async () => {
@@ -444,14 +478,14 @@ describe('reading and downloading', () => {
     const snapshot = (await generate(superAdmin, { kind: 'INITIAL_ZONE', auditZoneId }))
       .body as ReportSnapshot;
 
-    // Move it to Unit B; the Coordinator of Unit A must not learn that it exists.
+    // Move it to Unit B; the Zone Leader of Unit A must not learn that it exists.
     await world.owner.query(`UPDATE report_snapshot SET unit_id = $2 WHERE id = $1`, [
       snapshot.id,
       world.unitB,
     ]);
 
     const response = await world.request('GET', `${base}/reports/${snapshot.id}`, {
-      token: coordinator,
+      token: leader,
     });
     expect(response.status).toBe(404);
   }, 120_000);

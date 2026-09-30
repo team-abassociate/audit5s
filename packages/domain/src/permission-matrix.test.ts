@@ -78,6 +78,13 @@ describe('the cells ARCHITECTURE.md §6.4 and §15.2 call out by name', () => {
     expect(grantFor('SUPER_ADMIN', 'report:generate')?.resolver).toBe('organization');
   });
 
+  it('denies a Coordinator every report, while a Zone Leader still reads their Unit’s (R-39)', () => {
+    expect(grantFor('COORDINATOR', 'report:read_snapshot')).toBeNull();
+    expect(grantFor('COORDINATOR', 'report:download')).toBeNull();
+    expect(grantFor('ZONE_LEADER', 'report:read_snapshot')?.resolver).toBe('own_unit');
+    expect(grantFor('ZONE_LEADER', 'report:download')?.resolver).toBe('own_unit');
+  });
+
   it('allows a Zone Leader to cross-audit any Zone of their Unit, their own included (D9)', () => {
     const grant = grantFor('ZONE_LEADER', 'audit:create_cross');
     expect(grant?.resolver).toBe('own_unit');

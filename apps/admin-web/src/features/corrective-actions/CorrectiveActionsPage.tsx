@@ -232,13 +232,14 @@ export function CorrectiveActionsPage() {
                 <Th>Zone Leader</Th>
                 <Th>Due</Th>
                 <Th>Opened</Th>
+                <Th>Closed</Th>
               </tr>
             </thead>
             <tbody>
               {grouped.map((unit) => (
                 <Fragment key={unit.unitId}>
                   <tr className="bg-tile-2">
-                    <Td colSpan={5}>
+                    <Td colSpan={6}>
                       <span className="gb-h2">{unit.name}</span>
                       <span className="ml-2 text-xs text-ink-3">
                         {unit.total} {unit.total === 1 ? 'action' : 'actions'}
@@ -249,7 +250,7 @@ export function CorrectiveActionsPage() {
                   {unit.audits.map((group) => (
                     <Fragment key={group.auditId}>
                       <tr className="bg-board">
-                        <Td colSpan={5}>
+                        <Td colSpan={6}>
                           <span className="text-xs font-medium text-ink-2">
                             {auditHeading(group.list[0]!, numbered.get(group.auditId)?.number)}
                           </span>
@@ -296,6 +297,9 @@ export function CorrectiveActionsPage() {
                               )}
                             </Td>
                             <Td>{new Date(action.openedAt).toLocaleDateString()}</Td>
+                            <Td>
+                              <Closed action={action} />
+                            </Td>
                           </tr>
                         );
                       })}
@@ -407,6 +411,14 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
             <dd>{action.assignedZoneLeaderName ?? '—'}</dd>
             <dt>Due</dt>
             <dd>{action.dueAt ? new Date(action.dueAt).toLocaleDateString() : '—'}</dd>
+            {action.status === 'VERIFIED' && (
+              <>
+                <dt>Closed by</dt>
+                <dd>{action.closedByName ?? '—'}</dd>
+                <dt>Closed at</dt>
+                <dd>{action.resolvedAt ? closedAt(action.resolvedAt) : '—'}</dd>
+              </>
+            )}
           </dl>
           {can('corrective_action', 'reassign') && action.status !== 'VERIFIED' && (
             <Reassign action={action} onDone={refresh} />
@@ -548,6 +560,36 @@ function Photo({ evidenceId, remark = null, alt }: { evidenceId: string; remark?
       {open && <EvidenceViewer evidence={{ id: evidenceId, remark }} onClose={() => setOpen(false)} />}
     </>
   );
+}
+
+/**
+ * R-39: who closed it and when — the question a Coordinator asks of a finished item. Only
+ * a VERIFIED action is closed; a withdrawn one was settled without anybody's work.
+ */
+function Closed({ action }: { action: CorrectiveAction }) {
+  if (action.status !== 'VERIFIED' || !action.resolvedAt) return <>—</>;
+  return (
+    <span>
+      {action.closedByName ?? '—'}
+      <div className="text-xs text-ink-3">{closedAt(action.resolvedAt)}</div>
+    </span>
+  );
+}
+
+/**
+ * The date **and** time it closed, as the field app prints it: `en-IN`, 24-hour, to the
+ * minute — "30 Sept 2026, 14:05" — rather than whatever the browser's locale chooses.
+ */
+const CLOSED_AT = new Intl.DateTimeFormat('en-IN', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+function closedAt(value: string): string {
+  return CLOSED_AT.format(new Date(value));
 }
 
 function StatusBadge({ status }: { status: CorrectiveActionStatus }) {

@@ -175,7 +175,17 @@ export default function AuditsScreen() {
       <ErrorBanner
         message={current.error ? 'Audits could not load. This needs a connection; pull down to try again.' : null}
       />
-      {current.data ? <SectionHead title={HEAD[board].title(count)} description={HEAD[board].description} /> : null}
+      {current.data ? (
+        <SectionHead
+          title={HEAD[board].title(count)}
+          description={
+            // R-39: a Coordinator opens a finished audit for its scores; reports are not theirs.
+            board === 'DONE' && !can('report', 'read_snapshot')
+              ? 'Open one for its scores and findings.'
+              : HEAD[board].description
+          }
+        />
+      ) : null}
     </>
   );
   const empty = current.isLoading ? (

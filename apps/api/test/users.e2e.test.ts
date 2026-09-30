@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH, type Device } from '@audit5s/contracts';
 import { startWorld, stopWorld, type TestWorld } from './harness';
+import { makeZone } from './corrective-fixtures';
 
 /**
  * The user routes the authorization sweep marks `coveredBy` — those needing a body it
@@ -151,6 +152,58 @@ describe('a Coordinator creating users', () => {
     const rows = (memberships.body as { data: Array<{ unitId: string }> }).data;
     // The supplied unitId is ignored, not honoured: a body value is a filter, never a grant.
     expect(rows[0]?.unitId).toBe(world.unitA);
+  });
+});
+
+describe('a Zone Leader is created with the Zone they lead (R-39)', () => {
+  const create = (token: string, body: Record<string, unknown>) =>
+    world.request('POST', `${base}/users`, { token, body });
+
+  it('points the chosen Zone at the new leader, and logs it', async () => {
+    const zoneId = await makeZone(world, world.unitA, null);
+    const response = await create(world.actors.COORDINATOR.accessToken, {
+      fullName: 'Zoned Leader',
+      phone: '+919000000411',
+      role: 'ZONE_LEADER',
+      zoneId,
+    });
+    expect(response.status).toBe(201);
+    const userId = (response.body as { user: { id: string } }).user.id;
+
+    const { rows } = await world.owner.query(`SELECT zone_leader_id FROM zone WHERE id = $1`, [zoneId]);
+    expect(rows[0].zone_leader_id).toBe(userId);
+    const logged = await world.owner.query(
+      `SELECT 1 FROM audit_log WHERE action = 'zone.leader_assigned' AND resource_id = $1`,
+      [zoneId],
+    );
+    expect(logged.rowCount).toBe(1);
+  });
+
+  it('refuses another Unit’s Zone before any account exists', async () => {
+    const zoneId = await makeZone(world, world.unitB, null);
+    const response = await create(world.actors.COORDINATOR.accessToken, {
+      fullName: 'Wrong Zone',
+      phone: '+919000000412',
+      role: 'ZONE_LEADER',
+      zoneId,
+    });
+    expect(response.status).toBe(422);
+    const { rowCount } = await world.owner.query(`SELECT 1 FROM "user" WHERE phone_e164 = $1`, [
+      '+919000000412',
+    ]);
+    expect(rowCount).toBe(0);
+  });
+
+  it('refuses a Zone for any role but Zone Leader', async () => {
+    const zoneId = await makeZone(world, world.unitA, null);
+    const response = await create(world.actors.SUPER_ADMIN.accessToken, {
+      fullName: 'Zoned Coordinator',
+      phone: '+919000000413',
+      role: 'COORDINATOR',
+      unitId: world.unitA,
+      zoneId,
+    });
+    expect(response.status).toBe(422);
   });
 });
 

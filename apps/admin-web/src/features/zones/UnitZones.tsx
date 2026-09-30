@@ -348,6 +348,7 @@ function CreateZoneForm({
         <CreateUserForm
           fixedRole="ZONE_LEADER"
           fixedUnitId={unitId}
+          forNewZone
           onCreated={(response) => {
             setValue('zoneLeaderId', response.user.id);
             setIssuedLeader(response);

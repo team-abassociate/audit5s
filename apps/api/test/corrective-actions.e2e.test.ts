@@ -7,6 +7,7 @@ import {
   type CorrectiveAction,
   type CorrectiveActionDetail,
   type CorrectiveActionSubmission,
+  type Page,
   type SyncBatchResponse,
   type SyncCatalogue,
 } from '@audit5s/contracts';
@@ -157,6 +158,31 @@ describe('materialisation on AUDIT_COMPLETED (§2.8, §7.1)', () => {
       [auditId],
     );
     expect(rows[0].n).toBe(actions.length);
+  });
+});
+
+// ------------------------------------------------ R-39 — who closed it, and when
+
+describe('the Coordinator sees who closed an action and when (R-39)', () => {
+  it('names the closing response on the list and the item, and nothing while open', async () => {
+    const { actions } = await walkBy(2);
+    expect((await submitOptionA(world, leaderToken, actions[0]!)).status).toBe(201);
+
+    const list = await world.request(
+      'GET',
+      `${base}/corrective-actions?limit=200&unitId=${world.unitA}`,
+      { token: world.actors.COORDINATOR.accessToken },
+    );
+    expect(list.status).toBe(200);
+    const rows = (list.body as Page<CorrectiveAction>).data;
+    const closed = rows.find((row) => row.id === actions[0]!.id)!;
+    const open = rows.find((row) => row.id === actions[1]!.id)!;
+    expect(closed.status).toBe('VERIFIED');
+    expect(closed.closedByName).toBe('Zoe Leader');
+    expect(closed.resolvedAt).not.toBeNull();
+    expect(open.closedByName).toBeNull();
+
+    expect((await detail(actions[0]!.id)).closedByName).toBe('Zoe Leader');
   });
 });
 

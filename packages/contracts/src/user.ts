@@ -48,6 +48,13 @@ export const createUserRequestSchema = z.object({
    * only create ZONE_LEADERs, and the unit is taken from their own membership (AZ-2).
    */
   unitId: optional(uuidSchema),
+  /**
+   * R-39: the Zone a new Zone Leader leads, made their Zone as the account is created.
+   * The forms require it except where the leader is made for a Zone being created; the
+   * server refuses it for any other role. It names who answers for the Zone, and grants nothing — a Zone Leader still
+   * audits, and answers the findings of, every Zone of their Unit.
+   */
+  zoneId: optional(uuidSchema),
 });
 export type CreateUserRequest = z.infer<typeof createUserRequestSchema>;
 

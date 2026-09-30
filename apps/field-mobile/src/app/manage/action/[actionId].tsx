@@ -130,6 +130,10 @@ export default function ReviewActionScreen() {
               action.dueAt ? `Due ${formatDate(action.dueAt)}${late ? ', overdue' : ''}` : 'No due date',
               action.assignedZoneLeaderName ? `owner ${action.assignedZoneLeaderName}` : 'no owner',
               action.reopenCount > 0 ? `reopened ×${action.reopenCount}` : null,
+              // R-39: who closed it and when.
+              action.status === 'VERIFIED' && action.resolvedAt
+                ? `closed by ${action.closedByName ?? 'unknown'}, ${formatDateTime(action.resolvedAt)}`
+                : null,
             ]
               .filter(Boolean)
               .join(', ')}

@@ -16,11 +16,11 @@ import {
   Segmented,
 } from '../../components/ui';
 import { api } from '../../lib/api';
-import { formatDate } from '../../lib/format';
+import { formatDate, formatDateTime } from '../../lib/format';
 import { humanize } from '../../lib/labels';
 import { useTheme } from '../../lib/theme';
 
-type Filter = 'REVIEW' | 'OPEN' | 'ALL';
+type Filter = 'REVIEW' | 'OPEN' | 'CLOSED' | 'ALL';
 
 const ABOUT: Record<Filter, { title: string; description: string; empty: string }> = {
   REVIEW: {
@@ -32,6 +32,12 @@ const ABOUT: Record<Filter, { title: string; description: string; empty: string 
     title: 'open',
     description: 'Waiting for the Zone leader. Overdue first.',
     empty: 'No corrective action is open.',
+  },
+  // R-39: who closed each one and when — for the Coordinator above all, who chases the work.
+  CLOSED: {
+    title: 'closed',
+    description: 'Fixed and closed, newest first, with who closed each one and when.',
+    empty: 'Nothing has been closed yet.',
   },
   ALL: {
     title: 'in all',
@@ -56,14 +62,22 @@ export default function ReviewScreen() {
   const now = Date.now();
   const toReview = all.filter((action) => awaitsReview(action.status)).length;
   const open = all.filter((action) => awaitsResponse(action.status)).length;
+  const closed = all.filter((action) => action.status === 'VERIFIED').length;
   const rows = all
     .filter((action) =>
-      filter === 'REVIEW' ? awaitsReview(action.status) : filter === 'OPEN' ? awaitsResponse(action.status) : true,
+      filter === 'REVIEW'
+        ? awaitsReview(action.status)
+        : filter === 'OPEN'
+          ? awaitsResponse(action.status)
+          : filter === 'CLOSED'
+            ? action.status === 'VERIFIED'
+            : true,
     )
-    .sort(
-      (a, b) =>
-        Number(isOverdue(b.status, b.dueAt, now)) - Number(isOverdue(a.status, a.dueAt, now)) ||
-        Date.parse(a.openedAt) - Date.parse(b.openedAt),
+    .sort((a, b) =>
+      filter === 'CLOSED'
+        ? Date.parse(b.resolvedAt ?? b.openedAt) - Date.parse(a.resolvedAt ?? a.openedAt)
+        : Number(isOverdue(b.status, b.dueAt, now)) - Number(isOverdue(a.status, a.dueAt, now)) ||
+          Date.parse(a.openedAt) - Date.parse(b.openedAt),
     );
 
   const renderItem = useCallback(
@@ -92,8 +106,9 @@ export default function ReviewScreen() {
             }
           />
           <Data>
-            {item.dueAt ? `Due ${formatDate(item.dueAt)}${late ? ', overdue' : ''}` : 'No due date'},{' '}
-            {item.assignedZoneLeaderName ?? 'no owner'}
+            {item.status === 'VERIFIED' && item.resolvedAt
+              ? `Closed by ${item.closedByName ?? 'unknown'}, ${formatDateTime(item.resolvedAt)}`
+              : `${item.dueAt ? `Due ${formatDate(item.dueAt)}${late ? ', overdue' : ''}` : 'No due date'}, ${item.assignedZoneLeaderName ?? 'no owner'}`}
           </Data>
         </Card>
       );
@@ -116,6 +131,7 @@ export default function ReviewScreen() {
               options={[
                 { value: 'REVIEW', label: `Review ${toReview}` },
                 { value: 'OPEN', label: `Open ${open}` },
+                { value: 'CLOSED', label: `Closed ${closed}` },
                 { value: 'ALL', label: 'All' },
               ]}
             />

@@ -1,4 +1,4 @@
 import { NonconformitiesScreen } from '../../components/nonconformities-list';
 
-/** The Nonconformities list as a pushed screen, where the Units tab and a signed link lead. */
+/** R-39: the Zone Leader's Nonconformities tab — the same list `/actions` shows. */
 export default NonconformitiesScreen;
