@@ -46,6 +46,11 @@ export const AUDIT_LOG_ACTIONS = [
   'corrective_action.verified',
   'corrective_action.reopened',
   'corrective_action.reassigned',
+  /**
+   * Actions a completed audit should have raised and did not, raised after the fact
+   * (2026-09-30): completion ran under a Consultant's lapsed grant and saw no Zones.
+   */
+  'corrective_action.raised_missing',
   'evidence.redacted',
   'permission.changed',
   'unit.created',

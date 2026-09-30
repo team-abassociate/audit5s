@@ -40,6 +40,9 @@ import type { Page, ReportPayload, ReportSnapshot } from '@audit5s/contracts';
  *     --api=<url>     API base, default http://127.0.0.1:3000/api/v1
  *     --expect=<url>  The address links should carry. Defaults to WEB_APP_URL.
  *     --all           Regenerate every current report, not only the unreachable ones.
+ *     --missing-links Also regenerate reports printing an open finding with no link at all —
+ *                     the ones issued before `raise-missing-corrective-actions` raised the
+ *                     actions those links point at. Run that script first.
  *     --commit        Actually do it. Without this nothing is written.
  */
 
@@ -47,6 +50,7 @@ interface Flags {
   api: string;
   expect: string;
   all: boolean;
+  missingLinks: boolean;
   commit: boolean;
 }
 
@@ -85,6 +89,11 @@ async function main(): Promise<void> {
   for (const snapshot of snapshots) {
     const payload = await api<ReportPayload>(`/reports/${snapshot.id}/payload`);
     const urls = correctiveActionUrls(payload);
+    const unlinked = flags.missingLinks ? unlinkedFindings(payload) : 0;
+    if (unlinked > 0) {
+      stale.push({ snapshot, sample: `${unlinked} open finding(s) with no link`, links: urls.length });
+      continue;
+    }
     // A report with no nonconformity has no link to reach, so nothing to re-issue.
     if (urls.length === 0) continue;
     if (!flags.all && urls.every((url) => url.startsWith(expected))) continue;
@@ -226,6 +235,25 @@ function correctiveActionUrls(payload: ReportPayload): string[] {
 }
 
 /**
+ * Findings the report prints with no button although somebody still has to answer them.
+ *
+ * A verified item is left out on purpose — the freeze mints no link for a closed item —
+ * and so is a withdrawn one, which asks nothing of anybody. Everything else without a URL
+ * is a finding whose action did not exist when the report was frozen.
+ */
+function unlinkedFindings(payload: ReportPayload): number {
+  let count = 0;
+  for (const zone of payload.zones) {
+    for (const item of [...zone.nonconformities, ...(zone.overallActions ?? [])]) {
+      if (!item.correctiveActionUrl && item.status !== 'VERIFIED' && item.status !== 'WITHDRAWN') {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+/**
  * Poll until the worker has finished with it.
  *
  * Generation returns `202` and a `QUEUED` row — the render happens in `worker-report`, so
@@ -259,6 +287,7 @@ function parseFlags(argv: string[]): Flags {
     api: value('api') ?? process.env.REISSUE_API_URL ?? 'http://127.0.0.1:3000/api/v1',
     expect: value('expect') ?? process.env.WEB_APP_URL ?? '',
     all: argv.includes('--all'),
+    missingLinks: argv.includes('--missing-links'),
     commit: argv.includes('--commit'),
   };
 }

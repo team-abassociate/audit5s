@@ -114,25 +114,38 @@ export class CorrectiveActionsService {
     const days = this.config.CORRECTIVE_ACTION_DUE_DAYS;
     const dueAt = days > 0 ? new Date(completedAt.getTime() + days * 86_400_000) : null;
 
-    const created = await unit.materialize(auditId, dueAt);
-
     /*
-     * R-33: a finding that was withdrawn and is live again comes back on this edge.
-     *
-     * `materialize` cannot raise it. It skips any photograph that already has an action
-     * (`ON CONFLICT (evidence_id) DO NOTHING`), and the withdrawn row is still that
-     * action — one photograph has one action for its whole life, which the unique index
-     * enforces. So the row is revived to REOPENED instead of a second one appearing.
-     *
-     * This runs on every completion, not only after a restart, and that is right: the
-     * only way to be in this state is for a finding to have gone and come back, and
-     * whichever path took it away, it is a finding again now.
+     * Raising the findings runs as the system too, and has to: `materialize` joins `zone`,
+     * whose RLS admits only the actor's Units. A Consultant holds a Unit through an open
+     * assignment or an open audit (0032) — and this runs *after* the audit has been set
+     * COMPLETED on this same transaction. A Consultant whose assignment had already closed
+     * lost the Unit mid-transaction, every `zone` row vanished from the join, and the audit
+     * completed with no corrective action at all: a report of nonconformities with no link
+     * to close any of them. Nothing failed, which is how RLS refuses a read.
      */
-    // As the system, like every other withdrawal-and-revival edge: `corrective_action`'s
-    // RLS admits the Unit's people for the acts those roles perform, and none of them is
-    // performing this one — the auditor finished an audit, and this followed. Without it
-    // the UPDATE matches no row and fails silently, which is how RLS refuses a write.
-    const revivable = await unit.asSystem(async () => {
+    //
+    // One block with the revival below, not two: `asSystem` restores the caller in its
+    // `finally`, so nesting would drop back to the auditor halfway through.
+    const { created, revivable } = await unit.asSystem(async () => {
+      const created = await unit.materialize(auditId, dueAt);
+
+      /*
+       * R-33: a finding that was withdrawn and is live again comes back on this edge.
+       *
+       * `materialize` cannot raise it. It skips any photograph that already has an action
+       * (`ON CONFLICT (evidence_id) DO NOTHING`), and the withdrawn row is still that
+       * action — one photograph has one action for its whole life, which the unique index
+       * enforces. So the row is revived to REOPENED instead of a second one appearing.
+       *
+       * This runs on every completion, not only after a restart, and that is right: the
+       * only way to be in this state is for a finding to have gone and come back, and
+       * whichever path took it away, it is a finding again now.
+       *
+       * As the system, like every other withdrawal-and-revival edge: `corrective_action`'s
+       * RLS admits the Unit's people for the acts those roles perform, and none of them is
+       * performing this one — the auditor finished an audit, and this followed. Without it
+       * the UPDATE matches no row and fails silently, which is how RLS refuses a write.
+       */
       const found = await unit.findRevivableActions(auditId);
       for (const action of found) {
         try {
@@ -152,7 +165,7 @@ export class CorrectiveActionsService {
       );
       // R-38: a revived overall action carries the wording the auditor left it with.
       await unit.refreshSuggestions(auditId);
-      return found;
+      return { created, revivable: found };
     });
 
     const auditStatus = await this.rollup(unit, auditId, null);
@@ -258,6 +271,65 @@ export class CorrectiveActionsService {
         auditStatus,
       };
     });
+  }
+
+  /**
+   * Raises the corrective actions a completed audit should have had and did not.
+   *
+   * The repair for completions that ran `materialize` under the auditor's RLS, which hid
+   * the Zones from a Consultant whose grant on the Unit lapsed on that same transaction
+   * (see `materializeOnCompletion`): their audits completed with nonconformities and no
+   * actions, and their reports printed findings with no link to close them.
+   *
+   * It is `cascadeAfterCorrection` on its own transaction — `materialize` opening exactly
+   * what is missing, then the audit rolling back to CORRECTIVE_ACTION_OPEN from the CLOSED
+   * it wrongly reached — plus what the audit's completion would have told people: each
+   * Zone Leader is notified of each action raised for them, and the repair is audit-logged.
+   * Idempotent: a second run finds nothing missing and opens nothing.
+   */
+  async raiseMissing(
+    scope: ScopeContext,
+    auditId: string,
+  ): Promise<{ opened: CorrectiveAction[]; auditStatus: AuditStatus }> {
+    const result = await this.repository.inTransaction(scope, async (unit) => {
+      const cascaded = await this.cascadeAfterCorrection(unit.tx, scope, auditId);
+      for (const action of cascaded.opened) {
+        await this.events.emit(unit.tx, {
+          type: 'CORRECTIVE_ACTION_OPENED',
+          actorUserId: scope.actor.userId,
+          unitId: action.unitId,
+          resourceType: 'corrective_action',
+          resourceId: action.id,
+          userIds: action.assignedZoneLeaderUserId ? [action.assignedZoneLeaderUserId] : [],
+          data: {
+            auditId,
+            auditType: action.auditType,
+            auditorName: action.auditorName,
+            zoneCode: action.zoneCode,
+            zoneName: action.zoneName,
+            questionNo: action.questionGlobalOrder,
+            suggestionNo: action.suggestionNo,
+            value: action.scoreAtCapture,
+          },
+        });
+      }
+      return { opened: cascaded.opened, auditStatus: cascaded.auditStatus };
+    });
+
+    if (result.opened.length > 0) {
+      await this.auditLog.record({
+        action: 'corrective_action.raised_missing',
+        resourceType: 'audit',
+        resourceId: auditId,
+        unitId: result.opened[0]!.unitId,
+        after: {
+          raised: result.opened.length,
+          actionIds: result.opened.map((action) => action.id),
+          auditStatus: result.auditStatus,
+        },
+      });
+    }
+    return result;
   }
 
   /**
