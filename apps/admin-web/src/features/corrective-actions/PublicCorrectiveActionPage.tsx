@@ -22,11 +22,14 @@ import { BASE_URL } from '@/lib/api';
  *     credentials, which is exactly what the server expects.
  *   * It is **responsive first**. The reader is a Zone Leader standing in front of the
  *     thing they just fixed, on a phone, probably on mobile data.
- *   * The camera is `getUserMedia` and there is **no file picker** — no `<input
- *     type="file">` anywhere in this file. §12.10 is honest that a determined user on a
- *     desktop browser can present a virtual camera; the point is that the ordinary path
- *     offers no way to attach yesterday's photograph, and the server refuses anything not
- *     flagged as a live capture regardless.
+ *   * For a **finding**, the camera is `getUserMedia` and there is **no file picker**.
+ *     §12.10 is honest that a determined user on a desktop browser can present a virtual
+ *     camera; the point is that the ordinary path offers no way to attach yesterday's
+ *     photograph, and the server refuses anything not flagged as a live capture regardless.
+ *   * For an **overall action** (R-38) — the auditor's suggestion for the Zone as a whole —
+ *     the photograph is optional and may come from the camera or the gallery, because some
+ *     fixes cannot be photographed at all (a smell). `GalleryPick` is the only file input
+ *     in this file, and it is rendered only for an overall action.
  *   * Every failure says what to do next. "This link is no longer valid" with a path to
  *     ask for a new one — never a silent failure a Zone Leader would read as "the system
  *     lost my work".
@@ -172,12 +175,23 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function Finding({ item }: { item: PublicCorrectiveAction }) {
+  // R-38: an overall action answers the auditor's sentence, not a photograph.
+  const overall = item.suggestion !== null;
   return (
     <section className="border border-edge-soft bg-tile p-4">
-      <h1 className="gb-h1">
-        {item.questionGlobalOrder ? `Q${item.questionGlobalOrder}. ` : ''}
-        {item.questionText ?? 'Walk-by observation'}
-      </h1>
+      {overall ? (
+        <>
+          <div className="text-xs uppercase tracking-wide text-ink-3">
+            Overall corrective action suggested by the auditor
+          </div>
+          <h1 className="gb-h1 mt-1 whitespace-pre-wrap">{item.suggestion}</h1>
+        </>
+      ) : (
+        <h1 className="gb-h1">
+          {item.questionGlobalOrder ? `Q${item.questionGlobalOrder}. ` : ''}
+          {item.questionText ?? 'Walk-by observation'}
+        </h1>
+      )}
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <Detail label="Unit" value={item.unitName} />
         <Detail label="Zone" value={`${item.zoneCode} — ${item.zoneName}`} />
@@ -193,7 +207,7 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
         </p>
       ) : null}
 
-      {item.beforePhotoUrl ? (
+      {overall ? null : item.beforePhotoUrl ? (
         <figure className="mt-3">
           <img
             src={sameOriginWhenSecure(item.beforePhotoUrl)}
@@ -239,12 +253,18 @@ function SubmitForm({
   onDone: () => void;
   onGone: () => void;
 }) {
+  // R-38: an overall action is answered with what was done; the photograph is optional and
+  // may come from the gallery. There is no "not possible" branch for it.
+  const overall = item.suggestion !== null;
   const [option, setOption] = useState<Option>('COMPLETED');
   const [name, setName] = useState(item.issuedToName ?? '');
   const [description, setDescription] = useState('');
   const [explanation, setExplanation] = useState('');
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  // Whether the photograph came from the camera on this page. Sent as `isLiveCapture`, so
+  // the record says honestly which it was.
+  const [photoIsLive, setPhotoIsLive] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -252,11 +272,20 @@ function SubmitForm({
   // key, and a replayed submission has to find its own attempt rather than make a new one.
   const submissionId = useRef(newId());
 
-  const acceptPhoto = useCallback((blob: Blob) => {
+  const acceptPhoto = useCallback((blob: Blob, live = true) => {
     setPhoto(blob);
+    setPhotoIsLive(live);
     setPhotoUrl((previous) => {
       if (previous) URL.revokeObjectURL(previous);
       return URL.createObjectURL(blob);
+    });
+  }, []);
+
+  const removePhoto = useCallback(() => {
+    setPhoto(null);
+    setPhotoUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
     });
   }, []);
 
@@ -268,7 +297,11 @@ function SubmitForm({
       setError('Please enter your name.');
       return;
     }
-    if (option === 'COMPLETED' && (!photo || !description.trim())) {
+    if (overall && !description.trim()) {
+      setError('Please describe the corrective action you have taken.');
+      return;
+    }
+    if (!overall && option === 'COMPLETED' && (!photo || !description.trim())) {
       setError('Option A needs a description and a photograph of the work.');
       return;
     }
@@ -282,7 +315,7 @@ function SubmitForm({
       let afterEvidenceId: string | undefined;
 
       if (option === 'COMPLETED' && photo) {
-        afterEvidenceId = await uploadAfterPhoto(token, submissionId.current, photo);
+        afterEvidenceId = await uploadAfterPhoto(token, submissionId.current, photo, photoIsLive);
       }
 
       const response = await fetch(`${BASE_URL}/public/corrective-actions/${token}/submissions`, {
@@ -338,14 +371,16 @@ function SubmitForm({
     <section className="border border-edge-soft bg-tile p-4">
       <h2 className="text-base font-semibold text-ink">Your response</h2>
 
-      <div className="mt-3 flex gap-2">
-        <OptionTab active={option === 'COMPLETED'} onClick={() => setOption('COMPLETED')}>
-          A — Done
-        </OptionTab>
-        <OptionTab active={option === 'NOT_POSSIBLE'} onClick={() => setOption('NOT_POSSIBLE')}>
-          B — Not possible
-        </OptionTab>
-      </div>
+      {overall ? null : (
+        <div className="mt-3 flex gap-2">
+          <OptionTab active={option === 'COMPLETED'} onClick={() => setOption('COMPLETED')}>
+            A — Done
+          </OptionTab>
+          <OptionTab active={option === 'NOT_POSSIBLE'} onClick={() => setOption('NOT_POSSIBLE')}>
+            B — Not possible
+          </OptionTab>
+        </div>
+      )}
 
       {/* Both answers carry a name: anyone holding the link may answer it (R-22). */}
       <div className="mt-4">
@@ -359,7 +394,51 @@ function SubmitForm({
         </Labelled>
       </div>
 
-      {option === 'COMPLETED' ? (
+      {overall ? (
+        <div className="mt-4 space-y-3">
+          <Labelled label="Corrective action taken">
+            <textarea
+              className="gb-input"
+              rows={4}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="e.g. Found the leaking drain, sealed it and cleaned the pit."
+            />
+          </Labelled>
+
+          <div>
+            <span className="mb-1 block text-sm font-medium text-ink">
+              Photograph <span className="font-normal text-ink-2">(optional)</span>
+            </span>
+            {photoUrl ? (
+              <div className="space-y-2">
+                <img
+                  src={photoUrl}
+                  alt="The photograph you chose"
+                  className="w-full border border-edge-soft"
+                  referrerPolicy="no-referrer"
+                />
+                <button
+                  type="button"
+                  className="w-full border border-edge px-3 py-2 text-sm"
+                  onClick={removePhoto}
+                >
+                  Remove photograph
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <LiveCapture onCapture={(blob) => acceptPhoto(blob, true)} preview={null} hint={null} />
+                <GalleryPick onPick={(blob) => acceptPhoto(blob, false)} />
+                <p className="text-xs text-ink-2">
+                  Take a photograph or choose one from your gallery. If the fix cannot be
+                  photographed, leave this empty.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : option === 'COMPLETED' ? (
         <div className="mt-4 space-y-3">
           <Labelled label="Photograph of the completed work">
             <LiveCapture onCapture={acceptPhoto} preview={photoUrl} />
@@ -424,9 +503,12 @@ function SubmitForm({
 function LiveCapture({
   onCapture,
   preview,
+  hint = 'The photograph is taken here, now. There is no option to attach an existing file.',
 }: {
   onCapture: (blob: Blob) => void;
   preview: string | null;
+  /** The line under the button. Null on an overall action, whose page says its own. */
+  hint?: string | null;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -473,22 +555,12 @@ function LiveCapture({
     // Downscaled to a 1920 px long edge before it leaves the page, matching what the
     // mobile capture path does (STACK.md §5) — a 12 MP frame over mobile data is the
     // difference between a submission that completes and one that times out.
-    const scale = Math.min(1, 1920 / Math.max(video.videoWidth, video.videoHeight));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
-    canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          onCapture(blob);
-          stop();
-        }
-      },
-      'image/jpeg',
-      0.8,
-    );
+    void toJpeg(video, video.videoWidth, video.videoHeight).then((blob) => {
+      if (blob) {
+        onCapture(blob);
+        stop();
+      }
+    });
   }
 
   if (preview && !live) {
@@ -537,11 +609,75 @@ function LiveCapture({
         </button>
       )}
       {error ? <p className="gb-field-error">{error}</p> : null}
-      <p className="text-xs text-ink-2">
-        The photograph is taken here, now. There is no option to attach an existing file.
-      </p>
+      {hint ? <p className="text-xs text-ink-2">{hint}</p> : null}
     </div>
   );
+}
+
+/**
+ * A photograph from the phone's gallery — **overall actions only** (R-38).
+ *
+ * The chosen file is decoded and redrawn as a JPEG at a 1920 px long edge before it leaves
+ * the page, like a camera frame: that keeps the upload small on mobile data, gives the
+ * server the one content type it expects whatever the phone stored (HEIC, PNG), and drops
+ * the file's EXIF — GPS included — because a canvas carries only pixels.
+ */
+function GalleryPick({ onPick }: { onPick: (blob: Blob) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function picked(file: File | undefined) {
+    setError(null);
+    if (!file) return;
+    try {
+      // `imageOrientation` applies the EXIF rotation into the pixels, so a portrait photo
+      // is not uploaded on its side once the EXIF is gone.
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const blob = await toJpeg(bitmap, bitmap.width, bitmap.height);
+      bitmap.close();
+      if (!blob) throw new Error('encode');
+      onPick(blob);
+    } catch {
+      setError('That file could not be read as a photograph. Please choose another.');
+    } finally {
+      // Choosing the same file again should fire `change` again.
+      if (input.current) input.current.value = '';
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => void picked(event.target.files?.[0])}
+      />
+      <button
+        type="button"
+        className="w-full border border-edge px-3 py-3 text-sm"
+        onClick={() => input.current?.click()}
+      >
+        Choose from gallery
+      </button>
+      {error ? <p className="gb-field-error">{error}</p> : null}
+    </>
+  );
+}
+
+/**
+ * Draws an image to a canvas at no more than a 1920 px long edge and encodes it as JPEG at
+ * ~80 % — what the mobile capture path does (STACK.md §5). A 12 MP frame over mobile data
+ * is the difference between a submission that completes and one that times out.
+ */
+function toJpeg(source: CanvasImageSource, width: number, height: number): Promise<Blob | null> {
+  const scale = Math.min(1, 1920 / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  canvas.getContext('2d')?.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
 }
 
 /**
@@ -604,7 +740,13 @@ function newId(): string {
   ].join('-');
 }
 
-async function uploadAfterPhoto(token: string, submissionId: string, photo: Blob): Promise<string> {
+async function uploadAfterPhoto(
+  token: string,
+  submissionId: string,
+  photo: Blob,
+  /** False for a gallery photo, which only an overall action accepts (R-38). */
+  isLiveCapture: boolean,
+): Promise<string> {
   const bytes = new Uint8Array(await photo.arrayBuffer());
   if (!crypto.subtle) {
     // Unreachable in practice — the camera is gated on the same secure context, so there
@@ -635,8 +777,8 @@ async function uploadAfterPhoto(token: string, submissionId: string, photo: Blob
         byteSize: bytes.byteLength,
         checksumSha256,
         capturedAt: new Date().toISOString(),
-        // Set here and nowhere else, by the component that owns the camera (§12.10).
-        isLiveCapture: true,
+        // True only for a frame from `LiveCapture` (§12.10); a gallery photo says so.
+        isLiveCapture,
       }),
     },
   );

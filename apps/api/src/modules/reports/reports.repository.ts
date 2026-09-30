@@ -396,6 +396,9 @@ export class ReportsRepository extends BaseRepository {
       .select({
         id: correctiveActions.id,
         evidenceId: correctiveActions.evidenceId,
+        auditZoneId: correctiveActions.auditZoneId,
+        suggestion: correctiveActions.suggestion,
+        suggestionNo: correctiveActions.suggestionNo,
         status: correctiveActions.status,
         dueAt: correctiveActions.dueAt,
         openedAt: correctiveActions.openedAt,

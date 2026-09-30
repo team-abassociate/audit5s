@@ -43,6 +43,8 @@ export async function completedWalkBy(
     withdrawn?: number;
     /** The assignment this walk-by fulfils — how a team audit's share is linked. */
     assignmentId?: string;
+    /** R-38: the auditor's overall corrective-action suggestions for the Zone. */
+    overallActionSuggestions?: string[];
   },
 ): Promise<{
   auditId: string;
@@ -87,7 +89,13 @@ export async function completedWalkBy(
   const zone = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
     token: options.token,
     headers,
-    body: { zoneId, sequenceNo: 1 },
+    body: {
+      zoneId,
+      sequenceNo: 1,
+      ...(options.overallActionSuggestions
+        ? { overallActionSuggestions: options.overallActionSuggestions }
+        : {}),
+    },
   });
   if (zone.status !== 200) throw new Error(`zone: ${JSON.stringify(zone.body)}`);
 

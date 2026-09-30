@@ -345,7 +345,7 @@ tbody tr.total-row, tbody tr.total-row td {
   background: #FFFFFF;
 }
 .nc-answer img { width: 100%; height: auto; max-height: 52mm; object-fit: contain; }
-.badge-good, .badge-nc, .badge-verified, .badge-not-possible, .badge-pending {
+.badge-good, .badge-nc, .badge-verified, .badge-not-possible, .badge-pending, .badge-overall {
   display: inline-block;
   font-size: 6.5pt;
   font-weight: 700;
@@ -358,6 +358,10 @@ tbody tr.total-row, tbody tr.total-row td {
 .badge-verified { color: #1B7F4B; background: #E2F4E9; }
 .badge-not-possible { color: #B3261E; background: #FCE7E5; }
 .badge-pending { color: #BE7D0F; background: #FDF3DB; }
+/* R-38: an overall suggestion is neither good nor a finding, so it takes the ink. */
+.badge-overall { color: ${brand.ink}; background: ${brand.panel}; }
+/* The suggestion sits where a nonconformity's photo would, so it reads as that row's body. */
+.overall-text { font-size: 8.5pt; margin: 4px 0 2px; white-space: pre-wrap; }
 /*
  * The corrective-action link.
  *
@@ -479,6 +483,8 @@ tbody tr.total-row, tbody tr.total-row td {
   border: 1px solid ${brand.hairline};
   border-bottom: none;
   border-right: none;
+  /* Its five labels and five values are one reading; never split them across a page. */
+  break-inside: avoid;
 }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .avoid-break { break-inside: avoid; }

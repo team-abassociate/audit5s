@@ -1,8 +1,9 @@
 import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
-import type {
-  AuditType,
-  ResponseValue,
-  SSection,
+import {
+  overallActionSuggestionsSchema,
+  type AuditType,
+  type ResponseValue,
+  type SSection,
 } from '@audit5s/contracts';
 import {
   numericScoreFor,
@@ -21,6 +22,7 @@ import {
   checklistVersions,
   localAuditZones,
   localQuestionResponses,
+  localZoneActionSuggestions,
   outbox,
   zones,
   type OutboxOperation,
@@ -300,6 +302,9 @@ export async function editLocalZone(
     // field the request carries is ever re-snapshotted (R-34).
     ...(input.zoneDescription !== undefined ? { zoneDescription: typedDescription } : {}),
     ...(input.zoneLeaderName !== undefined ? { zoneLeaderName: typedLeader } : {}),
+    // The outbox replaces an unsynced upsert's payload whole, so this one carries the
+    // suggestions too — or an edit after them would quietly empty the list (R-38).
+    overallActionSuggestions: await getZoneSuggestions(database, input.auditZoneId),
   });
 }
 
@@ -411,17 +416,57 @@ export async function saveLocalResponse(
   return id;
 }
 
-/** The optional overall remark, saved after the fifty questions. */
+/**
+ * R-38: the auditor's overall corrective-action suggestions for a Zone, in their order.
+ * Empty when there are none — none are required.
+ */
+export async function getZoneSuggestions(
+  database: LocalDatabase,
+  auditZoneId: string,
+): Promise<string[]> {
+  const [row] = await database
+    .select({ suggestions: localZoneActionSuggestions.suggestions })
+    .from(localZoneActionSuggestions)
+    .where(eq(localZoneActionSuggestions.auditZoneId, auditZoneId))
+    .limit(1);
+  if (!row) return [];
+  try {
+    const parsed: unknown = JSON.parse(row.suggestions);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The optional overall remark, saved after the fifty questions — and, when given, the
+ * overall corrective-action suggestions beside it (R-38). Blank suggestions are dropped;
+ * the list is refused past the server's own limits rather than dead-lettering later.
+ */
 export async function saveZoneRemark(
   database: LocalDatabase,
   auditZoneId: string,
   remark: string | null,
   now: string = new Date().toISOString(),
+  suggestions?: readonly string[],
 ): Promise<void> {
   await database
     .update(localAuditZones)
     .set({ zoneRemark: remark, clientUpdatedAt: now })
     .where(eq(localAuditZones.id, auditZoneId));
+
+  if (suggestions !== undefined) {
+    const kept = overallActionSuggestionsSchema.parse(
+      suggestions.map((item) => item.trim()).filter((item) => item !== ''),
+    );
+    await database
+      .insert(localZoneActionSuggestions)
+      .values({ auditZoneId, suggestions: JSON.stringify(kept) })
+      .onConflictDoUpdate({
+        target: localZoneActionSuggestions.auditZoneId,
+        set: { suggestions: JSON.stringify(kept) },
+      });
+  }
 
   const [zone] = await database
     .select()
@@ -442,6 +487,7 @@ export async function saveZoneRemark(
       zoneDescription: zone.zoneDescriptionSnapshot,
       zoneLeaderName: zone.zoneLeaderNameSnapshot,
       zoneRemark: remark,
+      overallActionSuggestions: await getZoneSuggestions(database, auditZoneId),
     });
   }
 }

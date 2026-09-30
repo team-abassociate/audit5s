@@ -48,6 +48,12 @@ export interface AuditStrings {
   savesOffline: string;
   overallRemark: string;
   overallRemarkPlaceholder: string;
+  /** R-38: the auditor's overall corrective-action suggestions for the Zone. */
+  overallActions: string;
+  overallActionsHint: string;
+  overallActionPlaceholder: string;
+  addOverallAction: string;
+  removeOverallAction: string;
   scoreSoFar: string;
   scoreNote: string;
   marksLine: (raw: number, max: number, answered: number, na: number) => string;
@@ -121,6 +127,12 @@ const EN: AuditStrings = {
   savesOffline: 'Answers save on this device as you tap, and sync as soon as there is a connection.',
   overallRemark: 'Overall remark (optional)',
   overallRemarkPlaceholder: 'Anything the report should carry about this Zone',
+  overallActions: 'Overall corrective action suggestions (optional)',
+  overallActionsHint:
+    'Things no photograph can show — a smell, a habit, a missing routine. Each one goes to the Zone leader with its own link in the report.',
+  overallActionPlaceholder: 'e.g. Find the source of the oil smell and ventilate the bay',
+  addOverallAction: 'Add corrective action',
+  removeOverallAction: 'Remove',
   scoreSoFar: 'Score so far',
   scoreNote: 'Worked out on this device as a guide. The server recomputes it when the audit syncs.',
   marksLine: (raw, max, answered, na) => `${raw}/${max} marks\n${answered} answered, ${na} NA`,
@@ -204,6 +216,12 @@ const HI: AuditStrings = {
   savesOffline: 'टैप करते ही उत्तर इस फ़ोन में सेव हो जाते हैं, और नेटवर्क मिलते ही सिंक हो जाते हैं।',
   overallRemark: 'पूरे ज़ोन पर टिप्पणी (वैकल्पिक)',
   overallRemarkPlaceholder: 'इस ज़ोन के बारे में जो बात रिपोर्ट में आनी चाहिए',
+  overallActions: 'पूरे ज़ोन के लिए सुधारात्मक कार्रवाई के सुझाव (वैकल्पिक)',
+  overallActionsHint:
+    'जो बातें फ़ोटो में नहीं दिखतीं — जैसे बदबू, कोई आदत, कोई छूटा हुआ नियम। हर सुझाव रिपोर्ट में अपने लिंक के साथ ज़ोन लीडर तक जाएगा।',
+  overallActionPlaceholder: 'जैसे: तेल की बदबू का स्रोत ढूँढें और हवा का इंतज़ाम करें',
+  addOverallAction: 'सुधारात्मक कार्रवाई जोड़ें',
+  removeOverallAction: 'हटाएँ',
   scoreSoFar: 'अब तक का स्कोर',
   scoreNote: 'यह स्कोर अंदाज़े के लिए इसी फ़ोन पर निकाला गया है। ऑडिट सिंक होने पर सर्वर इसे फिर से गिनता है।',
   marksLine: (raw, max, answered, na) => `${raw}/${max} अंक\n${answered} उत्तर दिए, ${na} NA`,
@@ -287,6 +305,12 @@ const MR: AuditStrings = {
   savesOffline: 'टॅप करताच उत्तरे या फोनमध्ये जतन होतात आणि नेटवर्क मिळताच सिंक होतात.',
   overallRemark: 'संपूर्ण झोनबद्दल शेरा (ऐच्छिक)',
   overallRemarkPlaceholder: 'या झोनबद्दल अहवालात यावी अशी कोणतीही गोष्ट',
+  overallActions: 'संपूर्ण झोनसाठी सुधारात्मक कृतीच्या सूचना (ऐच्छिक)',
+  overallActionsHint:
+    'ज्या गोष्टी फोटोत दिसत नाहीत — उदा. दुर्गंधी, एखादी सवय, राहून गेलेली पद्धत. प्रत्येक सूचना अहवालात स्वतःच्या लिंकसह झोन लीडरकडे जाईल.',
+  overallActionPlaceholder: 'उदा. तेलाच्या वासाचा स्रोत शोधा आणि हवा खेळती ठेवा',
+  addOverallAction: 'सुधारात्मक कृती जोडा',
+  removeOverallAction: 'काढा',
   scoreSoFar: 'आतापर्यंतचा स्कोअर',
   scoreNote: 'हा स्कोअर अंदाजासाठी याच फोनवर काढलेला आहे. ऑडिट सिंक झाल्यावर सर्व्हर तो पुन्हा मोजतो.',
   marksLine: (raw, max, answered, na) => `${raw}/${max} गुण\n${answered} उत्तरे दिली, ${na} NA`,

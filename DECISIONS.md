@@ -1725,3 +1725,77 @@ where a removed version was.
 
 **Corrective-action links** printed in a removed report keep working. A Zone Leader may
 already be using one, and revoking a link stays a separate, deliberate act (§10.4).
+
+## R-38 — Overall corrective-action suggestions for a Zone
+
+**Settled 2026-09-30 by the product owner.** **Changes §2.8 and §5.7** ("one action per
+nonconformity photograph"), **§10.4 and §12.10** (live capture only on the corrective-action
+page) **for this one kind of action**, and **R-11**'s "no gallery picker in the
+corrective-action flow" likewise. In the owner's words: an auditor finds things no
+photograph can show — *"if there is stink in that room … that photo cannot be taken of
+stink"* — so after the fiftieth question, beside the overall remark, the auditor may add any
+number of **overall corrective action suggestions** for the Zone. None is required to
+complete the Zone.
+
+### (a) A suggestion becomes a corrective action, like a photograph does
+
+Each suggestion is a `corrective_action` row, raised by `materialize` on the completing
+transaction exactly as a nonconformity's is — same routing to the Zone's leader, same due
+date, same notifications, same audit roll-up, same place in the Zone Leader's list, and the
+same signed link in the report. A second table would have been a second implementation of
+all of that. Migration `0038`:
+
+- `audit_zone.overall_action_suggestions text[]`, at most 20 (a CHECK; the contract adds
+  1,000 characters each). The device sends the whole list on the Zone upsert, beside
+  `zoneRemark`; every Zone upsert carries it, because the outbox replaces an unsynced
+  payload whole.
+- `corrective_action.evidence_id` becomes nullable, and a row carries exactly one of
+  `evidence_id` (a finding) or `suggestion` + `suggestion_no` (an overall action) — a CHECK.
+  `(audit_zone_id, suggestion_no)` is unique, which makes a replayed completion raise nothing
+  twice, as `UNIQUE(evidence_id)` does for findings.
+- **Identity is the place in the list.** A restart (R-33) withdraws overall actions with
+  everything else; the next completion revives the ones whose place still holds a
+  suggestion, with its current wording, and leaves a deleted one withdrawn. A mark
+  correction (R-30/R-31) does not touch them: they answer no mark.
+
+### (b) Answered in words; the photograph is optional and may come from the gallery
+
+The answer is Option A with a description of the corrective action taken. For an overall
+action — and only for one:
+
+- **The after-photo is optional.** CA-2's "Option A needs an after-photo" moves from a CHECK
+  into `enforce_submission_after_evidence()`, which can see the action: a finding still
+  needs one, an overall action does not. The description stays a CHECK for both.
+- **A photo may come from the gallery.** The live-capture rule is kept for findings at all
+  three places it is enforced (upload intent, submission, trigger) and waived for overall
+  actions. The record stays honest: `is_live_capture` is stored as the client declared it,
+  so a gallery photo is `false`.
+- **No "not possible" branch** on the page for an overall action; the owner described one
+  form. The shared schema still accepts Option B, so the rule is the page's.
+- **It closes on submission** (R-23), and a Super Admin may reopen it.
+
+The link page (`/ca/{token}`) offers *Open the camera* and *Choose from gallery*. The gallery
+file is decoded and redrawn as a ≤1920 px JPEG before upload, like a camera frame, which
+also strips its EXIF. The field app keeps to its in-app camera: a gallery picker there is
+`expo-image-picker`, a native module, and so a new APK rather than an over-the-air update.
+
+### (c) Where it prints
+
+The Zone report (template 1.6.0) moves the auditor's overall remark **after the photo
+evidence**, and follows it with *Overall corrective action suggestions*: each numbered, in
+the auditor's words, with its link, laid out as a nonconformity row — the right half blank
+in the initial report and carrying the answer in the after-evidence one. A payload frozen
+before this carries no `overallActions`; it defaults to empty and renders as issued (RS-1).
+The closure summary still counts nonconformities only.
+
+**Analytics** count overall actions wherever they count corrective actions (open per Zone,
+per-leader throughput, closure time): they are work a Zone Leader owes, and the audit's own
+roll-up already waits on them.
+
+### (d) Phones on an older build
+
+An app built before this keeps the cached `corrective_action.before_evidence_id` NOT NULL,
+and a single photo-less row would fail its whole catalogue write. `GET /sync/catalogue`
+therefore sends overall actions only when asked (`?overallActions=true`), which this build
+always does after its local v9 migration. An older phone simply does not list them; whoever
+holds it answers through the report's link until the over-the-air update lands.

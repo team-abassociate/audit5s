@@ -150,6 +150,8 @@ export class CorrectiveActionsService {
         found.map((action) => action.id),
         dueAt,
       );
+      // R-38: a revived overall action carries the wording the auditor left it with.
+      await unit.refreshSuggestions(auditId);
       return found;
     });
 
@@ -338,9 +340,17 @@ export class CorrectiveActionsService {
     const action = await this.mustFind(submitScope, actionId);
 
     const photo =
-      request.option === 'COMPLETED'
+      request.option === 'COMPLETED' && request.afterEvidenceId
         ? await this.checkAfterPhoto(submitScope, action, request.afterEvidenceId, request.id)
         : null;
+    // CA-2: a finding answered as done shows the fixed condition. An overall action (R-38)
+    // may not have one to show — a smell cannot be photographed — so for it the photo is
+    // optional. The database says the same (0038).
+    if (request.option === 'COMPLETED' && !photo && action.evidenceId !== null) {
+      throw AppError.validation('Option A requires an after-photo (CA-2)', [
+        { field: 'afterEvidenceId', message: 'Take a photograph of the corrected condition' },
+      ]);
+    }
 
     // Option A takes its id from the photograph, which was keyed to it at capture (§5.6):
     // an HTTP client need not send one, and a device's is the same value anyway.
@@ -643,7 +653,8 @@ export class CorrectiveActionsService {
     if (submissionId && photo.correctiveActionSubmissionId !== submissionId) {
       throw invalid('This photograph was taken for a different attempt');
     }
-    if (!photo.isLiveCapture) {
+    // An overall action's photo may come from the gallery (R-38); a finding's may not.
+    if (!photo.isLiveCapture && action.evidenceId !== null) {
       throw invalid('Option A requires a live after-photo (CA-2)');
     }
     if (photo.syncState !== 'SYNCED' || !photo.uploadedAt) {
@@ -680,6 +691,8 @@ function describe(action: CorrectiveActionRow) {
     zoneCode: action.zoneCode,
     zoneName: action.zoneName,
     questionNo: action.questionGlobalOrder,
+    // R-38: an overall action has no question; its place in the auditor's list names it.
+    suggestionNo: action.suggestionNo,
     // Which audit this came out of, in the only terms a Super Admin reading a notification
     // has: the kind of audit and who conducted it. The id alone answers the question only
     // to somebody willing to go and look it up.
@@ -697,6 +710,8 @@ export function toCorrectiveAction(row: CorrectiveActionRow): CorrectiveAction {
     unitId: row.unitId,
     zoneId: row.zoneId,
     checklistQuestionId: row.checklistQuestionId,
+    suggestion: row.suggestion,
+    suggestionNo: row.suggestionNo,
     status: row.status,
     assignedZoneLeaderUserId: row.assignedZoneLeaderUserId,
     assignedZoneLeaderName: row.assignedZoneLeaderName,

@@ -381,9 +381,21 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
       />
       <div className="grid gap-4 p-4 md:grid-cols-[16rem_1fr]">
         <div className="space-y-2">
-          <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">The finding</p>
-          <Photo evidenceId={action.evidenceId} remark={action.findingRemark} alt="Nonconformity photograph" />
-          {action.findingRemark && <p className="text-sm text-ink-2">{action.findingRemark}</p>}
+          {action.evidenceId ? (
+            <>
+              <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">The finding</p>
+              <Photo evidenceId={action.evidenceId} remark={action.findingRemark} alt="Nonconformity photograph" />
+              {action.findingRemark && <p className="text-sm text-ink-2">{action.findingRemark}</p>}
+            </>
+          ) : (
+            <>
+              {/* R-38: an overall suggestion has no photograph — the words are the finding. */}
+              <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">
+                Overall suggestion
+              </p>
+              <p className="text-sm whitespace-pre-wrap text-ink">{action.suggestion}</p>
+            </>
+          )}
           <dl className="grid grid-cols-2 gap-1 text-xs text-ink-2">
             <dt>Status</dt>
             <dd>
@@ -544,6 +556,7 @@ function StatusBadge({ status }: { status: CorrectiveActionStatus }) {
 }
 
 function itemLabel(action: CorrectiveAction): string {
+  if (action.suggestionNo !== null) return `Overall action ${action.suggestionNo}: ${action.suggestion ?? ''}`;
   if (action.questionGlobalOrder === null) return 'Walk-by observation';
   const section = action.section ? `${sectionLabel(action.section)} · ` : '';
   return `${section}Q${action.questionGlobalOrder}: ${action.questionText ?? ''}`;

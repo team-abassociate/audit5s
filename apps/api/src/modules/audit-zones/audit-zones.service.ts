@@ -200,6 +200,7 @@ export class AuditZonesService {
         sequenceNo: request.sequenceNo,
         checklistVersionId,
         zoneRemark: request.zoneRemark,
+        overallActionSuggestions: request.overallActionSuggestions,
         resumeQuestionId: request.resumeQuestionId,
         clientUpdatedAt: request.clientUpdatedAt ? new Date(request.clientUpdatedAt) : new Date(),
         snapshot,

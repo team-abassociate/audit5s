@@ -49,7 +49,11 @@ export default function NonconformitiesScreen() {
               <Chip tone={open ? 'warn' : 'muted'}>{statusLabel(item)}</Chip>
             </View>
             <Muted>
-              {item.questionGlobalOrder ? `Q${item.questionGlobalOrder}: ${item.questionText ?? ''}` : 'Walk-by observation'}
+              {item.questionGlobalOrder
+                ? `Q${item.questionGlobalOrder}: ${item.questionText ?? ''}`
+                : item.suggestion
+                  ? `Overall action ${item.suggestionNo ?? ''}: ${item.suggestion}`
+                  : 'Walk-by observation'}
             </Muted>
             {item.dueAt ? (
               <Text style={[styles.due, late && styles.late]}>

@@ -301,6 +301,46 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
       `DELETE FROM sync_meta WHERE key = 'catalogue_version'`,
     ],
   },
+  {
+    /*
+     * 0038 on the phone (R-38): overall corrective-action suggestions.
+     *
+     * The auditor's list for a Zone is a table of its own for the reason v8's translations
+     * are: `CREATE TABLE IF NOT EXISTS` re-runs cleanly where `ADD COLUMN` would not.
+     *
+     * The cached corrective actions gain the suggestion and lose `before_evidence_id`'s
+     * NOT NULL — an overall action has no before photo. SQLite cannot drop a NOT NULL, so
+     * the table is rebuilt as v7 rebuilt `audit_zone`, copying every row; nothing
+     * references it by foreign key.
+     */
+    version: 9,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS zone_action_suggestion (
+         audit_zone_id TEXT PRIMARY KEY, suggestions TEXT NOT NULL DEFAULT '[]'
+       )`,
+      `DROP TABLE IF EXISTS corrective_action_rebuild`,
+      `CREATE TABLE corrective_action_rebuild (
+         id TEXT PRIMARY KEY, unit_id TEXT NOT NULL, audit_id TEXT NOT NULL,
+         zone_id TEXT NOT NULL, zone_code TEXT NOT NULL, zone_name TEXT NOT NULL,
+         status TEXT NOT NULL, section TEXT, question_global_order INTEGER,
+         question_text TEXT, finding_remark TEXT, before_evidence_id TEXT,
+         suggestion TEXT, suggestion_no INTEGER,
+         assigned_zone_leader_user_id TEXT, due_at TEXT,
+         reopen_count INTEGER NOT NULL DEFAULT 0
+       )`,
+      `INSERT INTO corrective_action_rebuild (
+         id, unit_id, audit_id, zone_id, zone_code, zone_name, status, section,
+         question_global_order, question_text, finding_remark, before_evidence_id,
+         assigned_zone_leader_user_id, due_at, reopen_count
+       ) SELECT
+         id, unit_id, audit_id, zone_id, zone_code, zone_name, status, section,
+         question_global_order, question_text, finding_remark, before_evidence_id,
+         assigned_zone_leader_user_id, due_at, reopen_count
+       FROM corrective_action`,
+      `DROP TABLE corrective_action`,
+      `ALTER TABLE corrective_action_rebuild RENAME TO corrective_action`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

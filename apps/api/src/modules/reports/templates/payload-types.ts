@@ -7,6 +7,7 @@ export type {
   ReportClosure,
   ReportNonconformity,
   ReportOutcome,
+  ReportOverallAction,
   ReportPayload,
   ReportPhoto,
   ReportQuestion,

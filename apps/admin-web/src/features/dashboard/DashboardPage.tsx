@@ -1142,7 +1142,7 @@ const FINDING_ORDER: Record<'open' | 'submitted' | 'closed', number> = {
 };
 
 function findingTitle(action: CorrectiveAction): string {
-  return action.questionText ?? action.findingRemark ?? 'Walk-by observation';
+  return action.questionText ?? action.suggestion ?? action.findingRemark ?? 'Walk-by observation';
 }
 
 function formatDate(iso: string | null): string {

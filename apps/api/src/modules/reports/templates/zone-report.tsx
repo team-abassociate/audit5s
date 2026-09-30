@@ -1,6 +1,8 @@
 import { S_SECTION_ORDER, S_SECTION_LABELS, reportZoneLabel, sectionLabel } from '@audit5s/domain';
 import type {
   ReportNonconformity,
+  ReportOutcome,
+  ReportOverallAction,
   ReportPayload,
   ReportPhoto,
   ReportZone,
@@ -104,13 +106,6 @@ export function ZoneReport({
       <h2 className="section-title page-break">Checklist — responses and marks</h2>
       <ChecklistTable zone={zone} payload={payload} />
 
-      {zone.zoneRemark ? (
-        <>
-          <h2 className="section-title">Zone remark</h2>
-          <div className="zone-remark">{zone.zoneRemark}</div>
-        </>
-      ) : null}
-
       {zone.good.length > 0 ? (
         <>
           <h2 className="section-title">Good evidence</h2>
@@ -130,6 +125,32 @@ export function ZoneReport({
             <NonconformityRow
               key={item.evidenceId}
               item={item}
+              resolve={resolve}
+              after={after}
+            />
+          ))}
+        </>
+      ) : null}
+
+      {/*
+        R-38: after the photo evidence, the auditor's overall remark and then their overall
+        corrective-action suggestions — what the auditor found that no photograph shows.
+      */}
+      {zone.zoneRemark ? (
+        <>
+          <h2 className="section-title">Auditor's overall remark</h2>
+          <div className="zone-remark">{zone.zoneRemark}</div>
+        </>
+      ) : null}
+
+      {/* Absent on a payload frozen before R-38, which renders as it was issued. */}
+      {(zone.overallActions ?? []).length > 0 ? (
+        <>
+          <h2 className="section-title">Overall corrective action suggestions</h2>
+          {zone.overallActions.map((action) => (
+            <OverallActionRow
+              key={action.correctiveActionId}
+              action={action}
               resolve={resolve}
               after={after}
             />
@@ -272,8 +293,47 @@ function NonconformityRow({
   );
 }
 
+/**
+ * R-38: one overall suggestion, laid out as a nonconformity is — the suggestion and its link
+ * on the left where the photo would be, the right half reserved (initial) or answered
+ * (after-evidence) by the same rule, so a reader learns one layout, not two.
+ */
+function OverallActionRow({
+  action,
+  resolve,
+  after,
+}: {
+  action: ReportOverallAction;
+  resolve: ImageResolver;
+  after: boolean;
+}) {
+  return (
+    <div className="nc-row">
+      <div className="photo-card">
+        <div className="photo-caption">
+          <span className="badge-overall">OVERALL {action.suggestionNo}</span>
+        </div>
+        <div className="overall-text">{action.suggestion}</div>
+        {action.correctiveActionUrl ? (
+          <CorrectiveActionLink
+            url={action.correctiveActionUrl}
+            hint="Describe what was done; a photograph is optional. No app or login needed."
+          />
+        ) : null}
+      </div>
+      {after ? <Outcome item={action} resolve={resolve} /> : <div className="nc-placeholder" />}
+    </div>
+  );
+}
+
 /** §4.2 / §10.3-B: Option A, Option B, or Pending with the deadline. */
-function Outcome({ item, resolve }: { item: ReportNonconformity; resolve: ImageResolver }) {
+function Outcome({
+  item,
+  resolve,
+}: {
+  item: { outcome: ReportOutcome | null; dueAt: string | null };
+  resolve: ImageResolver;
+}) {
   const outcome = item.outcome;
 
   if (!outcome) {
@@ -308,7 +368,8 @@ function Outcome({ item, resolve }: { item: ReportNonconformity; resolve: ImageR
     <div className="nc-answer">
       {outcome.afterPhoto ? <Photo photo={outcome.afterPhoto} resolve={resolve} /> : null}
       <div className="photo-caption">
-        AFTER PHOTO
+        {/* An overall action may be answered without a photograph (R-38). */}
+        {outcome.afterPhoto ? 'AFTER PHOTO' : 'ACTION TAKEN'}
         {outcome.verified ? <span className="badge-verified"> ✓ VERIFIED</span> : null}
       </div>
       <div className="photo-remark">

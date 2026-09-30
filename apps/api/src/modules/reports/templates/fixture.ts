@@ -149,6 +149,40 @@ const NONCONFORMITIES: ReportNonconformity[] = [
   },
 ];
 
+/**
+ * R-38: two overall suggestions — one still open, one answered in words alone, which is the
+ * case the feature exists for: a smell has no after-photo.
+ */
+const OVERALL_ACTIONS: ReportZone['overallActions'] = [
+  {
+    correctiveActionId: 'ca-overall-1',
+    suggestionNo: 1,
+    suggestion: 'Strong oil smell near the press pit. Find the source and ventilate the bay.',
+    status: 'VERIFIED',
+    dueAt: '2026-03-11T06:30:00.000Z',
+    correctiveActionUrl: null,
+    outcome: {
+      option: 'COMPLETED',
+      submittedByName: 'R. Deshmukh',
+      submittedAt: '2026-03-06T08:00:00.000Z',
+      description: 'Leaking return line replaced; exhaust fan in bay 2 repaired.',
+      afterPhoto: null,
+      explanation: null,
+      verified: true,
+      verifiedAt: '2026-03-06T08:00:00.000Z',
+    },
+  },
+  {
+    correctiveActionId: 'ca-overall-2',
+    suggestionNo: 2,
+    suggestion: 'Start a daily five-minute end-of-shift clean-up with a sign-off sheet.',
+    status: 'OPEN',
+    dueAt: '2026-03-11T06:30:00.000Z',
+    correctiveActionUrl: 'https://app.example.test/ca/FIXED-TOKEN-OVERALL-2',
+    outcome: null,
+  },
+];
+
 const ZONE: ReportZone = {
   auditZoneId: 'az-1',
   auditId: 'audit-1',
@@ -172,6 +206,7 @@ const ZONE: ReportZone = {
     photo({ evidenceId: 'ev-good-2', questionGlobalOrder: 19, section: 'S2_SET_IN_ORDER' }),
   ],
   nonconformities: NONCONFORMITIES,
+  overallActions: OVERALL_ACTIONS,
 };
 
 /** The initial Zone report (§4.1). Its nonconformities have no outcome rendered. */

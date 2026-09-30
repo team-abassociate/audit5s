@@ -3,6 +3,8 @@ import {
   type ReportClosure,
   type ReportKind,
   type ReportNonconformity,
+  type ReportOutcome,
+  type ReportOverallAction,
   type ReportPayload,
   type ReportPhoto,
   type ReportQuestion,
@@ -167,7 +169,9 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
     }));
 
   const photos = input.photos.filter((photo) => photo.auditZoneId === zone.auditZoneId);
-  const actionByEvidence = new Map(input.actions.map((action) => [action.evidenceId, action]));
+  const actionByEvidence = new Map(
+    input.actions.flatMap((action) => (action.evidenceId ? [[action.evidenceId, action] as const] : [])),
+  );
 
   return {
     auditZoneId: zone.auditZoneId,
@@ -197,6 +201,71 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
     nonconformities: photos
       .filter((photo) => photo.classification === 'NONCONFORMITY')
       .map((photo) => toNonconformity(photo, actionByEvidence.get(photo.id), input.actionUrls)),
+    overallActions: input.actions
+      .filter(
+        (action) =>
+          action.auditZoneId === zone.auditZoneId &&
+          action.suggestion !== null &&
+          action.suggestionNo !== null &&
+          // A suggestion the auditor deleted on a restart was withdrawn: it is not asked of
+          // anybody any more, and the report no longer prints it (R-31, R-38).
+          action.status !== 'WITHDRAWN',
+      )
+      .sort((a, b) => a.suggestionNo! - b.suggestionNo!)
+      .map((action) => toOverallAction(action, input.actionUrls)),
+  };
+}
+
+/**
+ * R-38: one overall suggestion, with its link and — in an after-evidence report — the
+ * answer, exactly as a nonconformity carries them. It has no before photo, and its
+ * after-photo is optional.
+ */
+function toOverallAction(
+  action: FreezeInput['actions'][number],
+  urls: ReadonlyMap<string, string>,
+): ReportOverallAction {
+  return {
+    correctiveActionId: action.id,
+    suggestionNo: action.suggestionNo!,
+    suggestion: action.suggestion!,
+    status: action.status,
+    dueAt: action.dueAt?.toISOString() ?? null,
+    correctiveActionUrl: urls.get(action.id) ?? null,
+    outcome: outcomeOf(action, {
+      questionGlobalOrder: null,
+      questionText: null,
+      section: null,
+    }),
+  };
+}
+
+/** The latest attempt, as the right half of a row prints it. Null while unanswered. */
+function outcomeOf(
+  action: FreezeInput['actions'][number],
+  question: Pick<ReportPhoto, 'questionGlobalOrder' | 'questionText' | 'section'>,
+): ReportOutcome | null {
+  if (!action.submissionOption) return null;
+  return {
+    option: action.submissionOption,
+    submittedByName: action.submittedByName ?? '',
+    submittedAt: (action.submittedAt ?? action.openedAt).toISOString(),
+    description: action.description,
+    afterPhoto: action.afterEvidenceId
+      ? {
+          evidenceId: action.afterEvidenceId,
+          objectKey: action.afterRedactedAt ? null : action.afterObjectKey,
+          redacted: action.afterRedactedAt !== null,
+          remark: null,
+          capturedAt: action.afterCapturedAt?.toISOString() ?? null,
+          isSummaryFlagged: false,
+          ...question,
+          scoreAtCapture: null,
+        }
+      : null,
+    explanation: action.explanation,
+    verified: action.status === 'VERIFIED',
+    verifiedAt: action.resolvedAt?.toISOString() ?? null,
   };
 }
 
@@ -239,38 +308,13 @@ function toNonconformity(
     };
   }
 
-  const verified = action.status === 'VERIFIED';
   return {
     ...base,
     correctiveActionId: action.id,
     status: action.status,
     dueAt: action.dueAt?.toISOString() ?? null,
     correctiveActionUrl: urls.get(action.id) ?? null,
-    outcome: action.submissionOption
-      ? {
-          option: action.submissionOption,
-          submittedByName: action.submittedByName ?? '',
-          submittedAt: (action.submittedAt ?? action.openedAt).toISOString(),
-          description: action.description,
-          afterPhoto: action.afterEvidenceId
-            ? {
-                evidenceId: action.afterEvidenceId,
-                objectKey: action.afterRedactedAt ? null : action.afterObjectKey,
-                redacted: action.afterRedactedAt !== null,
-                remark: null,
-                capturedAt: action.afterCapturedAt?.toISOString() ?? null,
-                isSummaryFlagged: false,
-                questionGlobalOrder: base.questionGlobalOrder,
-                questionText: base.questionText,
-                section: base.section,
-                scoreAtCapture: null,
-              }
-            : null,
-          explanation: action.explanation,
-          verified,
-          verifiedAt: action.resolvedAt?.toISOString() ?? null,
-        }
-      : null,
+    outcome: outcomeOf(action, base),
   };
 }
 

@@ -9,6 +9,7 @@ import {
   createLocalAudit,
   editLocalZone,
   getLocalAuditZone,
+  getZoneSuggestions,
   listLocalAudits,
   listOutbox,
   listQuestionsWithAnswers,
@@ -149,6 +150,32 @@ describe('the local schema', () => {
     expect(zone?.auditId).toBe(auditId);
     expect(zone?.status).toBe('IN_PROGRESS');
     expect(await executor.userVersion()).toBe(LOCAL_SCHEMA_VERSION);
+  });
+
+  it('rebuilds corrective_action for v9 without losing a cached action (R-38)', async () => {
+    await executor.exec(
+      `INSERT INTO corrective_action (id, unit_id, audit_id, zone_id, zone_code, zone_name,
+         status, before_evidence_id)
+       VALUES ('ca-1', 'u', 'a', 'z', 'Z-01', 'Press', 'OPEN', 'ev-1')`,
+    );
+
+    // Interrupted after COMMIT but before `user_version` moved: step 9 runs twice.
+    await executor.setUserVersion(8);
+    await migrateLocalDatabase(executor);
+    await executor.setUserVersion(8);
+    await expect(migrateLocalDatabase(executor)).resolves.toBe(LOCAL_SCHEMA_VERSION);
+
+    const rows = await executor.query(
+      `SELECT id, before_evidence_id, suggestion FROM corrective_action`,
+      [],
+    );
+    expect(rows).toEqual([['ca-1', 'ev-1', null]]);
+    // An overall action has no before photo; the column must now take a null.
+    await executor.exec(
+      `INSERT INTO corrective_action (id, unit_id, audit_id, zone_id, zone_code, zone_name,
+         status, suggestion, suggestion_no)
+       VALUES ('ca-2', 'u', 'a', 'z', 'Z-01', 'Press', 'OPEN', 'Ventilate the bay', 1)`,
+    );
   });
 
   it('re-runs step 8 cleanly and makes the next sync fetch the whole catalogue (0036)', async () => {
@@ -877,5 +904,67 @@ describe('correcting the Zone details the auditor typed (R-34)', () => {
       (row) => row.entityId === auditZoneId && row.operation === 'upsert',
     );
     expect(JSON.parse(queued[0]!.payload as string)).not.toHaveProperty('zoneDescription');
+  });
+});
+
+describe('overall corrective-action suggestions (R-38)', () => {
+  function queuedUpsert(auditZoneId: string) {
+    return listOutbox(database).then((rows) =>
+      rows.find((row) => row.entityId === auditZoneId && row.operation === 'upsert'),
+    );
+  }
+
+  it('are optional: a Zone finishes with none, and the upsert says so', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    await saveZoneRemark(database, auditZoneId, 'Clean overall', undefined, []);
+    await completeLocalZone(database, auditZoneId);
+
+    expect(await getZoneSuggestions(database, auditZoneId)).toEqual([]);
+    expect(JSON.parse((await queuedUpsert(auditZoneId))!.payload)).toMatchObject({
+      zoneRemark: 'Clean overall',
+      overallActionSuggestions: [],
+    });
+  });
+
+  it('are saved with the remark, in order, with blanks dropped', async () => {
+    const { auditZoneId } = await startAudit();
+    await saveZoneRemark(database, auditZoneId, 'Smell near the pit', undefined, [
+      '  Find the source of the oil smell  ',
+      '',
+      'Start a daily clean-up with a sign-off sheet',
+    ]);
+
+    const expected = [
+      'Find the source of the oil smell',
+      'Start a daily clean-up with a sign-off sheet',
+    ];
+    expect(await getZoneSuggestions(database, auditZoneId)).toEqual(expected);
+    expect(JSON.parse((await queuedUpsert(auditZoneId))!.payload)).toMatchObject({
+      zoneNumber: 1,
+      zoneRemark: 'Smell near the pit',
+      overallActionSuggestions: expected,
+    });
+  });
+
+  it('survive a later Zone edit, which replaces the unsynced upsert whole', async () => {
+    const { auditZoneId } = await startAudit();
+    await saveZoneRemark(database, auditZoneId, null, undefined, ['Ventilate the bay']);
+    await editLocalZone(database, { auditZoneId, zoneDescription: 'Bays 1–4' });
+
+    expect(JSON.parse((await queuedUpsert(auditZoneId))!.payload)).toMatchObject({
+      zoneDescription: 'Bays 1–4',
+      overallActionSuggestions: ['Ventilate the bay'],
+    });
+  });
+
+  it('refuses more than the server accepts, before anything is queued', async () => {
+    const { auditZoneId } = await startAudit();
+    const tooMany = Array.from({ length: 21 }, (_, index) => `Suggestion ${index + 1}`);
+
+    await expect(
+      saveZoneRemark(database, auditZoneId, null, undefined, tooMany),
+    ).rejects.toThrow();
+    expect(await getZoneSuggestions(database, auditZoneId)).toEqual([]);
   });
 });

@@ -183,8 +183,9 @@ export class EvidenceService {
    *
    * It hangs off an audit that is completed by definition, so the audit's write rules do
    * not apply; the action's do. The photograph is keyed to the attempt the device minted
-   * when the form opened (§5.6), and it must be a live capture — the flow offers no other
-   * way to take one, and the submission refuses one that says otherwise (CA-2).
+   * when the form opened (§5.6), and for a finding it must be a live capture — the flow
+   * offers no other way to take one, and the submission refuses one that says otherwise
+   * (CA-2). An overall action's photo may come from the gallery (R-38).
    */
   private async createAfterPhotoIntent(
     scope: ScopeContext,
@@ -196,15 +197,15 @@ export class EvidenceService {
         { field: 'correctiveActionSubmissionId', message: 'Required for CORRECTIVE_AFTER' },
       ]);
     }
-    if (!request.isLiveCapture) {
-      throw AppError.validation('An after-photo must be a live capture (§12.10)', [
-        { field: 'isLiveCapture', message: 'Must be true' },
-      ]);
-    }
 
     const action = await this.correctiveActions.findAnswerable(scope, request.correctiveActionId);
     if (!action || action.auditId !== request.auditId) {
       throw AppError.notFound('No such corrective action');
+    }
+    if (!request.isLiveCapture && action.evidenceId !== null) {
+      throw AppError.validation('An after-photo must be a live capture (§12.10)', [
+        { field: 'isLiveCapture', message: 'Must be true' },
+      ]);
     }
     if (!awaitsResponse(action.status)) {
       throw AppError.conflict(
@@ -240,7 +241,9 @@ export class EvidenceService {
       scoreAtCapture: null,
       classification: classifyEvidence({ kind: 'CORRECTIVE_AFTER' }),
       remark: request.remark ?? null,
-      isLiveCapture: true,
+      // As the client declared it: always true for a finding (checked above), and false for
+      // an overall action's photo taken from the gallery (R-38), so the record says so.
+      isLiveCapture: request.isLiveCapture,
       capturedAt: new Date(request.capturedAt),
       // Location is not recorded (dropped 2026-09-29). An older app may still send one;
       // it is accepted by the contract and discarded here.

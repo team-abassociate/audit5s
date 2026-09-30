@@ -182,6 +182,14 @@ export const auditZones = pgTable(
     checklistTemplateNameSnapshot: text('checklist_template_name_snapshot'),
 
     zoneRemark: text('zone_remark'),
+    /**
+     * R-38: overall corrective-action suggestions, in the auditor's order. Each becomes a
+     * corrective action when the audit completes. Empty when there are none.
+     */
+    overallActionSuggestions: text('overall_action_suggestions')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     /** Null when every question is NA (D4). */
     scorePercentage: numeric('score_percentage', { precision: 6, scale: 3 }),
     applicableQuestions: integer('applicable_questions').notNull().default(0),

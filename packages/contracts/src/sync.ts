@@ -49,6 +49,13 @@ export const syncCatalogueQuerySchema = z.object({
    * `serverTime` and the same version with empty collections — the device keeps what it has.
    */
   since: z.string().trim().min(1).max(128).optional(),
+  /**
+   * R-38: the device can store an **overall** corrective action — one with no before
+   * photo. An app built before R-38 keeps that column NOT NULL, and one such row would
+   * fail its whole catalogue write; it never asks, so it is never sent one. Its holder
+   * can still answer through the report's link.
+   */
+  overallActions: booleanQuery(false),
 });
 export type SyncCatalogueQuery = z.infer<typeof syncCatalogueQuerySchema>;
 

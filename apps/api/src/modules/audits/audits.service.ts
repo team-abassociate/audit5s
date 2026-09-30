@@ -870,6 +870,7 @@ export class AuditsService {
           zoneCode: action.zoneCode,
           zoneName: action.zoneName,
           questionNo: action.questionGlobalOrder,
+          suggestionNo: action.suggestionNo,
           value: action.scoreAtCapture,
         },
       });
@@ -1099,6 +1100,7 @@ export function toAuditZone(
     checklistVersionId: row.checklistVersionId,
     checklistTemplateNameSnapshot: row.checklistTemplateNameSnapshot,
     zoneRemark: row.zoneRemark,
+    overallActionSuggestions: row.overallActionSuggestions,
     totals: {
       applicableQuestions: row.applicableQuestions,
       naQuestions: row.naQuestions,

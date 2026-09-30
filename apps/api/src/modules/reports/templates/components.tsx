@@ -437,7 +437,14 @@ export function Photo({ photo, resolve }: { photo: ReportPhoto; resolve: ImageRe
  * §10.4's security properties live in the token — 256 random bits, hashed at rest, one
  * corrective action, expiring — and never in the link being hard to see.
  */
-export function CorrectiveActionLink({ url }: { url: string }) {
+export function CorrectiveActionLink({
+  url,
+  hint = 'Photograph the completed work. No app or login needed.',
+}: {
+  url: string;
+  /** What the reader will be asked for. An overall action (R-38) needs no photograph. */
+  hint?: string;
+}) {
   const qr = encodeQr(url);
   return (
     <a className="cta" href={url}>
@@ -456,7 +463,7 @@ export function CorrectiveActionLink({ url }: { url: string }) {
       </svg>
       <span className="cta-text">
         <span className="cta-label">Scan or tap — submit corrective action ▸</span>
-        <span className="cta-hint">Photograph the completed work. No app or login needed.</span>
+        <span className="cta-hint">{hint}</span>
         {/* Wrapped at every character: a 43-character secret has no spaces to break at,
             and without this it would run past the card and be clipped. */}
         <span className="cta-url">{url}</span>
