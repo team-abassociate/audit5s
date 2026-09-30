@@ -517,7 +517,7 @@ describe('assignments', () => {
     const { auditId, auditZoneId } = await startAuditWithZone({
       token,
       deviceId,
-      zoneId: await createZone('Z-95', 'Lapsing grant zone'),
+      zoneId: await createZone('Z-92', 'Lapsing grant zone'),
       assignmentId: assignment.id,
     });
     await world.owner.query(`UPDATE audit_assignment SET status = 'COMPLETED' WHERE id = $1`, [
