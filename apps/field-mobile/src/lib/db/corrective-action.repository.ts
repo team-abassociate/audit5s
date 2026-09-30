@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import {
   submitCorrectiveActionRequestSchema,
   type CorrectiveActionStatus,
@@ -8,7 +8,7 @@ import { awaitsResponse, submissionTarget } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import { enqueue, uuidv7 } from './audit.repository';
 import { captureLocalEvidence } from './evidence.repository';
-import { localCorrectiveActions, localCorrectiveSubmissions } from './schema';
+import { localCorrectiveActions, localCorrectiveSubmissions, localEvidence, outbox } from './schema';
 
 /**
  * The Zone Leader's corrective actions on the device (§2.4 steps 5–9, §9.2).
@@ -66,6 +66,11 @@ export async function captureAfterPhoto(
     checksumSha256: string;
     width?: number | null;
     height?: number | null;
+    /**
+     * False for a photograph chosen from the gallery, which only an overall action
+     * accepts (R-38). The server refuses it for a finding; the screen never offers it there.
+     */
+    isLiveCapture?: boolean;
     now?: string;
   },
 ): Promise<string> {
@@ -79,9 +84,38 @@ export async function captureAfterPhoto(
     checksumSha256: input.checksumSha256,
     width: input.width ?? null,
     height: input.height ?? null,
-    isLiveCapture: true,
+    isLiveCapture: input.isLiveCapture ?? true,
     ...(input.now ? { now: input.now } : {}),
   });
+}
+
+/**
+ * An after-photo the person removed or replaced before submitting.
+ *
+ * Its upload is cancelled if it has not gone yet, and the local row is soft-deleted. Unlike
+ * `deleteLocalEvidence`, nothing is sent to the server: an after-photo hangs off a completed
+ * audit, whose evidence the server will not delete (E-4), so a delete item would only fail
+ * in the queue. One that did reach the server stays there uncited, which is harmless — only
+ * a submission that names it puts it in the record.
+ */
+export async function discardAfterPhoto(
+  database: LocalDatabase,
+  evidenceId: string,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  await database
+    .update(localEvidence)
+    .set({ deletedAt: now, clientUpdatedAt: now })
+    .where(
+      and(
+        eq(localEvidence.id, evidenceId),
+        eq(localEvidence.kind, 'CORRECTIVE_AFTER'),
+        isNull(localEvidence.deletedAt),
+      ),
+    );
+  await database
+    .delete(outbox)
+    .where(and(eq(outbox.entityType, 'evidence'), eq(outbox.entityId, evidenceId)));
 }
 
 /**

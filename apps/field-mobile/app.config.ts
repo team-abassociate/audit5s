@@ -41,11 +41,21 @@ const config: ExpoConfig = {
      *
      * Location is **blocked**, not merely absent: the product owner dropped location
      * capture entirely on 2026-09-29, and blocking it stops any library from adding it
-     * back through its own manifest. There is deliberately no `READ_MEDIA_IMAGES` either:
-     * §12.10 requires that no gallery picker exists in these flows.
+     * back through its own manifest.
+     *
+     * The gallery (R-38, overall corrective actions only) needs **no** permission: it is
+     * Android's system photo picker, which hands the app the one photograph the person
+     * chose and nothing else. `expo-image-picker`'s manifest still asks for the old storage
+     * permissions, so they are blocked here, with the media ones — no screen reads the
+     * photo library itself.
      */
     permissions: ['android.permission.CAMERA'],
     blockedPermissions: [
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+      'android.permission.READ_MEDIA_IMAGES',
+      'android.permission.READ_MEDIA_VIDEO',
+      'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
       'android.permission.RECORD_AUDIO',
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.ACCESS_COARSE_LOCATION',

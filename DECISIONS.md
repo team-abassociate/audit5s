@@ -1776,8 +1776,8 @@ action — and only for one:
 
 The link page (`/ca/{token}`) offers *Open the camera* and *Choose from gallery*. The gallery
 file is decoded and redrawn as a ≤1920 px JPEG before upload, like a camera frame, which
-also strips its EXIF. The field app keeps to its in-app camera: a gallery picker there is
-`expo-image-picker`, a native module, and so a new APK rather than an over-the-air update.
+also strips its EXIF. The field app offers the same two on a Zone Leader's overall action —
+see (e).
 
 ### (c) Where it prints
 
@@ -1799,3 +1799,22 @@ and a single photo-less row would fail its whole catalogue write. `GET /sync/cat
 therefore sends overall actions only when asked (`?overallActions=true`), which this build
 always does after its local v9 migration. An older phone simply does not list them; whoever
 holds it answers through the report's link until the over-the-air update lands.
+
+### (e) The gallery in the field app
+
+**Added 2026-09-30 at the product owner's request**, superseding R-11's "`expo-image-picker`
+is not a dependency of `apps/field-mobile`". The Zone Leader's screen offers *Choose from
+gallery* and *Remove photograph* on an overall action, and on nothing else.
+
+- `src/lib/capture/gallery.ts` is the only importer of `expo-image-picker`, as
+  `camera-capture.tsx` is of `expo-camera`. A chosen photo goes through the camera's own
+  `processCapturedPhoto` — ≤1920 px, JPEG, EXIF gone, hashed after the re-encode — and is
+  recorded `is_live_capture = false`.
+- It is Android's system photo picker, which needs **no permission**: the app receives the
+  one photo chosen. The storage and media-read permissions the library's manifest brings are
+  blocked in `app.config.ts`.
+- A removed or replaced after-photo has its pending upload cancelled and nothing more. The
+  server refuses deletes on a completed audit's evidence (E-4), so a delete item would only
+  fail in the queue; an uploaded, uncited photo is harmless.
+- **A native change.** Phones need a new APK; the deploy's OTA step refuses to publish until
+  `native-baseline.txt` names the commit that APK was built from.
