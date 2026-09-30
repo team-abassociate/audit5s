@@ -556,7 +556,7 @@ function StatusBadge({ status }: { status: CorrectiveActionStatus }) {
 }
 
 function itemLabel(action: CorrectiveAction): string {
-  if (action.suggestionNo !== null) return `Overall action ${action.suggestionNo}: ${action.suggestion ?? ''}`;
+  if (action.suggestionNo) return `Overall action ${action.suggestionNo}: ${action.suggestion ?? ''}`;
   if (action.questionGlobalOrder === null) return 'Walk-by observation';
   const section = action.section ? `${sectionLabel(action.section)} · ` : '';
   return `${section}Q${action.questionGlobalOrder}: ${action.questionText ?? ''}`;

@@ -141,7 +141,7 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
             )}
 
             {/* R-38: each of these becomes a corrective action when the audit completes. */}
-            {zone.overallActionSuggestions.length > 0 && (
+            {(zone.overallActionSuggestions ?? []).length > 0 && (
               <div className="px-4 pb-3 text-sm text-ink-2">
                 <span className="font-semibold">Overall corrective action suggestions:</span>
                 <ol className="mt-1 list-decimal space-y-1 pl-5">

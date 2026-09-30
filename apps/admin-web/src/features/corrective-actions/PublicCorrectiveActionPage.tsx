@@ -176,7 +176,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Finding({ item }: { item: PublicCorrectiveAction }) {
   // R-38: an overall action answers the auditor's sentence, not a photograph.
-  const overall = item.suggestion !== null;
+  const overall = Boolean(item.suggestion);
   return (
     <section className="border border-edge-soft bg-tile p-4">
       {overall ? (
@@ -255,7 +255,7 @@ function SubmitForm({
 }) {
   // R-38: an overall action is answered with what was done; the photograph is optional and
   // may come from the gallery. There is no "not possible" branch for it.
-  const overall = item.suggestion !== null;
+  const overall = Boolean(item.suggestion);
   const [option, setOption] = useState<Option>('COMPLETED');
   const [name, setName] = useState(item.issuedToName ?? '');
   const [description, setDescription] = useState('');
