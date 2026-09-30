@@ -81,8 +81,8 @@ business remains authoritative on intent. Question text, department names and th
 colour hex values are **seed data and styling tokens, not architecture** — they load through
 the Excel import pipeline (PART 5.4, PART 8.5) and a theme token file (PART 11.6) without any
 structural change, which is why reconciling this document against the real files changed no
-structure. Assumptions A1–A6 in §1.6 are resolved against those files; `HANDOFF.md` §3 carries
-the reconciliation and `DECISIONS.md` R-6 records it.
+structure. Assumptions A1–A6 in §1.6 are resolved against those files; `DECISIONS.md` R-6
+records the reconciliation.
 
 ---
 
