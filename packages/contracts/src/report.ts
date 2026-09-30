@@ -12,7 +12,7 @@ import {
 import { scoreTotalsSchema, sectionScoreSchema } from './audit';
 
 /**
- * Reporting (ARCHITECTURE.md PART 10, §5.8, §8.9; HANDOFF.md §4).
+ * Reporting (ARCHITECTURE.md PART 10, §5.8, §8.9).
  *
  * The shape that matters here is `reportPayloadSchema`: the **frozen** payload a snapshot
  * carries. §10.1's first principle is that a report renders from it and never from live

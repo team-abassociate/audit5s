@@ -32,7 +32,7 @@ import { StructuredLogger } from './common/observability/logger';
  *      document, the seed and the runtime cannot drift;
  *   2. the initial Super Admin, from `SEED_SUPER_ADMIN_*`;
  *   3. the nine department checklists, imported from the real workbook **through the real
- *      import pipeline** and published as v1 (HANDOFF.md §5.2).
+ *      import pipeline** and published as v1.
  *
  * The third is deliberate: hand-writing the templates here would create a second import
  * implementation that nothing exercises, and the one that ships would first run against

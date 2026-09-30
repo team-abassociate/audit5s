@@ -2,7 +2,7 @@ import type { SSection, ResponseValue } from '@audit5s/contracts';
 import { RESPONSE_TOKENS } from './rating-scale';
 
 /**
- * The `s_section → label` mapping (HANDOFF.md §3.4). These strings are exactly what the
+ * The `s_section → label` mapping. These strings are exactly what the
  * workbook prints and exactly what the reports must render — including the en dash.
  */
 export const S_SECTION_LABELS: Readonly<Record<SSection, string>> = {
@@ -31,7 +31,7 @@ export const S_SECTION_ORDER: readonly SSection[] = [
   'S5_SUSTAIN',
 ] as const;
 
-/** Confirmed against the real workbook (HANDOFF.md §3.1): 5 sections × 10 = 50. */
+/** Confirmed against the real workbook: 5 sections × 10 = 50. */
 export const QUESTIONS_PER_SECTION = 10;
 export const TOTAL_QUESTIONS = S_SECTION_ORDER.length * QUESTIONS_PER_SECTION;
 export const MAX_MARKS_PER_QUESTION = 2;

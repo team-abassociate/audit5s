@@ -20,7 +20,7 @@ import {
 } from './components';
 
 /**
- * The multi-Zone summary (HANDOFF.md §4.3, ARCHITECTURE.md §10.3-C).
+ * The multi-Zone summary (ARCHITECTURE.md §10.3-C).
  *
  * The rule the whole page rests on, and the one a "helpful" refactor would break: every
  * number is **summed over the selected Zones** — `Σachieved / Σmax` — and never the mean

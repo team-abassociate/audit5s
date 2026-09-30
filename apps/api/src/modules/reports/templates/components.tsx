@@ -12,7 +12,7 @@ import { REPORT_LOGO } from './logo';
  * The pieces every report page is built from.
  *
  * Everything here is **static markup**. The radar and the comparison bars are inline SVG
- * computed on the server (HANDOFF.md §4's rendering constraint), not a chart library:
+ * computed on the server (a rendering constraint), not a chart library:
  * a client chart would need JavaScript to lay itself out, which is exactly what STACK.md
  * §5 forbids and what would make the WeasyPrint escape hatch a rewrite.
  */

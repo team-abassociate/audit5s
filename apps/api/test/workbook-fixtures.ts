@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 
 /**
- * Synthetic department workbooks, built in the shape of the real file (HANDOFF.md §3.4).
+ * Synthetic department workbooks, built in the shape of the real file.
  *
  * Built rather than committed as binaries: a broken fixture in git is a file nobody can
  * read the diff of, and "9 questions in a section" is far clearer as one option here than

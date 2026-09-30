@@ -3,7 +3,7 @@ import type { ReportPayload } from '@audit5s/contracts';
 /**
  * The stylesheet, built from the payload's **frozen** tokens.
  *
- * Two constraints govern every rule here (STACK.md §5, HANDOFF.md §4):
+ * Two constraints govern every rule here (STACK.md §5):
  *
  *   * **No JavaScript-dependent layout.** Nothing is measured, positioned or sized by
  *     script. The page is CSS `@page` plus flow layout, so moving the renderer to

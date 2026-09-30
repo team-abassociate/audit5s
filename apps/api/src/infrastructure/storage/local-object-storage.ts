@@ -18,7 +18,7 @@ import {
  * A filesystem adapter, used when no `S3_ENDPOINT` is configured.
  *
  * This exists for one reason: the seed imports the nine department checklists **through
- * the real import pipeline** (HANDOFF.md §5.2), and the end-to-end suites run that same
+ * the real import pipeline**, and the end-to-end suites run that same
  * pipeline in CI. Neither has object-storage credentials, and neither should need a
  * running MinIO to prove that a spreadsheet parses. It is a driver behind the same port,
  * not a stub: it really stores bytes and really reads them back.
