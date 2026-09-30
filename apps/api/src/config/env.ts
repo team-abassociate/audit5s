@@ -113,8 +113,12 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().optional(),
   /** §12.1: short, because a live password-reset link is a live password. */
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
-  /** §10.4: "Default 30 days, configurable per report." */
-  REPORT_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  /**
+   * A corrective-action link's lifetime. `0` (the default, R-41) is no limit — and it is
+   * retroactive: the expiry stored on a link minted under an earlier setting is ignored,
+   * so a link already printed in a PDF keeps working. A link still ends when revoked.
+   */
+  REPORT_TOKEN_TTL_DAYS: z.coerce.number().int().min(0).max(365).default(0),
   /** A report's presigned download. §12.6 caps it at 300 s regardless. */
   REPORT_GET_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(300).default(300),
   /**
