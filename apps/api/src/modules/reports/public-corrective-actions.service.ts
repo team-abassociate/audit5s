@@ -20,7 +20,7 @@ type ResolvedToken = SignedTokenScope & { issuedToName: string | null };
  *
  * It is a thin composition over services that already exist, and that is the design rather
  * than laziness: §8.8 requires the public submission to use **the same domain service** as
- * the authenticated route, so CA-1's append-only attempts, CA-2's live-capture rule and
+ * the authenticated route, so CA-1's append-only attempts, CA-2's after-photo rule and
  * the audit rollup have one implementation. A parallel "public" implementation would be
  * two sets of rules that are supposed to agree, on the one surface where being wrong is
  * most expensive.
@@ -94,14 +94,8 @@ export class PublicCorrectiveActionsService {
     const action = await this.repository.findById(scope, token.correctiveActionId);
     if (!action) throw AppError.notFound('No such corrective action');
 
-    if (!request.isLiveCapture && action.evidenceId !== null) {
-      // CA-2 and §10.4. For a finding the page uses `getUserMedia` and offers no file
-      // picker; this is the server saying so too, because a client-side rule is a
-      // client-side rule. An overall action's photo may come from the gallery (R-38).
-      throw AppError.validation('The after-photo must be a live capture', [
-        { field: 'isLiveCapture', message: 'Option A requires a live camera capture (CA-2)' },
-      ]);
-    }
+    // Any after-photo may come from the camera or the gallery (R-38, widened to findings
+    // by R-40); `isLiveCapture` is recorded as the page declared it, not enforced.
 
     // Re-derived for `evidence`, not reused from the link. `signed_token`'s predicate is
     // written against `corrective_action`, which `evidence` is not — and PART 6 has its own

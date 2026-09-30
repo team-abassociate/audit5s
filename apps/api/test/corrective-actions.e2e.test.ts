@@ -349,11 +349,23 @@ describe('CA-2 and the submission contract (§8.8)', () => {
     expect(response.status).toBe(422);
   });
 
-  it('refuses an after-photo that is not a live capture at the intent', async () => {
+  it('accepts a finding answered with a photo from the gallery (R-40)', async () => {
     const { actions } = await walkBy(1);
-    await expect(
-      afterPhoto(world, { token: leaderToken, action: actions[0]!, submissionId: randomUUID(), isLiveCapture: false }),
-    ).rejects.toThrow(/live capture/);
+    const submissionId = randomUUID();
+    const photo = await afterPhoto(world, {
+      token: leaderToken,
+      action: actions[0]!,
+      submissionId,
+      isLiveCapture: false,
+    });
+    const response = await submit(world, leaderToken, actions[0]!.id, {
+      option: 'COMPLETED',
+      id: submissionId,
+      submittedByName: 'Zoe Leader',
+      description: 'Relabelled from a photo taken earlier',
+      afterEvidenceId: photo,
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
   });
 
   it('asks for the upload to finish before an Option A is accepted', async () => {

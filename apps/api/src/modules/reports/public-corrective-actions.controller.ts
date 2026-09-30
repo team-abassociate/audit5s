@@ -64,9 +64,8 @@ export class PublicCorrectiveActionsController {
   }
 
   /**
-   * The after-photo's presigned PUT. `isLiveCapture` must be true (§8.8) — the web page
-   * uses `getUserMedia` and offers no file picker, and this is the server half of that
-   * rule rather than a trust in the client's good manners.
+   * The after-photo's presigned PUT. The photo may come from the camera or the gallery
+   * (R-38, R-40); `isLiveCapture` records which.
    */
   @SignedTokenRoute()
   @RequirePermission('evidence', 'create')

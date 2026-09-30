@@ -31,7 +31,7 @@ import { completedWalkBy } from './corrective-fixtures';
  *   * **A single-item audience.** The link reaches one corrective action. There is no
  *     listing route, and a link cannot be pointed at a sibling.
  *   * **Not a session.** The token does not authorize the authenticated API.
- *   * **Live capture required**, server-side, not merely in the page.
+ *   * **A gallery photo is accepted** (R-40), and recorded as not live.
  *   * **Every use recorded**, including the refused ones.
  */
 
@@ -278,30 +278,20 @@ describe('submitting through the link', () => {
     expect(rows[0].access_token_id).not.toBeNull();
   }, 120_000);
 
-  it('accepts Option A with a live after-photo, and refuses one that is not live', async () => {
+  it('accepts Option A on a finding with a photo from the gallery (R-40)', async () => {
     const { links } = await reportWithLinks({ nonconformities: 1 });
     const secret = links[0]!.secret;
     const submissionId = randomUUID();
 
-    const notLive = await world.request(
-      'POST',
-      `${base}/public/corrective-actions/${secret}/upload-intent`,
-      {
-        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
-        body: intentBody(randomUUID(), submissionId, links[0]!.correctiveActionId, false),
-      },
-    );
-    // CA-2 and §10.4: the page offers no file picker, and the server says so too.
-    expect(notLive.status).toBe(422);
-    expect(JSON.stringify(notLive.body)).toMatch(/live/i);
-
+    // Not a live capture: the page's *Choose from gallery*. A link in a PDF issued before
+    // R-40 is the same link, so this is also what an old PDF's reader now gets.
     const evidenceId = randomUUID();
     const intent = await world.request(
       'POST',
       `${base}/public/corrective-actions/${secret}/upload-intent`,
       {
         headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
-        body: intentBody(evidenceId, submissionId, links[0]!.correctiveActionId, true),
+        body: intentBody(evidenceId, submissionId, links[0]!.correctiveActionId, false),
       },
     );
     expect(intent.status, JSON.stringify(intent.body)).toBe(201);
@@ -339,6 +329,12 @@ describe('submitting through the link', () => {
       },
     );
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+
+    // The record says honestly where the photograph came from.
+    const { rows } = await world.owner.query(`SELECT is_live_capture FROM evidence WHERE id = $1`, [
+      evidenceId,
+    ]);
+    expect(rows[0].is_live_capture).toBe(false);
   }, 180_000);
 
   it('refuses to submit through an expired link, as it refuses to read through one', async () => {
