@@ -1,7 +1,7 @@
 # Decision record — resolutions R-1 … R-18
 
 Companion to [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`STACK.md`](./STACK.md), the
-Stack Decision Record (the engineering handoff).
+Stack Decision Record.
 
 These resolutions settle points where the two source documents disagreed or were silent.
 They are **binding** and carry the same weight as the decisions in `ARCHITECTURE.md` §1.4.
@@ -43,7 +43,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 
 **`STACK.md` wins on any technology name. `ARCHITECTURE.md` wins on any behaviour.**
 
-This replaces the topic split in `STACK.md` §10 ("infrastructure → handoff, domain →
+This replaces the topic split in `STACK.md` §10 ("infrastructure → `STACK.md`, domain →
 `ARCHITECTURE.md`"), which
 could not be applied cleanly because several rules in `ARCHITECTURE.md` are stated in terms of
 a specific technology.
@@ -174,7 +174,7 @@ endpoint plus the schema above is the whole scope. The workflow comes when someo
 
 `ARCHITECTURE.md` was written before the department workbook and the two sample report PDFs
 were available; its assumptions A1–A6 stood in for them. All three files are now in
-`docs/requirements/`, `HANDOFF.md` §3–§4 reconciles the blueprint against them, and
+`docs/requirements/`, the blueprint has been reconciled against them, and
 `ARCHITECTURE.md` §1.6, §8.5 and §11.6 have been rewritten to match. This entry records the
 outcome so the tie-breaker file carries it.
 
@@ -247,7 +247,7 @@ sheet and agrees with each question's position in its section.
 
 ### R-6e — Precedence
 
-These facts sit at precedence level 2 (`HANDOFF.md` §2): above the business brief and the
+These facts sit at precedence level 2: above the business brief and the
 brainstorm, below `STACK.md` on technology names and `ARCHITECTURE.md` on behaviour. They
 supersede the placeholders they replace and nothing else. The workbook and the sample PDFs are
 data and styling truth, never architecture.
@@ -264,8 +264,8 @@ again in a later phase.
 
 `ARCHITECTURE.md` §5.4 gives `checklist_import_job` a single `template_id` and a single
 `committed_version_id`, which reads as one job per checklist. The real file is **nine
-department sheets in one workbook** (R-6a), the seed imports all nine through the pipeline
-(`HANDOFF.md` §5.2), and §8.5's PARSE stage says "read sheets" in the plural. One job per
+department sheets in one workbook** (R-6a), the seed imports all nine through the pipeline,
+and §8.5's PARSE stage says "read sheets" in the plural. One job per
 sheet would mean uploading the same file nine times.
 
 So a job fans out to **`checklist_import_sheet`**, one row per detected sheet, carrying that
@@ -761,8 +761,8 @@ requirement: **the PDF prints a link**.
 → status = READY
 ```
 
-That ordering cannot produce the document §10.3-A and HANDOFF.md §4.1 describe. Both
-require a **"View / Submit Corrective Action" button per nonconformity, linking to the
+That ordering cannot produce the document §10.3-A describes. It
+requires a **"View / Submit Corrective Action" button per nonconformity, linking to the
 signed `/ca/{token}` route** — and a link minted after the render cannot appear in it.
 
 So minting happens in the freeze, and the URLs are frozen into the payload. Two properties
@@ -789,7 +789,7 @@ already carries the outcome; a live door on a closed item is not something to ha
 
 ### (b) Photographs are embedded, not fetched at render time
 
-HANDOFF.md §4.1 says report images are "fetched by the worker through short-TTL presigned
+Report images were specified as "fetched by the worker through short-TTL presigned
 GETs". The worker does fetch them from object storage — through the `ObjectStorage` port —
 but it does so **before Chromium starts**, and embeds them as `data:` URIs.
 
@@ -893,7 +893,7 @@ nothing, and the error message says so.
 ### (a) Every aggregate score remains `Σraw / Σmax`
 
 PART 11 calls Unit and organization scores a mean and its illustrative queries use
-`avg(score_percentage)`. That conflicts with §10.3-C, D4, the Phase 7 handoff and the one
+`avg(score_percentage)`. That conflicts with §10.3-C, D4 and the one
 shared scoring implementation: scores with different applicable denominators may not carry
 equal weight. Behaviour therefore remains `Σraw_score / Σmax_score`, through
 `packages/domain`'s `sumTotals`; a fully-NA aggregate remains `null`.
@@ -956,7 +956,7 @@ the compiler from saying so.
 
 The two environment variables are replaced by one, `PGBOSS_JOB_RETENTION_DAYS`, applied
 where pg-boss reads it. **A cast that exists to make configuration compile is a bug report
-in waiting**; this one hid a rule the handoff calls out by name.
+in waiting**; this one hid a rule `STACK.md` §5 calls out by name.
 
 ### (c) `/health` reports `degraded`, and reads the count live
 
