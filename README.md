@@ -24,15 +24,12 @@ list of superseded technology choices is at the top of `ARCHITECTURE.md`.
 
 ## Status
 
-**Implementation in progress — see [HANDOFF.md](./HANDOFF.md).** Read it before starting: it
-reconciles the blueprint with the real source files in
-[`docs/requirements/`](./docs/requirements/) and defines the phase-by-phase work order.
-[`HANDOFF-PHASE5.md`](./HANDOFF-PHASE5.md) is the historical Phase 5 backend handoff; its
-"web/mobile not started" status is superseded by the table below.
+**Implementation in progress.** Start with [`AGENTS.md`](./AGENTS.md); the real source files
+the blueprint was reconciled against are in [`docs/requirements/`](./docs/requirements/).
 
 | Phase | Scope | State |
 | --- | --- | --- |
-| 0 | Reconcile the blueprint against the real workbook and sample reports (`HANDOFF.md` §5.1) | Done |
+| 0 | Reconcile the blueprint against the real workbook and sample reports | Done |
 | 1 | Foundation, authentication, RBAC, users and Units (`ARCHITECTURE.md` PART 14) | Done |
 | 2 | Coordinator, Zones, Zone Leaders, checklist versioning and Excel import | Done |
 | 3 | Audit engine and scoring | Done |
