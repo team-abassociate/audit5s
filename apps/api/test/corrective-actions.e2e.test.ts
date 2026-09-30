@@ -13,6 +13,8 @@ import {
 } from '@audit5s/contracts';
 import { captureEvidence, loginFromDevice, sha256Hex, startWorld, stopWorld, TINY_JPEG, type TestActor, type TestWorld } from './harness';
 import { afterPhoto, completedWalkBy, submit, submitOptionA } from './corrective-fixtures';
+import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
+import { CorrectiveActionsService } from '../src/modules/corrective-actions/corrective-actions.service';
 
 /**
  * Corrective actions (§2.8, §5.7, §7.3, §8.8), through the real endpoints.
@@ -158,6 +160,36 @@ describe('materialisation on AUDIT_COMPLETED (§2.8, §7.1)', () => {
       [auditId],
     );
     expect(rows[0].n).toBe(actions.length);
+  });
+
+  /*
+   * Field report, 2026-09-30: `raise-missing-corrective-actions --commit` answered
+   * "Conflict" for the one audit it was written for. An audit completed with findings and
+   * no actions rolls straight to CLOSED, and walking it back open crosses
+   * CLOSED → PARTIALLY_CLOSED — a Super Admin's edge (§7.1), refused to a null role.
+   * The audit is put in that state by hand: the completion path no longer produces it.
+   */
+  it('raises the missing actions of an audit that closed without them, and reopens it', async () => {
+    const { auditId, actions } = await walkBy(2);
+    await world.owner.query(`ALTER TABLE corrective_action DISABLE TRIGGER corrective_action_no_delete`);
+    await world.owner.query(`DELETE FROM corrective_action WHERE audit_id = $1`, [auditId]);
+    await world.owner.query(`ALTER TABLE corrective_action ENABLE TRIGGER corrective_action_no_delete`);
+    await world.owner.query(`UPDATE audit SET status = 'CLOSED', closed_at = now() WHERE id = $1`, [auditId]);
+
+    const repaired = await world.app
+      .get(CorrectiveActionsService)
+      .raiseMissing(SYSTEM_SCOPE, auditId);
+
+    expect(repaired.opened.map((action) => action.evidenceId).sort()).toEqual(
+      actions.map((action) => action.evidenceId).sort(),
+    );
+    expect(repaired.auditStatus).toBe('CORRECTIVE_ACTION_OPEN');
+    expect((await auditStatus(auditId)).status).toBe('CORRECTIVE_ACTION_OPEN');
+
+    // Idempotent: a second run finds nothing missing and leaves the audit where it is.
+    const again = await world.app.get(CorrectiveActionsService).raiseMissing(SYSTEM_SCOPE, auditId);
+    expect(again.opened).toHaveLength(0);
+    expect(again.auditStatus).toBe('CORRECTIVE_ACTION_OPEN');
   });
 });
 

@@ -207,11 +207,16 @@ export class CorrectiveActionsService {
    * no human actor. The auditor acted on an *answer*; that a finding appeared or vanished
    * is the consequence, and giving it a human actor would imply a button that dismisses a
    * finding without correcting the mark behind it.
+   *
+   * `reopenAs` is the one exception. Rolling a CLOSED audit back open crosses
+   * CLOSED → PARTIALLY_CLOSED, which §7.1 gives to a Super Admin alone, so a caller that
+   * can land on a CLOSED audit and means to reopen it — `raiseMissing` — names that role.
    */
   async cascadeAfterCorrection(
     tx: Transaction,
     scope: ScopeContext,
     auditId: string,
+    reopenAs: Role | null = null,
   ): Promise<{
     opened: CorrectiveAction[];
     withdrawn: Array<{ id: string; assignedZoneLeaderUserId: string | null }>;
@@ -260,7 +265,7 @@ export class CorrectiveActionsService {
       );
 
       const opened = await unit.describeActions(created.map((action) => action.id));
-      const auditStatus = await this.rollup(unit, auditId, null);
+      const auditStatus = await this.rollup(unit, auditId, reopenAs);
 
       return {
         opened: opened.map(toCorrectiveAction),
@@ -292,7 +297,9 @@ export class CorrectiveActionsService {
     auditId: string,
   ): Promise<{ opened: CorrectiveAction[]; auditStatus: AuditStatus }> {
     const result = await this.repository.inTransaction(scope, async (unit) => {
-      const cascaded = await this.cascadeAfterCorrection(unit.tx, scope, auditId);
+      // An operator's repair, run with the API's own credentials: the audit it reopens is
+      // usually CLOSED, and only a Super Admin may walk that back (§7.1).
+      const cascaded = await this.cascadeAfterCorrection(unit.tx, scope, auditId, 'SUPER_ADMIN');
       for (const action of cascaded.opened) {
         await this.events.emit(unit.tx, {
           type: 'CORRECTIVE_ACTION_OPENED',
