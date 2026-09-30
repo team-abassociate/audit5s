@@ -118,7 +118,8 @@ export default function WalkByScreen() {
     },
     onSuccess: () => {
       leaveScreen(
-        () => router.back(),
+        // To the audit's Zones, however this Zone was reached (see the questionnaire's finish).
+        () => router.dismissTo({ pathname: '/audit/zones/[auditId]', params: { auditId: zone.data!.auditId } }),
         () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
       );
     },
