@@ -725,10 +725,7 @@ export class CorrectiveActionsService {
     if (submissionId && photo.correctiveActionSubmissionId !== submissionId) {
       throw invalid('This photograph was taken for a different attempt');
     }
-    // An overall action's photo may come from the gallery (R-38); a finding's may not.
-    if (!photo.isLiveCapture && action.evidenceId !== null) {
-      throw invalid('Option A requires a live after-photo (CA-2)');
-    }
+    // Live capture is not checked: any after-photo may come from the gallery (R-38, R-40).
     if (photo.syncState !== 'SYNCED' || !photo.uploadedAt) {
       throw AppError.conflict(
         'EVIDENCE_NOT_UPLOADED',

@@ -105,4 +105,18 @@ describe('freezePayload', () => {
       section: 'S1_SORT',
     });
   });
+
+  it('prints a deleted response as unanswered until the Zone Leader answers again (R-40)', () => {
+    const reopened = input();
+    // Deleting a response is the reopen edge; the attempt is still the latest one.
+    reopened.actions[0]!.status = 'REOPENED';
+    reopened.actions[0]!.resolvedAt = null;
+
+    const [finding] = freezePayload(reopened).zones[0]!.nonconformities;
+
+    expect(finding!.status).toBe('REOPENED');
+    expect(finding!.outcome).toBeNull();
+    // The finding's own photograph is unaffected.
+    expect(finding!.objectKey).toBe(BEFORE_KEY);
+  });
 });

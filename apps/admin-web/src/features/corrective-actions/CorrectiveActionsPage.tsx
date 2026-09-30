@@ -20,7 +20,7 @@ import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
 
 /**
  * Corrective actions (PART 14, Phase 6's Web row): the Super Admin's queue with verify,
- * reopen and the whole submission history, and — the same page, read-only — the
+ * delete-response (the reopen edge, R-40) and the whole submission history, and — the same page, read-only — the
  * Coordinator's view of their Unit.
  *
  * What a role may do is the server's answer (`/auth/me`), not this page's: the buttons
@@ -438,9 +438,12 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
 
           {(reviewable || reopenable) && (
             <div className="space-y-2 border border-edge-soft p-3">
+              {/* R-40: deleting a response is the reopen edge. Nothing is erased — the attempt
+                  stays below, marked Deleted — but the item waits for a new answer, the same
+                  link in the PDF takes it, and a regenerated report prints the row blank. */}
               <Field
-                label={reviewable ? 'Comment, or the reason for reopening' : 'Reason for reopening'}
-                hint="Reopening needs a reason; the Zone Leader sees it."
+                label={reviewable ? 'Comment, or the reason for deleting the response' : 'Reason for deleting the response'}
+                hint="Deleting needs a reason; the Zone Leader sees it. They can then answer again from the same link in the PDF, or from the field app."
               >
                 <Input value={note} onChange={(event) => setNote(event.target.value)} />
               </Field>
@@ -456,7 +459,7 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
                   disabled={review.isPending || note.trim().length === 0}
                   onClick={() => review.mutate('reopen')}
                 >
-                  Reopen
+                  Delete response
                 </Button>
               </div>
             </div>
@@ -489,7 +492,7 @@ function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
       {attempt.reviewOutcome && (
         <p className="mt-2 text-xs text-ink-2">
           <Badge tone={attempt.reviewOutcome === 'VERIFIED' ? 'good' : 'bad'}>
-            {attempt.reviewOutcome === 'VERIFIED' ? 'Verified' : 'Reopened'}
+            {attempt.reviewOutcome === 'VERIFIED' ? 'Verified' : 'Deleted'}
           </Badge>{' '}
           {attempt.reviewedAt && new Date(attempt.reviewedAt).toLocaleString()}
           {attempt.reviewComment && ` — ${attempt.reviewComment}`}

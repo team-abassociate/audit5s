@@ -178,7 +178,10 @@ await page.route('**/api/v1/**', async (route) => {
 try {
   await page.goto(`${base}/ca/smoke-token`);
   await page.getByRole('heading', { name: 'Walk-by observation' }).waitFor();
-  assert.equal(await page.locator('input[type=file]').count(), 0);
+  // R-40: a finding offers the gallery beside the camera — one file input, images only.
+  assert.equal(await page.locator('input[type=file]').count(), 1);
+  assert.equal(await page.locator('input[type=file]').getAttribute('accept'), 'image/*');
+  await page.locator('button', { hasText: 'Choose from gallery' }).waitFor({ state: 'attached' });
   assert.equal(await page.locator('meta[name=referrer]').getAttribute('content'), 'no-referrer');
   const openCamera = page.locator('button', { hasText: 'Open the camera' });
   await openCamera.scrollIntoViewIfNeeded();
@@ -190,7 +193,7 @@ try {
     return video instanceof globalThis.HTMLVideoElement && video.videoWidth > 0 && video.videoHeight > 0;
   });
   await takePhoto.click({ force: true });
-  await page.getByAltText('The work you photographed').waitFor();
+  await page.getByAltText('The photograph you chose').waitFor();
 
   await page.evaluate(() => globalThis.localStorage.setItem('audit5s.session', JSON.stringify({
     accessToken: 'smoke-access',

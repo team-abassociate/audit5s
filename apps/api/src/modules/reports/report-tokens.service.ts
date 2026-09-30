@@ -70,7 +70,8 @@ export class ReportTokensService {
     createdByUserId: string;
     actions: readonly { id: string; assignedZoneLeaderUserId: string | null }[];
   }): MintedTokens {
-    const expiresAt = new Date(Date.now() + this.config.REPORT_TOKEN_TTL_DAYS * 86_400_000);
+    const days = this.config.REPORT_TOKEN_TTL_DAYS;
+    const expiresAt = days === 0 ? NEVER : new Date(Date.now() + days * 86_400_000);
     const urls = new Map<string, string>();
     const rows: ReportAccessTokenInsert[] = [];
 
@@ -114,7 +115,7 @@ export class ReportTokensService {
       ? await this.repository.resolveAndRecordUse(hashToken(rawToken), ipAddress)
       : null;
 
-    if (!resolved || !isUsable(resolved)) {
+    if (!resolved || !isUsable(resolved, this.expiryApplies())) {
       throw gone();
     }
     if (resolved.purpose !== 'CORRECTIVE_ACTION' || !resolved.correctiveActionId) {
@@ -125,7 +126,7 @@ export class ReportTokensService {
 
   async listForSnapshot(scope: ScopeContext, snapshotId: string): Promise<ReportAccessToken[]> {
     const rows = await this.repository.listForSnapshot(scope, snapshotId);
-    return rows.map((row) => toContract(row.token, row));
+    return rows.map((row) => toContract(row.token, row, this.expiryApplies()));
   }
 
   /** `POST /reports/{id}/tokens/{tokenId}/revoke` — `AuditLog: report.token_revoked`. */
@@ -153,9 +154,21 @@ export class ReportTokensService {
     }
 
     const after = await this.repository.findById(scope, tokenId);
-    return toContract(after ?? before, {});
+    return toContract(after ?? before, {}, this.expiryApplies());
+  }
+
+  /**
+   * Whether a link's stored expiry is enforced. Not with `REPORT_TOKEN_TTL_DAYS=0` (R-41):
+   * the stored date is immutable (a trigger), so the only way a link printed under the old
+   * 30-day setting can keep working is for the date to stop mattering.
+   */
+  private expiryApplies(): boolean {
+    return this.config.REPORT_TOKEN_TTL_DAYS !== 0;
   }
 }
+
+/** "No limit". `report_access_token.expires_at` is NOT NULL, so never is the last day there is. */
+const NEVER = new Date('9999-12-31T23:59:59.999Z');
 
 /** 256 bits, base64url. The only place a raw token value is ever produced. */
 function mintSecret(): string {
@@ -176,9 +189,12 @@ function looksLikeToken(value: string): boolean {
   return /^[A-Za-z0-9_-]{40,64}$/.test(value);
 }
 
-function isUsable(token: ReportAccessTokenRow & { issuedToRole?: string | null }): boolean {
+export function isUsable(
+  token: Pick<ReportAccessTokenRow, 'revokedAt' | 'expiresAt' | 'maxUses' | 'useCount'>,
+  expiryApplies: boolean,
+): boolean {
   if (token.revokedAt) return false;
-  if (token.expiresAt.getTime() <= Date.now()) return false;
+  if (expiryApplies && token.expiresAt.getTime() <= Date.now()) return false;
   if (token.maxUses !== null && token.useCount > token.maxUses) return false;
   return true;
 }
@@ -207,6 +223,7 @@ export function secretsMatch(a: string, b: string): boolean {
 function toContract(
   row: ReportAccessTokenRow,
   extra: { issuedToName?: string | null; zoneCode?: string | null; questionGlobalOrder?: number | null },
+  expiryApplies: boolean,
 ): ReportAccessToken {
   return {
     id: row.id,
@@ -216,7 +233,9 @@ function toContract(
     unitId: row.unitId,
     issuedToUserId: row.issuedToUserId,
     issuedToName: extra.issuedToName ?? null,
-    expiresAt: row.expiresAt.toISOString(),
+    // The effective expiry: with no limit (R-41) an older link's stored date no longer
+    // applies, and showing it would label a working link as expiring.
+    expiresAt: (expiryApplies ? row.expiresAt : NEVER).toISOString(),
     maxUses: row.maxUses,
     useCount: row.useCount,
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
@@ -225,7 +244,7 @@ function toContract(
     revokedByUserId: row.revokedByUserId,
     revokeReason: row.revokeReason,
     createdAt: row.createdAt.toISOString(),
-    active: isUsable(row),
+    active: isUsable(row, expiryApplies),
     zoneCode: extra.zoneCode ?? null,
     questionGlobalOrder: extra.questionGlobalOrder ?? null,
   };

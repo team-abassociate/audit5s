@@ -183,9 +183,8 @@ export class EvidenceService {
    *
    * It hangs off an audit that is completed by definition, so the audit's write rules do
    * not apply; the action's do. The photograph is keyed to the attempt the device minted
-   * when the form opened (§5.6), and for a finding it must be a live capture — the flow
-   * offers no other way to take one, and the submission refuses one that says otherwise
-   * (CA-2). An overall action's photo may come from the gallery (R-38).
+   * when the form opened (§5.6). It may come from the camera or the gallery — R-38 for an
+   * overall action, widened to findings by R-40 — and `isLiveCapture` records which.
    */
   private async createAfterPhotoIntent(
     scope: ScopeContext,
@@ -201,11 +200,6 @@ export class EvidenceService {
     const action = await this.correctiveActions.findAnswerable(scope, request.correctiveActionId);
     if (!action || action.auditId !== request.auditId) {
       throw AppError.notFound('No such corrective action');
-    }
-    if (!request.isLiveCapture && action.evidenceId !== null) {
-      throw AppError.validation('An after-photo must be a live capture (§12.10)', [
-        { field: 'isLiveCapture', message: 'Must be true' },
-      ]);
     }
     if (!awaitsResponse(action.status)) {
       throw AppError.conflict(
@@ -241,8 +235,8 @@ export class EvidenceService {
       scoreAtCapture: null,
       classification: classifyEvidence({ kind: 'CORRECTIVE_AFTER' }),
       remark: request.remark ?? null,
-      // As the client declared it: always true for a finding (checked above), and false for
-      // an overall action's photo taken from the gallery (R-38), so the record says so.
+      // As the client declared it: false for a photo taken from the gallery (R-38, R-40),
+      // so the record says so.
       isLiveCapture: request.isLiveCapture,
       capturedAt: new Date(request.capturedAt),
       // Location is not recorded (dropped 2026-09-29). An older app may still send one;

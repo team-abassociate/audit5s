@@ -22,14 +22,15 @@ import { BASE_URL } from '@/lib/api';
  *     credentials, which is exactly what the server expects.
  *   * It is **responsive first**. The reader is a Zone Leader standing in front of the
  *     thing they just fixed, on a phone, probably on mobile data.
- *   * For a **finding**, the camera is `getUserMedia` and there is **no file picker**.
- *     §12.10 is honest that a determined user on a desktop browser can present a virtual
- *     camera; the point is that the ordinary path offers no way to attach yesterday's
- *     photograph, and the server refuses anything not flagged as a live capture regardless.
- *   * For an **overall action** (R-38) — the auditor's suggestion for the Zone as a whole —
- *     the photograph is optional and may come from the camera or the gallery, because some
- *     fixes cannot be photographed at all (a smell). `GalleryPick` is the only file input
- *     in this file, and it is rendered only for an overall action.
+ *   * The after-photo may come from the **camera** (`getUserMedia`) or the **gallery**
+ *     (R-38 for an overall action, widened to findings by R-40). A Zone Leader often takes
+ *     the photograph with the phone's own camera app first, or cannot give the browser
+ *     camera access. `isLiveCapture` records honestly which it was.
+ *   * For a **finding** the photograph is required; for an **overall action** — the
+ *     auditor's suggestion for the Zone as a whole — it is optional, because some fixes
+ *     cannot be photographed at all (a smell).
+ *   * **Links in PDFs already issued keep working.** The route, the token and the three
+ *     endpoints are unchanged; an old link simply opens this page as it now is.
  *   * Every failure says what to do next. "This link is no longer valid" with a path to
  *     ask for a new one — never a silent failure a Zone Leader would read as "the system
  *     lost my work".
@@ -226,7 +227,9 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
       {item.alreadySubmitted ? (
         <p className="gb-slip mt-3">
           A response was already submitted on {formatDate(item.alreadySubmitted.submittedAt)}.
-          {item.submittable ? ' It was reopened, so you may answer it again.' : ''}
+          {item.submittable
+            ? ' That response was removed and a new one is needed — please answer it again below.'
+            : ''}
         </p>
       ) : null}
     </section>
@@ -253,8 +256,8 @@ function SubmitForm({
   onDone: () => void;
   onGone: () => void;
 }) {
-  // R-38: an overall action is answered with what was done; the photograph is optional and
-  // may come from the gallery. There is no "not possible" branch for it.
+  // R-38: an overall action is answered with what was done; the photograph is optional.
+  // There is no "not possible" branch for it. Any photograph may come from the gallery (R-40).
   const overall = Boolean(item.suggestion);
   const [option, setOption] = useState<Option>('COMPLETED');
   const [name, setName] = useState(item.issuedToName ?? '');
@@ -410,39 +413,29 @@ function SubmitForm({
             <span className="mb-1 block text-sm font-medium text-ink">
               Photograph <span className="font-normal text-ink-2">(optional)</span>
             </span>
-            {photoUrl ? (
-              <div className="space-y-2">
-                <img
-                  src={photoUrl}
-                  alt="The photograph you chose"
-                  className="w-full border border-edge-soft"
-                  referrerPolicy="no-referrer"
-                />
-                <button
-                  type="button"
-                  className="w-full border border-edge px-3 py-2 text-sm"
-                  onClick={removePhoto}
-                >
-                  Remove photograph
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <LiveCapture onCapture={(blob) => acceptPhoto(blob, true)} preview={null} hint={null} />
-                <GalleryPick onPick={(blob) => acceptPhoto(blob, false)} />
-                <p className="text-xs text-ink-2">
-                  Take a photograph or choose one from your gallery. If the fix cannot be
-                  photographed, leave this empty.
-                </p>
-              </div>
-            )}
+            <PhotoPicker
+              photoUrl={photoUrl}
+              onPhoto={acceptPhoto}
+              onRemove={removePhoto}
+              hint="Take a photograph or choose one from your gallery. If the fix cannot be photographed, leave this empty."
+            />
           </div>
         </div>
       ) : option === 'COMPLETED' ? (
         <div className="mt-4 space-y-3">
-          <Labelled label="Photograph of the completed work">
-            <LiveCapture onCapture={acceptPhoto} preview={photoUrl} />
-          </Labelled>
+          {/* A <div>, not `Labelled`: a <label> forwards a tap on its text to the first
+              control inside it, which here would open the camera. */}
+          <div>
+            <span className="mb-1 block text-sm font-medium text-ink">
+              Photograph of the completed work
+            </span>
+            <PhotoPicker
+              photoUrl={photoUrl}
+              onPhoto={acceptPhoto}
+              onRemove={removePhoto}
+              hint="Take a photograph now, or choose one from your gallery."
+            />
+          </div>
 
           <Labelled label="What was done">
             <textarea
@@ -489,27 +482,56 @@ function SubmitForm({
 }
 
 /**
+ * The after-photo: the chosen one with *Remove photograph*, or else the camera and the
+ * gallery one above the other (R-38, R-40). Removing it brings both options back.
+ */
+function PhotoPicker({
+  photoUrl,
+  onPhoto,
+  onRemove,
+  hint,
+}: {
+  photoUrl: string | null;
+  onPhoto: (blob: Blob, live: boolean) => void;
+  onRemove: () => void;
+  hint: string;
+}) {
+  if (photoUrl) {
+    return (
+      <div className="space-y-2">
+        <img
+          src={photoUrl}
+          alt="The photograph you chose"
+          className="w-full border border-edge-soft"
+          referrerPolicy="no-referrer"
+        />
+        <button
+          type="button"
+          className="w-full border border-edge px-3 py-2 text-sm"
+          onClick={onRemove}
+        >
+          Remove photograph
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <LiveCapture onCapture={(blob) => onPhoto(blob, true)} />
+      <GalleryPick onPick={(blob) => onPhoto(blob, false)} />
+      <p className="text-xs text-ink-2">{hint}</p>
+    </div>
+  );
+}
+
+/**
  * The camera (§10.4, §12.10).
  *
  * `getUserMedia` with the rear camera where there is one, drawn to a canvas and encoded as
- * JPEG. **There is no `<input type="file">` in this component and there must not be**: the
- * whole point of the flow is that the photograph is taken now, in front of the thing that
- * was fixed.
- *
- * A refused or absent camera is reported plainly rather than silently falling back to an
- * upload — falling back would quietly turn a live-capture requirement into a suggestion,
- * and the server would refuse the result anyway.
+ * JPEG. A refused or absent camera is reported plainly; the gallery beside it is the other
+ * way to attach a photograph (R-40).
  */
-function LiveCapture({
-  onCapture,
-  preview,
-  hint = 'The photograph is taken here, now. There is no option to attach an existing file.',
-}: {
-  onCapture: (blob: Blob) => void;
-  preview: string | null;
-  /** The line under the button. Null on an overall action, whose page says its own. */
-  hint?: string | null;
-}) {
+function LiveCapture({ onCapture }: { onCapture: (blob: Blob) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [live, setLive] = useState(false);
@@ -527,7 +549,7 @@ function LiveCapture({
   async function start() {
     setError(null);
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('This browser cannot open a camera. Please use your phone’s browser.');
+      setError('This browser cannot open a camera. Choose a photograph from your gallery instead.');
       return;
     }
     try {
@@ -543,7 +565,8 @@ function LiveCapture({
       }
     } catch {
       setError(
-        'The camera could not be opened. Allow camera access for this page, then try again.',
+        'The camera could not be opened. Allow camera access for this page and try again, ' +
+          'or choose a photograph from your gallery.',
       );
     }
   }
@@ -561,26 +584,6 @@ function LiveCapture({
         stop();
       }
     });
-  }
-
-  if (preview && !live) {
-    return (
-      <div className="space-y-2">
-        <img
-          src={preview}
-          alt="The work you photographed"
-          className="w-full border border-edge-soft"
-          referrerPolicy="no-referrer"
-        />
-        <button
-          type="button"
-          className="w-full border border-edge px-3 py-2 text-sm"
-          onClick={start}
-        >
-          Retake
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -609,13 +612,12 @@ function LiveCapture({
         </button>
       )}
       {error ? <p className="gb-field-error">{error}</p> : null}
-      {hint ? <p className="text-xs text-ink-2">{hint}</p> : null}
     </div>
   );
 }
 
 /**
- * A photograph from the phone's gallery — **overall actions only** (R-38).
+ * A photograph from the phone's gallery — for any corrective action (R-38, R-40).
  *
  * The chosen file is decoded and redrawn as a JPEG at a 1920 px long edge before it leaves
  * the page, like a camera frame: that keeps the upload small on mobile data, gives the
@@ -744,14 +746,14 @@ async function uploadAfterPhoto(
   token: string,
   submissionId: string,
   photo: Blob,
-  /** False for a gallery photo, which only an overall action accepts (R-38). */
+  /** False for a photo chosen from the gallery (R-38, R-40). */
   isLiveCapture: boolean,
 ): Promise<string> {
   const bytes = new Uint8Array(await photo.arrayBuffer());
   if (!crypto.subtle) {
-    // Unreachable in practice — the camera is gated on the same secure context, so there
-    // is no photograph to upload without one — but a raw "cannot read properties of
-    // undefined" would be caught below and shown to a Zone Leader as a network failure.
+    // A gallery photo can now reach here on a plain-HTTP page, where the camera cannot. A
+    // raw "cannot read properties of undefined" would be caught below and shown to a Zone
+    // Leader as a network failure, so this says what is actually wrong.
     throw new Error('This page must be opened over HTTPS before a photograph can be sent.');
   }
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -777,7 +779,7 @@ async function uploadAfterPhoto(
         byteSize: bytes.byteLength,
         checksumSha256,
         capturedAt: new Date().toISOString(),
-        // True only for a frame from `LiveCapture` (§12.10); a gallery photo says so.
+        // True only for a frame from `LiveCapture`; a gallery photo says so (R-40).
         isLiveCapture,
       }),
     },

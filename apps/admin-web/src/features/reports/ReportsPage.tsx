@@ -537,7 +537,8 @@ function TokensPanel({ snapshot, onClose }: { snapshot: ReportSnapshot; onClose:
                   {token.questionGlobalOrder ? ` · Q${token.questionGlobalOrder}` : ''}
                 </Td>
                 <Td>{token.issuedToName ?? '—'}</Td>
-                <Td>{formatDate(token.expiresAt)}</Td>
+                {/* R-41: a link with no limit carries the last possible day. */}
+                <Td>{token.expiresAt.startsWith('9999-') ? 'Never' : formatDate(token.expiresAt)}</Td>
                 <Td className="text-right">{token.useCount}</Td>
                 <Td>{token.lastUsedAt ? formatDateTime(token.lastUsedAt) : 'Never'}</Td>
                 <Td>

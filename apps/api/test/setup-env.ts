@@ -50,6 +50,9 @@ fallback('JWT_ISSUER', 'https://api.audit5s.test');
 fallback('JWT_AUDIENCE', 'audit5s');
 fallback('ACCESS_TOKEN_TTL_SECONDS', '900');
 fallback('REFRESH_TOKEN_TTL_DAYS', '30');
+// A limit, so the suites that refuse an expired link still exercise expiry. No limit (the
+// default, R-41) is unit-tested in `report-tokens.service.test.ts`.
+fallback('REPORT_TOKEN_TTL_DAYS', '30');
 fallback('BOOTSTRAP_PASSWORD_TTL_HOURS', '72');
 fallback('PGBOSS_SCHEMA', 'pgboss');
 

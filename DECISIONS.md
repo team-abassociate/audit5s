@@ -36,6 +36,8 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-25 | Removing a user is archiving them | Settled |
 | R-26 | An audit may be assigned to anyone who can conduct one | Settled |
 | R-39 | Coordinator: no reports; Zone Leader created with a Zone; closures named | Settled |
+| R-40 | Any after-photo may come from the gallery; a Super Admin may delete a response | Settled |
+| R-41 | A corrective-action link has no time limit | Settled |
 
 ---
 
@@ -1880,3 +1882,74 @@ Since R-23 an after-photo closes a finding on submission, so the name is the Zon
 Admin's verification; it still names the person who answered, and the full history —
 verifier included — is on the item. The field is optional in the contract, so a response
 from an older API still parses.
+
+---
+
+## R-40 — Any after-photo may come from the gallery; a Super Admin may delete a response
+
+**Settled 2026-09-30 by the product owner.** **Changes §10.4, §12.10 and CA-2's
+live-capture half** for every corrective action, widening what R-38 did for overall
+actions; **R-11**'s "no gallery picker in the corrective-action flow" is withdrawn for the
+link page. In the owner's words:
+
+> the page only has one option to take a photo but now i want it should also show the
+> option to upload a photo from the device … the pdf are already with the unit people so i
+> cant regenerate the pdf … the links in the pdf they already have should also have this
+> change · also let the super admin delete a corrective action if at all needed and the
+> zone leader would be able to upload the action again … nothing should malfunction with
+> the links in the already generated pdfs
+
+### (a) The gallery, for a finding too
+
+The link page (`/ca/{token}`) offers *Open the camera* and *Choose from gallery* on a
+finding, as it already did on an overall action. A chosen file is redrawn as a ≤1920 px
+JPEG on a canvas before upload (EXIF, GPS included, gone). The photograph stays
+**required** for a finding and optional for an overall action.
+
+The live-capture check is removed at all three places that enforced it — the public
+upload intent, the evidence service's after-photo intent, and the submission's
+`checkAfterPhoto` — and from `enforce_submission_after_evidence()` by migration `0040`.
+Everything else CA-2 checks stands: a cited photo must be a `CORRECTIVE_AFTER` taken for
+this action and this attempt. `evidence.is_live_capture` is still stored as the client
+declared it, so the record shows which photographs came from the gallery.
+
+**Links already printed.** Nothing about a link changes — not the route, the token, its
+expiry or the three public endpoints. The page is the SPA's current build, so a link in a
+PDF issued before this opens the new page. The field app is unchanged: a Zone Leader there
+still uses the camera for a finding, and can use the link for the gallery.
+
+### (b) Deleting a response is the reopen edge
+
+*Delete response* on the admin web is the existing Super Admin `→ REOPENED` edge with its
+required reason — **not** a new state and **not** a deletion, because nothing is
+hard-deleted (CA-1). The attempt stays in the history, marked *Deleted* with the reason;
+the item waits for an answer again; the **same link** in the PDF, and the field app, take
+the new one. A link is not revoked by this, and has no use limit.
+
+One behaviour changes with it: a report frozen while an item **awaits a response**
+(`OPEN`/`REOPENED`) prints that row's right half blank, rather than the latest attempt.
+Before this, a reopened item regenerated into an after-evidence report still showed the
+rejected photograph as its outcome. Reports already issued keep their bytes (R-35).
+
+---
+
+## R-41 — A corrective-action link has no time limit
+
+**Settled 2026-09-30 by the product owner.** **Changes §10.4**'s "default 30 days" and
+`.env.example`'s "the remedy for a link that has run out is to mint another". The owner
+asked for the links to work forever. The PDFs are already with the Units and cannot be
+reissued.
+
+- `REPORT_TOKEN_TTL_DAYS` accepts `0`, meaning no limit, and `0` is the default, as
+  `REFRESH_TOKEN_TTL_DAYS=0` is for a session (R-21). A new link is minted with the last
+  possible day (`9999-12-31`), because `expires_at` is NOT NULL.
+- **Retroactive, without touching a row.** `report_access_token_audience_fixed` makes a
+  link's `expires_at` immutable, and that trigger stays. Under no limit, `isUsable` ignores
+  the stored date, so a link printed under the old 30-day limit works again, even one that
+  had already run out. Setting a limit again enforces the stored dates again.
+- The Reports page shows such a link as expiring *Never*. The contract's `expiresAt` is
+  the effective date, not the stored one.
+- **What still ends a link:** revoking it on the Reports page. A link to an item that is
+  already answered stays read-only (R-40 reopens it for a new answer). A link is a 256-bit
+  secret that reaches one item, so a leaked PDF is dealt with by revoking its link.
+

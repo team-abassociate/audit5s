@@ -150,10 +150,12 @@ describe('CA-2', () => {
     ).rejects.toThrow(/ca2_not_possible/);
   });
 
-  it('refuses an after-photo that was not a live capture', async () => {
+  it('accepts an after-photo from the gallery (R-40, since 0040)', async () => {
     await seedOpenAction();
     await insertAfterPhoto(owner, { live: false });
-    await expect(insertOptionA(owner)).rejects.toThrow(/not a live capture/);
+    await insertOptionA(owner);
+    const { rows } = await owner.query(`SELECT count(*)::int AS n FROM corrective_action_submission`);
+    expect(rows[0].n).toBe(1);
   });
 
   it('refuses an after-photo taken for a different attempt', async () => {
