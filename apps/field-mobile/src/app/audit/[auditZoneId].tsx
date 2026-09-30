@@ -271,7 +271,9 @@ export default function QuestionnaireScreen() {
     },
     onSuccess: () => {
       leaveScreen(
-        () => router.back(),
+        // Always to the audit's Zones, to add the next one — not `back()`, which from a Zone
+        // resumed on Overview lands on Overview, since the Zones screen was never opened.
+        () => router.dismissTo({ pathname: '/audit/zones/[auditId]', params: { auditId: zone.data!.auditId } }),
         () => {
           void queryClient.invalidateQueries({ queryKey: ['local'] });
           // Completion is a high-priority sync trigger (§9.3).

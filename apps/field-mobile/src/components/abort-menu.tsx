@@ -50,7 +50,14 @@ export function useAbortMenu({
   const abortZone = useMutation({
     mutationFn: () => withdrawLocalZone(database, auditZoneId, 'Aborted by auditor'),
     // Back to the audit's Zones, where the next Zone — or this one again — is started.
-    onSuccess: () => leaveScreen(() => router.back(), refresh),
+    onSuccess: () =>
+      leaveScreen(
+        () =>
+          auditId
+            ? router.dismissTo({ pathname: '/audit/zones/[auditId]', params: { auditId } })
+            : router.back(),
+        refresh,
+      ),
   });
 
   // No reason recorded, so the Super Admin reads it as a pause rather than an abort.
