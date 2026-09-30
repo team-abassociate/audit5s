@@ -12,7 +12,7 @@ import { QUESTIONS_PER_SECTION, S_SECTION_ORDER, TOTAL_QUESTIONS } from './secti
  *
  * The real department workbook is **not** a flat one-row-per-question table: it is one
  * sheet per department, with section-header rows between blocks of ten questions
- * (HANDOFF.md §3.4, DECISIONS.md R-6d). Everything here works on a plain grid of cell
+ * (DECISIONS.md R-6d). Everything here works on a plain grid of cell
  * values, so the rules are testable without a spreadsheet and the reader that produces the
  * grid is the only part that touches a file.
  *

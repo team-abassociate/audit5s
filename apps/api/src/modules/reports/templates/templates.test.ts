@@ -10,7 +10,7 @@ import {
 } from './fixture';
 
 /**
- * The layout rules of HANDOFF.md §4.1–§4.3, asserted against the rendered HTML.
+ * The report layout rules, asserted against the rendered HTML.
  *
  * These run without a browser on purpose. Every rule the row names — GOOD side by side, a
  * nonconformity's right half empty and textless, the after-evidence right half populated

@@ -1,7 +1,7 @@
 # Source requirements
 
 The inputs the platform is built from. `ARCHITECTURE.md` (behaviour), `STACK.md` (technology)
-and `DECISIONS.md` (tie-breaker) at the repo root are binding; `HANDOFF.md` explains how these
+and `DECISIONS.md` (tie-breaker) at the repo root are binding; `DECISIONS.md` R-6 records how these
 files relate to them and corrects the assumptions the blueprint made before these files were
 available.
 

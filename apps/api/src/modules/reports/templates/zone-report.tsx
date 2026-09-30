@@ -26,7 +26,7 @@ import {
 } from './components';
 
 /**
- * The Zone report — `INITIAL_ZONE` (HANDOFF.md §4.1) and `AFTER_EVIDENCE_ZONE` (§4.2).
+ * The Zone report — `INITIAL_ZONE` and `AFTER_EVIDENCE_ZONE`.
  *
  * One template, not two. §4.2 is explicit that the after-evidence report is "identical to
  * 4.1 … with GOOD evidence **unchanged**", and the only honest way to guarantee a GOOD

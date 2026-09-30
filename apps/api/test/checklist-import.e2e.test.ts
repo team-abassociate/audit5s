@@ -585,7 +585,7 @@ describe('the real department workbook', () => {
     expect(result.warnings).toEqual([]);
     expect(result.sheets.every((sheet) => sheet.severity === 'OK')).toBe(true);
 
-    // Workbook order, exactly as HANDOFF.md §3.2 lists it (R-6a).
+    // Workbook order, exactly as R-6a lists it.
     expect(result.sheets.map((sheet) => sheet.templateCode)).toEqual([
       'SHOP_FLOOR',
       'OFFICE',

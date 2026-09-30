@@ -23,7 +23,7 @@ const SECTION_HEADERS = [
 ];
 
 /**
- * A sheet shaped exactly like the real workbook (HANDOFF.md §3.4): title, four metadata
+ * A sheet shaped exactly like the real workbook: title, four metadata
  * rows, a header row, then five blocks of ten separated by section headers and closed by
  * a sub-total, followed by the totals block and the signature line.
  */
@@ -103,7 +103,7 @@ describe('section headers', () => {
 });
 
 describe('template codes', () => {
-  it('derives the nine codes of HANDOFF.md §3.2 from the sheet names', () => {
+  it('derives the nine codes of R-6a from the sheet names', () => {
     expect(
       [
         'Shop Floor',

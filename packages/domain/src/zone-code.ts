@@ -34,8 +34,8 @@ export function zoneCodeChoices(): Array<{ number: number; code: string }> {
 
 /**
  * How a Zone is written wherever it is shown to a person, including the reports:
- * `Zone 1 — Press` for a generated code, `Z-BOILER — Boiler house` for a custom one
- * (HANDOFF.md §4.1). Defined once so the web, the device and the PDF cannot disagree.
+ * `Zone 1 — Press` for a generated code, `Z-BOILER — Boiler house` for a custom one.
+ * Defined once so the web, the device and the PDF cannot disagree.
  */
 export function zoneDisplayLabel(code: string, name: string): string {
   const zoneNumber = zoneNumberFromCode(code);
@@ -63,7 +63,7 @@ export function zoneDisplayLabel(code: string, name: string): string {
  * - `BOILER`, "Boiler house", nothing    → `BOILER — Boiler house` (a code a Unit chose)
  *
  * The number is written "Zone 7", never the stored `Z-07`, as on the Zone report and in the
- * sample reports (HANDOFF.md §4.1). The description is a multi-line field on the phone; it
+ * sample reports. The description is a multi-line field on the phone; it
  * is printed on one line here.
  */
 export function reportZoneLabel(zone: {
