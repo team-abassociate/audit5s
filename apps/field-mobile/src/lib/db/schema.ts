@@ -293,10 +293,22 @@ export const localCorrectiveActions = sqliteTable('corrective_action', {
   questionGlobalOrder: integer('question_global_order'),
   questionText: text('question_text'),
   findingRemark: text('finding_remark'),
-  beforeEvidenceId: text('before_evidence_id').notNull(),
+  /** Null on an overall action (R-38), which answers `suggestion` instead of a photo. */
+  beforeEvidenceId: text('before_evidence_id'),
+  suggestion: text('suggestion'),
+  suggestionNo: integer('suggestion_no'),
   assignedZoneLeaderUserId: text('assigned_zone_leader_user_id'),
   dueAt: text('due_at'),
   reopenCount: integer('reopen_count').notNull().default(0),
+});
+
+/**
+ * R-38: the auditor's overall corrective-action suggestions for one Zone, as a JSON array
+ * of strings in their order. One row per Zone; the whole list is replaced on each save.
+ */
+export const localZoneActionSuggestions = sqliteTable('zone_action_suggestion', {
+  auditZoneId: text('audit_zone_id').primaryKey(),
+  suggestions: text('suggestions').notNull().default('[]'),
 });
 
 /**

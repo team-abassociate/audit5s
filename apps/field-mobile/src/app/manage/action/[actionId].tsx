@@ -97,7 +97,9 @@ export default function ReviewActionScreen() {
             description={
               action.questionGlobalOrder
                 ? `${action.section ? `${sectionLabel(action.section)} · ` : ''}Q${action.questionGlobalOrder}: ${action.questionText ?? ''}`
-                : 'Walk-by observation'
+                : action.suggestion
+                  ? `Overall action ${action.suggestionNo ?? ''}: ${action.suggestion}`
+                  : 'Walk-by observation'
             }
             action={
               <Chip tone={reviewing ? 'warn' : action.status === 'VERIFIED' ? 'ok' : action.status === 'REOPENED' ? 'crit' : 'muted'}>
@@ -105,14 +107,24 @@ export default function ReviewActionScreen() {
               </Chip>
             }
           />
-          {action.findingRemark ? (
+          {action.evidenceId ? (
+            <>
+              {action.findingRemark ? (
+                <View style={styles.block}>
+                  <Label>Finding</Label>
+                  <Text style={styles.body}>{action.findingRemark}</Text>
+                </View>
+              ) : null}
+              <Label>Before</Label>
+              <EvidenceImage evidenceId={action.evidenceId} label="Before photograph" />
+            </>
+          ) : (
+            // R-38: an overall suggestion has no before photo — the auditor's words are it.
             <View style={styles.block}>
-              <Label>Finding</Label>
-              <Text style={styles.body}>{action.findingRemark}</Text>
+              <Label>Overall suggestion {action.suggestionNo ?? ''}</Label>
+              <Text style={styles.body}>{action.suggestion}</Text>
             </View>
-          ) : null}
-          <Label>Before</Label>
-          <EvidenceImage evidenceId={action.evidenceId} label="Before photograph" />
+          )}
           <Data>
             {[
               action.dueAt ? `Due ${formatDate(action.dueAt)}${late ? ', overdue' : ''}` : 'No due date',

@@ -16,10 +16,30 @@ import {
  * action in its path, and no request shape here addresses more than one.
  */
 
+/**
+ * R-38: at most this many overall corrective-action suggestions per Zone, each at most
+ * `OVERALL_ACTION_SUGGESTION_MAX_LENGTH` characters. The database holds the first bound.
+ */
+export const OVERALL_ACTION_SUGGESTION_LIMIT = 20;
+export const OVERALL_ACTION_SUGGESTION_MAX_LENGTH = 1000;
+
+/** The auditor's overall suggestions for one Zone, as a request carries them. */
+export const overallActionSuggestionsSchema = z
+  .array(z.string().trim().min(1).max(OVERALL_ACTION_SUGGESTION_MAX_LENGTH))
+  .max(OVERALL_ACTION_SUGGESTION_LIMIT);
+
 export const correctiveActionSchema = z.object({
   id: uuidSchema,
-  /** The nonconformity photograph this action answers. Unique: one action per photo. */
-  evidenceId: uuidSchema,
+  /**
+   * The nonconformity photograph this action answers. Unique: one action per photo.
+   *
+   * Null on an **overall** action (R-38), which answers the auditor's `suggestion` for the
+   * Zone as a whole instead. Exactly one of the two is set.
+   */
+  evidenceId: uuidSchema.nullable(),
+  /** R-38: the auditor's overall suggestion, and its 1-based place in their list. */
+  suggestion: z.string().nullable(),
+  suggestionNo: z.number().int().positive().nullable(),
   auditId: uuidSchema,
   auditZoneId: uuidSchema,
   unitId: uuidSchema,
@@ -120,6 +140,10 @@ const text = (max: number) => z.string().trim().min(1).max(max);
  * explanation (CA-2). A missing field is a 422 here, before the database's CHECK has to
  * say the same thing.
  *
+ * `afterEvidenceId` is optional in the shape because an **overall** action (R-38) may be
+ * answered without a photograph — a smell cannot be photographed. The service still
+ * refuses a finding answered without one, and so does the database (0038).
+ *
  * `id` is optional on the HTTP route, where `Idempotency-Key` does the deduplication, and
  * always present from a device: the outbox mints it, it names the after-photo's object key
  * (§5.6), and it is what makes a replayed sync item a duplicate rather than attempt + 1.
@@ -130,7 +154,7 @@ export const submitCorrectiveActionRequestSchema = z.discriminatedUnion('option'
     id: uuidSchema.optional(),
     submittedByName: text(200),
     description: text(4000),
-    afterEvidenceId: uuidSchema,
+    afterEvidenceId: uuidSchema.optional(),
   }),
   z.object({
     option: z.literal('NOT_POSSIBLE'),

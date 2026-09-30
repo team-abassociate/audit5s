@@ -133,7 +133,8 @@ describe('one action per nonconformity photograph', () => {
 describe('CA-2', () => {
   it('refuses Option A without an after-photo', async () => {
     await seedOpenAction();
-    await expect(insertOptionA(owner, null)).rejects.toThrow(/ca2_completed/);
+    // A trigger since 0038, which can see that this action answers a photograph (R-38).
+    await expect(insertOptionA(owner, null)).rejects.toThrow(/needs an after-photo/);
   });
 
   it('refuses Option B without an explanation', async () => {
@@ -167,6 +168,105 @@ describe('CA-2', () => {
     await insertOptionA(owner);
     const { rows } = await owner.query(`SELECT count(*)::int AS n FROM corrective_action_submission`);
     expect(rows[0].n).toBe(1);
+  });
+});
+
+describe('R-38 — an overall action answers a suggestion, not a photograph', () => {
+  const OVERALL = '01930000-0000-7000-8000-0000000f0010';
+
+  /** The open finding's audit Zone, plus one overall suggestion and its action. */
+  async function seedOverallAction(): Promise<void> {
+    await seedOpenAction();
+    await owner.query(
+      `INSERT INTO corrective_action (id, suggestion, suggestion_no, audit_id, audit_zone_id,
+                                      unit_id, zone_id, assigned_zone_leader_user_id)
+       SELECT $1, 'Find the source of the oil smell', 1, audit_id, audit_zone_id, unit_id,
+              zone_id, assigned_zone_leader_user_id
+         FROM corrective_action WHERE id = $2`,
+      [OVERALL, P.action],
+    );
+  }
+
+  function insertAnswer(client: Client, description: string, afterEvidenceId: string | null) {
+    return client.query(
+      `INSERT INTO corrective_action_submission (id, corrective_action_id, attempt_no, option,
+                                                 submitted_by_user_id, submitted_by_name,
+                                                 description, after_evidence_id, submitted_via)
+       VALUES ($1, $2, 1, 'COMPLETED', $3, 'Leader One', $4, $5, 'WEB_TOKEN')`,
+      [P.attempt, OVERALL, IDS.zoneLeaderA, description, afterEvidenceId],
+    );
+  }
+
+  it('carries exactly one of a photograph and a suggestion', async () => {
+    await seedOverallAction();
+    const copy = (columns: string) =>
+      owner.query(
+        `INSERT INTO corrective_action (${columns}, audit_id, audit_zone_id, unit_id, zone_id)
+         SELECT ${columns}, audit_id, audit_zone_id, unit_id, zone_id
+           FROM corrective_action WHERE id = $1`,
+        [P.action],
+      );
+    // Neither.
+    await expect(copy('checklist_question_id')).rejects.toThrow(/corrective_action_one_source/);
+    // Both.
+    await expect(
+      owner.query(
+        `UPDATE corrective_action SET suggestion = 'Also this', suggestion_no = 9 WHERE id = $1`,
+        [P.action],
+      ),
+    ).rejects.toThrow(/corrective_action_one_source/);
+  });
+
+  it('raises one action per suggestion, as one per photograph', async () => {
+    await seedOverallAction();
+    await expect(
+      owner.query(
+        `INSERT INTO corrective_action (suggestion, suggestion_no, audit_id, audit_zone_id,
+                                        unit_id, zone_id)
+         SELECT 'Again', suggestion_no, audit_id, audit_zone_id, unit_id, zone_id
+           FROM corrective_action WHERE id = $1`,
+        [OVERALL],
+      ),
+    ).rejects.toThrow(/corrective_action_suggestion_key/);
+  });
+
+  it('is answered in words alone — a smell has no after-photo', async () => {
+    await seedOverallAction();
+    await insertAnswer(owner, 'Sealed the leaking drain', null);
+    const { rows } = await owner.query(
+      `SELECT count(*)::int AS n FROM corrective_action_submission WHERE corrective_action_id = $1`,
+      [OVERALL],
+    );
+    expect(rows[0].n).toBe(1);
+  });
+
+  it('still needs the words', async () => {
+    await seedOverallAction();
+    await expect(insertAnswer(owner, '   ', null)).rejects.toThrow(/ca2_completed/);
+  });
+
+  it('accepts a photograph from the gallery, taken for this action and attempt', async () => {
+    await seedOverallAction();
+    await owner.query(
+      `INSERT INTO evidence (id, kind, audit_id, corrective_action_id,
+                             corrective_action_submission_id, object_key, content_type,
+                             byte_size, checksum_sha256, captured_at, is_live_capture)
+       VALUES ($1, 'CORRECTIVE_AFTER', $2, $3, $4, 'corrective/gallery.jpg', 'image/jpeg', 1000,
+               $5, now(), false)`,
+      [P.afterPhoto, IDS.auditA, OVERALL, P.attempt, 'c'.repeat(64)],
+    );
+    await insertAnswer(owner, 'Fan repaired', P.afterPhoto);
+  });
+
+  it('bounds a Zone to twenty suggestions', async () => {
+    const audit = await seedAuditFixture(owner);
+    await expect(
+      owner.query(
+        `UPDATE audit_zone SET overall_action_suggestions = array_fill('x'::text, ARRAY[21])
+          WHERE id = $1`,
+        [audit.auditZoneId],
+      ),
+    ).rejects.toThrow(/overall_action_suggestions_bounded/);
   });
 });
 

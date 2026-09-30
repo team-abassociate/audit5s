@@ -140,6 +140,18 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
               </p>
             )}
 
+            {/* R-38: each of these becomes a corrective action when the audit completes. */}
+            {(zone.overallActionSuggestions ?? []).length > 0 && (
+              <div className="px-4 pb-3 text-sm text-ink-2">
+                <span className="font-semibold">Overall corrective action suggestions:</span>
+                <ol className="mt-1 list-decimal space-y-1 pl-5">
+                  {zone.overallActionSuggestions.map((suggestion, index) => (
+                    <li key={index}>{suggestion}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
             {zone.responses.length > 0 && (
               <details className="px-4 pb-4">
                 <summary className="cursor-pointer text-sm text-ink-2">

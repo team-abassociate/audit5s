@@ -18,9 +18,8 @@ export const correctiveActions = pgTable(
   'corrective_action',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    evidenceId: uuid('evidence_id')
-      .notNull()
-      .references(() => evidence.id, { onDelete: 'restrict' }),
+    /** The nonconformity photograph. Null on an overall suggestion (R-38). */
+    evidenceId: uuid('evidence_id').references(() => evidence.id, { onDelete: 'restrict' }),
     auditId: uuid('audit_id')
       .notNull()
       .references(() => audits.id, { onDelete: 'restrict' }),
@@ -36,6 +35,12 @@ export const correctiveActions = pgTable(
     checklistQuestionId: uuid('checklist_question_id').references(() => checklistQuestions.id, {
       onDelete: 'restrict',
     }),
+    /**
+     * R-38: an overall corrective-action suggestion for the Zone, and its 1-based place in
+     * the auditor's list. Exactly one of `evidenceId` and `suggestion` is set (0038).
+     */
+    suggestion: text('suggestion'),
+    suggestionNo: integer('suggestion_no'),
     status: correctiveActionStatusEnum('status').notNull().default('OPEN'),
     assignedZoneLeaderUserId: uuid('assigned_zone_leader_user_id').references(() => users.id, {
       onDelete: 'restrict',
@@ -62,6 +67,9 @@ export const correctiveActions = pgTable(
   },
   (table) => [
     uniqueIndex('corrective_action_evidence_key').on(table.evidenceId),
+    uniqueIndex('corrective_action_suggestion_key')
+      .on(table.auditZoneId, table.suggestionNo)
+      .where(sql`${table.suggestionNo} IS NOT NULL`),
     index('corrective_action_unit_status_idx').on(table.unitId, table.status),
     index('corrective_action_audit_status_idx').on(table.auditId, table.status),
   ],

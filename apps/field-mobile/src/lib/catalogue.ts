@@ -25,7 +25,8 @@ export interface CatalogueSyncResult {
  */
 export async function syncCatalogue(database: LocalDatabase): Promise<CatalogueSyncResult> {
   const since = await getSyncMeta(database, SYNC_META_KEYS.catalogueVersion);
-  const query = since ? `?since=${encodeURIComponent(since)}` : '';
+  // `overallActions`: this build stores actions with no before photo (R-38, local v9).
+  const query = `?overallActions=true${since ? `&since=${encodeURIComponent(since)}` : ''}`;
   const catalogue = await api.get<SyncCatalogue>(`/sync/catalogue${query}`);
 
   await replaceCatalogue(database, catalogue);

@@ -42,6 +42,11 @@ import { leaveScreen } from '../../lib/leave-screen';
  * Either is saved on the device first and synced when there is signal — the camera is the
  * only way to a photograph here, as §12.10 requires, because `CameraCapture` is the only
  * capture path the app has.
+ *
+ * An **overall** action (R-38) — the auditor's suggestion for the Zone as a whole — is
+ * answered with what was done, and its photograph is optional: some fixes, a smell, cannot
+ * be photographed. The report's link offers the gallery as well; this screen keeps to the
+ * in-app camera, the only capture path the app has.
  */
 export default function CorrectiveActionScreen() {
   const styles = useStyles();
@@ -151,6 +156,7 @@ export default function CorrectiveActionScreen() {
   }
 
   const item = action.data;
+  const overall = item.suggestion !== null;
   const open = awaitsResponse(item.effectiveStatus) && !item.pendingSubmissionId;
   const nameGiven = name.trim().length > 0;
   const textGiven = text.trim().length > 0;
@@ -159,7 +165,8 @@ export default function CorrectiveActionScreen() {
       option === 'COMPLETED'
         ? required.check([
             ['name', nameGiven],
-            ['photo', Boolean(photo)],
+            // Optional for an overall action (R-38).
+            ['photo', overall || Boolean(photo)],
             ['text', textGiven],
           ])
         : required.check([['text', textGiven]]);
@@ -179,25 +186,36 @@ export default function CorrectiveActionScreen() {
           <CardHeader
             title={`Zone ${item.zoneCode} — ${item.zoneName}`}
             description={
-              item.questionGlobalOrder
-                ? `${item.section ? `${sectionLabel(item.section as SSection)} · ` : ''}Q${item.questionGlobalOrder}: ${item.questionText ?? ''}`
-                : 'Walk-by observation'
+              overall
+                ? `Overall corrective action ${item.suggestionNo ?? ''}`
+                : item.questionGlobalOrder
+                  ? `${item.section ? `${sectionLabel(item.section as SSection)} · ` : ''}Q${item.questionGlobalOrder}: ${item.questionText ?? ''}`
+                  : 'Walk-by observation'
             }
             action={<Chip tone={open ? 'warn' : 'muted'}>{statusLabel(item)}</Chip>}
           />
-          {item.findingRemark ? (
+          {overall ? (
             <View style={styles.block}>
-              <Label>Finding</Label>
-              <Text style={styles.remark}>{item.findingRemark}</Text>
+              <Label>Suggested by the auditor</Label>
+              <Text style={styles.remark}>{item.suggestion}</Text>
             </View>
-          ) : null}
-          <Label>Before</Label>
-          {before.data ? (
-            <Image source={{ uri: before.data.url }} style={styles.photo} accessibilityLabel="Before photograph" />
           ) : (
-            <View style={styles.placeholder}>
-              <Muted>{before.isLoading ? 'Loading the photograph…' : 'The photograph is shown when online.'}</Muted>
-            </View>
+            <>
+              {item.findingRemark ? (
+                <View style={styles.block}>
+                  <Label>Finding</Label>
+                  <Text style={styles.remark}>{item.findingRemark}</Text>
+                </View>
+              ) : null}
+              <Label>Before</Label>
+              {before.data ? (
+                <Image source={{ uri: before.data.url }} style={styles.photo} accessibilityLabel="Before photograph" />
+              ) : (
+                <View style={styles.placeholder}>
+                  <Muted>{before.isLoading ? 'Loading the photograph…' : 'The photograph is shown when online.'}</Muted>
+                </View>
+              )}
+            </>
           )}
           {facts.length > 0 ? <Data>{facts.join(', ')}</Data> : null}
         </Card>
@@ -208,22 +226,24 @@ export default function CorrectiveActionScreen() {
               title="Your response"
               description="Saved on this device first, then sent when there is signal."
             />
-            <View style={styles.choice}>
-              <View style={styles.choiceItem}>
-                <Button
-                  title="Completed"
-                  variant={option === 'COMPLETED' ? 'primary' : 'secondary'}
-                  onPress={() => setOption('COMPLETED')}
-                />
+            {overall ? null : (
+              <View style={styles.choice}>
+                <View style={styles.choiceItem}>
+                  <Button
+                    title="Completed"
+                    variant={option === 'COMPLETED' ? 'primary' : 'secondary'}
+                    onPress={() => setOption('COMPLETED')}
+                  />
+                </View>
+                <View style={styles.choiceItem}>
+                  <Button
+                    title="Not possible"
+                    variant={option === 'NOT_POSSIBLE' ? 'primary' : 'secondary'}
+                    onPress={() => setOption('NOT_POSSIBLE')}
+                  />
+                </View>
               </View>
-              <View style={styles.choiceItem}>
-                <Button
-                  title="Not possible"
-                  variant={option === 'NOT_POSSIBLE' ? 'primary' : 'secondary'}
-                  onPress={() => setOption('NOT_POSSIBLE')}
-                />
-              </View>
-            </View>
+            )}
 
             {option === 'COMPLETED' ? (
               <>
@@ -235,15 +255,19 @@ export default function CorrectiveActionScreen() {
                   onChangeText={setName}
                 />
                 <View ref={required.anchor('photo')} collapsable={false}>
-                <Label>After photograph</Label>
-                {required.flagged('photo', Boolean(photo)) ? (
+                <Label>{overall ? 'After photograph (optional)' : 'After photograph'}</Label>
+                {required.flagged('photo', overall || Boolean(photo)) ? (
                   <ErrorBanner message="Take a photograph of the corrected condition." />
                 ) : null}
                 {photo ? (
                   <Image source={{ uri: photo.uri }} style={styles.photo} accessibilityLabel="After photograph" />
                 ) : (
                   <View style={styles.placeholder}>
-                    <Muted>A live photograph of the corrected condition is required.</Muted>
+                    <Muted>
+                      {overall
+                        ? 'If the fix cannot be photographed, leave this empty.'
+                        : 'A live photograph of the corrected condition is required.'}
+                    </Muted>
                   </View>
                 )}
                 <View style={styles.block}>
@@ -255,7 +279,7 @@ export default function CorrectiveActionScreen() {
                 </View>
                 </View>
                 <Field
-                  label="What was done"
+                  label={overall ? 'Corrective action taken' : 'What was done'}
                   inputRef={required.input('text')}
                   error={required.error('text', 'Describe what was done.', textGiven)}
                   value={text}

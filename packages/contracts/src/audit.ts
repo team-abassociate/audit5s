@@ -17,6 +17,7 @@ import {
   sSectionSchema,
   syncStateSchema,
 } from './enums';
+import { overallActionSuggestionsSchema } from './corrective-action';
 import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from './zone';
 
 /**
@@ -258,6 +259,8 @@ export const auditZoneSchema = z.object({
   checklistVersionId: uuidSchema.nullable(),
   checklistTemplateNameSnapshot: z.string().nullable(),
   zoneRemark: z.string().nullable(),
+  /** R-38: overall corrective-action suggestions, in order. None are required. */
+  overallActionSuggestions: z.array(z.string()).default([]),
   totals: scoreTotalsSchema,
   sections: z.array(sectionScoreSchema),
   /** Resume cursor within the Zone (N7, §9.8). */
@@ -486,6 +489,11 @@ export const upsertAuditZoneRequestSchema = z
      */
     zoneLeaderUserId: uuidSchema.optional(),
     zoneRemark: clearable(z.string().trim().max(4000)),
+    /**
+     * R-38: the Zone's overall corrective-action suggestions, whole — the list replaces
+     * the one stored. Absent leaves it as it is; `[]` clears it. Optional to complete.
+     */
+    overallActionSuggestions: overallActionSuggestionsSchema.optional(),
     resumeQuestionId: uuidSchema.nullable().optional(),
     clientUpdatedAt: isoDateTimeSchema.optional(),
   })

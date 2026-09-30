@@ -99,6 +99,24 @@ export const reportNonconformitySchema = reportPhotoSchema.extend({
 });
 export type ReportNonconformity = z.infer<typeof reportNonconformitySchema>;
 
+/**
+ * R-38: one of the auditor's overall corrective-action suggestions for the Zone.
+ *
+ * Printed after the photo evidence, with the same signed link a nonconformity carries and,
+ * in an after-evidence report, the same outcome. There is no before photo — that is the
+ * point of an overall suggestion — and the outcome's after-photo is optional.
+ */
+export const reportOverallActionSchema = z.object({
+  correctiveActionId: uuidSchema,
+  suggestionNo: z.number().int().positive(),
+  suggestion: z.string(),
+  status: correctiveActionStatusSchema,
+  dueAt: isoDateTimeSchema.nullable(),
+  correctiveActionUrl: z.string().nullable(),
+  outcome: reportOutcomeSchema.nullable(),
+});
+export type ReportOverallAction = z.infer<typeof reportOverallActionSchema>;
+
 /** One answered question, in the checklist table (§4.1 item 6). */
 export const reportQuestionSchema = z.object({
   globalOrder: z.number().int(),
@@ -133,6 +151,11 @@ export const reportZoneSchema = z.object({
   questions: z.array(reportQuestionSchema),
   good: z.array(reportPhotoSchema),
   nonconformities: z.array(reportNonconformitySchema),
+  /**
+   * R-38. Defaulted rather than required so a payload frozen before this field existed
+   * still parses and renders exactly as it was issued (§10.5).
+   */
+  overallActions: z.array(reportOverallActionSchema).default([]),
 });
 export type ReportZone = z.infer<typeof reportZoneSchema>;
 
@@ -398,6 +421,12 @@ export const publicCorrectiveActionSchema = z.object({
   questionText: z.string().nullable(),
   section: sSectionSchema.nullable(),
   findingRemark: z.string().nullable(),
+  /**
+   * R-38: set when this is an **overall** action — the auditor's suggestion for the Zone as
+   * a whole. It has no before photo, and the page then takes an optional after-photo from
+   * the camera or the gallery, with a description of what was done.
+   */
+  suggestion: z.string().nullable(),
   dueAt: isoDateTimeSchema.nullable(),
   /** Short-TTL presigned GET (§12.6), minted after the token check, never before it. */
   beforePhotoUrl: z.string().nullable(),

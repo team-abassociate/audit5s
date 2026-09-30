@@ -130,6 +130,8 @@ export async function replaceCatalogue(
         questionText: action.questionText,
         findingRemark: action.findingRemark,
         beforeEvidenceId: action.evidenceId,
+        suggestion: action.suggestion,
+        suggestionNo: action.suggestionNo,
         assignedZoneLeaderUserId: action.assignedZoneLeaderUserId,
         dueAt: action.dueAt,
         reopenCount: action.reopenCount,

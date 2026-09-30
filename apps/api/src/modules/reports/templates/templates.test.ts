@@ -325,6 +325,58 @@ describe('§4.2 — the after-evidence report', () => {
   });
 });
 
+describe('R-38 — the overall remark and the overall corrective actions', () => {
+  const v1 = renderReportHtml(fixtureZonePayload(), resolve);
+  const v2 = renderReportHtml(fixtureAfterEvidencePayload(), resolve);
+  const TITLE = 'Overall corrective action suggestions';
+
+  it('prints the remark after the photo evidence, then the suggestions', () => {
+    const nonconformities = v1.indexOf('>Nonconformities</h2>');
+    const remark = v1.indexOf('>Auditor&#x27;s overall remark</h2>');
+    const suggestions = v1.indexOf(`>${TITLE}</h2>`);
+    expect(v1.indexOf('>Good evidence</h2>')).toBeLessThan(nonconformities);
+    expect(nonconformities).toBeLessThan(remark);
+    expect(remark).toBeLessThan(suggestions);
+    expect(v1).not.toContain('>Zone remark</h2>');
+  });
+
+  it('numbers each suggestion in the auditor’s order', () => {
+    const section = sectionOf(v1, TITLE);
+    expect(section.indexOf('OVERALL 1')).toBeLessThan(section.indexOf('OVERALL 2'));
+    expect(section).toContain('Strong oil smell near the press pit.');
+    expect(section).toContain('Start a daily five-minute end-of-shift clean-up');
+  });
+
+  it('gives an open suggestion the corrective-action link, saying a photo is optional', () => {
+    const section = sectionOf(v1, TITLE);
+    expect(section).toContain('href="https://app.example.test/ca/FIXED-TOKEN-OVERALL-2"');
+    expect(section).toContain('a photograph is optional');
+    expect(decodeFirstQr(section)).toBe('https://app.example.test/ca/FIXED-TOKEN-OVERALL-2');
+  });
+
+  it('reserves the right half in the initial report, as a nonconformity does', () => {
+    expect(sectionOf(v1, TITLE)).toContain('nc-placeholder');
+  });
+
+  it('prints an answer given in words alone, with no after photo', () => {
+    const section = sectionOf(v2, TITLE);
+    expect(section).toContain('ACTION TAKEN');
+    expect(section).toContain('Leaking return line replaced; exhaust fan in bay 2 repaired.');
+    expect(section).toContain('✓ VERIFIED');
+    expect(section).toContain('PENDING');
+    expect(section).not.toContain('nc-placeholder');
+  });
+
+  it('still renders a Zone frozen before overall actions existed', () => {
+    const payload = fixtureZonePayload();
+    // A snapshot issued before R-38 has no such field at all.
+    delete (payload.zones[0] as Partial<(typeof payload.zones)[number]>).overallActions;
+    const html = renderReportHtml(payload, resolve);
+    expect(html).not.toContain(TITLE);
+    expect(html).toContain('>Nonconformities</h2>');
+  });
+});
+
 describe('§4.3 — the multi-Zone summary', () => {
   const html = renderReportHtml(fixtureSummaryPayload(), resolve);
 

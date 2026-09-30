@@ -58,7 +58,10 @@ export class SyncService {
     );
 
     // §8.11's open corrective actions — a Zone Leader's to-do and what awaits review.
-    const actions = await this.correctiveActions.listForCatalogue(scope);
+    // R-38: overall actions only to a device that said it can store them.
+    const actions = (await this.correctiveActions.listForCatalogue(scope)).filter(
+      (action) => query.overallActions || action.evidenceId !== null,
+    );
 
     const units: Unit[] = unitRows.map(toUnit);
     const zones = zoneRows.map(toZone);

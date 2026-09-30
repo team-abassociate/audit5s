@@ -114,7 +114,11 @@ export function renderNotification(event: DomainEventJob): { title: string; body
   ]
     .filter(Boolean)
     .join(' — ');
-  const question = data.questionNo ? `, Q${String(data.questionNo)}` : '';
+  const question = data.questionNo
+    ? `, Q${String(data.questionNo)}`
+    : data.suggestionNo
+      ? `, overall action ${String(data.suggestionNo)}`
+      : '';
 
   switch (event.type) {
     case 'UNIT_ASSIGNED':

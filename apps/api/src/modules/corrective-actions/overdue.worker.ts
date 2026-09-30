@@ -58,6 +58,7 @@ export class OverdueActionsWorker {
           zoneCode: action.zoneCode,
           zoneName: action.zoneName,
           questionNo: action.questionGlobalOrder,
+          suggestionNo: action.suggestionNo,
           assigneeName: action.assignedZoneLeaderName,
           dueAt: action.dueAt ? new Date(action.dueAt).toISOString() : null,
           daysOverdue,

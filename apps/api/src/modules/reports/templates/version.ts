@@ -23,7 +23,9 @@
 // `Z-01 — Zone 1`, in the matrix, the comparison chart, the rankings and the flagged photos.
 // 1.5.0 — the Zone report's Zone box reads the same way: `Zone 1 — Press Shop`, where it
 // printed `Zone Z-01 — Zone 1` and left out what the auditor typed.
-export const TEMPLATE_VERSION = '1.5.0';
+// 1.6.0 — R-38: the auditor's overall remark moves after the photo evidence, followed by
+// the overall corrective-action suggestions, each with its own link and outcome.
+export const TEMPLATE_VERSION = '1.6.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

@@ -43,8 +43,9 @@ export class PublicCorrectiveActionsService {
 
     // The before photo, through a short-TTL presigned GET minted after the token check
     // (§12.6). Never a stored URL: the page holds a link that expires in minutes.
+    // An overall action (R-38) has no before photo: it answers a sentence, not a picture.
     const before = await this.repository.findById(scope, token.correctiveActionId);
-    const beforePhotoUrl = before
+    const beforePhotoUrl = before?.evidenceId
       ? await this.presignBeforePhoto(scope, before.evidenceId)
       : null;
 
@@ -63,6 +64,7 @@ export class PublicCorrectiveActionsService {
       questionText: detail.questionText,
       section: detail.section,
       findingRemark: detail.findingRemark,
+      suggestion: detail.suggestion,
       dueAt: detail.dueAt,
       beforePhotoUrl,
       // Only an item waiting for an answer takes one. A response awaiting review (or a
@@ -92,9 +94,10 @@ export class PublicCorrectiveActionsService {
     const action = await this.repository.findById(scope, token.correctiveActionId);
     if (!action) throw AppError.notFound('No such corrective action');
 
-    if (!request.isLiveCapture) {
-      // CA-2 and §10.4. The page uses `getUserMedia` and offers no file picker; this is
-      // the server saying so too, because a client-side rule is a client-side rule.
+    if (!request.isLiveCapture && action.evidenceId !== null) {
+      // CA-2 and §10.4. For a finding the page uses `getUserMedia` and offers no file
+      // picker; this is the server saying so too, because a client-side rule is a
+      // client-side rule. An overall action's photo may come from the gallery (R-38).
       throw AppError.validation('The after-photo must be a live capture', [
         { field: 'isLiveCapture', message: 'Option A requires a live camera capture (CA-2)' },
       ]);
@@ -143,7 +146,9 @@ export class PublicCorrectiveActionsService {
         { field: 'submittedByName', message: 'Enter the name of the person answering' },
       ]);
     }
-    if (request.option === 'COMPLETED') {
+    // An overall action may be answered without a photograph (R-38); the shared service
+    // refuses a finding answered without one.
+    if (request.option === 'COMPLETED' && request.afterEvidenceId) {
       await this.commitAfterPhoto(scope, request.afterEvidenceId);
     }
     return this.actions.submit(scope, token.correctiveActionId, request, 'WEB_TOKEN', token.tokenId);

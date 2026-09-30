@@ -52,6 +52,8 @@ const actionColumns = {
   unitId: correctiveActions.unitId,
   zoneId: correctiveActions.zoneId,
   checklistQuestionId: correctiveActions.checklistQuestionId,
+  suggestion: correctiveActions.suggestion,
+  suggestionNo: correctiveActions.suggestionNo,
   status: correctiveActions.status,
   assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,
   // The name alone, through 0008's narrow definer function — a Consultant may not read
@@ -314,7 +316,8 @@ export class CorrectiveActionsRepository extends BaseRepository {
       .from(correctiveActions)
       .innerJoin(audits, eq(audits.id, correctiveActions.auditId))
       .innerJoin(auditZones, eq(auditZones.id, correctiveActions.auditZoneId))
-      .innerJoin(evidence, eq(evidence.id, correctiveActions.evidenceId))
+      // Left, not inner: an overall action (R-38) answers a suggestion and has no photo.
+      .leftJoin(evidence, eq(evidence.id, correctiveActions.evidenceId))
       .leftJoin(checklistQuestions, eq(checklistQuestions.id, correctiveActions.checklistQuestionId));
   }
 
@@ -534,12 +537,13 @@ export class CorrectiveActionWork {
   async findRevivableActions(
     auditId: string,
   ): Promise<Array<{ id: string; status: CorrectiveActionStatus; assignedZoneLeaderUserId: string | null }>> {
-    return this.tx
-      .select({
-        id: correctiveActions.id,
-        status: correctiveActions.status,
-        assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,
-      })
+    const columns = {
+      id: correctiveActions.id,
+      status: correctiveActions.status,
+      assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,
+    };
+    const findings = await this.tx
+      .select(columns)
       .from(correctiveActions)
       .innerJoin(evidence, eq(evidence.id, correctiveActions.evidenceId))
       .where(
@@ -550,6 +554,50 @@ export class CorrectiveActionWork {
           isNull(evidence.deletedAt),
         ),
       );
+
+    /*
+     * R-38: an overall suggestion withdrawn by a restart is live again when its Zone still
+     * lists a suggestion at that place. Identity is the place, not the wording — the
+     * auditor may have reworded it on the second look, and `refreshSuggestions` carries
+     * the new wording onto the revived row. One the auditor deleted stays withdrawn.
+     */
+    const suggestions = await this.tx
+      .select(columns)
+      .from(correctiveActions)
+      .innerJoin(auditZones, eq(auditZones.id, correctiveActions.auditZoneId))
+      .where(
+        and(
+          eq(correctiveActions.auditId, auditId),
+          eq(correctiveActions.status, 'WITHDRAWN'),
+          sql`${correctiveActions.suggestionNo} IS NOT NULL`,
+          ne(auditZones.status, 'WITHDRAWN'),
+          sql`cardinality(${auditZones.overallActionSuggestions}) >= ${correctiveActions.suggestionNo}`,
+        ),
+      );
+
+    return [...findings, ...suggestions];
+  }
+
+  /**
+   * R-38: every unsettled overall action of this audit takes its Zone's current wording.
+   *
+   * Only reachable in practice after a restart, which is the one way the auditor edits a
+   * suggestion after its action exists. A settled action keeps the words it was settled on.
+   */
+  async refreshSuggestions(auditId: string): Promise<void> {
+    await this.tx.execute(sql`
+      UPDATE corrective_action ca
+         SET suggestion = az.overall_action_suggestions[ca.suggestion_no],
+             version = ca.version + 1
+        FROM audit_zone az
+       WHERE az.id = ca.audit_zone_id
+         AND ca.audit_id = ${auditId}::uuid
+         AND ca.suggestion_no IS NOT NULL
+         AND ca.status NOT IN ('VERIFIED', 'WITHDRAWN')
+         AND cardinality(az.overall_action_suggestions) >= ca.suggestion_no
+         AND btrim(az.overall_action_suggestions[ca.suggestion_no]) <> ''
+         AND ca.suggestion IS DISTINCT FROM az.overall_action_suggestions[ca.suggestion_no]
+    `);
   }
 
   /** Puts revived findings back in play: REOPENED, unsettled, with a fresh due date. */
@@ -668,8 +716,22 @@ export class CorrectiveActionWork {
       )
       .orderBy(asc(auditZones.sequenceNo), asc(evidence.id));
 
-    if (findings.length === 0) return [];
+    const raised = findings.length === 0 ? [] : await this.materializeFindings(auditId, findings, dueAt);
+    return [...raised, ...(await this.materializeSuggestions(auditId, dueAt))];
+  }
 
+  private async materializeFindings(
+    auditId: string,
+    findings: Array<{
+      evidenceId: string;
+      auditZoneId: string;
+      unitId: string;
+      zoneId: string;
+      checklistQuestionId: string | null;
+      leaderUserId: string | null;
+    }>,
+    dueAt: Date | null,
+  ): Promise<Array<{ id: string; assignedZoneLeaderUserId: string | null }>> {
     return this.tx
       .insert(correctiveActions)
       .values(
@@ -686,6 +748,73 @@ export class CorrectiveActionWork {
         })),
       )
       .onConflictDoNothing({ target: correctiveActions.evidenceId })
+      .returning({
+        id: correctiveActions.id,
+        assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,
+      });
+  }
+
+  /**
+   * R-38: one action per overall suggestion the auditor wrote for a Zone.
+   *
+   * Routed and dated exactly as a finding is. Idempotent on `(audit_zone_id,
+   * suggestion_no)` the way a finding is on `evidence_id`, so a replayed completion raises
+   * nothing twice. A withdrawn Zone raises nothing, as its photographs raise nothing.
+   */
+  private async materializeSuggestions(
+    auditId: string,
+    dueAt: Date | null,
+  ): Promise<Array<{ id: string; assignedZoneLeaderUserId: string | null }>> {
+    const withSuggestions = await this.tx
+      .select({
+        auditZoneId: auditZones.id,
+        unitId: audits.unitId,
+        zoneId: auditZones.zoneId,
+        leaderUserId: zones.zoneLeaderId,
+        suggestions: auditZones.overallActionSuggestions,
+      })
+      .from(auditZones)
+      .innerJoin(audits, eq(audits.id, auditZones.auditId))
+      .innerJoin(zones, eq(zones.id, auditZones.zoneId))
+      .where(
+        and(
+          eq(auditZones.auditId, auditId),
+          ne(auditZones.status, 'WITHDRAWN'),
+          sql`cardinality(${auditZones.overallActionSuggestions}) > 0`,
+        ),
+      )
+      .orderBy(asc(auditZones.sequenceNo));
+
+    const rows = withSuggestions.flatMap((zone) =>
+      zone.suggestions.flatMap((text, index) =>
+        text.trim() === ''
+          ? []
+          : [
+              {
+                id: uuidv7(),
+                auditId,
+                auditZoneId: zone.auditZoneId,
+                unitId: zone.unitId,
+                zoneId: zone.zoneId,
+                suggestion: text.trim(),
+                // The place in the auditor's list, which is the suggestion's identity.
+                suggestionNo: index + 1,
+                assignedZoneLeaderUserId: zone.leaderUserId,
+                dueAt,
+              },
+            ],
+      ),
+    );
+    if (rows.length === 0) return [];
+
+    return this.tx
+      .insert(correctiveActions)
+      .values(rows)
+      .onConflictDoNothing({
+        target: [correctiveActions.auditZoneId, correctiveActions.suggestionNo],
+        // Unqualified: the inference predicate names the partial index's own column.
+        where: sql`suggestion_no IS NOT NULL`,
+      })
       .returning({
         id: correctiveActions.id,
         assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,

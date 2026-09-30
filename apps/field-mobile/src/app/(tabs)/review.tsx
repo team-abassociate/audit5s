@@ -79,7 +79,11 @@ export default function ReviewScreen() {
           <CardHeader
             title={`Zone ${item.zoneCode} — ${item.zoneName}`}
             description={
-              item.questionGlobalOrder ? `Q${item.questionGlobalOrder}: ${item.questionText ?? ''}` : 'Walk-by observation'
+              item.questionGlobalOrder
+                ? `Q${item.questionGlobalOrder}: ${item.questionText ?? ''}`
+                : item.suggestion
+                  ? `Overall action ${item.suggestionNo ?? ''}: ${item.suggestion}`
+                  : 'Walk-by observation'
             }
             action={
               <Chip tone={reviewing ? 'warn' : item.status === 'VERIFIED' ? 'ok' : item.status === 'REOPENED' ? 'crit' : 'muted'}>

@@ -3,7 +3,12 @@ import { ActivityIndicator, BackHandler, FlatList, Pressable, Text, View } from 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
-import type { ResponseValue, SSection } from '@audit5s/contracts';
+import {
+  OVERALL_ACTION_SUGGESTION_LIMIT,
+  OVERALL_ACTION_SUGGESTION_MAX_LENGTH,
+  type ResponseValue,
+  type SSection,
+} from '@audit5s/contracts';
 import {
   RESPONSE_TOKENS,
   S_SECTION_SHORT_LABELS,
@@ -54,6 +59,7 @@ import {
   completeLocalZone,
   getLocalAudit,
   getLocalAuditZone,
+  getZoneSuggestions,
   listQuestionsWithAnswers,
   saveLocalResponse,
   saveZoneRemark,
@@ -105,6 +111,8 @@ export default function QuestionnaireScreen() {
   const [page, setPage] = useState(0);
   const [picked, setPicked] = useState<Record<string, ResponseValue>>({});
   const [zoneRemarkDraft, setZoneRemarkDraft] = useState('');
+  /** R-38: the overall corrective-action suggestions, saved with the remark on Finish. */
+  const [suggestionDrafts, setSuggestionDrafts] = useState<string[]>([]);
   const [cameraFor, setCameraFor] = useState<Row | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [showMissing, setShowMissing] = useState(false);
@@ -177,6 +185,14 @@ export default function QuestionnaireScreen() {
     setZoneRemarkDraft(zone.data?.zoneRemark ?? '');
   }, [zone.data?.zoneRemark]);
 
+  const savedSuggestions = useQuery({
+    queryKey: ['local', 'zone-suggestions', auditZoneId],
+    queryFn: () => getZoneSuggestions(database, auditZoneId),
+  });
+  useEffect(() => {
+    if (savedSuggestions.data) setSuggestionDrafts(savedSuggestions.data);
+  }, [savedSuggestions.data]);
+
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleSync = useCallback(() => {
     if (syncTimer.current) clearTimeout(syncTimer.current);
@@ -242,7 +258,14 @@ export default function QuestionnaireScreen() {
 
   const finish = useMutation({
     mutationFn: async () => {
-      await saveZoneRemark(database, auditZoneId, zoneRemarkDraft.trim() || null);
+      // None of the suggestions is required: an empty list completes like any other (R-38).
+      await saveZoneRemark(
+        database,
+        auditZoneId,
+        zoneRemarkDraft.trim() || null,
+        undefined,
+        suggestionDrafts,
+      );
       await assertZonePhotoLimitForCompletion(database, auditZoneId);
       await completeLocalZone(database, auditZoneId);
     },
@@ -619,6 +642,40 @@ export default function QuestionnaireScreen() {
                   containerStyle={styles.lastField}
                 />
               </Card>
+              <Card>
+                <CardHeader title={t.overallActions} description={t.overallActionsHint} />
+                {suggestionDrafts.map((text, index) => (
+                  <View key={index} style={styles.suggestion}>
+                    <Field
+                      label={`${index + 1}.`}
+                      multiline
+                      placeholder={t.overallActionPlaceholder}
+                      value={text}
+                      maxLength={OVERALL_ACTION_SUGGESTION_MAX_LENGTH}
+                      onChangeText={(next) =>
+                        setSuggestionDrafts((drafts) =>
+                          drafts.map((draft, at) => (at === index ? next : draft)),
+                        )
+                      }
+                      containerStyle={styles.lastField}
+                    />
+                    <Button
+                      title={t.removeOverallAction}
+                      variant="secondary"
+                      onPress={() =>
+                        setSuggestionDrafts((drafts) => drafts.filter((_, at) => at !== index))
+                      }
+                    />
+                  </View>
+                ))}
+                {suggestionDrafts.length < OVERALL_ACTION_SUGGESTION_LIMIT ? (
+                  <Button
+                    title={t.addOverallAction}
+                    variant="secondary"
+                    onPress={() => setSuggestionDrafts((drafts) => [...drafts, ''])}
+                  />
+                ) : null}
+              </Card>
               <ErrorBanner message={finish.error instanceof Error ? finish.error.message : null} />
             </View>
           ) : (
@@ -985,6 +1042,13 @@ const useStyles = createThemedStyles((theme) => ({
   },
   remark: { marginTop: theme.space.md, marginBottom: 0 },
   lastField: { marginBottom: 0 },
+  suggestion: {
+    gap: theme.space.sm,
+    marginBottom: theme.space.md,
+    paddingBottom: theme.space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.color.edgeSoft,
+  },
   scoreRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',

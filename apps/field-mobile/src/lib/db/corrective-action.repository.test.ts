@@ -30,6 +30,8 @@ function action(overrides: Partial<CorrectiveAction> = {}): CorrectiveAction {
   return {
     id: ACTION,
     evidenceId: 'ffffffff-0000-4000-8000-000000000001',
+    suggestion: null,
+    suggestionNo: null,
     auditId: AUDIT,
     auditZoneId: 'ffffffff-0000-4000-8000-000000000002',
     unitId: FIXTURE_UNIT,
@@ -173,5 +175,38 @@ describe('the server’s verdict', () => {
     await settleLocalSubmission(database, id);
     const local = await getLocalCorrectiveAction(database, ACTION);
     expect(local?.effectiveStatus).toBe('OPEN');
+  });
+});
+
+describe('an overall action (R-38)', () => {
+  const OVERALL = 'dddddddd-0000-4000-8000-000000000002';
+
+  it('arrives with no before photo and is answered in words alone, offline', async () => {
+    await replaceCatalogue(
+      database,
+      withActions([
+        action({
+          id: OVERALL,
+          evidenceId: null,
+          suggestion: 'Find the source of the oil smell and ventilate the bay',
+          suggestionNo: 1,
+          findingRemark: null,
+        }),
+      ]),
+    );
+    const cached = await getLocalCorrectiveAction(database, OVERALL);
+    expect(cached).toMatchObject({ beforeEvidenceId: null, suggestionNo: 1 });
+
+    const id = await submitLocalCorrectiveAction(database, {
+      actionId: OVERALL,
+      option: 'COMPLETED',
+      submittedByName: 'Zed Leader',
+      description: 'Sealed the leaking drain; exhaust fan repaired',
+    });
+
+    const [item] = (await listOutbox(database)).filter((row) => row.operation === 'submit');
+    const payload = JSON.parse(item!.payload);
+    expect(payload).toMatchObject({ id, correctiveActionId: OVERALL, option: 'COMPLETED' });
+    expect(payload).not.toHaveProperty('afterEvidenceId');
   });
 });
