@@ -84,7 +84,11 @@ export default function NewPersonScreen() {
         ...(unitId ? { unitId } : {}),
         ...(picksZone && zoneId ? { zoneId } : {}),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    // A Zone leader made with a Zone points that Zone at them (R-39): the Unit page shows both.
+    onSuccess: () =>
+      Promise.all(
+        ['users', 'memberships', 'zones'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+      ),
   });
 
   const required = useRequiredFields<'name' | 'phone' | 'unit' | 'zone'>();

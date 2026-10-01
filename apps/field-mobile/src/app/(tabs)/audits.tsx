@@ -1,12 +1,11 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
-import type { Audit, AuditAssignment, AuditStatus, AuditType, Page } from '@audit5s/contracts';
+import type { Audit, AuditAssignment, AuditStatus, AuditType, Page, Unit } from '@audit5s/contracts';
 import {
   ActionSheet,
   Card,
-  CardHeader,
   Chip,
   Data,
   EmptyState,
@@ -39,7 +38,7 @@ const BOARDS = [
 const HEAD: Record<Board, { title: (n: number) => string; description: string; empty: string }> = {
   ACTIVE: {
     title: (n) => `${n} active`,
-    description: 'Started, in progress or paused, on any phone.',
+    description: 'Started, in progress or paused.',
     empty: 'Nobody is auditing right now.',
   },
   DONE: {
@@ -55,6 +54,12 @@ const HEAD: Record<Board, { title: (n: number) => string; description: string; e
 };
 
 /**
+ * The Active board is the audits somebody is actually running. `?active=true` also returns
+ * ASSIGNED and READY (selfie taken, nothing answered), which are the Assigned board's.
+ */
+const RUNNING: ReadonlySet<AuditStatus> = new Set(['IN_PROGRESS', 'PAUSED']);
+
+/**
  * Every audit in reach — the organization's for a Super Admin, the own Unit's for a Coordinator
  * (R-24): what is running, what is finished (with its reports and the correction path), and
  * what is assigned but not started. An audit this phone is running itself sits on top as the
@@ -65,7 +70,10 @@ export default function AuditsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const database = useLocalDatabase();
-  const { can } = useSession();
+  const { can, scope } = useSession();
+  // A Coordinator holds one Unit (M-1): naming it on every card says nothing. It is said once,
+  // in the section head, and the card leads with who is auditing.
+  const oneUnit = scope !== null && !scope.organizationWide && scope.unitIds.length === 1;
   const [board, setBoard] = useState<Board>('ACTIVE');
   const [adding, setAdding] = useState(false);
 
@@ -77,6 +85,15 @@ export default function AuditsScreen() {
   if (can('audit', 'create_external')) {
     newAudit.push({ label: 'Start one myself', detail: 'Pick the Unit, then take the selfie', onPress: () => router.push('/units') });
   }
+
+  // The same query as My Unit's, so the name is usually cached already.
+  const ownUnitId = oneUnit ? scope.unitIds[0] : undefined;
+  const ownUnit = useQuery({
+    queryKey: ['unit', ownUnitId],
+    queryFn: () => api.get<Unit>(`/units/${ownUnitId}`),
+    enabled: ownUnitId !== undefined,
+  });
+  const unitName = ownUnit.data?.name;
 
   const mine = useQuery({ queryKey: ['local', 'audits'], queryFn: () => listLocalAudits(database) });
   const resumable = (mine.data ?? []).find((audit) => audit.status === 'IN_PROGRESS' || audit.status === 'PAUSED');
@@ -101,11 +118,13 @@ export default function AuditsScreen() {
   const current = board === 'ACTIVE' ? active : board === 'DONE' ? all : assignments;
   const audits =
     board === 'ACTIVE'
-      ? (active.data?.data ?? [])
+      ? (active.data?.data ?? []).filter((audit) => RUNNING.has(audit.status))
       : (all.data?.data ?? [])
           .filter((audit) => isFinished(audit.status))
           .sort((a, b) => Date.parse(b.completedAt ?? '') - Date.parse(a.completedAt ?? ''));
-  const count = board === 'ASSIGNED' ? (assignments.data?.data.length ?? 0) : audits.length;
+  // An assignment whose audit has started is on the Active board already.
+  const waiting = (assignments.data?.data ?? []).filter((assignment) => assignment.status !== 'IN_PROGRESS');
+  const count = board === 'ASSIGNED' ? waiting.length : audits.length;
 
   const renderAudit = useCallback(
     ({ item }: { item: Audit }) => {
@@ -117,44 +136,54 @@ export default function AuditsScreen() {
           accessibilityRole="button"
           onPress={() => router.push({ pathname: '/manage/audit/[auditId]', params: { auditId: item.id } })}
         >
-          <CardHeader
-            title={item.unitName}
-            description={`${AUDIT_TYPE_LABELS[item.auditType]} by ${item.auditorName}`}
-            action={<Chip tone={AUDIT_STATUS_TONE[item.status]}>{AUDIT_STATUS_LABELS[item.status]}</Chip>}
-          />
-          <View style={styles.meta}>
-            <Data>
-              {finished && item.completedAt
-                ? `Completed ${formatDate(item.completedAt)}`
-                : item.startedAt
-                  ? `Started ${formatDate(item.startedAt)}`
-                  : 'Not started yet'}
-            </Data>
-            {finished && item.scored ? (
-              <Figure band={band} size={22}>
-                {formatPct(item.totals.scorePercentage)}
-              </Figure>
-            ) : null}
+          <View style={styles.row}>
+            <View style={styles.text}>
+              <Text style={styles.title}>{oneUnit ? item.auditorName : item.unitName}</Text>
+              <Muted>
+                {oneUnit ? AUDIT_TYPE_LABELS[item.auditType] : `${AUDIT_TYPE_LABELS[item.auditType]} by ${item.auditorName}`}
+              </Muted>
+              <Data>
+                {finished && item.completedAt
+                  ? `Completed ${formatDate(item.completedAt)}`
+                  : item.startedAt
+                    ? `Started ${formatDate(item.startedAt)}`
+                    : 'Not started yet'}
+              </Data>
+            </View>
+            <View style={styles.side}>
+              <Chip tone={AUDIT_STATUS_TONE[item.status]}>{AUDIT_STATUS_LABELS[item.status]}</Chip>
+              {finished && item.scored ? (
+                <Figure band={band} size={22}>
+                  {formatPct(item.totals.scorePercentage)}
+                </Figure>
+              ) : null}
+            </View>
           </View>
         </Card>
       );
     },
-    [styles, router],
+    [styles, router, oneUnit],
   );
 
   const renderAssignment = useCallback(
     ({ item }: { item: AuditAssignment }) => (
       <Card>
-        <CardHeader
-          title={item.unitName}
-          description={`${AUDIT_TYPE_LABELS[item.auditType]} for ${item.auditorName}`}
-          action={<Chip>{humanize(item.status)}</Chip>}
-        />
-        <Data>{item.dueAt ? `Due ${formatDate(item.dueAt)}` : 'No due date'}</Data>
+        <View style={styles.row}>
+          <View style={styles.text}>
+            <Text style={styles.title}>{oneUnit ? item.auditorName : item.unitName}</Text>
+            <Muted>
+              {oneUnit ? AUDIT_TYPE_LABELS[item.auditType] : `${AUDIT_TYPE_LABELS[item.auditType]} for ${item.auditorName}`}
+            </Muted>
+            <Data>{item.dueAt ? `Due ${formatDate(item.dueAt)}` : 'No due date'}</Data>
+          </View>
+          <View style={styles.side}>
+            <Chip>{humanize(item.status)}</Chip>
+          </View>
+        </View>
         {item.instructions ? <Muted>{item.instructions}</Muted> : null}
       </Card>
     ),
-    [],
+    [styles, oneUnit],
   );
 
   const header = (
@@ -177,7 +206,7 @@ export default function AuditsScreen() {
       />
       {current.data ? (
         <SectionHead
-          title={HEAD[board].title(count)}
+          title={unitName ? `${HEAD[board].title(count)} · ${unitName}` : HEAD[board].title(count)}
           description={
             // R-39: a Coordinator opens a finished audit for its scores; reports are not theirs.
             board === 'DONE' && !can('report', 'read_snapshot')
@@ -211,7 +240,7 @@ export default function AuditsScreen() {
       {board === 'ASSIGNED' ? (
         <FlatList
           key="assigned"
-          data={assignments.data?.data ?? []}
+          data={waiting}
           keyExtractor={(assignment) => assignment.id}
           renderItem={renderAssignment}
           ListHeaderComponent={header}
@@ -236,5 +265,14 @@ export default function AuditsScreen() {
 
 const useStyles = createThemedStyles((theme) => ({
   tools: { marginRight: theme.space.md },
-  meta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.space.sm },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.md },
+  text: { flex: 1, gap: 2 },
+  side: { alignItems: 'flex-end', gap: theme.space.sm },
+  title: {
+    fontFamily: theme.family.bold,
+    fontSize: theme.font.panel,
+    color: theme.color.ink,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
 }));
