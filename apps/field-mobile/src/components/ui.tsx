@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -809,6 +810,79 @@ export function ChoiceList<T extends string>({
 }
 
 /**
+ * A dropdown: one closed field showing the current pick, opening a sheet of the options from
+ * the bottom edge. For a pick from a list that can grow (a Unit's people), where `ChoiceList`
+ * would push the rest of the form off the screen.
+ */
+export function SelectField<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  placeholder = 'Choose…',
+}: {
+  label: string;
+  options: ReadonlyArray<{ value: T; label: string; detail?: string | null }>;
+  value: T | null;
+  onChange: (value: T) => void;
+  placeholder?: string;
+}) {
+  const styles = useStyles();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const [open, setOpen] = useState(false);
+  const current = options.find((option) => option.value === value);
+  return (
+    <View style={styles.field}>
+      <Label>{label}</Label>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${current?.label ?? placeholder}. Tap to change.`}
+        onPress={() => setOpen(true)}
+        style={[styles.input, styles.select]}
+      >
+        <View style={styles.selectText}>
+          <Text style={current ? styles.choiceLabel : styles.selectPlaceholder} numberOfLines={1}>
+            {current?.label ?? placeholder}
+          </Text>
+          {current?.detail ? <Text style={styles.choiceDetail}>{current.detail}</Text> : null}
+        </View>
+        <Text style={styles.selectCaret}>▾</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)} statusBarTranslucent>
+        <Pressable style={styles.scrim} onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel="Close" />
+        <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom, maxHeight: height * 0.75 }]}>
+          <Text style={styles.h2} accessibilityRole="header">
+            {label}
+          </Text>
+          <ScrollView contentContainerStyle={styles.selectList} accessibilityRole="radiogroup">
+            {options.map((option) => {
+              const selected = option.value === value;
+              return (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  onPress={() => {
+                    setOpen(false);
+                    onChange(option.value);
+                  }}
+                  style={({ pressed }) => [styles.choice, selected && styles.choiceSelected, pressed && styles.pressed]}
+                >
+                  <Text style={styles.choiceLabel}>{option.label}</Text>
+                  {option.detail ? <Text style={styles.choiceDetail}>{option.detail}</Text> : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <Button title="Cancel" variant="secondary" onPress={() => setOpen(false)} />
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+/**
  * One tickable row — `ChoiceList`'s look, for a choice of several. A ticked row carries the
  * accent rail and a ✓; an unticked one stays plain, so the count is read at a glance.
  */
@@ -1364,6 +1438,11 @@ const useStyles = createThemedStyles((theme) => ({
   choiceSelected: { borderColor: theme.color.accent, borderLeftWidth: 6, backgroundColor: theme.color.accentSoft },
   choiceLabel: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
   choiceDetail: { fontFamily: theme.family.regular, fontSize: 12.5, color: theme.color.ink2, marginTop: 2 },
+  select: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+  selectText: { flex: 1, minWidth: 0 },
+  selectPlaceholder: { fontFamily: theme.family.regular, fontSize: theme.font.base, color: theme.color.ink3 },
+  selectCaret: { fontFamily: theme.family.bold, fontSize: theme.font.base, color: theme.color.ink2 },
+  selectList: { gap: theme.space.sm },
   checkHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
   checkLabel: { flexShrink: 1 },
   dialogShell: { flex: 1, justifyContent: 'center', padding: theme.space.md },

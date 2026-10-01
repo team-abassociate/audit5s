@@ -202,7 +202,18 @@ export function UnitDetail({ unitId }: { unitId: string }) {
         {zoneList.map((zone, index) =>
           zoneOpen === zone.id ? (
             <View key={zone.id} style={styles.item}>
-              <Text style={styles.itemTitle}>{zoneDisplayLabel(zone.code, zone.name)}</Text>
+              {/* The open Zone's head folds it away again, without saving — Cancel's job, in reach. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: true }}
+                accessibilityLabel={`Collapse ${zoneDisplayLabel(zone.code, zone.name)}`}
+                onPress={() => setZoneOpen(null)}
+                hitSlop={6}
+                style={({ pressed }) => [styles.rowHead, pressed && styles.itemPressed]}
+              >
+                <Text style={[styles.itemTitle, styles.rowText]}>{zoneDisplayLabel(zone.code, zone.name)}</Text>
+                <Text style={styles.chevron}>▴</Text>
+              </Pressable>
               <ZoneForm unitId={unitId} zone={zone} existing={zoneList} onDone={() => setZoneOpen(null)} />
             </View>
           ) : (
