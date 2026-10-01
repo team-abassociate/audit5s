@@ -6,7 +6,7 @@ import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from '@audit5s/contracts';
 import { zoneCodeChoices, zoneCodeForNumber, zoneDisplayLabel } from '@audit5s/domain';
 import { api, problemMessage } from '../lib/api';
 import { createThemedStyles } from '../lib/theme';
-import { Button, ChoiceList, ConfirmAction, ErrorBanner, Field, Label } from './ui';
+import { Button, ConfirmAction, ErrorBanner, Field, SelectField } from './ui';
 
 const UNASSIGNED = '__none__';
 
@@ -15,7 +15,7 @@ const UNASSIGNED = '__none__';
  * (`UnitZones.tsx`). The number is typed and turned into the stored `Z-01` code by
  * `packages/domain`, so the phone, the web and the reports spell it the same way.
  *
- * The leader picker offers the Unit's Zone Leaders. A Zone with nobody to lead it yet is
+ * The leader dropdown offers the Unit's Zone Leaders. A Zone with nobody to lead it yet is
  * created unassigned; adding a Zone Leader *with* this Zone (R-39) then points it at them.
  * The default checklist stays on the web: it is a Super Admin's catalogue choice.
  */
@@ -125,12 +125,12 @@ export function ZoneForm({
         multiline
         hint={zone ? 'Editing this never changes a completed audit.' : 'Shown to the auditor when they pick this Zone.'}
       />
-      <Label>Zone leader</Label>
-      <ChoiceList
+      <SelectField
+        label="Zone leader"
         value={leaderId}
         onChange={setLeaderId}
         options={[
-          { value: UNASSIGNED, label: 'Nobody yet' },
+          { value: UNASSIGNED, label: 'Nobody' },
           ...leaderOptions.map((leader) => ({
             value: leader.id,
             label: leader.fullName,
