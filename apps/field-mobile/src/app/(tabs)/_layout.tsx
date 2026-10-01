@@ -15,11 +15,13 @@ import { useTheme } from '../../lib/theme';
  *   they owe, one tap away rather than behind a slip that only shows while something waits.
  *   "Nonconformities" does not fit a fifth of a phone's width, so the bar says "NCs" and the
  *   header spells it out.
- * - **Super Admin and Coordinator (R-24):** Overview · Audits · Actions · Units · People — the
- *   admin web's rail (Unit board, Audits, Corrective actions, Units & zones, Users & roles) at
- *   five, as the product owner settled on 2026-09-13. A Coordinator sees their own Unit only,
- *   and each screen hides the actions the role does not hold. Profile and notifications hang
- *   off the Overview header instead of taking a tab.
+ * - **Super Admin (R-24):** Overview · Audits · Actions · Units · People — the admin web's
+ *   rail (Unit board, Audits, Corrective actions, Units & zones, Users & roles) at five, as
+ *   the product owner settled on 2026-09-13. Profile and notifications hang off the Overview
+ *   header instead of taking a tab.
+ * - **Coordinator (R-42):** Overview · Audits · Actions · People · My Unit. They hold one Unit
+ *   (M-1), so the last tab is that Unit's page itself rather than a list of one. Each screen
+ *   hides the actions the role does not hold.
  *
  * Every screen is a route in this group; a tab the role does not get is `href: null`, hidden
  * from the bar rather than absent, so a link to it still resolves.
@@ -33,6 +35,7 @@ export default function TabsLayout() {
   const theme = useTheme();
   const { scope } = useSession();
   const admin = managesOnPhone(scope?.role);
+  const coordinator = scope?.role === 'COORDINATOR';
   const zoneLeader = scope?.role === 'ZONE_LEADER';
   const icon = (glyph: string) =>
     function TabIcon({ color }: { color: ColorValue }) {
@@ -83,8 +86,9 @@ export default function TabsLayout() {
       <Tabs.Screen name="overview" options={{ title: 'Overview', tabBarIcon: icon('▦') }} />
       <Tabs.Screen name="audits" options={{ title: 'Audits', tabBarIcon: icon('◷'), ...shownTo(admin) }} />
       <Tabs.Screen name="review" options={{ title: 'Actions', tabBarIcon: icon('⚑'), ...shownTo(admin) }} />
-      <Tabs.Screen name="units" options={{ title: 'Units', tabBarIcon: icon('▣'), ...shownTo(admin) }} />
+      <Tabs.Screen name="units" options={{ title: 'Units', tabBarIcon: icon('▣'), ...shownTo(admin && !coordinator) }} />
       <Tabs.Screen name="people" options={{ title: 'People', tabBarIcon: icon('◉'), ...shownTo(admin) }} />
+      <Tabs.Screen name="my-unit" options={{ title: 'My Unit', tabBarIcon: icon('▣'), ...shownTo(coordinator) }} />
       <Tabs.Screen name="index" options={{ tabBarButtonTestID: 'field-units-tab', title: 'Units', tabBarIcon: icon('▣'), ...shownTo(!admin) }} />
       <Tabs.Screen
         name="nonconformities"

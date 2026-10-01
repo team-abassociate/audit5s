@@ -38,6 +38,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-39 | Coordinator: no reports; Zone Leader created with a Zone; closures named | Settled |
 | R-40 | Any after-photo may come from the gallery; a Super Admin may delete a response | Settled |
 | R-41 | A corrective-action link has no time limit | Settled |
+| R-42 | A Coordinator's last tab is My Unit; the audit board leads with the auditor | Settled |
 
 ---
 
@@ -1953,3 +1954,36 @@ reissued.
   already answered stays read-only (R-40 reopens it for a new answer). A link is a 256-bit
   secret that reaches one item, so a leaked PDF is dealt with by revoking its link.
 
+---
+
+## R-42 — A Coordinator's last tab is My Unit; the audit board leads with the auditor
+
+**Settled 2026-10-01 by the product owner.** **Refines R-24** ("same screens as a Super
+Admin, narrowed") for the field app. Nothing in §6.3 changes: every control below is one the
+matrix already grants the role, and the API refuses the rest as before.
+
+### (a) My Unit instead of Units
+
+A Coordinator holds exactly one active Unit (M-1), so the Units tab was a list of one row.
+Their bar is now **Overview · Audits · Actions · People · My Unit**, and My Unit *is* that
+Unit's page, with the tab bar still under it. A Super Admin's bar is unchanged.
+
+The page is the one a Super Admin opens from Units, gated on `can()`:
+
+- **Details** — editable, the name excepted (U-1).
+- **Zones** — add (by number, as on the web), edit, change the leader, archive
+  (`zone:create`, `zone:update`, `zone:archive`). The default checklist stays on the web.
+- **People** — *+ Zone leader* adds one with their Zone (R-39); each person opens their page
+  to edit, reset the password or disable them. Archiving a user and granting or revoking a
+  membership stay the Super Admin's (R-25, §6.3).
+
+### (b) The audit board
+
+- For a role whose scope is one Unit, the cards lead with the **auditor**, and the Unit is
+  named once, in the section head. A Super Admin's cards still lead with the Unit.
+- **Active** is what is being run: `IN_PROGRESS` and `PAUSED`. `ASSIGNED` and `READY`
+  (selfie taken, nothing answered) are not started, and are on **Assigned**; an assignment
+  whose audit has started is on Active instead. The API's `?active=true` is unchanged —
+  the field app narrows it on the device.
+- A card is one block — name, type, date, with the status chip and any score beside it —
+  rather than a ruled header over a one-line footer.
