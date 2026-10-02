@@ -19,6 +19,29 @@ async function ready() {
   throw new Error('Vite preview did not start');
 }
 
+/**
+ * A real, minimal PDF — `pages` blank A4 sheets — so the preview is driven through PDF.js
+ * and its worker as the production build serves them, not stubbed.
+ */
+function tinyPdf(pages) {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Pages /Kids [${Array.from({ length: pages }, (_, i) => `${3 + i} 0 R`).join(' ')}] /Count ${pages} >>`,
+    ...Array.from({ length: pages }, () => '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] >>'),
+  ];
+  let body = '%PDF-1.4\n';
+  const offsets = objects.map((object, index) => {
+    const at = Buffer.byteLength(body);
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return at;
+  });
+  const xref = Buffer.byteLength(body);
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  body += offsets.map((at) => `${String(at).padStart(10, '0')} 00000 n \n`).join('');
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(body, 'latin1');
+}
+
 const ids = {
   user: '00000000-0000-4000-8000-000000000001',
   unit: '00000000-0000-4000-8000-000000000002',
@@ -206,7 +229,17 @@ await page.route('**/api/v1/**', async (route) => {
       nextCursor: null,
     });
   }
-  if (path === `/api/v1/reports/${ids.report}/tokens`) return json([]);
+  if (path === `/api/v1/reports/${ids.report}/download-url`) {
+    return json({
+      url: `${base}/api/v1/__smoke/report.pdf`,
+      expiresIn: 300,
+      checksumSha256: null,
+      fileName: 'Nashik Plant - Zone 1 - Press shop - Initial - 12 Sep 2026 - v1.pdf',
+    });
+  }
+  if (path === '/api/v1/__smoke/report.pdf') {
+    return route.fulfill({ status: 200, contentType: 'application/pdf', body: tinyPdf(2) });
+  }
   if (path === '/api/v1/notifications') return json({ data: [], nextCursor: null, unreadCount: 0 });
   return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
 });
@@ -242,13 +275,28 @@ try {
   // The library names a report by what it covers, filed under the audit it came from.
   await page.getByText('Zone 1 — Press shop').waitFor();
   await page.getByText(/Audit finished .* · Priya Nair/).waitFor();
-  // Secondary actions sit behind one menu per row; Links opens over the list, not below it.
-  await page.getByRole('button', { name: 'More actions for v1' }).click();
-  await page.getByRole('menuitem', { name: 'Links in this report' }).click();
-  await page.getByRole('heading', { name: 'Links — v1' }).waitFor();
-  await page.getByText('This report prints no links.').waitFor();
+  // Download, Regenerate and Delete are on the row itself; there is no row menu.
+  for (const name of ['Download', 'Regenerate', 'Delete']) {
+    await page.getByRole('button', { name, exact: true }).waitFor();
+  }
+  assert.equal(await page.getByRole('button', { name: /More actions/ }).count(), 0);
+
+  // A click on the report opens its PDF beside the list, drawn by PDF.js from the built worker.
+  await page.getByText('Zone 1 — Press shop').click();
+  const panel = page.getByRole('complementary', { name: /^Preview of / });
+  await panel.waitFor();
+  await panel.locator('.gb-pdf-page[data-drawn]').first().waitFor();
+  await panel.getByText('1 / 2').waitFor();
+  // Beside the open preview the row's actions are icons, still named for what they do.
+  assert.equal(await page.locator('tr[data-snapshot] .gb-btn--act-icon').count(), 3);
+  // Expand lays the report over the page at 100% — the page's own view, not full screen.
+  await panel.getByRole('button', { name: 'Expand, at 100%' }).click();
+  assert.equal(await panel.getByRole('combobox', { name: 'Zoom' }).inputValue(), '1');
+  assert.equal(await page.evaluate(() => globalThis.document.fullscreenElement), null);
   await page.keyboard.press('Escape');
-  await page.getByRole('heading', { name: 'Links — v1' }).waitFor({ state: 'hidden' });
+  await panel.getByRole('button', { name: 'Expand, at 100%' }).waitFor();
+  await page.keyboard.press('Escape');
+  await panel.waitFor({ state: 'hidden' });
 
   // One New report dialog: the kind, then the scope. The summary names its Unit itself.
   await page.getByRole('button', { name: '+ New report' }).first().click();
