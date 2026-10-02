@@ -488,7 +488,27 @@ describe('importing for an industry (0042)', () => {
     const first = await importAndCommit([hospitalId]);
     const second = await importAndCommit([hospitalId], true);
 
-    expect(second.preview.sheets[0]!.templateId).toBe(first.versions[0]!.templateId);
+    // What the matcher could see, printed if it did not match — a failure here is about
+    // data, and the data is the message.
+    const state = await world.owner.query(
+      `SELECT t.id, t.code, t.sheet_code,
+              (SELECT json_agg(json_build_object('industry', l.industry_id, 'removed', l.removed_at))
+                 FROM checklist_template_industry l WHERE l.template_id = t.id) AS links
+         FROM checklist_template t`,
+    );
+    const jobs = await world.owner.query(
+      `SELECT id, industry_ids, status FROM checklist_import_job ORDER BY created_at`,
+    );
+    expect(
+      second.preview.sheets[0]!.templateId,
+      JSON.stringify({
+        templates: state.rows,
+        jobs: jobs.rows,
+        hospitalId,
+        sheet: second.preview.sheets[0],
+        job: second.preview.job.industryIds,
+      }),
+    ).toBe(first.versions[0]!.templateId);
     expect(second.versions[0]!.versionNumber).toBe(2);
   });
 
