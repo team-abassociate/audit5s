@@ -459,8 +459,11 @@ export class ChecklistImportRepository extends BaseRepository {
           sheetCode: checklistTemplates.sheetCode,
           name: checklistTemplates.name,
           sortOrder: checklistTemplates.sortOrder,
+          // JSON rather than `text[]`: a raw fragment's array comes back through the
+          // driver's own parsing, and a JSON array is the shape the template list already
+          // reads the same links in.
           industryIds: sql<string[]>`(
-            SELECT coalesce(array_agg(cti.industry_id::text ORDER BY cti.industry_id), '{}')
+            SELECT coalesce(json_agg(cti.industry_id ORDER BY cti.industry_id), '[]'::json)
               FROM checklist_template_industry cti
              WHERE cti.template_id = ${checklistTemplates.id} AND cti.removed_at IS NULL
           )`,

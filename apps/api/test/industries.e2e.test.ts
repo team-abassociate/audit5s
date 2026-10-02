@@ -178,11 +178,15 @@ describe('which checklists an industry is offered (0042)', () => {
     clinicId = await make('CLINIC', 'Clinic');
     workshopId = await make('WORKSHOP', 'Workshop');
 
-    const list = await world.request('GET', `${base}/checklist-templates?limit=200`, {
-      token: asSuperAdmin(),
-    });
-    templateIds = (list.body as { data: ChecklistTemplate[] }).data.map((row) => row.id);
-    expect(templateIds.length).toBeGreaterThan(1);
+    // This world seeds no catalogue, so the checklists to tick are made here, the way the
+    // other suites make theirs.
+    const made = await world.owner.query<{ id: string }>(
+      `INSERT INTO checklist_template (code, name) VALUES
+         ('INDUSTRY_TEST_WARD', 'Ward'), ('INDUSTRY_TEST_STORES', 'Stores')
+       RETURNING id`,
+    );
+    templateIds = made.rows.map((row) => row.id);
+    expect(templateIds).toHaveLength(2);
   });
 
   const templates = async (query = '') =>
