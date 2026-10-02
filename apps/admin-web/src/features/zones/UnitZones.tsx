@@ -6,6 +6,7 @@ import type {
   CreateZoneRequest,
   CreateUserResponse,
   Page,
+  Unit,
   User,
   Zone,
 } from '@audit5s/contracts';
@@ -209,10 +210,7 @@ function CreateZoneForm({
   const [issuedLeader, setIssuedLeader] = useState<CreateUserResponse | null>(null);
   const taken = new Set(existing.map((zone) => zone.code));
 
-  const templates = useQuery({
-    queryKey: ['checklist-templates'],
-    queryFn: () => api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
-  });
+  const templates = useOfferedTemplates(unitId);
 
   const leaders = useQuery({
     queryKey: ['users', 'zone-leaders', unitId],
@@ -324,7 +322,7 @@ function CreateZoneForm({
       <Field label="Default checklist" error={fieldErrors.defaultChecklistTemplateId}>
         <Select {...register('defaultChecklistTemplateId')}>
           <option value="">None</option>
-          {(templates.data?.data ?? []).map((template) => (
+          {templates.map((template) => (
             <option key={template.id} value={template.id}>
               {template.name}
             </option>
@@ -375,10 +373,7 @@ function EditZoneForm({
   const queryClient = useQueryClient();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const templates = useQuery({
-    queryKey: ['checklist-templates'],
-    queryFn: () => api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
-  });
+  const templates = useOfferedTemplates(unitId, zone.defaultChecklistTemplateId);
   const leaders = useQuery({
     queryKey: ['users', 'zone-leaders', unitId],
     queryFn: () => api.get<Page<User>>(`/users?role=ZONE_LEADER&unitId=${unitId}&limit=200`),
@@ -439,7 +434,7 @@ function EditZoneForm({
       <Field label="Default checklist" error={fieldErrors.defaultChecklistTemplateId}>
         <Select {...register('defaultChecklistTemplateId')}>
           <option value="">None</option>
-          {(templates.data?.data ?? []).map((template) => (
+          {templates.map((template) => (
             <option key={template.id} value={template.id}>
               {template.name}
             </option>
@@ -465,4 +460,29 @@ function EditZoneForm({
 
 function firstFreeNumber(taken: Set<string>): number {
   return zoneCodeChoices().find((choice) => !taken.has(choice.code))?.number ?? ZONE_NUMBER_MIN;
+}
+
+/**
+ * The checklists a Zone of this Unit may default to (0042): those ticked for the Unit's
+ * industry, plus those ticked for none, which are offered everywhere. A Unit with no
+ * industry is offered everything. `keepId` stays in the list even when it no longer
+ * fits, so editing a Zone never silently drops the choice it already has.
+ */
+function useOfferedTemplates(unitId: string, keepId?: string | null): ChecklistTemplate[] {
+  const unit = useQuery({
+    queryKey: ['unit', unitId],
+    queryFn: () => api.get<Unit>(`/units/${unitId}`),
+  });
+  const templates = useQuery({
+    queryKey: ['checklist-templates'],
+    queryFn: () => api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
+  });
+  const industryId = unit.data?.industryId ?? null;
+  return (templates.data?.data ?? []).filter(
+    (template) =>
+      template.id === keepId ||
+      industryId === null ||
+      template.industries.length === 0 ||
+      template.industries.some((industry) => industry.id === industryId),
+  );
 }

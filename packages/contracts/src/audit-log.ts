@@ -24,12 +24,16 @@ export const AUDIT_LOG_ACTIONS = [
   'industry.created',
   'industry.updated',
   'industry.archived',
+  /** Which checklists an industry is offered changed (0042). */
+  'industry.checklists_changed',
   'zone.created',
   'zone.updated',
   'zone.archived',
   'zone.leader_assigned',
   'checklist.imported',
   'checklist.translations_imported',
+  /** A Super Admin corrected a Hindi or Marathi question by hand (0036). */
+  'checklist.translation_updated',
   'checklist.published',
   'checklist.deactivated',
   'checklist.template_updated',

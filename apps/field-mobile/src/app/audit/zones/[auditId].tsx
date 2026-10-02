@@ -138,9 +138,11 @@ export default function AuditZonesScreen() {
     queryFn: () => listCatalogueZones(database, audit.data!.unitId),
   });
 
+  // Narrowed to the Unit's industry (0042), so a hospital is never offered a press shop.
   const versions = useQuery({
-    queryKey: ['local', 'checklist-versions'],
-    queryFn: () => listLocalChecklistVersions(database),
+    enabled: Boolean(audit.data?.unitId),
+    queryKey: ['local', 'checklist-versions', audit.data?.unitId],
+    queryFn: () => listLocalChecklistVersions(database, audit.data!.unitId),
   });
 
   const cursor = useQuery({

@@ -1,14 +1,18 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import {
   listChecklistTemplatesQuerySchema,
   listChecklistVersionsQuerySchema,
   updateChecklistTemplateRequestSchema,
+  updateQuestionTranslationRequestSchema,
   type ChecklistTemplate,
   type ChecklistVersion,
   type ChecklistVersionDetail,
   type Page,
+  type QuestionTranslation,
   type UpdateChecklistTemplateRequest,
+  type UpdateQuestionTranslationRequest,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { RequirePermission, Scope } from '../../common/auth/decorators';
@@ -72,8 +76,10 @@ export class ChecklistsController {
   }
 
   /**
-   * A published version is immutable at the database (CV-1), which is what makes
-   * `Cache-Control: immutable` an honest header rather than a hopeful one.
+   * A published version's questions are immutable at the database (CV-1), but the body
+   * also carries their Hindi and Marathi, which a Super Admin may correct (0036). So the
+   * ETag covers both, and the browser revalidates rather than trusting a year-long
+   * `immutable` that would keep showing a translation after it was fixed.
    */
   @RequirePermission('checklist_version', 'read')
   @Scope({ param: 'id', intent: 'read' })
@@ -85,10 +91,30 @@ export class ChecklistsController {
   ): Promise<ChecklistVersionDetail> {
     const detail = await this.checklists.getVersionDetail(scope, id);
     if (detail.status === 'PUBLISHED' || detail.status === 'SUPERSEDED') {
-      void reply.header('etag', `"${detail.contentHash}"`);
-      void reply.header('cache-control', 'private, max-age=31536000, immutable');
+      const wording = createHash('sha256')
+        .update(JSON.stringify(detail.questions.map((question) => question.translations ?? {})))
+        .digest('hex')
+        .slice(0, 16);
+      void reply.header('etag', `"${detail.contentHash}-${wording}"`);
+      void reply.header('cache-control', 'private, no-cache');
     }
     return detail;
+  }
+
+  /**
+   * Correct one question's Hindi or Marathi (0036). Keyed by the English sentence, so the
+   * fix reaches every version and department asking the same question. Super Admin only,
+   * like every other write to the catalogue.
+   */
+  @RequirePermission('checklist_template', 'update')
+  @Scope({ intent: 'write' })
+  @Put('checklist-translations')
+  updateTranslation(
+    @CurrentScope() scope: ScopeContext,
+    @Body(new ZodValidationPipe(updateQuestionTranslationRequestSchema))
+    body: UpdateQuestionTranslationRequest,
+  ): Promise<QuestionTranslation> {
+    return this.checklists.updateTranslation(scope, body);
   }
 
   @RequirePermission('checklist_version', 'publish')

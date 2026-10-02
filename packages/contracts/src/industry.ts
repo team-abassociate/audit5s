@@ -23,7 +23,7 @@ export const industrySchema = z.object({
   archivedAt: isoDateTimeSchema.nullable(),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
-  /** How many checklist templates carry this label, for the management screen. */
+  /** How many checklist templates are ticked for this industry (0042). */
   templateCount: z.number().int().nonnegative(),
   /** How many Units operate in it. An industry in use is one to archive carefully. */
   unitCount: z.number().int().nonnegative(),
@@ -65,3 +65,13 @@ export const listIndustriesQuerySchema = z.object({
     .transform((value) => value === true || value === 'true'),
 });
 export type ListIndustriesQuery = z.infer<typeof listIndustriesQuerySchema>;
+
+/**
+ * The checklists ticked for one industry (0042) — the whole set, not a delta, so the
+ * screen sends exactly what it shows. Ticking a checklist here never takes it away from
+ * another industry; a checklist ticked for none is offered to every industry.
+ */
+export const setIndustryChecklistsRequestSchema = z.object({
+  templateIds: z.array(uuidSchema).max(500),
+});
+export type SetIndustryChecklistsRequest = z.infer<typeof setIndustryChecklistsRequestSchema>;

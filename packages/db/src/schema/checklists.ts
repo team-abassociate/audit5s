@@ -60,8 +60,11 @@ export const checklistTemplates = pgTable(
     name: text('name').notNull(),
     description: text('description'),
     isActive: boolean('is_active').notNull().default(true),
-    /** Which sector offers this template. NULL means every sector (0018). */
-    industryId: uuid('industry_id').references(() => industries.id, { onDelete: 'restrict' }),
+    /**
+     * The code derived from the sheet name, before any industry suffix (0042). Not unique:
+     * the same sheet imported for different industries makes different templates.
+     */
+    sheetCode: text('sheet_code').notNull(),
     /** Workbook order, so the catalogue reads as the business lists its departments. */
     sortOrder: integer('sort_order').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -70,6 +73,34 @@ export const checklistTemplates = pgTable(
   (table) => [
     uniqueIndex('checklist_template_code_key').on(table.code),
     index('checklist_template_sort_idx').on(table.sortOrder, table.name),
+    index('checklist_template_sheet_code_idx').on(table.sheetCode),
+  ],
+);
+
+/**
+ * Which industries a template is offered to (0042). No live row means every industry.
+ * Unticking sets `removedAt`; the table is never deleted from (D8).
+ */
+export const checklistTemplateIndustries = pgTable(
+  'checklist_template_industry',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => checklistTemplates.id, { onDelete: 'restrict' }),
+    industryId: uuid('industry_id')
+      .notNull()
+      .references(() => industries.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('checklist_template_industry_live_key')
+      .on(table.templateId, table.industryId)
+      .where(sql`removed_at IS NULL`),
+    index('checklist_template_industry_industry_idx')
+      .on(table.industryId)
+      .where(sql`removed_at IS NULL`),
   ],
 );
 
@@ -96,6 +127,8 @@ export const checklistImportJobs = pgTable(
       .$type<Array<{ name: string; reason: string }>>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    /** The industries this workbook is for (0042). Empty means every industry. */
+    industryIds: uuid('industry_ids').array().notNull().default(sql`'{}'::uuid[]`),
     ...timestamps,
   },
   (table) => [

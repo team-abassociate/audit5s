@@ -8,6 +8,8 @@ import {
   checklistVersions,
   localCorrectiveActions,
   syncMeta,
+  templateIndustries,
+  unitIndustries,
   units,
   zones,
 } from './schema';
@@ -41,6 +43,8 @@ export async function replaceCatalogue(
   await database.delete(checklistVersions);
   await database.delete(zones);
   await database.delete(units);
+  await database.delete(unitIndustries);
+  await database.delete(templateIndustries);
 
   const syncedAt = new Date().toISOString();
 
@@ -57,6 +61,24 @@ export async function replaceCatalogue(
         syncedAt,
       })),
     );
+  }
+
+  if (catalogue.units.length > 0) {
+    await database.insert(unitIndustries).values(
+      catalogue.units.map((unit) => ({ unitId: unit.id, industryId: unit.industryId })),
+    );
+  }
+
+  // `industries` is optional here only for a server from before 0042; such a template is
+  // treated as offered everywhere, which is what it was then.
+  const links = catalogue.checklistTemplates.flatMap((template) =>
+    (template.industries ?? []).map((industry) => ({
+      templateId: template.id,
+      industryId: industry.id,
+    })),
+  );
+  if (links.length > 0) {
+    await database.insert(templateIndustries).values(links);
   }
 
   if (catalogue.zones.length > 0) {
@@ -189,11 +211,40 @@ export function listLocalZones(database: LocalDatabase, unitId: string) {
     .orderBy(asc(zones.sortOrder), asc(zones.code));
 }
 
-export function listLocalChecklistVersions(database: LocalDatabase) {
-  return database
+/**
+ * The checklists on this device, narrowed to a Unit's industry when one is given (0042):
+ * a template ticked for no industry is offered everywhere, and a Unit with no industry is
+ * offered everything.
+ */
+export async function listLocalChecklistVersions(
+  database: LocalDatabase,
+  unitId?: string,
+) {
+  const versions = await database
     .select()
     .from(checklistVersions)
     .orderBy(asc(checklistVersions.templateName));
+  if (!unitId) return versions;
+
+  const [unit] = await database
+    .select()
+    .from(unitIndustries)
+    .where(eq(unitIndustries.unitId, unitId))
+    .limit(1);
+  if (!unit?.industryId) return versions;
+
+  const links = await database.select().from(templateIndustries);
+  const ticked = new Map<string, Set<string>>();
+  for (const link of links) {
+    const set = ticked.get(link.templateId) ?? new Set<string>();
+    set.add(link.industryId);
+    ticked.set(link.templateId, set);
+  }
+
+  return versions.filter((version) => {
+    const industries = ticked.get(version.templateId);
+    return !industries || industries.has(unit.industryId!);
+  });
 }
 
 export function getLocalChecklistVersion(database: LocalDatabase, versionId: string) {

@@ -83,7 +83,12 @@ export class SyncService {
             ),
           )}`,
       ),
-      ...templatePage.data.map((template) => `t:${template.id}:${template.updatedAt}`),
+      // The industries ride along (0042): which checklists a Unit is offered is decided on
+      // the device, so a re-tag has to move the token even though no version changed.
+      ...templatePage.data.map(
+        (template) =>
+          `t:${template.id}:${template.updatedAt}:${template.industries.map((industry) => industry.id).join(',')}`,
+      ),
       ...assignmentRows.map((assignment) => `a:${assignment.id}:${assignment.status}:${assignment.updatedAt.toISOString()}`),
       ...actions.map((action) => `c:${action.id}:${action.status}:${action.version}`),
     ]);

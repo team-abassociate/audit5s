@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import { industries, type Database } from '@audit5s/db';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  checklistTemplateIndustries,
+  checklistTemplates,
+  industries,
+  type Database,
+} from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { CreateIndustryRequest } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
@@ -54,10 +59,11 @@ export class IndustriesRepository extends BaseRepository {
         .orderBy(asc(industries.sortOrder), asc(industries.name));
 
       const templates = await tx.execute(sql`
-        SELECT industry_id, count(*)::int AS n
-          FROM checklist_template
-         WHERE industry_id IS NOT NULL AND archived_at IS NULL
-         GROUP BY industry_id
+        SELECT cti.industry_id, count(*)::int AS n
+          FROM checklist_template_industry cti
+          JOIN checklist_template t ON t.id = cti.template_id
+         WHERE cti.removed_at IS NULL AND t.archived_at IS NULL
+         GROUP BY cti.industry_id
       `);
       const units = await tx.execute(sql`
         SELECT industry_id, count(*)::int AS n
@@ -102,6 +108,66 @@ export class IndustriesRepository extends BaseRepository {
         })
         .returning();
       return row!;
+    });
+  }
+
+  /**
+   * Makes the industry's live checklist links exactly `templateIds` (0042).
+   *
+   * Only this industry's links move: ticking a checklist for Hospital leaves its
+   * Engineering link alone. An unticked link is closed with `removed_at`, never deleted
+   * (D8). Returns what changed, or `null` when a template id names no template.
+   */
+  async setTemplates(scope: ScopeContext, industryId: string, templateIds: string[]) {
+    const wanted = [...new Set(templateIds)];
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+
+      if (wanted.length > 0) {
+        const found = await tx
+          .select({ id: checklistTemplates.id })
+          .from(checklistTemplates)
+          .where(inArray(checklistTemplates.id, wanted));
+        if (found.length !== wanted.length) return null;
+      }
+
+      const live = await tx
+        .select({ id: checklistTemplateIndustries.id, templateId: checklistTemplateIndustries.templateId })
+        .from(checklistTemplateIndustries)
+        .where(
+          and(
+            eq(checklistTemplateIndustries.industryId, industryId),
+            isNull(checklistTemplateIndustries.removedAt),
+          ),
+        );
+
+      const keep = new Set(wanted);
+      const have = new Set(live.map((link) => link.templateId));
+      const removed = live.filter((link) => !keep.has(link.templateId));
+      const added = wanted.filter((templateId) => !have.has(templateId));
+
+      if (removed.length > 0) {
+        await tx
+          .update(checklistTemplateIndustries)
+          .set({ removedAt: sql`now()` })
+          .where(inArray(checklistTemplateIndustries.id, removed.map((link) => link.id)));
+      }
+      if (added.length > 0) {
+        await tx
+          .insert(checklistTemplateIndustries)
+          .values(added.map((templateId) => ({ templateId, industryId })));
+      }
+      // The catalogue token reads a template's `updated_at`; touching it is how a phone
+      // learns that what it may be offered changed.
+      const touched = [...added, ...removed.map((link) => link.templateId)];
+      if (touched.length > 0) {
+        await tx
+          .update(checklistTemplates)
+          .set({ updatedAt: sql`now()` })
+          .where(inArray(checklistTemplates.id, touched));
+      }
+
+      return { added, removed: removed.map((link) => link.templateId) };
     });
   }
 

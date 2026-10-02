@@ -75,6 +75,21 @@ export const checklistQuestionTranslations = sqliteTable('checklist_question_tra
   textMr: text('text_mr'),
 });
 
+/**
+ * Which industry each Unit operates in, and which industries each checklist template is
+ * ticked for (0042) — so the department picker offers a Unit only its industry's
+ * checklists, offline. Tables of their own for the reason v8's translations are.
+ */
+export const unitIndustries = sqliteTable('unit_industry', {
+  unitId: text('unit_id').primaryKey(),
+  industryId: text('industry_id'),
+});
+
+export const templateIndustries = sqliteTable('template_industry', {
+  templateId: text('template_id').notNull(),
+  industryId: text('industry_id').notNull(),
+});
+
 /** `last_catalogue_sync_at`, `catalogue_version`, `server_time_offset_ms`. */
 export const syncMeta = sqliteTable('sync_meta', {
   key: text('key').primaryKey(),

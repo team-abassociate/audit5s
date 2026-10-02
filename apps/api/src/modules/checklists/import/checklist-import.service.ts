@@ -14,6 +14,7 @@ import type {
   ListChecklistImportsQuery,
   Page,
   QuestionTranslations,
+  ValidateChecklistImportRequest,
 } from '@audit5s/contracts';
 import {
   QUESTIONS_PER_SECTION,
@@ -114,7 +115,11 @@ export class ChecklistImportService {
    * Stage 2's trigger. Returns immediately: parsing a workbook is worker work, not
    * request work (§12.8 — "parsed in a worker with a memory cap").
    */
-  async requestValidation(scope: ScopeContext, jobId: string): Promise<ChecklistImportJob> {
+  async requestValidation(
+    scope: ScopeContext,
+    jobId: string,
+    request: ValidateChecklistImportRequest = { industryIds: [] },
+  ): Promise<ChecklistImportJob> {
     const job = await this.mustFindJob(scope, jobId);
     if (job.status === 'COMMITTED') {
       throw AppError.conflict(
@@ -123,12 +128,26 @@ export class ChecklistImportService {
       );
     }
 
-    const enqueued = await this.repository.markValidatingAndEnqueue(scope, jobId);
+    const industryIds = [...new Set(request.industryIds)].sort();
+    const live = await this.repository.liveIndustries(scope, industryIds);
+    if (live.length !== industryIds.length) {
+      throw AppError.validation('One of the chosen industries does not exist or is archived');
+    }
+
+    const enqueued = await this.repository.markValidatingAndEnqueue(scope, jobId, industryIds);
     if (!enqueued) {
       throw AppError.conflict('CONFLICT', `An import in status ${job.status} cannot be validated`);
     }
 
     return this.getJob(scope, jobId);
+  }
+
+  /**
+   * Names the industries without enqueueing — for the seed, which calls `runPipeline`
+   * itself. Everyone else names them on `requestValidation`.
+   */
+  async setIndustries(scope: ScopeContext, jobId: string, industryIds: string[]): Promise<void> {
+    await this.repository.setJobIndustries(scope, jobId, [...new Set(industryIds)].sort());
   }
 
   // --------------------------------------------------------------- stages 2–5
@@ -173,21 +192,39 @@ export class ChecklistImportService {
     });
 
     const codes = checklistGrids.map((grid) => templateCodeForSheet(grid.name));
-    const existingTemplates = await this.repository.templatesByCode(scope, codes);
+    const candidates = await this.repository.templatesBySheetCode(scope, codes);
+    const forIndustries = industrySetKey(job.industryIds);
 
     const sheets: SheetToPersist[] = [];
 
     for (const grid of checklistGrids) {
       const validated = validateChecklistSheet(parseChecklistSheet(grid));
       const templateCode = validated.parsed.templateCode;
-      const template = existingTemplates.get(templateCode) ?? null;
+      const messages = [...validated.messages];
+      let severity = validated.severity;
+
+      // 0042: a sheet is a new version of a template only when both the sheet name and the
+      // set of industries agree. Anything else is a new checklist, so importing for one
+      // industry can never change the questions another industry audits against.
+      const matches = candidates.filter(
+        (candidate) =>
+          candidate.sheetCode === templateCode &&
+          industrySetKey(candidate.industryIds) === forIndustries,
+      );
+      if (matches.length > 1) {
+        messages.push(
+          `${matches.length} checklists (${matches.map((match) => match.code).join(', ')}) are made ` +
+            'from this sheet for exactly these industries, so it is not clear which one to update. ' +
+            'Untick one of them on the Industries screen and validate again.',
+        );
+        severity = 'ERROR';
+      }
+      const template = matches.length === 1 ? matches[0]! : null;
 
       // Translations are not part of the signature: they are display text, not the record,
       // so a sheet that only adds Hindi to the published English is still that checklist.
       const contentHash = hashQuestions(canonicalChecklistSignature(validated.questions));
       const counts = translationCounts(validated.questions.map((question) => question.translations));
-      const messages = [...validated.messages];
-      let severity = validated.severity;
       let duplicateOfVersionId: string | null = null;
       let duplicateIsPublished = false;
 
@@ -451,6 +488,16 @@ export class ChecklistImportService {
       });
     }
 
+    // An industry archived between preview and commit would leave a new checklist with
+    // half its labels; the preview no longer describes what would land, so validate again.
+    const industries = await this.repository.liveIndustries(scope, job.industryIds);
+    if (industries.length !== job.industryIds.length) {
+      throw AppError.conflict(
+        'IMPORT_PREVIEW_EXPIRED',
+        'One of the industries this import is for has been archived. Validate the import again.',
+      );
+    }
+
     let nextSortOrder = (await this.repository.maxTemplateSortOrder(scope)) + 1;
     const versionIds: string[] = [];
 
@@ -467,6 +514,7 @@ export class ChecklistImportService {
         contentHash: sheet.contentHash,
         questionsPerSection: QUESTIONS_PER_SECTION,
         questions,
+        industries,
       });
       if (!sheet.templateId) nextSortOrder += 1;
       versionIds.push(versionId);
@@ -524,6 +572,11 @@ export class ChecklistImportService {
   }
 }
 
+/** An order-free key for a set of industry ids; `''` is every industry. */
+function industrySetKey(industryIds: readonly string[]): string {
+  return [...new Set(industryIds)].sort().join(',');
+}
+
 function worst(a: ImportSeverity, b: ImportSeverity): ImportSeverity {
   if (a === 'ERROR' || b === 'ERROR') return 'ERROR';
   if (a === 'WARNING' || b === 'WARNING') return 'WARNING';
@@ -558,6 +611,7 @@ function toJob(row: ImportJobRow): ChecklistImportJob {
     warningCount: row.warningCount,
     previewExpiresAt: row.previewExpiresAt?.toISOString() ?? null,
     errorReportObjectKey: row.errorReportObjectKey,
+    industryIds: row.industryIds,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

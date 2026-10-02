@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  ChecklistQuestion,
   ChecklistTemplate,
   ChecklistVersion,
   ChecklistVersionDetail,
@@ -16,6 +17,7 @@ import {
   CardHeader,
   ErrorNotice,
   Field,
+  Input,
   Select,
   Spinner,
   Table,
@@ -138,7 +140,9 @@ export function ChecklistsPage() {
                     <Td>
                       {/* "Every industry" rather than a dash: an unlabelled template is
                           offered everywhere, which is a fact about it, not a gap. */}
-                      {template.industryName ?? (
+                      {template.industries.length > 0 ? (
+                        template.industries.map((industry) => industry.name).join(', ')
+                      ) : (
                         <span className="text-xs text-ink-3">Every industry</span>
                       )}
                     </Td>
@@ -159,7 +163,7 @@ export function ChecklistsPage() {
                   </tr>
                   {openTemplate === template.id && (
                     <tr>
-                      <td colSpan={5} className="bg-board p-0">
+                      <td colSpan={6} className="bg-board p-0">
                         <TemplateDetail template={template} />
                       </td>
                     </tr>
@@ -303,16 +307,97 @@ function QuestionList({ versionId }: { versionId: string }) {
             {detail.data!.questions
               .filter((question) => question.section === section)
               .map((question) => (
-                <li key={question.id} className="text-sm text-ink-2">
-                  <span className="mr-2 font-mono text-xs text-ink-3">
-                    {question.globalOrder}
-                  </span>
-                  {question.text}
-                </li>
+                <QuestionRow key={question.id} question={question} />
               ))}
           </ol>
         </div>
       ))}
     </div>
+  );
+}
+
+const LANGUAGES = [
+  { key: 'hi', label: 'Hindi' },
+  { key: 'mr', label: 'Marathi' },
+] as const;
+
+/**
+ * One question with its Hindi and Marathi beneath it (0036), editable in place by a
+ * Super Admin. The English is the record and is never editable here; a translation is
+ * keyed by the English, so a fix reaches every department asking the same question.
+ */
+function QuestionRow({ question }: { question: ChecklistQuestion }) {
+  const { can } = useSession();
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<'hi' | 'mr', string>>({ hi: '', mr: '' });
+
+  const save = useMutation({
+    mutationFn: async () => {
+      for (const { key } of LANGUAGES) {
+        const text = draft[key].trim();
+        if (text && text !== (question.translations?.[key] ?? '')) {
+          await api.put('/checklist-translations', {
+            sourceText: question.text,
+            language: key,
+            text,
+          });
+        }
+      }
+    },
+    onSuccess: async () => {
+      setEditing(false);
+      await queryClient.invalidateQueries({ queryKey: ['checklist-version'] });
+    },
+  });
+
+  return (
+    <li className="border-b border-edge-soft py-1.5 text-sm text-ink-2">
+      <div className="flex items-start gap-2">
+        <span className="font-mono text-xs text-ink-3">{question.globalOrder}</span>
+        <div className="flex-1 space-y-0.5">
+          <div className="text-ink">{question.text}</div>
+          {!editing &&
+            LANGUAGES.map(({ key, label }) => (
+              <div key={key} className="text-xs">
+                <span className="mr-1 text-ink-3">{label}:</span>
+                {question.translations?.[key] ?? <span className="text-ink-3">not translated</span>}
+              </div>
+            ))}
+          {editing && (
+            <div className="space-y-2 pt-1">
+              {LANGUAGES.map(({ key, label }) => (
+                <Field key={key} label={label}>
+                  <Input
+                    value={draft[key]}
+                    onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                  />
+                </Field>
+              ))}
+              <div className="flex gap-2">
+                <Button disabled={save.isPending} onClick={() => save.mutate()}>
+                  {save.isPending ? 'Saving…' : 'Save'}
+                </Button>
+                <Button variant="secondary" onClick={() => setEditing(false)}>
+                  Cancel
+                </Button>
+              </div>
+              {save.error && <ErrorNotice error={save.error} />}
+            </div>
+          )}
+        </div>
+        {can('checklist_template', 'update') && !editing && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setDraft({ hi: question.translations?.hi ?? '', mr: question.translations?.mr ?? '' });
+              setEditing(true);
+            }}
+          >
+            Edit translation
+          </Button>
+        )}
+      </div>
+    </li>
   );
 }

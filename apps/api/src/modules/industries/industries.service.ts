@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type {
   CreateIndustryRequest,
   Industry,
+  SetIndustryChecklistsRequest,
   UpdateIndustryRequest,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
@@ -64,6 +65,33 @@ export class IndustriesService {
   }
 
   /**
+   * Ticks exactly these checklists for this industry (0042). Other industries' ticks are
+   * untouched, so one checklist can serve several sectors.
+   */
+  async setChecklists(
+    scope: ScopeContext,
+    industryId: string,
+    request: SetIndustryChecklistsRequest,
+  ): Promise<Industry> {
+    const existing = await this.repository.findById(scope, industryId);
+    if (!existing || existing.archivedAt !== null) throw AppError.notFound('No such industry');
+
+    const changed = await this.repository.setTemplates(scope, industryId, request.templateIds);
+    if (!changed) throw AppError.validation('One of those checklists does not exist');
+
+    if (changed.added.length > 0 || changed.removed.length > 0) {
+      await this.auditLog.record({
+        action: 'industry.checklists_changed',
+        resourceType: 'industry',
+        resourceId: industryId,
+        after: { added: changed.added, removed: changed.removed },
+      });
+    }
+    const row = await this.repository.findById(scope, industryId);
+    return toIndustry(row!);
+  }
+
+  /**
    * Archiving, never deleting (D8) — templates and Units point at this row, and a
    * catalogue that can lose its sector label is one nobody can explain later.
    *
@@ -87,8 +115,8 @@ export class IndustriesService {
       ].filter(Boolean);
       throw AppError.conflict(
         'RESOURCE_IN_USE',
-        `${existing.name} is still used by ${parts.join(' and ')}. Move them to another ` +
-          'industry first, or clear the field, and then archive it.',
+        `${existing.name} is still used by ${parts.join(' and ')}. Untick its checklists ` +
+          'and move its units to another industry first, and then archive it.',
       );
     }
 

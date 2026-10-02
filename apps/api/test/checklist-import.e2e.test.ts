@@ -8,6 +8,8 @@ import {
   API_BASE_PATH,
   type ChecklistImportJob,
   type ChecklistImportPreview,
+  type ChecklistTemplate,
+  type Industry,
   type ChecklistVersionDetail,
   type CommitChecklistImportResponse,
 } from '@audit5s/contracts';
@@ -58,9 +60,10 @@ async function upload(body: Buffer, filename = 'workbook.xlsx') {
  * the job. The queue row is asserted first, so this cannot silently become an in-process
  * call that skips pg-boss entirely (R-2).
  */
-async function validate(jobId: string): Promise<void> {
+async function validate(jobId: string, industryIds?: string[]): Promise<void> {
   const accepted = await world.request('POST', `${base}/checklist-imports/${jobId}/validate`, {
     token: token(),
+    ...(industryIds ? { body: { industryIds } } : {}),
   });
   expect(accepted.status, JSON.stringify(accepted.body)).toBe(202);
 
@@ -425,6 +428,78 @@ describe('stage 6 — commit and publish', () => {
 
     const { versions } = committed.body as CommitChecklistImportResponse;
     expect(versions.map((version) => version.templateCode)).toEqual(['OFFICE']);
+  });
+});
+
+describe('importing for an industry (0042)', () => {
+  beforeEach(clearChecklists);
+
+  let hospitalId = '';
+  beforeAll(async () => {
+    const created = await world.request('POST', `${base}/industries`, {
+      token: token(),
+      body: { code: 'HOSPITAL_IMPORT', name: 'Hospital (import test)' },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    hospitalId = (created.body as Industry).id;
+  });
+
+  async function importAndCommit(industryIds: string[], reword = false) {
+    const workbook = reword
+      ? await buildWorkbook([
+          { name: 'Office', text: (section, position) => `Reworded office check ${section}.${position}` },
+        ])
+      : await validWorkbook('Office');
+    const uploaded = await upload(workbook);
+    const jobId = (uploaded.body as ChecklistImportJob).id;
+    await validate(jobId, industryIds);
+    const shown = await preview(jobId);
+    const committed = await world.request('POST', `${base}/checklist-imports/${jobId}/commit`, {
+      token: token(),
+      body: {},
+    });
+    expect(committed.status, JSON.stringify(committed.body)).toBe(201);
+    return { preview: shown, versions: (committed.body as CommitChecklistImportResponse).versions };
+  }
+
+  it('records the industries on the job, and labels the checklist it makes', async () => {
+    const { preview: shown, versions } = await importAndCommit([hospitalId]);
+    expect(shown.job.industryIds).toEqual([hospitalId]);
+
+    const template = await world.request('GET', `${base}/checklist-templates/${versions[0]!.templateId}`, {
+      token: token(),
+    });
+    expect((template.body as ChecklistTemplate).industries.map((row) => row.id)).toEqual([hospitalId]);
+  });
+
+  it('makes a separate checklist when the same sheet is imported for another industry', async () => {
+    const forEveryone = await importAndCommit([]);
+    const forHospital = await importAndCommit([hospitalId], true);
+
+    expect(forHospital.preview.sheets[0]!.templateId).toBeNull();
+    expect(forHospital.versions[0]!.templateId).not.toBe(forEveryone.versions[0]!.templateId);
+    expect(forHospital.versions[0]!.versionNumber).toBe(1);
+    // `code` stays unique; the industry is appended rather than colliding.
+    expect(forEveryone.versions[0]!.templateCode).toBe('OFFICE');
+    expect(forHospital.versions[0]!.templateCode).toBe('OFFICE_HOSPITAL_IMPORT');
+  });
+
+  it('makes a new version when the sheet and the industries both match', async () => {
+    const first = await importAndCommit([hospitalId]);
+    const second = await importAndCommit([hospitalId], true);
+
+    expect(second.preview.sheets[0]!.templateId).toBe(first.versions[0]!.templateId);
+    expect(second.versions[0]!.versionNumber).toBe(2);
+  });
+
+  it('refuses an archived or unknown industry before anything is enqueued', async () => {
+    const uploaded = await upload(await validWorkbook('Office'));
+    const jobId = (uploaded.body as ChecklistImportJob).id;
+    const refused = await world.request('POST', `${base}/checklist-imports/${jobId}/validate`, {
+      token: token(),
+      body: { industryIds: ['00000000-0000-4000-8000-000000000000'] },
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
   });
 });
 

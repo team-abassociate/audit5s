@@ -17,6 +17,7 @@ import { PERMISSION_MATRIX, grantFor, permissionKeyOf, type ScopeContext } from 
 import { AppModule } from './app.module';
 import { ChecklistImportService } from './modules/checklists/import/checklist-import.service';
 import { ChecklistsService } from './modules/checklists/checklists.service';
+import { IndustriesService } from './modules/industries/industries.service';
 import { PasswordService } from './modules/auth/password.service';
 import { CONFIG, type AppConfig } from './config/env';
 import { StructuredLogger } from './common/observability/logger';
@@ -259,6 +260,14 @@ export async function seedChecklists(
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     body: await readFile(workbook),
   });
+
+  // The department workbook is an engineering plant's (0018). Since 0042 a sheet updates
+  // a checklist only when the industries match too, so without this every re-deploy would
+  // make nine untagged copies beside the Engineering ones instead of finding them.
+  const engineering = (await app.get(IndustriesService).list(scope, false)).find(
+    (industry) => industry.code === 'ENGINEERING',
+  );
+  await imports.setIndustries(scope, job.id, engineering ? [engineering.id] : []);
 
   // Called directly rather than through the queue: the seed is a one-shot process and
   // has no worker to wait for. It is the same method the `checklist.import` handler
