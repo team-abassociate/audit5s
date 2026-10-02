@@ -13,9 +13,7 @@ import {
   type ChecklistVersionDetail,
   type CommitChecklistImportResponse,
 } from '@audit5s/contracts';
-import { grantFor, type ScopeContext } from '@audit5s/domain';
 import { QUEUES } from '../src/infrastructure/queue/queue.service';
-import { ChecklistImportRepository } from '../src/modules/checklists/import/checklist-import.repository';
 import {
   ChecklistImportWorker,
   type ChecklistImportJobData,
@@ -490,31 +488,7 @@ describe('importing for an industry (0042)', () => {
     const first = await importAndCommit([hospitalId]);
     const second = await importAndCommit([hospitalId], true);
 
-    // What the matcher sees, through its own query under a Super Admin scope — printed
-    // if it did not match. (The owner connection cannot see the links: FORCE RLS.)
-    const grant = grantFor('SUPER_ADMIN', 'checklist_import:preview')!;
-    const seen = await world.app.get(ChecklistImportRepository).templatesBySheetCode(
-      {
-        actor: {
-          userId: world.actors.SUPER_ADMIN.userId,
-          role: 'SUPER_ADMIN',
-          activeUnitId: null,
-          unitIds: [],
-          deviceId: null,
-        },
-        resolver: grant.resolver,
-      } as ScopeContext,
-      ['OFFICE'],
-    );
-    expect(
-      second.preview.sheets[0]!.templateId,
-      JSON.stringify({
-        seen: seen.map((row) => ({ ...row, type: typeof row.industryIds, isArray: Array.isArray(row.industryIds) })),
-        hospitalId,
-        job: second.preview.job.industryIds,
-        jobType: typeof second.preview.job.industryIds,
-      }),
-    ).toBe(first.versions[0]!.templateId);
+    expect(second.preview.sheets[0]!.templateId).toBe(first.versions[0]!.templateId);
     expect(second.versions[0]!.versionNumber).toBe(2);
   });
 

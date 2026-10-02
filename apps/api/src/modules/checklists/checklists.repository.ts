@@ -36,14 +36,15 @@ const published = alias(checklistVersions, 'published_version');
  * The template's live industries (0042), as `[{ id, name }]` — `[]` for every industry.
  *
  * A scalar subquery rather than a join, so the row shape stays one row per template. The
- * correlation is to `${checklistTemplates.id}`, which Drizzle renders fully qualified —
- * an unqualified `id` here would bind to `industry.id` and quietly return nothing.
+ * outer table is named in the SQL rather than interpolated: Drizzle renders a column
+ * unqualified when a query has no join, and a bare `id` inside this subquery would bind to
+ * `cti.id` and quietly return nothing.
  */
 const templateIndustries = sql<Array<{ id: string; name: string }>>`(
   SELECT coalesce(json_agg(json_build_object('id', i.id, 'name', i.name) ORDER BY i.sort_order, i.name), '[]'::json)
     FROM checklist_template_industry cti
     JOIN industry i ON i.id = cti.industry_id
-   WHERE cti.template_id = ${checklistTemplates.id} AND cti.removed_at IS NULL
+   WHERE cti.template_id = checklist_template.id AND cti.removed_at IS NULL
 )`;
 
 @Injectable()
@@ -93,10 +94,10 @@ export class ChecklistsRepository extends BaseRepository {
             query.industryId
               ? sql`(NOT EXISTS (
                     SELECT 1 FROM checklist_template_industry cti
-                     WHERE cti.template_id = ${checklistTemplates.id} AND cti.removed_at IS NULL
+                     WHERE cti.template_id = checklist_template.id AND cti.removed_at IS NULL
                   ) OR EXISTS (
                     SELECT 1 FROM checklist_template_industry cti
-                     WHERE cti.template_id = ${checklistTemplates.id} AND cti.removed_at IS NULL
+                     WHERE cti.template_id = checklist_template.id AND cti.removed_at IS NULL
                        AND cti.industry_id = ${query.industryId}
                   ))`
               : undefined,
