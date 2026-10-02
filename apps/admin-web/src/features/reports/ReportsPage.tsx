@@ -1,17 +1,20 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ReportAccessToken, ReportDownloadUrl, ReportSnapshot } from '@audit5s/contracts';
-import { api, ApiError, fetchAll } from '@/lib/api';
+import { Download, RefreshCw, Trash2, X, type LucideIcon } from 'lucide-react';
+import type { ReportSnapshot } from '@audit5s/contracts';
+import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { cn } from '@/lib/cn';
+import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
+import { ReportPreviewPanel } from './ReportPreviewPanel';
 import { NewReportDialog, type NewReportPreset } from './NewReportDialog';
+import { loadReportPdf, savePdf } from './report-pdf';
 import {
   EDITION_LABEL,
   NO_FILTERS,
   buildLibrary,
   documentTitle,
   filterLibrary,
-  formatDay,
   formatWhen,
   isFiltered,
   isInFlight,
@@ -24,12 +27,10 @@ import {
   type TypeFilter,
 } from './report-library';
 import {
-  ActionMenu,
   Badge,
   Button,
   Card,
   CardHeader,
-  Dialog,
   ErrorNotice,
   Field,
   Input,
@@ -38,7 +39,6 @@ import {
   Table,
   Td,
   Th,
-  type MenuItem,
 } from '@/components/ui';
 
 /**
@@ -60,7 +60,7 @@ export function ReportsPage() {
   const mayGenerate = can('report', 'generate');
 
   const [filters, setFilters] = useState<LibraryFilters>(NO_FILTERS);
-  const [tokensFor, setTokensFor] = useState<ReportSnapshot | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [newReport, setNewReport] = useState<NewReportPreset | null>(null);
   const [openEarlier, setOpenEarlier] = useState<ReadonlySet<string>>(new Set());
   const [slip, setSlip] = useState<{ title: string; text: string } | null>(null);
@@ -78,6 +78,17 @@ export function ReportsPage() {
   const shown = useMemo(() => filterLibrary(library, filters), [library, filters]);
   const units = useMemo(() => unitsOf(snapshots), [snapshots]);
   const documentCount = shown.reduce((sum, group) => sum + group.documents.length, 0);
+
+  // The rows in the order they are on screen, for ↑ / ↓ in the preview.
+  const visible = useMemo(
+    () =>
+      shown.flatMap((group) =>
+        group.documents.flatMap((doc) => (openEarlier.has(doc.key) ? [doc.latest, ...doc.earlier] : [doc.latest])),
+      ),
+    [shown, openEarlier],
+  );
+  // A report deleted while open simply leaves the panel, the same as it leaves the list.
+  const previewed = snapshots.find((snapshot) => snapshot.id === previewId) ?? null;
 
   /** A report was queued — by the dialog or by Regenerate. Say so, and show where it is. */
   const announce = (snapshot: ReportSnapshot, how: 'queued' | 'regenerated') => {
@@ -111,59 +122,79 @@ export function ReportsPage() {
         </div>
       ) : null}
 
-      <Card className="min-w-0">
-        <CardHeader
-          title="Issued reports"
-          description="The PDFs issued to clients, filed under the audit or Unit they cover."
-          action={
-            mayGenerate ? <Button onClick={() => setNewReport({ mode: 'ZONE' })}>+ New report</Button> : null
-          }
-        />
-
-        {snapshots.length > 0 ? (
-          <FilterBar filters={filters} onChange={setFilters} units={units} count={documentCount} />
-        ) : null}
-
-        {reports.isLoading ? <Spinner /> : null}
-        {reports.error ? <ErrorNotice error={reports.error} /> : null}
-
-        {reports.data && snapshots.length === 0 ? (
-          <div className="gb-empty">
-            <span>No reports issued yet.</span>
-            {mayGenerate ? (
-              <Button onClick={() => setNewReport({ mode: 'ZONE' })}>+ New report</Button>
-            ) : null}
-          </div>
-        ) : null}
-
-        {reports.data && snapshots.length > 0 && shown.length === 0 ? (
-          <div className="gb-empty">
-            <span>No report matches these filters.</span>
-            <Button variant="secondary" onClick={() => setFilters(NO_FILTERS)}>
-              Clear filters
-            </Button>
-          </div>
-        ) : null}
-
-        {shown.length > 0 ? (
-          <Library
-            groups={shown}
-            mayGenerate={mayGenerate}
-            arrivedId={arrivedId}
-            openEarlier={openEarlier}
-            onToggleEarlier={(key) =>
-              setOpenEarlier((current) => {
-                const next = new Set(current);
-                if (!next.delete(key)) next.add(key);
-                return next;
-              })
+      <div className={cn(previewed && 'gb-split gb-split--preview')}>
+        <Card className="min-w-0">
+          <CardHeader
+            title="Issued reports"
+            description="The PDFs issued to clients, filed under the audit or Unit they cover. Click one to preview it."
+            action={
+              mayGenerate ? <Button onClick={() => setNewReport({ mode: 'ZONE' })}>+ New report</Button> : null
             }
-            onManageTokens={setTokensFor}
-            onNewReport={setNewReport}
-            onRegenerated={(snapshot) => announce(snapshot, 'regenerated')}
+          />
+
+          {snapshots.length > 0 ? (
+            <FilterBar
+              filters={filters}
+              onChange={setFilters}
+              units={units}
+              count={documentCount}
+            />
+          ) : null}
+
+          {reports.isLoading ? <Spinner /> : null}
+          {reports.error ? <ErrorNotice error={reports.error} /> : null}
+
+          {reports.data && snapshots.length === 0 ? (
+            <div className="gb-empty">
+              <span>No reports issued yet.</span>
+              {mayGenerate ? (
+                <Button onClick={() => setNewReport({ mode: 'ZONE' })}>+ New report</Button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {reports.data && snapshots.length > 0 && shown.length === 0 ? (
+            <div className="gb-empty">
+              <span>No report matches these filters.</span>
+              <Button variant="secondary" onClick={() => setFilters(NO_FILTERS)}>
+                Clear filters
+              </Button>
+            </div>
+          ) : null}
+
+          {shown.length > 0 ? (
+            <Library
+              groups={shown}
+              compact={previewed !== null}
+              mayGenerate={mayGenerate}
+              previewId={previewed?.id ?? null}
+              arrivedId={arrivedId}
+              openEarlier={openEarlier}
+              onToggleEarlier={(key) =>
+                setOpenEarlier((current) => {
+                  const next = new Set(current);
+                  if (!next.delete(key)) next.add(key);
+                  return next;
+                })
+              }
+              onPreview={(snapshotId) => setPreviewId((open) => (open === snapshotId ? null : snapshotId))}
+              onNewReport={setNewReport}
+              onRegenerated={(snapshot) => announce(snapshot, 'regenerated')}
+            />
+          ) : null}
+        </Card>
+
+        {previewed ? (
+          <ReportPreviewPanel
+            snapshot={previewed}
+            snapshots={visible}
+            kindLabel={EDITION_LABEL}
+            mayGenerate={mayGenerate}
+            onSelect={setPreviewId}
+            onClose={() => setPreviewId(null)}
           />
         ) : null}
-      </Card>
+      </div>
 
       {mayGenerate ? (
         <NewReportDialog
@@ -175,7 +206,6 @@ export function ReportsPage() {
         />
       ) : null}
 
-      <LinksDialog snapshot={tokensFor} onClose={() => setTokensFor(null)} />
     </div>
   );
 }
@@ -256,20 +286,25 @@ type Pending = { snapshotId: string; action: 'regenerate' | 'delete' } | null;
 
 function Library({
   groups,
+  compact,
   mayGenerate,
+  previewId,
   arrivedId,
   openEarlier,
   onToggleEarlier,
-  onManageTokens,
+  onPreview,
   onNewReport,
   onRegenerated,
 }: {
   groups: ReportGroup[];
   mayGenerate: boolean;
+  /** The preview is open beside the list: row actions shrink to their icons. */
+  compact: boolean;
+  previewId: string | null;
   arrivedId: string | null;
   openEarlier: ReadonlySet<string>;
   onToggleEarlier: (documentKey: string) => void;
-  onManageTokens: (snapshot: ReportSnapshot) => void;
+  onPreview: (snapshotId: string) => void;
   onNewReport: (preset: NewReportPreset) => void;
   onRegenerated: (snapshot: ReportSnapshot) => void;
 }) {
@@ -301,6 +336,12 @@ function Library({
     onError: setError,
   });
 
+  // ↑ / ↓ in the preview walk the list; the row being previewed stays in sight.
+  useEffect(() => {
+    if (!previewId) return;
+    document.querySelector(`[data-snapshot="${previewId}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [previewId]);
+
   // A report just queued is brought into view once, when its row first appears.
   const shownArrival = useRef<string | null>(null);
   useEffect(() => {
@@ -311,51 +352,28 @@ function Library({
     row.scrollIntoView({ block: 'center', behavior: 'smooth' });
   });
 
-  const menuFor = (snapshot: ReportSnapshot, isLatest: boolean): MenuItem[] => {
-    const inFlight = isInFlight(snapshot);
-    const items: MenuItem[] = [];
-    if (isLatest) {
-      items.push({
-        label: 'Regenerate…',
-        disabled: inFlight,
-        hint: inFlight ? 'This version is still rendering.' : 'Issue a new version from the current data.',
-        onSelect: () => setPending({ snapshotId: snapshot.id, action: 'regenerate' }),
-      });
-    }
-    items.push({
-      label: 'Links in this report',
-      hint: 'See and revoke the corrective-action links this PDF prints.',
-      onSelect: () => onManageTokens(snapshot),
-    });
-    items.push(
-      inFlight
-        ? {
-            label: withdraw.isPending ? 'Cancelling…' : 'Cancel rendering',
-            danger: true,
-            disabled: withdraw.isPending,
-            onSelect: () => withdraw.mutate(snapshot),
-          }
-        : {
-            label: `Delete v${snapshot.version}…`,
-            danger: true,
-            onSelect: () => setPending({ snapshotId: snapshot.id, action: 'delete' }),
-          },
-    );
-    return items;
-  };
 
   const row = (doc: ReportDocument, snapshot: ReportSnapshot, isLatest: boolean, replacedBy?: number) => {
+    const open = snapshot.id === previewId;
     const confirming = pending?.snapshotId === snapshot.id ? pending.action : null;
     return (
       <Fragment key={snapshot.id}>
         <tr
           data-snapshot={snapshot.id}
-          className={cn(!isLatest && 'gb-row--earlier', snapshot.id === arrivedId && 'gb-row--target')}
+          onClick={rowToggleProps(() => onPreview(snapshot.id)).onClick}
+          className={cn(
+            'cursor-pointer',
+            !isLatest && 'gb-row--earlier',
+            open && 'gb-row--open',
+            snapshot.id === arrivedId && 'gb-row--target',
+          )}
         >
           <Td>
             {isLatest ? (
               <>
-                <span className="gb-doc-title">{documentTitle(snapshot)}</span>
+                <RowToggle open={open} onClick={() => onPreview(snapshot.id)}>
+                  <span className="gb-doc-title">{documentTitle(snapshot)}</span>
+                </RowToggle>
                 {doc.earlier.length > 0 ? (
                   <div>
                     <button
@@ -372,7 +390,9 @@ function Library({
                 ) : null}
               </>
             ) : (
-              <>Replaced by v{replacedBy}</>
+              <RowToggle open={open} onClick={() => onPreview(snapshot.id)}>
+                Replaced by v{replacedBy}
+              </RowToggle>
             )}
           </Td>
           <Td>
@@ -387,9 +407,41 @@ function Library({
           </Td>
           <Td>
             <div className="gb-row-actions">
-              <DownloadButton snapshot={snapshot} primary={isLatest} onError={setError} />
-              {mayGenerate ? (
-                <ActionMenu label={`More actions for v${snapshot.version}`} items={menuFor(snapshot, isLatest)} />
+              <DownloadButton snapshot={snapshot} primary={isLatest} compact={compact} onError={setError} />
+              {mayGenerate && isLatest ? (
+                <RowAction
+                  icon={RefreshCw}
+                  label="Regenerate"
+                  compact={compact}
+                  disabled={isInFlight(snapshot)}
+                  hint={
+                    isInFlight(snapshot)
+                      ? 'This version is still rendering.'
+                      : 'Issue a new version from the current data.'
+                  }
+                  onClick={() => setPending({ snapshotId: snapshot.id, action: 'regenerate' })}
+                />
+              ) : null}
+              {mayGenerate && isInFlight(snapshot) ? (
+                <RowAction
+                  icon={X}
+                  label={withdraw.isPending ? 'Cancelling…' : 'Cancel'}
+                  danger
+                  compact={compact}
+                  disabled={withdraw.isPending}
+                  hint="Stop it before it renders. Nothing was issued."
+                  onClick={() => withdraw.mutate(snapshot)}
+                />
+              ) : null}
+              {mayGenerate && !isInFlight(snapshot) ? (
+                <RowAction
+                  icon={Trash2}
+                  label="Delete"
+                  danger
+                  compact={compact}
+                  hint={`Delete v${snapshot.version} and its PDF. The record that it was issued is kept.`}
+                  onClick={() => setPending({ snapshotId: snapshot.id, action: 'delete' })}
+                />
               ) : null}
             </div>
           </Td>
@@ -524,27 +576,80 @@ function StatusBadge({ snapshot }: { snapshot: ReportSnapshot }) {
 /**
  * The download.
  *
- * The PDF never transits the API: this asks for a short-TTL presigned GET and follows it.
- * The URL is fetched at click time rather than rendered into the row, so a page left open
- * does not accumulate links that outlive their five minutes.
+ * The PDF never transits the API: this asks for a short-TTL presigned GET, fetches the bytes
+ * and saves them under the report's own name (`Unit - Zone - kind - date - vN.pdf`). The URL
+ * is minted at click time rather than rendered into the row, so a page left open does not
+ * accumulate links that outlive their five minutes; a report already open in the preview is
+ * saved from the bytes it holds.
  */
+/** Drawn like the preview toolbar's icons: a 2px square-capped stroke in `currentColor`. */
+const ROW_ICON = {
+  size: 14,
+  strokeWidth: 2,
+  strokeLinecap: 'square',
+  strokeLinejoin: 'miter',
+  'aria-hidden': true,
+  focusable: false,
+} as const;
+
+/**
+ * One of a row's actions: icon and word while the list has the page to itself, the icon
+ * alone while the preview shares it. The word is never lost — it stays the button's
+ * accessible name and its tooltip.
+ */
+function RowAction({
+  icon: Icon,
+  label,
+  hint,
+  compact,
+  danger = false,
+  primary = false,
+  disabled,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  hint?: string;
+  compact: boolean;
+  danger?: boolean;
+  primary?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      variant={danger ? 'danger' : primary ? 'primary' : 'secondary'}
+      className={cn('gb-btn--sm gb-btn--act', compact && 'gb-btn--act-icon')}
+      disabled={disabled}
+      aria-label={compact ? label : undefined}
+      title={hint ? `${label} — ${hint}` : label}
+      onClick={onClick}
+    >
+      <Icon {...ROW_ICON} />
+      {compact ? null : <span>{label}</span>}
+    </Button>
+  );
+}
+
 function DownloadButton({
   snapshot,
   primary,
+  compact,
   onError,
 }: {
   snapshot: ReportSnapshot;
   primary: boolean;
+  compact: boolean;
   onError: (error: unknown) => void;
 }) {
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
 
   async function download() {
     setBusy(true);
     onError(null);
     try {
-      const link = await api.get<ReportDownloadUrl>(`/reports/${snapshot.id}/download-url`);
-      window.open(link.url, '_blank', 'noopener');
+      savePdf(await loadReportPdf(queryClient, snapshot));
     } catch (caught) {
       onError(caught);
     } finally {
@@ -553,141 +658,14 @@ function DownloadButton({
   }
 
   return (
-    <Button
-      variant={primary ? 'primary' : 'secondary'}
-      onClick={download}
+    <RowAction
+      icon={Download}
+      label={busy ? 'Preparing…' : 'Download'}
+      primary={primary}
+      compact={compact}
+      onClick={() => void download()}
       disabled={snapshot.status !== 'READY' || busy}
-      title={snapshot.status === 'READY' ? undefined : 'Available once the report is ready.'}
-    >
-      {busy ? 'Preparing…' : 'Download'}
-    </Button>
+      hint={snapshot.status === 'READY' ? 'Save the PDF under its report name.' : 'Available once the report is ready.'}
+    />
   );
 }
-
-// -------------------------------------------------------------------------------- links
-
-/**
- * Token management (§8.9, §10.4), in a dialog over the list it was opened from.
- *
- * The secret is not shown and cannot be: only its hash is stored, and the raw value exists
- * in the link the PDF prints. What this offers is what a Super Admin actually needs —
- * seeing that a link has been used, and revoking one that went to the wrong person.
- */
-function LinksDialog({ snapshot, onClose }: { snapshot: ReportSnapshot | null; onClose: () => void }) {
-  return (
-    <Dialog
-      open={snapshot !== null}
-      onClose={onClose}
-      wide
-      title={snapshot ? `Links — v${snapshot.version}` : 'Links'}
-      description={
-        snapshot
-          ? `${reportName(snapshot)}. One link per finding, printed in the PDF. A link is never shown here — only its hash is stored.`
-          : undefined
-      }
-    >
-      {snapshot ? <TokensTable snapshot={snapshot} /> : null}
-    </Dialog>
-  );
-}
-
-function TokensTable({ snapshot }: { snapshot: ReportSnapshot }) {
-  const queryClient = useQueryClient();
-  const [reason, setReason] = useState<Record<string, string>>({});
-
-  const tokens = useQuery({
-    queryKey: ['report-tokens', snapshot.id],
-    queryFn: () => api.get<ReportAccessToken[]>(`/reports/${snapshot.id}/tokens`),
-  });
-
-  const revoke = useMutation({
-    mutationFn: (input: { tokenId: string; reason: string }) =>
-      api.post<ReportAccessToken>(`/reports/${snapshot.id}/tokens/${input.tokenId}/revoke`, {
-        reason: input.reason,
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['report-tokens', snapshot.id] }),
-  });
-
-  return (
-    <div className="gb-dialog-section">
-      {tokens.isLoading ? <Spinner /> : null}
-      {tokens.error ? <ErrorNotice error={tokens.error} /> : null}
-      {revoke.error ? <ErrorNotice error={revoke.error} /> : null}
-      {tokens.data && tokens.data.length === 0 ? (
-        <p className="m-0 text-sm text-ink-2">This report prints no links.</p>
-      ) : null}
-      {tokens.data && tokens.data.length > 0 ? (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Item</Th>
-              <Th>Issued to</Th>
-              <Th>Expires</Th>
-              <Th>Uses</Th>
-              <Th>Last used</Th>
-              <Th>State</Th>
-              <Th>Revoke</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {tokens.data.map((token) => {
-              const item = `${token.zoneCode ? `Zone ${token.zoneCode}` : '—'}${
-                token.questionGlobalOrder ? ` · Q${token.questionGlobalOrder}` : ''
-              }`;
-              return (
-                <tr key={token.id}>
-                  <Td>{item}</Td>
-                  <Td>{token.issuedToName ?? '—'}</Td>
-                  {/* R-41: a link with no limit carries the last possible day. */}
-                  <Td>{token.expiresAt.startsWith('9999-') ? 'Never' : formatDay(token.expiresAt)}</Td>
-                  <Td className="text-right">{token.useCount}</Td>
-                  <Td>{token.lastUsedAt ? formatWhen(token.lastUsedAt) : 'Never'}</Td>
-                  <Td>
-                    {token.revokedAt ? (
-                      <span className="flex flex-col gap-0.5">
-                        <Badge tone="bad">Revoked</Badge>
-                        <span className="text-xs text-ink-2">{token.revokeReason}</span>
-                      </span>
-                    ) : token.active ? (
-                      <Badge tone="good">Active</Badge>
-                    ) : (
-                      <Badge tone="warn">Expired</Badge>
-                    )}
-                  </Td>
-                  <Td>
-                    {token.revokedAt ? null : (
-                      <div className="flex gap-1">
-                        <label className="sr-only" htmlFor={`revoke-${token.id}`}>
-                          Reason for revoking the link for {item}
-                        </label>
-                        <Input
-                          id={`revoke-${token.id}`}
-                          className="w-40"
-                          placeholder="Reason"
-                          value={reason[token.id] ?? ''}
-                          onChange={(event) =>
-                            setReason((current) => ({ ...current, [token.id]: event.target.value }))
-                          }
-                        />
-                        <Button
-                          variant="danger"
-                          disabled={!reason[token.id]?.trim() || revoke.isPending}
-                          onClick={() => revoke.mutate({ tokenId: token.id, reason: reason[token.id]!.trim() })}
-                        >
-                          Revoke
-                        </Button>
-                      </div>
-                    )}
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      ) : null}
-    </div>
-  );
-}
-
-/** Re-exported so a caller can branch on the shape without importing the client. */
-export { ApiError };

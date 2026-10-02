@@ -397,6 +397,12 @@ export const reportDownloadUrlSchema = z.object({
   url: z.string(),
   expiresIn: z.number().int().positive(),
   checksumSha256: z.string().nullable(),
+  /**
+   * What to save the PDF as — `Nashik Plant - Zone 2 - Press - Initial - 02 Oct 2026 -
+   * v3.pdf` — built from the frozen payload. The URL's own last segment is the storage
+   * key's `v3.pdf`, which tells a client's inbox nothing.
+   */
+  fileName: z.string(),
 });
 export type ReportDownloadUrl = z.infer<typeof reportDownloadUrlSchema>;
 

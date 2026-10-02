@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { AUDIT_LOG_ACTIONS, type AuditLogEntry, type Page } from '@audit5s/contracts';
 import { api } from '@/lib/api';
 import { Card, CardHeader, ErrorNotice, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import { cn } from '@/lib/cn';
+import { rowToggleProps } from '@/features/audits/AuditsPage';
 
 /**
  * The audit-log viewer. Super Admin only, and read-only by construction: the table is
@@ -52,28 +54,7 @@ export function AuditLogPage() {
           </thead>
           <tbody>
             {entries.data.data.map((entry) => (
-              <tr key={entry.id} className="align-top">
-                <Td className="text-xs whitespace-nowrap text-ink-3">
-                  {new Date(entry.occurredAt).toLocaleString()}
-                </Td>
-                <Td>
-                  <div className="text-sm">{entry.actorLabel}</div>
-                  {entry.ipAddress && (
-                    <div className="font-mono text-xs text-ink-3">{entry.ipAddress}</div>
-                  )}
-                </Td>
-                <Td className="font-mono text-xs">{entry.action}</Td>
-                <Td className="font-mono text-xs text-ink-3">
-                  {entry.resourceType}
-                  {entry.resourceId ? `/${entry.resourceId.slice(0, 8)}…` : ''}
-                </Td>
-                <Td>
-                  <Diff before={entry.before} after={entry.after} />
-                </Td>
-                <Td className="font-mono text-xs text-ink-3">
-                  {entry.requestId.slice(0, 8)}…
-                </Td>
-              </tr>
+              <AuditLogRow key={entry.id} entry={entry} />
             ))}
             {entries.data.data.length === 0 && (
               <tr>
@@ -87,14 +68,52 @@ export function AuditLogPage() {
   );
 }
 
-/** Sensitive fields are already redacted server-side; this only renders what arrived. */
-function Diff({ before, after }: { before: unknown; after: unknown }) {
+/** A click anywhere on an entry with a change opens or closes its diff, not only on "view". */
+function AuditLogRow({ entry }: { entry: AuditLogEntry }) {
+  const [open, setOpen] = useState(false);
+  const hasDiff = Boolean(entry.before || entry.after);
+  const toggle = () => setOpen((current) => !current);
+
+  return (
+    <tr
+      className={cn('align-top', hasDiff && 'cursor-pointer')}
+      onClick={hasDiff ? rowToggleProps(toggle).onClick : undefined}
+    >
+      <Td className="text-xs whitespace-nowrap text-ink-3">
+        {new Date(entry.occurredAt).toLocaleString()}
+      </Td>
+      <Td>
+        <div className="text-sm">{entry.actorLabel}</div>
+        {entry.ipAddress && <div className="font-mono text-xs text-ink-3">{entry.ipAddress}</div>}
+      </Td>
+      <Td className="font-mono text-xs">{entry.action}</Td>
+      <Td className="font-mono text-xs text-ink-3">
+        {entry.resourceType}
+        {entry.resourceId ? `/${entry.resourceId.slice(0, 8)}…` : ''}
+      </Td>
+      <Td>
+        <Diff before={entry.before} after={entry.after} open={open} />
+      </Td>
+      <Td className="font-mono text-xs text-ink-3">{entry.requestId.slice(0, 8)}…</Td>
+    </tr>
+  );
+}
+
+/**
+ * Sensitive fields are already redacted server-side; this only renders what arrived. The
+ * row owns `open`: the summary's own toggle is cancelled and its click bubbles to the row,
+ * so mouse and keyboard both go through one path. A click inside the diff itself is a
+ * reader placing a cursor in the JSON, not a request to fold it away.
+ */
+function Diff({ before, after, open }: { before: unknown; after: unknown; open: boolean }) {
   if (!before && !after) return <span className="text-xs text-ink-3">—</span>;
 
   return (
-    <details className="text-xs">
-      <summary className="cursor-pointer text-ink-3">view</summary>
-      <div className="mt-1 space-y-1">
+    <details className="text-xs" open={open}>
+      <summary className="cursor-pointer text-ink-3" onClick={(event) => event.preventDefault()}>
+        view
+      </summary>
+      <div className="mt-1 space-y-1" onClick={(event) => event.stopPropagation()}>
         {before ? (
           <pre className="overflow-x-auto bg-board p-2 text-[11px]">
             − {JSON.stringify(before, null, 2)}

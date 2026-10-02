@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { useSearch } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
@@ -184,8 +184,9 @@ export function AuditsPage() {
                   <Fragment key={audit.id}>
                     <tr
                       ref={audit.id === search.audit ? scrollIntoViewOnce : undefined}
+                      onClick={rowToggleProps(() => setExpanded(open ? null : audit.id)).onClick}
                       className={cn(
-                        'border-t border-edge-soft',
+                        'cursor-pointer border-t border-edge-soft',
                         audit.id === search.audit && 'gb-row--target',
                         open && 'gb-row--open',
                       )}
@@ -325,6 +326,22 @@ export function RowToggle({
 }
 
 /**
+ * Props that let a click anywhere on a row open it, not just on its `RowToggle`. A click
+ * that lands on a control in the row — the toggle itself, Edit, Archive — is that
+ * control's, and a drag that selects text is a copy, not a toggle.
+ */
+export function rowToggleProps(onToggle: () => void) {
+  return {
+    className: 'cursor-pointer',
+    onClick: (event: MouseEvent<HTMLTableRowElement>) => {
+      if ((event.target as Element).closest('button, a, input, select, textarea, label')) return;
+      if (window.getSelection()?.toString()) return;
+      onToggle();
+    },
+  };
+}
+
+/**
  * A score cell. `null` prints `N/A`, never `0%` (D4) — a Zone with nothing applicable has
  * no percentage, and showing zero would report a failure that did not happen.
  */
@@ -376,7 +393,8 @@ function AssignmentRow({
     <Fragment>
       <tr
         ref={targeted ? scrollIntoViewOnce : undefined}
-        className={cn('border-t border-edge-soft', targeted && 'gb-row--target', open && 'gb-row--open')}
+        onClick={rowToggleProps(onToggle).onClick}
+        className={cn('cursor-pointer border-t border-edge-soft', targeted && 'gb-row--target', open && 'gb-row--open')}
       >
         <Td>
           <RowToggle open={open} onClick={onToggle}>

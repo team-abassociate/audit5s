@@ -22,7 +22,7 @@ import { useSession } from '@/lib/session';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { Link, useSearch } from '@tanstack/react-router';
-import { AUDIT_TYPE_LABELS, RowToggle, STATUS_LABELS } from '@/features/audits/AuditsPage';
+import { AUDIT_TYPE_LABELS, RowToggle, STATUS_LABELS, rowToggleProps } from '@/features/audits/AuditsPage';
 
 const mobileDigits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
 
@@ -189,10 +189,11 @@ function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle
   // server refuses for anyone else is an invitation to a 403.
   const manageable = scope?.role === 'SUPER_ADMIN' || user.role === 'ZONE_LEADER';
   const isSelf = user.id === self?.id;
+  const toggleRow = rowToggleProps(onToggle);
 
   return (
     <Fragment>
-      <tr className={cn(open && 'gb-row--open')}>
+      <tr {...toggleRow} className={cn(toggleRow.className, open && 'gb-row--open')}>
         <Td className="font-medium">
           <RowToggle open={open} onClick={onToggle}>
             {user.fullName}
