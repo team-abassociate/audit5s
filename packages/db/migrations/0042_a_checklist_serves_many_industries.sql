@@ -72,6 +72,23 @@ ALTER TABLE checklist_template DROP COLUMN IF EXISTS industry_id;
 ALTER TABLE checklist_template ADD COLUMN IF NOT EXISTS sheet_code text;
 UPDATE checklist_template SET sheet_code = code WHERE sheet_code IS NULL;
 ALTER TABLE checklist_template ALTER COLUMN sheet_code SET NOT NULL;
+
+-- A template inserted without one takes its own code, which is what every template was
+-- before this migration. The importer always names it; this keeps any other insert — a
+-- fixture, a hand-run statement — from failing on a column it has never heard of.
+-- BEFORE INSERT runs ahead of the NOT NULL check, so the constraint still holds.
+CREATE OR REPLACE FUNCTION checklist_template_default_sheet_code() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.sheet_code IS NULL THEN
+    NEW.sheet_code := NEW.code;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER checklist_template_default_sheet_code BEFORE INSERT ON checklist_template
+  FOR EACH ROW EXECUTE FUNCTION checklist_template_default_sheet_code();
 CREATE INDEX IF NOT EXISTS checklist_template_sheet_code_idx ON checklist_template (sheet_code);
 
 COMMENT ON COLUMN checklist_template.sheet_code IS
