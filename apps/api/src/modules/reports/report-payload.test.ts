@@ -83,6 +83,10 @@ function input(): FreezeInput {
         afterObjectKey: AFTER_KEY,
         afterRedactedAt: null,
         afterCapturedAt: new Date('2026-09-30T07:55:00Z'),
+        reviewOutcome: null,
+        reviewedAt: null,
+        reviewComment: null,
+        reviewer: null,
       },
     ],
     selfieObjectKey: null,
@@ -118,5 +122,51 @@ describe('freezePayload', () => {
     expect(finding!.outcome).toBeNull();
     // The finding's own photograph is unaffected.
     expect(finding!.objectKey).toBe(BEFORE_KEY);
+  });
+
+  /** R-43: who reviewed the latest answer, carried beside it — or in its place. */
+  describe('the review', () => {
+    const reviewed = (
+      status: 'VERIFIED' | 'REOPENED',
+      outcome: 'VERIFIED' | 'REOPENED' | null,
+    ): FreezeInput => {
+      const frozen = input();
+      const action = frozen.actions[0]! as FreezeInput['actions'][number];
+      action.status = status;
+      if (status === 'REOPENED') action.resolvedAt = null;
+      action.reviewOutcome = outcome;
+      action.reviewedAt = outcome ? new Date('2026-10-01T05:30:00Z') : null;
+      action.reviewComment = outcome === 'REOPENED' ? 'Scrap is back under the bench' : null;
+      action.reviewer = outcome ? { name: 'Cole Coord', role: 'COORDINATOR' } : null;
+      return frozen;
+    };
+
+    it('says nothing of a closure nobody reviewed, and still prints it', () => {
+      const [finding] = freezePayload(reviewed('VERIFIED', null)).zones[0]!.nonconformities;
+      expect(finding!.review).toBeNull();
+      expect(finding!.outcome?.afterPhoto?.objectKey).toBe(AFTER_KEY);
+    });
+
+    it('names the approver and their role beside the answer', () => {
+      const [finding] = freezePayload(reviewed('VERIFIED', 'VERIFIED')).zones[0]!.nonconformities;
+      expect(finding!.outcome).not.toBeNull();
+      expect(finding!.review).toEqual({
+        verdict: 'APPROVED',
+        reviewerName: 'Cole Coord',
+        reviewerRole: 'COORDINATOR',
+        reviewedAt: '2026-10-01T05:30:00.000Z',
+        comment: null,
+      });
+    });
+
+    it('drops a disapproved answer and keeps who disapproved it, and why', () => {
+      const [finding] = freezePayload(reviewed('REOPENED', 'REOPENED')).zones[0]!.nonconformities;
+      expect(finding!.outcome).toBeNull();
+      expect(finding!.review).toMatchObject({
+        verdict: 'DISAPPROVED',
+        reviewerName: 'Cole Coord',
+        comment: 'Scrap is back under the bench',
+      });
+    });
   });
 });

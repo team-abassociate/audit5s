@@ -5,7 +5,9 @@ import type {
   ReportOverallAction,
   ReportPayload,
   ReportPhoto,
+  ReportReview,
   ReportZone,
+  Role,
 } from './payload-types';
 import {
   CorrectiveActionLink,
@@ -326,25 +328,44 @@ function OverallActionRow({
   );
 }
 
-/** §4.2 / §10.3-B: Option A, Option B, or Pending with the deadline. */
+/**
+ * §4.2 / §10.3-B: Option A, Option B, or Pending with the deadline — and R-43's review.
+ *
+ * A Zone Leader's closure is **closed**, not verified: nobody checked it unless a reviewer
+ * approved it, and the row says which. A disapproved answer is not printed; the row says who
+ * disapproved it and why, and that a new answer is awaited. `review` is absent from a payload
+ * frozen before R-43, and the row then prints no review line at all rather than a guess.
+ */
 function Outcome({
   item,
   resolve,
 }: {
-  item: { outcome: ReportOutcome | null; dueAt: string | null };
+  item: { outcome: ReportOutcome | null; dueAt: string | null; review?: ReportReview | null };
   resolve: ImageResolver;
 }) {
   const outcome = item.outcome;
+  const review = item.review;
+  const due = item.dueAt ? `Due ${formatDate(item.dueAt)}` : 'No deadline set';
 
   if (!outcome) {
+    if (review?.verdict === 'DISAPPROVED') {
+      return (
+        <div className="nc-answer">
+          <div className="photo-caption">
+            <span className="badge-disapproved">✕ DISAPPROVED</span>
+          </div>
+          <div className="photo-remark">{reviewLine(review)}</div>
+          {review.comment ? <div className="photo-remark">Reason: {review.comment}</div> : null}
+          <div className="photo-remark">Awaiting a new answer. {due}</div>
+        </div>
+      );
+    }
     return (
       <div className="nc-answer">
         <div className="photo-caption">
           <span className="badge-pending">PENDING</span>
         </div>
-        <div className="photo-remark">
-          {item.dueAt ? `Due ${formatDate(item.dueAt)}` : 'No deadline set'}
-        </div>
+        <div className="photo-remark">{due}</div>
       </div>
     );
   }
@@ -358,8 +379,13 @@ function Outcome({
         <div className="photo-remark">{outcome.explanation}</div>
         <div className="photo-remark">
           {outcome.submittedByName} · {formatDate(outcome.submittedAt)}
-          {outcome.verified ? ' · ✓ Accepted' : ''}
+          {review === undefined && outcome.verified ? ' · ✓ Accepted' : ''}
         </div>
+        {review === undefined ? null : (
+          <div className="photo-remark">
+            {review?.verdict === 'APPROVED' ? `✓ ${reviewLine(review)}` : 'Awaiting review'}
+          </div>
+        )}
       </div>
     );
   }
@@ -370,14 +396,32 @@ function Outcome({
       <div className="photo-caption">
         {/* An overall action may be answered without a photograph (R-38). */}
         {outcome.afterPhoto ? 'AFTER PHOTO' : 'ACTION TAKEN'}
-        {outcome.verified ? <span className="badge-verified"> ✓ VERIFIED</span> : null}
+        {outcome.verified ? <span className="badge-verified"> ✓ CLOSED</span> : null}
       </div>
       <div className="photo-remark">
         Submitted by {outcome.submittedByName} · {formatDate(outcome.submittedAt)}
       </div>
       {outcome.description ? <div className="photo-remark">{outcome.description}</div> : null}
+      {review === undefined ? null : (
+        <div className="photo-remark">
+          {review?.verdict === 'APPROVED' ? `✓ ${reviewLine(review)}` : 'Not reviewed'}
+        </div>
+      )}
     </div>
   );
+}
+
+const REVIEWER_ROLE: Partial<Record<Role, string>> = {
+  SUPER_ADMIN: 'Super Admin',
+  COORDINATOR: 'Coordinator',
+};
+
+/** "Approved by Asha Patil (Coordinator), 3 Oct 2026". */
+function reviewLine(review: ReportReview): string {
+  const verb = review.verdict === 'APPROVED' ? 'Approved' : 'Disapproved';
+  const role = review.reviewerRole ? REVIEWER_ROLE[review.reviewerRole] : undefined;
+  const who = review.reviewerName ?? 'a reviewer';
+  return `${verb} by ${who}${role ? ` (${role})` : ''}, ${formatDate(review.reviewedAt)}`;
 }
 
 function ClosureSummary({ payload }: { payload: ReportPayload }) {

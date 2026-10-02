@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import jsQR from 'jsqr';
+import type { ReportReview } from '@audit5s/contracts';
 import { renderReportHtml } from './index';
 import { QUIET_ZONE_MODULES, encodeQr } from './qr';
 import {
@@ -292,13 +293,81 @@ describe('§4.2 — the after-evidence report', () => {
     );
   });
 
-  it('fills the right half for Option A — after photo, submitter, description, ✓ Verified', () => {
+  it('fills the right half for Option A — after photo, submitter, description, ✓ Closed', () => {
     const section = sectionOf(v2, 'Nonconformities');
     expect(section).toContain('class="nc-answer"');
     expect(section).toContain('AFTER PHOTO');
     expect(section).toContain('Submitted by R. Deshmukh');
     expect(section).toContain('Spillage cleared and a drip tray fitted.');
-    expect(section).toContain('✓ VERIFIED');
+    // R-43: a Zone Leader's closure is closed, not verified — nobody checked it.
+    expect(section).toContain('✓ CLOSED');
+    expect(section).not.toContain('VERIFIED');
+  });
+
+  /** R-43: who approved or disapproved the answer, and what a disapproval leaves behind. */
+  describe('the review (R-43)', () => {
+    const reviewed = (review: (index: number) => ReportReview | null) => {
+      const payload = fixtureAfterEvidencePayload();
+      payload.zones[0]!.nonconformities = payload.zones[0]!.nonconformities.map((item, index) => ({
+        ...item,
+        review: review(index),
+      }));
+      return sectionOf(renderReportHtml(payload, resolve), 'Nonconformities');
+    };
+    const approval: ReportReview = {
+      verdict: 'APPROVED',
+      reviewerName: 'Asha Patil',
+      reviewerRole: 'COORDINATOR',
+      reviewedAt: '2026-03-07T06:00:00.000Z',
+      comment: null,
+    };
+
+    it('says a closure nobody reviewed is not reviewed', () => {
+      const section = reviewed(() => null);
+      expect(section).toContain('✓ CLOSED');
+      expect(section).toContain('Not reviewed');
+      expect(section).toContain('Awaiting review');
+    });
+
+    it('names the approver and their role beside the answer', () => {
+      const section = reviewed((index) => (index < 2 ? approval : null));
+      expect(section).toContain('Approved by Asha Patil (Coordinator), 07 Mar 2026');
+      expect(section).not.toContain('Not reviewed');
+      expect(section).not.toContain('Awaiting review');
+    });
+
+    it('prints a disapproval, its reason and the wait for a new answer — never the rejected photo', () => {
+      const payload = fixtureAfterEvidencePayload();
+      const [first, ...rest] = payload.zones[0]!.nonconformities;
+      payload.zones[0]!.nonconformities = [
+        {
+          ...first!,
+          status: 'REOPENED',
+          outcome: null,
+          review: {
+            verdict: 'DISAPPROVED',
+            reviewerName: 'Meera Rao',
+            reviewerRole: 'SUPER_ADMIN',
+            reviewedAt: '2026-03-07T06:00:00.000Z',
+            comment: 'The tray is not fixed down.',
+          },
+        },
+        ...rest,
+      ];
+      const section = sectionOf(renderReportHtml(payload, resolve), 'Nonconformities');
+      expect(section).toContain('✕ DISAPPROVED');
+      expect(section).toContain('Disapproved by Meera Rao (Super Admin), 07 Mar 2026');
+      expect(section).toContain('Reason: The tray is not fixed down.');
+      expect(section).toContain('Awaiting a new answer.');
+      expect(section).not.toContain('Spillage cleared and a drip tray fitted.');
+    });
+
+    it('prints no review line on a payload frozen before R-43', () => {
+      const section = sectionOf(v2, 'Nonconformities');
+      expect(section).not.toContain('Not reviewed');
+      expect(section).not.toContain('Approved by');
+      expect(section).toContain('✓ Accepted');
+    });
   });
 
   it('fills the right half for Option B — NOT POSSIBLE and the explanation', () => {
@@ -362,7 +431,7 @@ describe('R-38 — the overall remark and the overall corrective actions', () =>
     const section = sectionOf(v2, TITLE);
     expect(section).toContain('ACTION TAKEN');
     expect(section).toContain('Leaking return line replaced; exhaust fan in bay 2 repaired.');
-    expect(section).toContain('✓ VERIFIED');
+    expect(section).toContain('✓ CLOSED');
     expect(section).toContain('PENDING');
     expect(section).not.toContain('nc-placeholder');
   });

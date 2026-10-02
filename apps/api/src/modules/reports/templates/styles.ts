@@ -345,7 +345,7 @@ tbody tr.total-row, tbody tr.total-row td {
   background: #FFFFFF;
 }
 .nc-answer img { width: 100%; height: auto; max-height: 52mm; object-fit: contain; }
-.badge-good, .badge-nc, .badge-verified, .badge-not-possible, .badge-pending, .badge-overall {
+.badge-good, .badge-nc, .badge-verified, .badge-not-possible, .badge-pending, .badge-overall, .badge-disapproved {
   display: inline-block;
   font-size: 6.5pt;
   font-weight: 700;
@@ -358,6 +358,8 @@ tbody tr.total-row, tbody tr.total-row td {
 .badge-verified { color: #1B7F4B; background: #E2F4E9; }
 .badge-not-possible { color: #B3261E; background: #FCE7E5; }
 .badge-pending { color: #BE7D0F; background: #FDF3DB; }
+/* R-43: a disapproved answer — reopened, and waiting for a new one. */
+.badge-disapproved { color: #B3261E; background: #FCE7E5; }
 /* R-38: an overall suggestion is neither good nor a finding, so it takes the ink. */
 .badge-overall { color: ${brand.ink}; background: ${brand.panel}; }
 /* The suggestion sits where a nonconformity's photo would, so it reads as that row's body. */

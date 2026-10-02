@@ -218,6 +218,77 @@ describe('the Coordinator sees who closed an action and when (R-39)', () => {
   });
 });
 
+describe('a Coordinator reviews closures and "not possible" answers (R-43)', () => {
+  const coordinator = () => world.actors.COORDINATOR.accessToken;
+
+  it('leaves a Zone Leader’s closure closed and unapproved, and approval optional', async () => {
+    const { auditId, actions } = await walkBy(1);
+    expect((await submitOptionA(world, leaderToken, actions[0]!)).status).toBe(201);
+    const closed = await detail(actions[0]!.id);
+    expect(closed.status).toBe('VERIFIED');
+    expect(closed.verifiedByUserId).toBeNull();
+    expect(closed.submissions[0]!.reviewOutcome).toBeNull();
+    // Nobody had to look at it for the audit to close.
+    expect((await auditStatus(auditId)).status).toBe('CLOSED');
+  });
+
+  it('approves a closure without moving it, naming the Coordinator, and only once', async () => {
+    const { auditId, actions } = await walkBy(1);
+    await submitOptionA(world, leaderToken, actions[0]!);
+    const resolvedAt = (await detail(actions[0]!.id)).resolvedAt;
+
+    const approved = await verify(actions[0]!.id, { comment: 'Checked on the floor' }, coordinator());
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    const body = approved.body as CorrectiveActionDetail;
+    expect(body.status).toBe('VERIFIED');
+    expect(body.resolvedAt).toBe(resolvedAt);
+    expect(body.verifiedByUserId).toBe(world.actors.COORDINATOR.userId);
+    expect(body.verifiedByName).toBeTruthy();
+    expect(body.submissions[0]).toMatchObject({
+      reviewOutcome: 'VERIFIED',
+      reviewedByUserId: world.actors.COORDINATOR.userId,
+      reviewedByRole: 'COORDINATOR',
+      reviewComment: 'Checked on the floor',
+    });
+    expect(body.submissions[0]!.reviewedByName).toBeTruthy();
+    expect((await auditStatus(auditId)).status).toBe('CLOSED');
+
+    const again = await verify(actions[0]!.id, {}, superAdmin);
+    expect(again.status).toBe(409);
+  });
+
+  it('disapproves a closure: reopened, the attempt marked, and the Zone Leader answers again', async () => {
+    const { auditId, actions } = await walkBy(1);
+    await submitOptionA(world, leaderToken, actions[0]!, 'First fix');
+
+    const disapproved = await reopen(actions[0]!.id, 'The tray is not fixed down', coordinator());
+    expect(disapproved.status, JSON.stringify(disapproved.body)).toBe(200);
+    const body = disapproved.body as CorrectiveActionDetail;
+    expect(body.status).toBe('REOPENED');
+    expect(body.submissions[0]).toMatchObject({
+      reviewOutcome: 'REOPENED',
+      reviewedByRole: 'COORDINATOR',
+      reviewComment: 'The tray is not fixed down',
+    });
+    expect((await auditStatus(auditId)).status).toBe('CORRECTIVE_ACTION_OPEN');
+
+    const second = await submitOptionA(world, leaderToken, actions[0]!, 'Second fix');
+    expect(second.status).toBe(201);
+    expect((second.body as CorrectiveActionSubmission).attemptNo).toBe(2);
+    expect((await detail(actions[0]!.id)).status).toBe('VERIFIED');
+  });
+
+  it('accepts a "not possible", which closes the audit', async () => {
+    const { auditId, actions } = await walkBy(1);
+    await submit(world, leaderToken, actions[0]!.id, { option: 'NOT_POSSIBLE', explanation: 'Vendor approval pending' });
+    expect((await auditStatus(auditId)).status).toBe('CORRECTIVE_ACTION_OPEN');
+    const accepted = await verify(actions[0]!.id, {}, coordinator());
+    expect(accepted.status).toBe(200);
+    expect((accepted.body as CorrectiveActionDetail).verifiedByUserId).toBe(world.actors.COORDINATOR.userId);
+    expect((await auditStatus(auditId)).status).toBe('CLOSED');
+  });
+});
+
 // --------------------------------------------------- §7.3 — the named scenario
 
 describe('the five-nonconformity partial-submission scenario (§7.3)', () => {
@@ -277,9 +348,9 @@ describe('the five-nonconformity partial-submission scenario (§7.3)', () => {
     // Three closed themselves with an after-photo (items 0, 1, 3). What is left needing a
     // decision is the two Option B answers, and accepting them is what closes the audit.
     expect((await auditStatus(auditId)).status).toBe('PARTIALLY_CLOSED');
-    // Verifying something already closed by its own after-photo is not a transition the
-    // state machine defines — R-23 removed the review step, it did not make it optional.
-    expect((await verify(actions[0]!.id)).status).toBe(409);
+    // Approving a closure is optional (R-43) and moves nothing: the audit stays where it is.
+    expect((await verify(actions[0]!.id)).status).toBe(200);
+    expect((await auditStatus(auditId)).status).toBe('PARTIALLY_CLOSED');
 
     for (const index of [2, 4]) {
       expect((await verify(actions[index]!.id)).status).toBe(200);
@@ -481,13 +552,21 @@ describe('PART 6 — corrective actions', () => {
     }
   });
 
-  it('verifies and reopens: Super Admin only', async () => {
+  it('verifies and reopens: a Super Admin, or the Coordinator of the Unit (R-43); nobody else', async () => {
     const { actions } = await walkBy(1);
     await submit(world, leaderToken, actions[0]!.id, { option: 'NOT_POSSIBLE', explanation: 'No budget' });
-    for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const) {
+    for (const role of ['CONSULTANT', 'ZONE_LEADER'] as const) {
       expect((await verify(actions[0]!.id, {}, world.actors[role].accessToken)).status).toBe(403);
       expect((await reopen(actions[0]!.id, 'x', world.actors[role].accessToken)).status).toBe(403);
     }
+
+    // Unit B is not the Coordinator's: its action does not exist for them.
+    const { actions: elsewhere } = await walkBy(1, { unitB: true });
+    await submit(world, superAdmin, elsewhere[0]!.id, { option: 'NOT_POSSIBLE', explanation: 'No budget' });
+    const coordinator = world.actors.COORDINATOR.accessToken;
+    expect((await verify(elsewhere[0]!.id, {}, coordinator)).status).toBe(404);
+    expect((await reopen(elsewhere[0]!.id, 'x', coordinator)).status).toBe(404);
+    expect((await verify(actions[0]!.id, {}, coordinator)).status).toBe(200);
   });
 
   it('reassigns: a Super Admin, or the Coordinator of the Unit, to a Zone Leader of it', async () => {

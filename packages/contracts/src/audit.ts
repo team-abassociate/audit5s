@@ -233,6 +233,11 @@ export const auditSchema = z.object({
   restartsRemaining: z.number().int().nonnegative(),
   /** Resume cursor at audit level (§9.8). */
   resumeAuditZoneId: uuidSchema.nullable(),
+  /**
+   * The Zones this audit covers, in audit order, withdrawn ones left out — so a list can be
+   * filtered and grouped by Zone (R-43). Set on `GET /audits`; optional elsewhere.
+   */
+  zoneIds: z.array(uuidSchema).optional(),
   clientCreatedAt: isoDateTimeSchema,
   clientUpdatedAt: isoDateTimeSchema,
   serverReceivedAt: isoDateTimeSchema,

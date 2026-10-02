@@ -1094,7 +1094,10 @@ function actionState(action: CorrectiveAction, now: number): { band: Band; label
   if (live && due !== null && due < now + 7 * DAY) {
     return { band: 'warn', label: `Due in ${Math.max(0, Math.ceil((due - now) / DAY))} d` };
   }
-  if (action.status === 'VERIFIED') return { band: 'none', label: 'Closed · verified' };
+  // R-43: closed is not verified — only a reviewer's approval makes it that.
+  if (action.status === 'VERIFIED') {
+    return { band: 'none', label: action.verifiedByUserId === null ? 'Closed' : 'Closed · approved' };
+  }
   if (action.status === 'ACTION_SUBMITTED') return { band: 'none', label: 'Awaiting review' };
   if (action.status === 'NOT_POSSIBLE') return { band: 'none', label: 'Not possible' };
   return { band: 'none', label: action.status === 'REOPENED' ? 'Reopened' : 'Open' };

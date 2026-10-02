@@ -3,7 +3,7 @@ import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { CorrectiveActionDetail, EvidenceViewUrl } from '@audit5s/contracts';
-import { awaitsResponse, awaitsReview, isOverdue, sectionLabel } from '@audit5s/domain';
+import { awaitsResponse, awaitsReview, isOverdue, isReviewable, isUnapprovedClosure, sectionLabel } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -19,18 +19,21 @@ import {
 } from '../../../components/ui';
 import { api, problemMessage } from '../../../lib/api';
 import { formatDate, formatDateTime } from '../../../lib/format';
-import { humanize } from '../../../lib/labels';
+import { ACTION_STATUS_LABELS, ACTION_STATUS_TONE, ROLE_LABELS } from '../../../lib/labels';
 import { useRequiredFields } from '../../../lib/required-fields';
 import { useSession } from '../../../lib/session';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 
 /**
  * Reviewing one corrective action: the finding and its before photo, the latest response and
- * its after photo, then Verify or Reopen. Reopening needs a reason, which the Zone leader
- * reads; both carry the version read, so a second reviewer gets VERSION_CONFLICT (§15.8).
+ * its after photo, then Approve or Disapprove. Disapproving needs a reason, which the Zone
+ * leader reads; both carry the version read, so a second reviewer gets VERSION_CONFLICT
+ * (§15.8).
  *
- * A Coordinator (R-24) reads it: verifying, reopening and answering are not the role's (§6.3),
- * so those controls are not shown.
+ * R-43: a Coordinator reviews their own Unit's actions as a Super Admin does. A "not
+ * possible" needs the decision. A Zone leader's closure is already closed, and the review is
+ * optional: approving marks it checked, disapproving reopens it — its photo leaves the next
+ * after-evidence report and the Zone leader answers again.
  */
 export default function ReviewActionScreen() {
   const styles = useStyles();
@@ -85,6 +88,8 @@ export default function ReviewActionScreen() {
   const action = detail.data;
   const latest = [...action.submissions].sort((a, b) => b.attemptNo - a.attemptNo)[0];
   const reviewing = awaitsReview(action.status);
+  // R-43: a closure nobody has approved — optional to review, unlike a "not possible".
+  const closure = isUnapprovedClosure(action.status, action.verifiedByUserId);
   const late = isOverdue(action.status, action.dueAt, Date.now());
 
   return (
@@ -101,11 +106,7 @@ export default function ReviewActionScreen() {
                   ? `Overall action ${action.suggestionNo ?? ''}: ${action.suggestion}`
                   : 'Walk-by observation'
             }
-            action={
-              <Chip tone={reviewing ? 'warn' : action.status === 'VERIFIED' ? 'ok' : action.status === 'REOPENED' ? 'crit' : 'muted'}>
-                {humanize(action.status)}
-              </Chip>
-            }
+            action={<Chip tone={ACTION_STATUS_TONE[action.status]}>{ACTION_STATUS_LABELS[action.status]}</Chip>}
           />
           {action.evidenceId ? (
             <>
@@ -134,6 +135,11 @@ export default function ReviewActionScreen() {
               action.status === 'VERIFIED' && action.resolvedAt
                 ? `closed by ${action.closedByName ?? 'unknown'}, ${formatDateTime(action.resolvedAt)}`
                 : null,
+              action.status === 'VERIFIED'
+                ? closure
+                  ? 'not reviewed'
+                  : `approved by ${action.verifiedByName ?? 'a reviewer'}`
+                : null,
             ]
               .filter(Boolean)
               .join(', ')}
@@ -147,7 +153,9 @@ export default function ReviewActionScreen() {
               description={`${latest.option === 'COMPLETED' ? 'Fixed' : 'Not possible'}, by ${latest.submittedByName}, ${formatDateTime(latest.createdAt)}`}
               action={
                 latest.reviewOutcome ? (
-                  <Chip tone={latest.reviewOutcome === 'VERIFIED' ? 'ok' : 'crit'}>{humanize(latest.reviewOutcome)}</Chip>
+                  <Chip tone={latest.reviewOutcome === 'VERIFIED' ? 'ok' : 'crit'}>
+                    {latest.reviewOutcome === 'VERIFIED' ? 'Approved' : 'Disapproved'}
+                  </Chip>
                 ) : null
               }
             />
@@ -160,6 +168,13 @@ export default function ReviewActionScreen() {
                 <EvidenceImage evidenceId={latest.afterEvidenceId} label="After photograph" />
               </>
             ) : null}
+            {latest.reviewOutcome && latest.reviewedAt ? (
+              <Data>
+                {`${latest.reviewOutcome === 'VERIFIED' ? 'Approved' : 'Disapproved'} by ${latest.reviewedByName ?? 'a reviewer'}${
+                  latest.reviewedByRole ? ` (${ROLE_LABELS[latest.reviewedByRole]})` : ''
+                }, ${formatDateTime(latest.reviewedAt)}`}
+              </Data>
+            ) : null}
             {latest.reviewComment ? <Muted>Review note: {latest.reviewComment}</Muted> : null}
           </Card>
         ) : (
@@ -168,16 +183,20 @@ export default function ReviewActionScreen() {
           </Card>
         )}
 
-        {reviewing && mayReview ? (
-          <Card>
+        {isReviewable(action.status, action.verifiedByUserId) && mayReview ? (
+          <Card rail={closure ? 'none' : 'warn'}>
             <CardHeader
-              title="Your review"
-              description="Verify closes it. Reopen sends it back to the Zone leader with your note."
+              title={closure ? 'Review this closure (optional)' : 'Your decision'}
+              description={
+                closure
+                  ? 'It already counts as closed and is in the after-evidence report. Approve says you checked it. Disapprove takes it out of the report and sends it back to the Zone leader with your note.'
+                  : 'Approve accepts it and closes it. Disapprove sends it back to the Zone leader with your note.'
+              }
             />
             <Field
-              label="Note (required to reopen)"
+              label="Note (required to disapprove)"
               inputRef={required.input('note')}
-              error={required.error('note', 'Say why it is being reopened.', note.trim() !== '')}
+              error={required.error('note', 'Say why it is being disapproved.', note.trim() !== '')}
               multiline
               value={note}
               onChangeText={setNote}
@@ -186,7 +205,7 @@ export default function ReviewActionScreen() {
             <View style={styles.row}>
               <View style={styles.rowItem}>
                 <Button
-                  title="Reopen"
+                  title="Disapprove"
                   variant="danger"
                   busy={review.isPending && review.variables === 'reopen'}
                   onPress={() => required.check([['note', note.trim() !== '']]) && review.mutate('reopen')}
@@ -194,7 +213,7 @@ export default function ReviewActionScreen() {
               </View>
               <View style={styles.rowItem}>
                 <Button
-                  title="Verify"
+                  title="Approve"
                   busy={review.isPending && review.variables === 'verify'}
                   onPress={() => review.mutate('verify')}
                 />

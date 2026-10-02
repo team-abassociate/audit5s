@@ -167,7 +167,10 @@ export class AuditsService {
     const rows = await this.repository.list(scope, query);
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;
-    return { data: page.map(toAudit), nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };
+    return {
+      data: page.map((row) => ({ ...toAudit(row), zoneIds: row.zoneIds })),
+      nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
+    };
   }
 
   async get(scope: ScopeContext, auditId: string): Promise<Audit> {

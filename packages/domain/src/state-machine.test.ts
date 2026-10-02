@@ -111,9 +111,14 @@ describe('the actor is part of the edge', () => {
     expect(canTransition('audit', 'COMPLETED', 'CLOSED', asRole(null)).allowed).toBe(true);
   });
 
-  it('permits a Coordinator nothing on an audit at all (PART 6)', () => {
-    const reachable = AUDIT_STATUSES.flatMap((from) => nextStatuses('audit', from, 'COORDINATOR'));
-    expect(reachable).toEqual([]);
+  it('permits a Coordinator nothing on an audit but the rollup of a disapproval (PART 6, R-43)', () => {
+    // Disapproving a closure reopens it, and the audit it closed walks back with it. That is
+    // the only audit edge with the Coordinator's name on it; they still run, pause, restart
+    // and cancel nothing.
+    const reachable = AUDIT_STATUSES.flatMap((from) =>
+      nextStatuses('audit', from, 'COORDINATOR').map((to) => `${from} → ${to}`),
+    );
+    expect(reachable).toEqual(['CLOSED → PARTIALLY_CLOSED']);
   });
 });
 

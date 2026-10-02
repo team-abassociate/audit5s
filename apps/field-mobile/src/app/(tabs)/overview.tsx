@@ -15,7 +15,6 @@ import { bandFor } from '@audit5s/domain';
 import {
   ActionSheet,
   Card,
-  CardHeader,
   Chip,
   Data,
   ErrorBanner,
@@ -30,7 +29,8 @@ import {
 } from '../../components/ui';
 import { api } from '../../lib/api';
 import { formatDate, formatPct } from '../../lib/format';
-import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS } from '../../lib/labels';
+import { isRunning } from '../../lib/labels';
+import { AuditCard } from '../../components/audit-card';
 import { FieldOverview } from '../../components/field-overview';
 import { LanguageSwitcher } from '../../components/language-switcher';
 import { managesOnPhone, useSession } from '../../lib/session';
@@ -108,6 +108,10 @@ function ManagementOverview() {
   const score = summary?.score.scorePercentage ?? null;
   const band = bandOf(score);
   const ownUnitName = units.data?.data.find((candidate) => candidate.id === ownUnitId)?.name;
+  // As the Audits tab: one Unit in view leads each card with the auditor (R-42).
+  const oneUnit = scope !== null && !scope.organizationWide && scope.unitIds.length === 1;
+  // The Active board's audits — somebody is actually running them — for the list and the count.
+  const running = (active.data?.data ?? []).filter((audit) => isRunning(audit.status));
 
   const addActions: Array<{ label: string; detail?: string; onPress: () => void }> = [];
   if (can('unit', 'create')) addActions.push({ label: 'New Unit', onPress: () => router.push('/manage/new-unit') });
@@ -185,7 +189,7 @@ function ManagementOverview() {
         <View style={styles.kpis}>
           <Kpi label={organizationWide ? 'Units' : 'Unit'} value={count(units.data)} onPress={() => router.push('/units')} />
           <Kpi label="Consultants" value={count(consultants.data)} onPress={() => router.push('/people')} />
-          <Kpi label="Auditing" value={count(active.data)} onPress={() => router.push('/audits')} />
+          <Kpi label="Auditing" value={active.data ? String(running.length) : '—'} onPress={() => router.push('/audits')} />
         </View>
 
         <SectionHead
@@ -233,25 +237,20 @@ function ManagementOverview() {
           </View>
         ) : null}
 
+        {/* The Audits tab's Active board in brief, worn the same way (`AuditCard`). */}
         <View style={styles.section}>
           <SectionHead
-            title="Auditing now"
-            description={active.data && active.data.data.length === 0 ? 'Nobody is auditing right now.' : null}
+            title={oneUnit && ownUnitName ? `Auditing now · ${ownUnitName}` : 'Auditing now'}
+            description={active.data && running.length === 0 ? 'Nobody is auditing right now.' : null}
           />
-          {(active.data?.data ?? []).slice(0, 5).map((audit) => (
-            <Card
-              key={audit.id}
-              accessibilityRole="button"
-              onPress={() => router.push({ pathname: '/manage/audit/[auditId]', params: { auditId: audit.id } })}
-            >
-              <CardHeader
-                title={audit.unitName}
-                description={`${AUDIT_TYPE_LABELS[audit.auditType]} by ${audit.auditorName}`}
-                action={<Chip tone={AUDIT_STATUS_TONE[audit.status]}>{AUDIT_STATUS_LABELS[audit.status]}</Chip>}
-              />
-              <Data>{audit.startedAt ? `Started ${formatDate(audit.startedAt)}` : 'Not started yet'}</Data>
-            </Card>
+          {running.slice(0, 5).map((audit) => (
+            <AuditCard key={audit.id} audit={audit} oneUnit={oneUnit} />
           ))}
+          {running.length > 5 ? (
+            <Card accessibilityRole="button" onPress={() => router.push('/audits')}>
+              <Data>{`${running.length - 5} more on the Audits tab ›`}</Data>
+            </Card>
+          ) : null}
         </View>
       </ScrollView>
 

@@ -7,6 +7,7 @@ import {
   reportKindSchema,
   reportStatusSchema,
   responseValueSchema,
+  roleSchema,
   sSectionSchema,
 } from './enums';
 import { scoreTotalsSchema, sectionScoreSchema } from './audit';
@@ -68,6 +69,22 @@ export type ReportPhoto = z.infer<typeof reportPhotoSchema>;
  * deadline — which is also exactly what an initial report prints, except that there the
  * right half carries a light placeholder frame and **no text whatsoever** (§10.3-A).
  */
+/**
+ * R-43: a Coordinator's or Super Admin's verdict on the latest answer.
+ *
+ * APPROVED sits beside the answer it approves. DISAPPROVED has no answer beside it — a
+ * disapproval reopens the item, so the rejected photo is not printed — and the right half
+ * says who disapproved it, when and why, and that a new answer is awaited.
+ */
+export const reportReviewSchema = z.object({
+  verdict: z.enum(['APPROVED', 'DISAPPROVED']),
+  reviewerName: z.string().nullable(),
+  reviewerRole: roleSchema.nullable(),
+  reviewedAt: isoDateTimeSchema,
+  comment: z.string().nullable(),
+});
+export type ReportReview = z.infer<typeof reportReviewSchema>;
+
 export const reportOutcomeSchema = z.object({
   option: correctiveOptionSchema,
   submittedByName: z.string(),
@@ -77,6 +94,10 @@ export const reportOutcomeSchema = z.object({
   afterPhoto: reportPhotoSchema.nullable(),
   /** Option B. */
   explanation: z.string().nullable(),
+  /**
+   * Settled: a closure (R-23) or an accepted "not possible". Since R-43 this is *closed*,
+   * not *verified* — whether anybody approved it is `review`, on the item.
+   */
   verified: z.boolean(),
   verifiedAt: isoDateTimeSchema.nullable(),
 });
@@ -96,6 +117,8 @@ export const reportNonconformitySchema = reportPhotoSchema.extend({
    */
   correctiveActionUrl: z.string().nullable(),
   outcome: reportOutcomeSchema.nullable(),
+  /** R-43. Null when nobody has reviewed the latest answer; absent in a pre-R-43 payload. */
+  review: reportReviewSchema.nullable().optional(),
 });
 export type ReportNonconformity = z.infer<typeof reportNonconformitySchema>;
 
@@ -114,6 +137,8 @@ export const reportOverallActionSchema = z.object({
   dueAt: isoDateTimeSchema.nullable(),
   correctiveActionUrl: z.string().nullable(),
   outcome: reportOutcomeSchema.nullable(),
+  /** R-43. Null when nobody has reviewed the latest answer; absent in a pre-R-43 payload. */
+  review: reportReviewSchema.nullable().optional(),
 });
 export type ReportOverallAction = z.infer<typeof reportOverallActionSchema>;
 

@@ -85,6 +85,15 @@ describe('the cells ARCHITECTURE.md §6.4 and §15.2 call out by name', () => {
     expect(grantFor('ZONE_LEADER', 'report:download')?.resolver).toBe('own_unit');
   });
 
+  it('lets a Coordinator review their own Unit’s corrective actions, and nobody else’s (R-43)', () => {
+    expect(grantFor('COORDINATOR', 'corrective_action:verify')?.resolver).toBe('own_unit');
+    expect(grantFor('COORDINATOR', 'corrective_action:reopen')?.resolver).toBe('own_unit');
+    expect(grantFor('ZONE_LEADER', 'corrective_action:verify')).toBeNull();
+    expect(grantFor('CONSULTANT', 'corrective_action:verify')).toBeNull();
+    // Answering stays the Zone Leader's: reviewing a closure is not doing the work.
+    expect(grantFor('COORDINATOR', 'corrective_action:submit')).toBeNull();
+  });
+
   it('allows a Zone Leader to cross-audit any Zone of their Unit, their own included (D9)', () => {
     const grant = grantFor('ZONE_LEADER', 'audit:create_cross');
     expect(grant?.resolver).toBe('own_unit');

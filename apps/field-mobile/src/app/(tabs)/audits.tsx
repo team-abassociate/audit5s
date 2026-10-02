@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, SectionList, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
 import type { Audit, AuditAssignment, AuditStatus, AuditType, Page, Unit } from '@audit5s/contracts';
+import { AuditCard } from '../../components/audit-card';
 import {
   ActionSheet,
   Card,
@@ -10,7 +11,6 @@ import {
   Data,
   EmptyState,
   ErrorBanner,
-  Figure,
   HeaderAction,
   Muted,
   Screen,
@@ -19,13 +19,24 @@ import {
   Slip,
   SlipText,
 } from '../../components/ui';
+import {
+  ZoneFilterButton,
+  ZoneFilterChips,
+  ZoneFilterSheet,
+  ZoneGroupHead,
+  countByZone,
+  groupByZone,
+  useUnitZones,
+  useZoneFilter,
+  type ZoneOption,
+} from '../../components/zone-filter';
 import { api } from '../../lib/api';
 import { listLocalAudits } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { formatDate, formatPct } from '../../lib/format';
-import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, humanize, isFinished } from '../../lib/labels';
+import { formatDate } from '../../lib/format';
+import { AUDIT_STATUS_LABELS, AUDIT_TYPE_LABELS, humanize, isFinished, isRunning } from '../../lib/labels';
 import { useSession } from '../../lib/session';
-import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
+import { createThemedStyles, useTheme } from '../../lib/theme';
 
 type Board = 'ACTIVE' | 'DONE' | 'ASSIGNED';
 
@@ -53,17 +64,21 @@ const HEAD: Record<Board, { title: (n: number) => string; description: string; e
   },
 };
 
-/**
- * The Active board is the audits somebody is actually running. `?active=true` also returns
- * ASSIGNED and READY (selfie taken, nothing answered), which are the Assigned board's.
- */
-const RUNNING: ReadonlySet<AuditStatus> = new Set(['IN_PROGRESS', 'PAUSED']);
+/** The latest thing that happened to an audit — the order inside a Zone's group. */
+function auditTime(audit: Audit): number {
+  return Date.parse(audit.completedAt ?? audit.startedAt ?? audit.createdAt);
+}
 
 /**
  * Every audit in reach — the organization's for a Super Admin, the own Unit's for a Coordinator
  * (R-24): what is running, what is finished (with its reports and the correction path), and
  * what is assigned but not started. An audit this phone is running itself sits on top as the
  * one slip.
+ *
+ * A Coordinator may filter every board by Zone (R-43), exactly as on Actions: the header's
+ * Zone button, a chip per chosen Zone, and the boards grouped under each, newest first. An
+ * audit covering two chosen Zones is under both; an assignment is placed by the Zones it
+ * suggests. See `zone-filter.tsx`.
  */
 export default function AuditsScreen() {
   const styles = useStyles();
@@ -76,6 +91,7 @@ export default function AuditsScreen() {
   const oneUnit = scope !== null && !scope.organizationWide && scope.unitIds.length === 1;
   const [board, setBoard] = useState<Board>('ACTIVE');
   const [adding, setAdding] = useState(false);
+  const zoneFilter = useZoneFilter();
 
   // Only what the role holds: a Coordinator neither assigns nor runs an audit.
   const newAudit: Array<{ label: string; detail?: string; onPress: () => void }> = [];
@@ -94,6 +110,7 @@ export default function AuditsScreen() {
     enabled: ownUnitId !== undefined,
   });
   const unitName = ownUnit.data?.name;
+  const zones = useUnitZones(ownUnitId);
 
   const mine = useQuery({ queryKey: ['local', 'audits'], queryFn: () => listLocalAudits(database) });
   const resumable = (mine.data ?? []).find((audit) => audit.status === 'IN_PROGRESS' || audit.status === 'PAUSED');
@@ -118,51 +135,41 @@ export default function AuditsScreen() {
   const current = board === 'ACTIVE' ? active : board === 'DONE' ? all : assignments;
   const audits =
     board === 'ACTIVE'
-      ? (active.data?.data ?? []).filter((audit) => RUNNING.has(audit.status))
+      ? (active.data?.data ?? []).filter((audit) => isRunning(audit.status))
       : (all.data?.data ?? [])
           .filter((audit) => isFinished(audit.status))
           .sort((a, b) => Date.parse(b.completedAt ?? '') - Date.parse(a.completedAt ?? ''));
   // An assignment whose audit has started is on the Active board already.
   const waiting = (assignments.data?.data ?? []).filter((assignment) => assignment.status !== 'IN_PROGRESS');
-  const count = board === 'ASSIGNED' ? waiting.length : audits.length;
+  const auditZones = (audit: Audit) => audit.zoneIds ?? [];
+  const assignmentZones = (assignment: AuditAssignment) => assignment.suggestedZoneIds;
+  const shownAudits = zoneFilter.active
+    ? audits.filter((audit) => auditZones(audit).some((id) => zoneFilter.selected.includes(id)))
+    : audits;
+  const shownWaiting = zoneFilter.active
+    ? waiting.filter((assignment) => assignmentZones(assignment).some((id) => zoneFilter.selected.includes(id)))
+    : waiting;
+  const count = board === 'ASSIGNED' ? shownWaiting.length : shownAudits.length;
+  const zoneCounts = board === 'ASSIGNED' ? countByZone(waiting, assignmentZones) : countByZone(audits, auditZones);
+
+  // Grouped by Zone while filtered; one headless section otherwise. An empty section still
+  // counts as content and would hide the empty state, so none is passed.
+  const auditSections: Array<{ zone: ZoneOption | null; data: Audit[] }> = zoneFilter.active
+    ? groupByZone(shownAudits, zones, zoneFilter.selected, auditZones, auditTime)
+    : shownAudits.length > 0
+      ? [{ zone: null, data: shownAudits }]
+      : [];
+  const assignmentSections: Array<{ zone: ZoneOption | null; data: AuditAssignment[] }> = zoneFilter.active
+    ? groupByZone(shownWaiting, zones, zoneFilter.selected, assignmentZones, (assignment) => Date.parse(assignment.createdAt))
+    : shownWaiting.length > 0
+      ? [{ zone: null, data: shownWaiting }]
+      : [];
+  const sectionHead = ({ section }: { section: { zone: ZoneOption | null; data: readonly unknown[] } }) =>
+    section.zone ? <ZoneGroupHead zone={section.zone} count={section.data.length} noun={['audit', 'audits']} /> : null;
 
   const renderAudit = useCallback(
-    ({ item }: { item: Audit }) => {
-      const finished = isFinished(item.status);
-      const band = bandOf(item.totals.scorePercentage);
-      return (
-        <Card
-          rail={finished && item.scored ? band : undefined}
-          accessibilityRole="button"
-          onPress={() => router.push({ pathname: '/manage/audit/[auditId]', params: { auditId: item.id } })}
-        >
-          <View style={styles.row}>
-            <View style={styles.text}>
-              <Text style={styles.title}>{oneUnit ? item.auditorName : item.unitName}</Text>
-              <Muted>
-                {oneUnit ? AUDIT_TYPE_LABELS[item.auditType] : `${AUDIT_TYPE_LABELS[item.auditType]} by ${item.auditorName}`}
-              </Muted>
-              <Data>
-                {finished && item.completedAt
-                  ? `Completed ${formatDate(item.completedAt)}`
-                  : item.startedAt
-                    ? `Started ${formatDate(item.startedAt)}`
-                    : 'Not started yet'}
-              </Data>
-            </View>
-            <View style={styles.side}>
-              <Chip tone={AUDIT_STATUS_TONE[item.status]}>{AUDIT_STATUS_LABELS[item.status]}</Chip>
-              {finished && item.scored ? (
-                <Figure band={band} size={22}>
-                  {formatPct(item.totals.scorePercentage)}
-                </Figure>
-              ) : null}
-            </View>
-          </View>
-        </Card>
-      );
-    },
-    [styles, router, oneUnit],
+    ({ item }: { item: Audit }) => <AuditCard audit={item} oneUnit={oneUnit} />,
+    [oneUnit],
   );
 
   const renderAssignment = useCallback(
@@ -201,6 +208,7 @@ export default function AuditsScreen() {
         </Slip>
       ) : null}
       <Segmented options={BOARDS} value={board} onChange={setBoard} />
+      <ZoneFilterChips zones={zones} selected={zoneFilter.selected} onChange={zoneFilter.setSelected} />
       <ErrorBanner
         message={current.error ? 'Audits could not load. This needs a connection; pull down to try again.' : null}
       />
@@ -209,9 +217,9 @@ export default function AuditsScreen() {
           title={unitName ? `${HEAD[board].title(count)} · ${unitName}` : HEAD[board].title(count)}
           description={
             // R-39: a Coordinator opens a finished audit for its scores; reports are not theirs.
-            board === 'DONE' && !can('report', 'read_snapshot')
+            (board === 'DONE' && !can('report', 'read_snapshot')
               ? 'Open one for its scores and findings.'
-              : HEAD[board].description
+              : HEAD[board].description) + (zoneFilter.active ? ' Grouped by zone, newest first.' : '')
           }
         />
       ) : null}
@@ -220,7 +228,10 @@ export default function AuditsScreen() {
   const empty = current.isLoading ? (
     <ActivityIndicator color={theme.color.ink} />
   ) : current.data ? (
-    <EmptyState title="Nothing here" detail={HEAD[board].empty} />
+    <EmptyState
+      title="Nothing here"
+      detail={zoneFilter.active ? 'Nothing on this board in the zones you chose.' : HEAD[board].empty}
+    />
   ) : null;
   const refresh = <RefreshControl refreshing={current.isRefetching} onRefresh={() => void current.refetch()} />;
 
@@ -230,41 +241,56 @@ export default function AuditsScreen() {
         options={{
           // R-24: a Coordinator neither assigns nor runs an audit, so there is nothing to add.
           headerRight: () =>
-            newAudit.length > 0 ? (
+            newAudit.length > 0 || ownUnitId ? (
               <View style={styles.tools}>
-                <HeaderAction testID="add-audit" title="+ Audit" accessibilityLabel="New audit" onPress={() => setAdding(true)} />
+                {ownUnitId ? <ZoneFilterButton count={zoneFilter.selected.length} onPress={zoneFilter.show} /> : null}
+                {newAudit.length > 0 ? (
+                  <HeaderAction testID="add-audit" title="+ Audit" accessibilityLabel="New audit" onPress={() => setAdding(true)} />
+                ) : null}
               </View>
             ) : null,
         }}
       />
       {board === 'ASSIGNED' ? (
-        <FlatList
+        <SectionList
           key="assigned"
-          data={waiting}
+          sections={assignmentSections}
           keyExtractor={(assignment) => assignment.id}
           renderItem={renderAssignment}
+          renderSectionHeader={sectionHead}
+          stickySectionHeadersEnabled={false}
           ListHeaderComponent={header}
           ListEmptyComponent={empty}
           refreshControl={refresh}
         />
       ) : (
-        <FlatList
+        <SectionList
           key={board}
-          data={audits}
+          sections={auditSections}
           keyExtractor={(audit) => audit.id}
           renderItem={renderAudit}
+          renderSectionHeader={sectionHead}
+          stickySectionHeadersEnabled={false}
           ListHeaderComponent={header}
           ListEmptyComponent={empty}
           refreshControl={refresh}
         />
       )}
       <ActionSheet visible={adding} title="New audit" onClose={() => setAdding(false)} actions={newAudit} />
+      <ZoneFilterSheet
+        visible={zoneFilter.open}
+        zones={zones}
+        selected={zoneFilter.selected}
+        counts={zoneCounts}
+        onChange={zoneFilter.setSelected}
+        onClose={zoneFilter.hide}
+      />
     </Screen>
   );
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  tools: { marginRight: theme.space.md },
+  tools: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, marginRight: theme.space.md },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: theme.space.md },
   text: { flex: 1, gap: 2 },
   side: { alignItems: 'flex-end', gap: theme.space.sm },
