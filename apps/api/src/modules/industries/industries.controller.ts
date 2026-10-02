@@ -7,15 +7,18 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import {
   createIndustryRequestSchema,
   listIndustriesQuerySchema,
+  setIndustryChecklistsRequestSchema,
   updateIndustryRequestSchema,
   type CreateIndustryRequest,
   type Industry,
   type ListIndustriesQuery,
+  type SetIndustryChecklistsRequest,
   type UpdateIndustryRequest,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
@@ -64,6 +67,19 @@ export class IndustriesController {
     @Body(new ZodValidationPipe(updateIndustryRequestSchema)) body: UpdateIndustryRequest,
   ): Promise<Industry> {
     return this.industries.update(scope, id, body);
+  }
+
+  /** The checklists ticked for this industry, as a whole set (0042). */
+  @RequirePermission('industry', 'update')
+  @Scope({ intent: 'write' })
+  @Put(':id/checklist-templates')
+  setChecklists(
+    @CurrentScope() scope: ScopeContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(setIndustryChecklistsRequestSchema))
+    body: SetIndustryChecklistsRequest,
+  ): Promise<Industry> {
+    return this.industries.setChecklists(scope, id, body);
   }
 
   /**

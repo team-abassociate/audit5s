@@ -1,13 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import {
   checklistImportJobs,
   checklistImportRows,
   checklistImportSheets,
   checklistQuestionTranslations,
   checklistQuestions,
+  checklistTemplateIndustries,
   checklistTemplates,
   checklistVersions,
+  industries,
   type Database,
   type Transaction,
 } from '@audit5s/db';
@@ -83,6 +85,37 @@ async function writeTranslations(tx: Transaction, questions: QuestionToCommit[])
   return rows.length;
 }
 
+/**
+ * A unique `code` for a new template (0042).
+ *
+ * The sheet's own code when it is free — so the first import of a department reads
+ * exactly as before. Otherwise the industry codes are appended (`OFFICE_HOSPITAL`), and a
+ * number after that if even that is taken: the same sheet imported for different
+ * industries makes different templates, and `code` is what screens and logs print.
+ */
+async function freeTemplateCode(
+  tx: Transaction,
+  sheetCode: string,
+  industries: Array<{ code: string }>,
+): Promise<string> {
+  const taken = new Set(
+    (
+      await tx
+        .select({ code: checklistTemplates.code })
+        .from(checklistTemplates)
+        .where(sql`${checklistTemplates.code} LIKE ${`${sheetCode}%`}`)
+    ).map((row) => row.code),
+  );
+  if (!taken.has(sheetCode)) return sheetCode;
+
+  const suffix = industries.map((industry) => industry.code).sort().join('_') || 'ALL';
+  const base = `${sheetCode}_${suffix}`;
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n += 1) {
+    if (!taken.has(`${base}_${n}`)) return `${base}_${n}`;
+  }
+}
+
 @Injectable()
 export class ChecklistImportRepository extends BaseRepository {
   constructor(
@@ -123,14 +156,21 @@ export class ChecklistImportRepository extends BaseRepository {
    * This is DECISIONS.md R-2 in one method: the status change and the job row commit
    * together, so a worker never sees a job whose status change rolled back, and there is
    * no outbox table doing the same work twice.
+   *
+   * The industries are written in the same statement (0042): stage 4 matches against
+   * them in the worker, so they must be on the row before the worker can see it.
    */
-  async markValidatingAndEnqueue(scope: ScopeContext, jobId: string): Promise<boolean> {
+  async markValidatingAndEnqueue(
+    scope: ScopeContext,
+    jobId: string,
+    industryIds: string[],
+  ): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
 
       const [row] = await tx
         .update(checklistImportJobs)
-        .set({ status: 'VALIDATING' })
+        .set({ status: 'VALIDATING', industryIds })
         .where(
           and(
             eq(checklistImportJobs.id, jobId),
@@ -147,6 +187,17 @@ export class ChecklistImportRepository extends BaseRepository {
         uploadedByUserId: scope.actor.userId,
       });
       return true;
+    });
+  }
+
+  /** The seed's path to naming industries, since it runs the pipeline without the queue. */
+  async setJobIndustries(scope: ScopeContext, jobId: string, industryIds: string[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      await tx
+        .update(checklistImportJobs)
+        .set({ industryIds })
+        .where(and(eq(checklistImportJobs.id, jobId), this.everything(scope)));
     });
   }
 
@@ -392,21 +443,46 @@ export class ChecklistImportRepository extends BaseRepository {
     });
   }
 
-  /** Templates keyed by code, for matching a sheet to an existing department. */
-  async templatesByCode(scope: ScopeContext, codes: string[]) {
-    if (codes.length === 0) return new Map<string, { id: string; name: string; sortOrder: number }>();
+  /**
+   * Every template made from a sheet of one of these codes, with its live industries —
+   * for matching a sheet to an existing department (0042). The caller decides which one
+   * matches; this only says what exists.
+   */
+  async templatesBySheetCode(scope: ScopeContext, sheetCodes: string[]) {
+    if (sheetCodes.length === 0) return [];
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const rows = await tx
+      return tx
         .select({
           id: checklistTemplates.id,
           code: checklistTemplates.code,
+          sheetCode: checklistTemplates.sheetCode,
           name: checklistTemplates.name,
           sortOrder: checklistTemplates.sortOrder,
+          // The outer table is named in the SQL, not interpolated: with no join in this
+          // query Drizzle renders the interpolated column as a bare "id", which inside
+          // the subquery binds to `cti.id` and matches nothing — every template then looks
+          // unlabelled and a re-import for the same industry made a second checklist.
+          industryIds: sql<string[]>`(
+            SELECT coalesce(json_agg(cti.industry_id ORDER BY cti.industry_id), '[]'::json)
+              FROM checklist_template_industry cti
+             WHERE cti.template_id = checklist_template.id AND cti.removed_at IS NULL
+          )`,
         })
         .from(checklistTemplates)
-        .where(and(inArray(checklistTemplates.code, codes), this.everything(scope)));
-      return new Map(rows.map((row) => [row.code, row]));
+        .where(and(inArray(checklistTemplates.sheetCode, sheetCodes), this.everything(scope)));
+    });
+  }
+
+  /** The industries an import names, live ones only, for validation and code suffixes. */
+  async liveIndustries(scope: ScopeContext, industryIds: string[]) {
+    if (industryIds.length === 0) return [];
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      return tx
+        .select({ id: industries.id, code: industries.code })
+        .from(industries)
+        .where(and(inArray(industries.id, industryIds), isNull(industries.archivedAt)));
     });
   }
 
@@ -466,12 +542,15 @@ export class ChecklistImportRepository extends BaseRepository {
       jobId: string;
       sheetId: string;
       templateId: string | null;
+      /** The sheet's own code, `STORES_RM` — before any industry suffix. */
       templateCode: string;
       templateName: string;
       sortOrder: number;
       contentHash: string;
       questionsPerSection: number;
       questions: QuestionToCommit[];
+      /** The import's industries, for a new template (0042). `[]` is every industry. */
+      industries: Array<{ id: string; code: string }>;
     },
   ): Promise<{ versionId: string; translationsSaved: number }> {
     return this.db.transaction(async (tx) => {
@@ -482,12 +561,19 @@ export class ChecklistImportRepository extends BaseRepository {
         const [created] = await tx
           .insert(checklistTemplates)
           .values({
-            code: input.templateCode,
+            code: await freeTemplateCode(tx as Transaction, input.templateCode, input.industries),
+            sheetCode: input.templateCode,
             name: input.templateName,
             sortOrder: input.sortOrder,
           })
           .returning({ id: checklistTemplates.id });
         templateId = created!.id;
+
+        if (input.industries.length > 0) {
+          await tx.insert(checklistTemplateIndustries).values(
+            input.industries.map((industry) => ({ templateId: templateId!, industryId: industry.id })),
+          );
+        }
       }
 
       const [highest] = await tx

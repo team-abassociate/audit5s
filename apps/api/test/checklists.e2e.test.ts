@@ -10,6 +10,7 @@ import {
   type ChecklistVersionDetail,
   type CommitChecklistImportResponse,
   type Page,
+  type QuestionTranslation,
   type Role,
 } from '@audit5s/contracts';
 import { QUEUES } from '../src/infrastructure/queue/queue.service';
@@ -151,7 +152,7 @@ describe('publishing', () => {
 describe('invariant CV-1, from the API’s side', () => {
   beforeEach(clearChecklists);
 
-  it('serves a published version as immutable, and the ETag is its content hash', async () => {
+  it('serves a published version with an ETag over its content hash and its wording', async () => {
     const draft = await importDraft('Premises');
     await world.request('POST', `${base}/checklist-versions/${draft.id}/publish`, {
       token: token(),
@@ -164,9 +165,11 @@ describe('invariant CV-1, from the API’s side', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.headers['cache-control']).toContain('immutable');
+    // Not `immutable`: the questions are, but their Hindi and Marathi may be corrected
+    // (0036), and a year-long cache would keep showing the old wording.
+    expect(response.headers['cache-control']).toBe('private, no-cache');
     const detail = JSON.parse(response.body) as ChecklistVersionDetail;
-    expect(response.headers.etag).toBe(`"${detail.contentHash}"`);
+    expect(response.headers.etag).toMatch(new RegExp(`^"${detail.contentHash}-[0-9a-f]{16}"$`));
   });
 
   it('offers no route that could edit a published question', async () => {
@@ -179,6 +182,66 @@ describe('invariant CV-1, from the API’s side', () => {
       }
     ).printRoutes({ commonPrefix: false, includeMeta: false });
     expect(routes).not.toMatch(/checklist-questions/);
+  });
+});
+
+describe('correcting a translation (0036)', () => {
+  beforeEach(clearChecklists);
+
+  const detailOf = async (versionId: string) => {
+    const response = await world.app.inject({
+      method: 'GET',
+      url: `${base}/checklist-versions/${versionId}`,
+      headers: { authorization: `Bearer ${token()}` },
+    });
+    return { detail: JSON.parse(response.body) as ChecklistVersionDetail, etag: response.headers.etag };
+  };
+
+  it('replaces the wording in place, leaves the English alone, and moves the ETag', async () => {
+    const draft = await importDraft('Premises');
+    await world.request('POST', `${base}/checklist-versions/${draft.id}/publish`, { token: token() });
+    const before = await detailOf(draft.id);
+    const question = before.detail.questions[0]!;
+
+    const response = await world.request('PUT', `${base}/checklist-translations`, {
+      token: token(),
+      body: { sourceText: question.text, language: 'hi', text: '  सुधरा   हुआ प्रश्न ' },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    // Collapsed like the importer's (R-7b).
+    expect((response.body as QuestionTranslation).text).toBe('सुधरा हुआ प्रश्न');
+
+    const after = await detailOf(draft.id);
+    expect(after.detail.questions[0]!.translations?.hi).toBe('सुधरा हुआ प्रश्न');
+    expect(after.detail.questions[0]!.text).toBe(question.text);
+    expect(after.detail.contentHash).toBe(before.detail.contentHash);
+    expect(after.etag).not.toBe(before.etag);
+  });
+
+  it('refuses a sentence no question asks, and a blank translation', async () => {
+    const unknown = await world.request('PUT', `${base}/checklist-translations`, {
+      token: token(),
+      body: { sourceText: 'No checklist asks this', language: 'mr', text: 'काहीतरी' },
+    });
+    expect(unknown.status).toBe(404);
+
+    const draft = await importDraft('Premises');
+    const { detail } = await detailOf(draft.id);
+    const blank = await world.request('PUT', `${base}/checklist-translations`, {
+      token: token(),
+      body: { sourceText: detail.questions[0]!.text, language: 'mr', text: '   ' },
+    });
+    expect(blank.status).toBe(422);
+  });
+
+  it('is a Super Admin’s alone', async () => {
+    for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const) {
+      const refused = await world.request('PUT', `${base}/checklist-translations`, {
+        token: world.actors[role].accessToken,
+        body: { sourceText: 'Anything', language: 'hi', text: 'कुछ' },
+      });
+      expect(refused.status, role).toBe(403);
+    }
   });
 });
 

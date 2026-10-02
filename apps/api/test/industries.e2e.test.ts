@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { API_BASE_PATH, type Industry } from '@audit5s/contracts';
+import { API_BASE_PATH, type ChecklistTemplate, type Industry } from '@audit5s/contracts';
 import { startWorld, stopWorld, type TestWorld } from './harness';
 
 /**
@@ -161,24 +161,105 @@ describe('an industry in use', () => {
   });
 });
 
-describe('what a sector narrows', () => {
-  it('still offers unclassified templates when filtering to one industry', async () => {
-    const list = await world.request('GET', `${base}/industries`, { token: asSuperAdmin() });
-    const fresh = (list.body as Industry[]).find((row) => row.code === 'HOSPITAL')!;
+describe('which checklists an industry is offered (0042)', () => {
+  let clinicId = '';
+  let workshopId = '';
+  let templateIds: string[] = [];
 
-    const filtered = await world.request(
-      'GET',
-      `${base}/checklist-templates?limit=200&industryId=${fresh.id}`,
-      { token: asSuperAdmin() },
+  beforeAll(async () => {
+    const make = async (code: string, name: string) => {
+      const created = await world.request('POST', `${base}/industries`, {
+        token: asSuperAdmin(),
+        body: { code, name },
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      return (created.body as Industry).id;
+    };
+    clinicId = await make('CLINIC', 'Clinic');
+    workshopId = await make('WORKSHOP', 'Workshop');
+
+    // This world seeds no catalogue, so the checklists to tick are made here, the way the
+    // other suites make theirs.
+    const made = await world.owner.query<{ id: string }>(
+      `INSERT INTO checklist_template (code, name) VALUES
+         ('INDUSTRY_TEST_WARD', 'Ward'), ('INDUSTRY_TEST_STORES', 'Stores')
+       RETURNING id`,
     );
-    expect(filtered.status).toBe(200);
+    templateIds = made.rows.map((row) => row.id);
+    expect(templateIds).toHaveLength(2);
+  });
 
-    // Every seeded template is ENGINEERING, so a Hospital filter returns none of them —
-    // and would return any template nobody had classified. That fallback is the reason
-    // adding a second sector does not empty the catalogue for every Unit at once.
-    const rows = (filtered.body as { data: Array<{ industryId: string | null }> }).data;
-    for (const row of rows) {
-      expect(row.industryId === null || row.industryId === fresh.id).toBe(true);
+  const templates = async (query = '') =>
+    (
+      (
+        await world.request('GET', `${base}/checklist-templates?limit=200${query}`, {
+          token: asSuperAdmin(),
+        })
+      ).body as { data: ChecklistTemplate[] }
+    ).data;
+
+  it('is set only by a Super Admin', async () => {
+    for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const) {
+      const refused = await world.request('PUT', `${base}/industries/${clinicId}/checklist-templates`, {
+        token: world.actors[role].accessToken,
+        body: { templateIds: [templateIds[0]] },
+      });
+      expect(refused.status, role).toBe(403);
     }
+  });
+
+  it('lets one checklist serve two industries — ticking for one never unticks the other', async () => {
+    const shared = templateIds[0]!;
+    for (const industryId of [clinicId, workshopId]) {
+      const response = await world.request('PUT', `${base}/industries/${industryId}/checklist-templates`, {
+        token: asSuperAdmin(),
+        body: { templateIds: [shared] },
+      });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect((response.body as Industry).templateCount).toBe(1);
+    }
+
+    const row = (await templates()).find((template) => template.id === shared)!;
+    expect(row.industries.map((industry) => industry.id).sort()).toEqual(
+      expect.arrayContaining([clinicId, workshopId]),
+    );
+  });
+
+  it('narrows the catalogue to the industry, plus whatever is offered everywhere', async () => {
+    const forClinic = await templates(`&industryId=${clinicId}`);
+    for (const row of forClinic) {
+      const ids = row.industries.map((industry) => industry.id);
+      expect(ids.length === 0 || ids.includes(clinicId), row.code).toBe(true);
+    }
+    expect(forClinic.some((row) => row.id === templateIds[0])).toBe(true);
+  });
+
+  it('unticks by setting the whole list, and keeps the link history (D8)', async () => {
+    const response = await world.request('PUT', `${base}/industries/${clinicId}/checklist-templates`, {
+      token: asSuperAdmin(),
+      body: { templateIds: [] },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect((response.body as Industry).templateCount).toBe(0);
+
+    const row = (await templates()).find((template) => template.id === templateIds[0])!;
+    expect(row.industries.map((industry) => industry.id)).not.toContain(clinicId);
+    expect(row.industries.map((industry) => industry.id)).toContain(workshopId);
+  });
+
+  it('refuses an id that names no checklist', async () => {
+    const response = await world.request('PUT', `${base}/industries/${clinicId}/checklist-templates`, {
+      token: asSuperAdmin(),
+      body: { templateIds: ['00000000-0000-4000-8000-000000000000'] },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
+  });
+
+  it('refuses to archive an industry that still has checklists ticked', async () => {
+    const refused = await world.request('DELETE', `${base}/industries/${workshopId}`, {
+      token: asSuperAdmin(),
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect((refused.body as { detail: string }).detail).toMatch(/checklist/i);
   });
 });

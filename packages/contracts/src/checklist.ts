@@ -28,10 +28,12 @@ export const checklistTemplateSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   isActive: z.boolean(),
-  /** The sector this template belongs to (0018). `null` means every sector. */
-  industryId: uuidSchema.nullable(),
-  /** Joined for display, so a catalogue list needs no second request. */
-  industryName: z.string().nullable(),
+  /**
+   * The industries this template is offered to (0042). **Empty means every industry** —
+   * the honest default for a checklist nobody has classified. Joined with names so a
+   * catalogue list needs no second request.
+   */
+  industries: z.array(z.object({ id: uuidSchema, name: z.string() })),
   /** Workbook order (R-6a), so the catalogue lists departments as the business lists them. */
   sortOrder: z.number().int(),
   archivedAt: isoDateTimeSchema.nullable(),
@@ -112,9 +114,9 @@ export type ListChecklistVersionsQuery = z.infer<typeof listChecklistVersionsQue
 export const listChecklistTemplatesQuerySchema = paginationQuerySchema.extend({
   includeArchived: booleanQuery(false),
   /**
-   * Narrow to one sector (0018).
+   * Narrow to one sector (0018, 0042).
    *
-   * A template with no industry is **always** included: unclassified means "offered
+   * A template tagged with no industry is **always** included: unclassified means "offered
    * everywhere", so filtering to Hospital still shows the templates nobody has labelled.
    * Excluding them would hide the catalogue from every Unit the moment one sector existed.
    */
@@ -198,6 +200,8 @@ export const checklistImportJobSchema = z.object({
   warningCount: z.number().int(),
   previewExpiresAt: isoDateTimeSchema.nullable(),
   errorReportObjectKey: z.string().nullable(),
+  /** The industries this workbook is for (0042). Empty means every industry. */
+  industryIds: z.array(uuidSchema),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 });
@@ -246,6 +250,19 @@ export const checklistImportPreviewSchema = z.object({
 export type ChecklistImportPreview = z.infer<typeof checklistImportPreviewSchema>;
 
 /**
+ * Stage 2's trigger carries the industries the workbook is for (0042), because stage 4
+ * matches each sheet against templates with the same sheet name **and the same set of
+ * industries**. Anything else becomes a new checklist, so importing for Hospital can never
+ * change the questions an Engineering plant audits against. Empty means every industry.
+ */
+export const validateChecklistImportRequestSchema = z.preprocess(
+  // No body at all is the pre-0042 client, and means every industry.
+  (body) => body ?? {},
+  z.object({ industryIds: z.array(uuidSchema).max(50).default([]) }),
+);
+export type ValidateChecklistImportRequest = z.infer<typeof validateChecklistImportRequestSchema>;
+
+/**
  * Commit takes the sheets to apply. Omitting it commits every sheet that validated, which
  * is what the nine-sheet department workbook wants; naming them is how a Super Admin
  * re-imports one department without touching the other eight.
@@ -279,3 +296,33 @@ export const updateChecklistTemplateRequestSchema = z
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'No fields to update' });
 export type UpdateChecklistTemplateRequest = z.infer<typeof updateChecklistTemplateRequestSchema>;
+
+// ----------------------------------------------------------------------- translations
+
+/**
+ * Correcting a question's Hindi or Marathi in place (0036).
+ *
+ * Keyed by the English sentence, like the table: a translation belongs to the wording, so
+ * the fix reaches every version and every department that asks the same question. It never
+ * touches the English — the record — and a published version stays exactly as published.
+ */
+export const updateQuestionTranslationRequestSchema = z.object({
+  sourceText: z.string().min(1).max(500),
+  language: translatedLanguageSchema,
+  /** Collapsed like the importer's (R-7b); Devanagari runs longer, so twice the cap. */
+  text: z
+    .string()
+    .transform((value) => value.replace(/\s+/g, ' ').trim())
+    .pipe(z.string().min(1, 'A translation cannot be blank').max(1000)),
+});
+export type UpdateQuestionTranslationRequest = z.infer<
+  typeof updateQuestionTranslationRequestSchema
+>;
+
+export const questionTranslationSchema = z.object({
+  sourceText: z.string(),
+  language: translatedLanguageSchema,
+  text: z.string(),
+  updatedAt: isoDateTimeSchema,
+});
+export type QuestionTranslation = z.infer<typeof questionTranslationSchema>;

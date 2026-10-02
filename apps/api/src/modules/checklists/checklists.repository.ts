@@ -13,6 +13,7 @@ import type { ScopeContext } from '@audit5s/domain';
 import type {
   ListChecklistTemplatesQuery,
   ListChecklistVersionsQuery,
+  TranslatedLanguage,
 } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
@@ -30,6 +31,21 @@ import { setActorContext } from '../users/users.repository';
  */
 /** The template's currently published version, joined for the catalogue. */
 const published = alias(checklistVersions, 'published_version');
+
+/**
+ * The template's live industries (0042), as `[{ id, name }]` — `[]` for every industry.
+ *
+ * A scalar subquery rather than a join, so the row shape stays one row per template. The
+ * outer table is named in the SQL rather than interpolated: Drizzle renders a column
+ * unqualified when a query has no join, and a bare `id` inside this subquery would bind to
+ * `cti.id` and quietly return nothing.
+ */
+const templateIndustries = sql<Array<{ id: string; name: string }>>`(
+  SELECT coalesce(json_agg(json_build_object('id', i.id, 'name', i.name) ORDER BY i.sort_order, i.name), '[]'::json)
+    FROM checklist_template_industry cti
+    JOIN industry i ON i.id = cti.industry_id
+   WHERE cti.template_id = checklist_template.id AND cti.removed_at IS NULL
+)`;
 
 @Injectable()
 export class ChecklistsRepository extends BaseRepository {
@@ -52,11 +68,7 @@ export class ChecklistsRepository extends BaseRepository {
           name: checklistTemplates.name,
           description: checklistTemplates.description,
           isActive: checklistTemplates.isActive,
-          industryId: checklistTemplates.industryId,
-          // Through a scalar subquery rather than a join: `industry` is readable by every
-          // signed-in actor (0018), and a join would change the row shape of two queries
-          // that several callers already destructure.
-          industryName: sql<string | null>`(SELECT i.name FROM industry i WHERE i.id = ${checklistTemplates.industryId})`,
+          industries: templateIndustries,
           sortOrder: checklistTemplates.sortOrder,
           archivedAt: checklistTemplates.archivedAt,
           createdAt: checklistTemplates.createdAt,
@@ -75,11 +87,19 @@ export class ChecklistsRepository extends BaseRepository {
           this.everything(
             scope,
             query.includeArchived ? undefined : isNull(checklistTemplates.archivedAt),
-            // Unclassified templates come through every filter (0018): NULL means "offered
-            // everywhere", so narrowing to Hospital must not hide a template nobody has
-            // labelled yet — which, on the day a second sector is added, is all of them.
+            // Unclassified templates come through every filter (0018, 0042): no industry
+            // means "offered everywhere", so narrowing to Hospital must not hide a template
+            // nobody has labelled yet — which, on the day a second sector is added, is all
+            // of them.
             query.industryId
-              ? sql`(${checklistTemplates.industryId} = ${query.industryId} OR ${checklistTemplates.industryId} IS NULL)`
+              ? sql`(NOT EXISTS (
+                    SELECT 1 FROM checklist_template_industry cti
+                     WHERE cti.template_id = checklist_template.id AND cti.removed_at IS NULL
+                  ) OR EXISTS (
+                    SELECT 1 FROM checklist_template_industry cti
+                     WHERE cti.template_id = checklist_template.id AND cti.removed_at IS NULL
+                       AND cti.industry_id = ${query.industryId}
+                  ))`
               : undefined,
             query.cursor ? gt(checklistTemplates.id, query.cursor) : undefined,
           ),
@@ -99,11 +119,7 @@ export class ChecklistsRepository extends BaseRepository {
           name: checklistTemplates.name,
           description: checklistTemplates.description,
           isActive: checklistTemplates.isActive,
-          industryId: checklistTemplates.industryId,
-          // Through a scalar subquery rather than a join: `industry` is readable by every
-          // signed-in actor (0018), and a join would change the row shape of two queries
-          // that several callers already destructure.
-          industryName: sql<string | null>`(SELECT i.name FROM industry i WHERE i.id = ${checklistTemplates.industryId})`,
+          industries: templateIndustries,
           sortOrder: checklistTemplates.sortOrder,
           archivedAt: checklistTemplates.archivedAt,
           createdAt: checklistTemplates.createdAt,
@@ -203,6 +219,50 @@ export class ChecklistsRepository extends BaseRepository {
         .from(checklistQuestionTranslations)
         .where(this.everything(scope, inArray(checklistQuestionTranslations.sourceText, distinct)))
         .orderBy(asc(checklistQuestionTranslations.sourceText), asc(checklistQuestionTranslations.language));
+    });
+  }
+
+  /**
+   * Writes one Hindi or Marathi wording (0036), replacing what was there.
+   *
+   * Only for a sentence some checklist actually asks: the table is keyed by the English,
+   * and a row for English no question carries would be a translation of nothing. Returns
+   * `null` when no question has that text.
+   */
+  async upsertTranslation(
+    scope: ScopeContext,
+    input: { sourceText: string; language: TranslatedLanguage; text: string },
+  ) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+
+      const [asked] = await tx
+        .select({ id: checklistQuestions.id })
+        .from(checklistQuestions)
+        .where(this.everything(scope, eq(checklistQuestions.text, input.sourceText)))
+        .limit(1);
+      if (!asked) return null;
+
+      const [before] = await tx
+        .select({ text: checklistQuestionTranslations.text })
+        .from(checklistQuestionTranslations)
+        .where(
+          and(
+            eq(checklistQuestionTranslations.sourceText, input.sourceText),
+            eq(checklistQuestionTranslations.language, input.language),
+          ),
+        )
+        .limit(1);
+
+      const [row] = await tx
+        .insert(checklistQuestionTranslations)
+        .values(input)
+        .onConflictDoUpdate({
+          target: [checklistQuestionTranslations.sourceText, checklistQuestionTranslations.language],
+          set: { text: sql`excluded.text` },
+        })
+        .returning();
+      return { row: row!, before: before?.text ?? null };
     });
   }
 

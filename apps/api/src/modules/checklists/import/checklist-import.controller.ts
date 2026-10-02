@@ -18,11 +18,13 @@ import '@fastify/multipart';
 import {
   commitChecklistImportRequestSchema,
   listChecklistImportsQuerySchema,
+  validateChecklistImportRequestSchema,
   type ChecklistImportJob,
   type ChecklistImportPreview,
   type CommitChecklistImportRequest,
   type CommitChecklistImportResponse,
   type Page,
+  type ValidateChecklistImportRequest,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { RequirePermission, Scope } from '../../../common/auth/decorators';
@@ -86,6 +88,9 @@ export class ChecklistImportController {
   /**
    * Stages 2–5, enqueued rather than run here: a workbook is parsed in `worker-general`
    * with a memory cap (§12.8), never inside a request. 202, then poll the preview.
+   *
+   * The body names the industries the workbook is for (0042); an empty body means every
+   * industry, which is what a client from before that change sends.
    */
   @RequirePermission('checklist_import', 'preview')
   @Scope({ param: 'jobId', intent: 'write' })
@@ -94,8 +99,10 @@ export class ChecklistImportController {
   validate(
     @CurrentScope() scope: ScopeContext,
     @Param('jobId', ParseUUIDPipe) jobId: string,
+    @Body(new ZodValidationPipe(validateChecklistImportRequestSchema))
+    body: ValidateChecklistImportRequest,
   ): Promise<ChecklistImportJob> {
-    return this.imports.requestValidation(scope, jobId);
+    return this.imports.requestValidation(scope, jobId, body);
   }
 
   /** Stage 5. Nothing has been written to `checklist_version` when this is served. */

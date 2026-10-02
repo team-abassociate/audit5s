@@ -3,6 +3,7 @@ import type { SyncCatalogue } from '@audit5s/contracts';
 import {
   getLocalChecklistVersion,
   getSyncMeta,
+  listLocalChecklistVersions,
   listLocalQuestions,
   listLocalUnits,
   listLocalZones,
@@ -265,5 +266,79 @@ describe('catalogue sync', () => {
       'cccccccc-0000-4000-8000-000000000001',
     );
     expect(questions).toHaveLength(3);
+  });
+});
+
+describe('narrowing the departments to the Unit’s industry (0042)', () => {
+  const HOSPITAL = '99999999-0000-4000-8000-000000000001';
+  const ENGINEERING = '99999999-0000-4000-8000-000000000002';
+  const base = catalogue();
+  const premises = base.checklistVersions[0]!;
+  const version = (n: number, templateId: string, templateName: string) => ({
+    ...premises,
+    id: `cccccccc-0000-4000-8000-00000000000${n}`,
+    templateId,
+    templateName,
+    questions: [],
+  });
+  const template = (id: string, name: string, industries: Array<{ id: string; name: string }>) => ({
+    id,
+    code: name.toUpperCase(),
+    name,
+    description: null,
+    isActive: true,
+    industries,
+    sortOrder: 0,
+    archivedAt: null,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    publishedVersionId: null,
+    publishedVersionNumber: null,
+  });
+
+  const T_WARD = 'dddddddd-0000-4000-8000-000000000002';
+  const T_PRESS = 'dddddddd-0000-4000-8000-000000000003';
+  const T_OFFICE = 'dddddddd-0000-4000-8000-000000000004';
+
+  async function sync(unitIndustry: string | null) {
+    await replaceCatalogue(
+      database,
+      catalogue({
+        units: [{ ...base.units[0]!, industryId: unitIndustry }],
+        checklistTemplates: [
+          template(T_WARD, 'Ward', [{ id: HOSPITAL, name: 'Hospital' }]),
+          template(T_PRESS, 'Press', [{ id: ENGINEERING, name: 'Engineering' }]),
+          template(T_OFFICE, 'Office', [
+            { id: HOSPITAL, name: 'Hospital' },
+            { id: ENGINEERING, name: 'Engineering' },
+          ]),
+        ],
+        checklistVersions: [
+          version(2, T_WARD, 'Ward'),
+          version(3, T_PRESS, 'Press'),
+          version(4, T_OFFICE, 'Office'),
+          // Premises is ticked for no industry: offered everywhere.
+          premises,
+        ],
+      }),
+    );
+  }
+
+  const names = async (unitId?: string) =>
+    (await listLocalChecklistVersions(database, unitId)).map((row) => row.templateName);
+
+  it('offers a hospital its own, the shared, and the unclassified — never the press shop', async () => {
+    await sync(HOSPITAL);
+    expect(await names(UNIT_A)).toEqual(['Office', 'Premises', 'Ward']);
+  });
+
+  it('offers everything to a Unit with no industry', async () => {
+    await sync(null);
+    expect(await names(UNIT_A)).toEqual(['Office', 'Premises', 'Press', 'Ward']);
+  });
+
+  it('offers everything when no Unit is named', async () => {
+    await sync(HOSPITAL);
+    expect(await names()).toHaveLength(4);
   });
 });

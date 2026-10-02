@@ -1,11 +1,12 @@
 import { Fragment, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ChecklistImportJob,
   ChecklistImportPreview,
   ChecklistImportSheet,
   ChecklistSheetDiff,
   CommitChecklistImportResponse,
+  Industry,
 } from '@audit5s/contracts';
 import { S_SECTION_LABELS } from '@audit5s/domain';
 import { ApiError, api, loadSession } from '@/lib/api';
@@ -37,18 +38,25 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
   const [preview, setPreview] = useState<ChecklistImportPreview | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<unknown>(null);
+  /** The industries this workbook is for (0042). None ticked means every industry. */
+  const [industryIds, setIndustryIds] = useState<string[]>([]);
+
+  const industries = useQuery({
+    queryKey: ['industries', false],
+    queryFn: () => api.get<Industry[]>('/industries'),
+  });
 
   const upload = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file }: { file: File; industryIds: string[] }) => {
       const form = new FormData();
       form.append('file', file);
       return uploadWorkbook(form);
     },
-    onSuccess: async (created) => {
+    onSuccess: async (created, { industryIds: chosen }) => {
       setError(null);
       setJob(created);
       setStep('validating');
-      await validate(created.id);
+      await validate(created.id, chosen);
     },
     onError: setError,
   });
@@ -58,9 +66,9 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
    * is the honest shape of the operation: parsing a workbook in the request would be the
    * shortcut §12.8 rules out.
    */
-  async function validate(jobId: string): Promise<void> {
+  async function validate(jobId: string, chosen: string[]): Promise<void> {
     try {
-      await api.post(`/checklist-imports/${jobId}/validate`);
+      await api.post(`/checklist-imports/${jobId}/validate`, { industryIds: chosen });
       for (let attempt = 0; attempt < 40; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
         const current = await api.get<ChecklistImportJob>(`/checklist-imports/${jobId}`);
@@ -129,13 +137,18 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
             Auditors who choose those languages see them above the English. A blank cell keeps the
             translation already saved.
           </p>
+          <IndustryChoice
+            industries={industries.data ?? []}
+            chosen={industryIds}
+            onChange={setIndustryIds}
+          />
           <input
             type="file"
             accept=".xlsx"
             className="block text-sm"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) upload.mutate(file);
+              if (file) upload.mutate({ file, industryIds });
             }}
           />
           {upload.isPending && <Spinner label="Uploading…" />}
@@ -147,6 +160,7 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
       {step === 'preview' && preview && (
         <PreviewStep
           preview={preview}
+          industries={industries.data ?? []}
           selected={selected}
           onToggle={(sheetId) =>
             setSelected((current) => {
@@ -211,14 +225,69 @@ function Steps({ current }: { current: Step }) {
   );
 }
 
+/**
+ * Which industries the workbook is for (0042), chosen before upload because the preview's
+ * match depends on it: a sheet updates an existing checklist only when it was imported for
+ * exactly the same industries, and anything else becomes a new checklist.
+ */
+function IndustryChoice({
+  industries,
+  chosen,
+  onChange,
+}: {
+  industries: Industry[];
+  chosen: string[];
+  onChange: (next: string[]) => void;
+}) {
+  if (industries.length === 0) return null;
+  return (
+    <fieldset className="space-y-2 border border-edge-soft p-3">
+      <legend className="px-1 text-sm font-medium text-ink">Which industries is this workbook for?</legend>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {industries.map((industry) => (
+          <label key={industry.id} className="flex items-center gap-2 text-sm text-ink-2">
+            <input
+              type="checkbox"
+              checked={chosen.includes(industry.id)}
+              onChange={(event) =>
+                onChange(
+                  event.target.checked
+                    ? [...chosen, industry.id]
+                    : chosen.filter((id) => id !== industry.id),
+                )
+              }
+            />
+            {industry.name}
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-ink-3">
+        Tick none to offer these checklists to every industry. A sheet updates an existing
+        checklist only if that checklist has the same name and exactly these industries;
+        otherwise it becomes a new checklist, so another industry&apos;s questions never change.
+      </p>
+    </fieldset>
+  );
+}
+
+/** "Hospital, Clinic", or "every industry" for an empty list. */
+function industryNames(ids: readonly string[], industries: readonly Industry[]): string {
+  if (ids.length === 0) return 'every industry';
+  return ids
+    .map((id) => industries.find((industry) => industry.id === id)?.name ?? 'an archived industry')
+    .join(', ');
+}
+
 function PreviewStep({
   preview,
+  industries,
   selected,
   onToggle,
   onCommit,
   committing,
 }: {
   preview: ChecklistImportPreview;
+  industries: Industry[];
   selected: Set<string>;
   onToggle: (sheetId: string) => void;
   onCommit: () => void;
@@ -253,6 +322,11 @@ function PreviewStep({
           </a>
         )}
       </div>
+
+      <p className="text-sm text-ink-2">
+        For <span className="font-medium text-ink">{industryNames(preview.job.industryIds, industries)}</span>.
+        Sheets marked <span className="text-xs text-ink-3">new</span> become new checklists.
+      </p>
 
       {preview.skippedSheets.length > 0 && (
         <p className="text-xs text-ink-3">

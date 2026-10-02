@@ -40,6 +40,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-41 | A corrective-action link has no time limit | Settled |
 | R-42 | A Coordinator's last tab is My Unit; the audit board leads with the auditor | Settled |
 | R-43 | A closure is closed, not verified; a Coordinator reviews; boards filter by Zone | Settled |
+| R-44 | A checklist serves many industries; an import names them | Settled |
 
 ---
 
@@ -2063,3 +2064,35 @@ boards span Units, whose Zone numbers repeat, and are not filtered.
 has approved. Overview's *Auditing now* is the Audits tab's Active board in brief, worn by
 the same card (`AuditCard`): auditor first for one Unit, `IN_PROGRESS` and `PAUSED` only,
 and the *Auditing* count is that list's.
+
+---
+
+## R-44 — A checklist serves many industries; an import names them
+
+**Settled 2026-10-02 by the product owner.** **Changes 0018**'s one `industry_id` per
+checklist template. Migration `0042`.
+
+- **One checklist, many industries.** `checklist_template_industry` links a template to
+  each industry it is offered to. No live link means every industry, as a NULL column did.
+  Unticking sets `removed_at`; the table has a no-delete trigger (D8). The Industries
+  screen ticks the whole set for one industry (`PUT /industries/:id/checklist-templates`),
+  and ticking a checklist for one industry never unticks it from another.
+- **An import names its industries** on `POST /checklist-imports/:jobId/validate`
+  (`{ industryIds }`; none means every industry), stored on the job because stage 4 runs
+  in the worker.
+- **Importing for one industry never changes another's questions.** A sheet is a new
+  version of a template only when its sheet code (`checklist_template.sheet_code`, no longer
+  unique) **and** its exact set of industries both match. Otherwise it becomes a new
+  template. `code` stays unique: a new template whose sheet code is taken gets the industry
+  codes appended (`OFFICE_HOSPITAL`). Two templates matching the same sheet and set make the
+  sheet an ERROR until one is unticked.
+- **The seed imports the department workbook for Engineering**, so a re-deploy finds the
+  existing Engineering templates instead of making untagged copies.
+- **What a Unit is offered:** templates ticked for its industry, plus those ticked for
+  none. A Unit with no industry is offered everything. Applied to the web Zone setup's
+  default-checklist picker and the field app's department picker (local schema v10). Still
+  never an access decision; the server does not refuse a checklist from another industry.
+- **Translations are editable** by a Super Admin (`PUT /checklist-translations`, keyed by
+  the English as 0036 is). The English, the version and anything an audit answered are
+  untouched. `GET /checklist-versions/:id` is therefore no longer `immutable`: its ETag
+  covers the content hash and the wording, and it is served `no-cache`.

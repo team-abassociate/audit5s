@@ -341,6 +341,23 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
       `ALTER TABLE corrective_action_rebuild RENAME TO corrective_action`,
     ],
   },
+  {
+    /*
+     * 0042 on the phone: a Unit is offered only its industry's checklists.
+     *
+     * Two tables rather than `ADD COLUMN`s, for v8's reason: `CREATE TABLE IF NOT EXISTS`
+     * re-runs cleanly. The catalogue token is forgotten in the same step, as v8 did, so the
+     * next sync downloads the catalogue whole and fills them.
+     */
+    version: 10,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS unit_industry (unit_id TEXT PRIMARY KEY, industry_id TEXT)`,
+      `CREATE TABLE IF NOT EXISTS template_industry (
+         template_id TEXT NOT NULL, industry_id TEXT NOT NULL
+       )`,
+      `DELETE FROM sync_meta WHERE key = 'catalogue_version'`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

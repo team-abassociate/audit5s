@@ -7,8 +7,10 @@ import type {
   ListChecklistTemplatesQuery,
   ListChecklistVersionsQuery,
   Page,
+  QuestionTranslation,
   QuestionTranslations,
   UpdateChecklistTemplateRequest,
+  UpdateQuestionTranslationRequest,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { QUESTIONS_PER_SECTION, S_SECTION_ORDER, TOTAL_QUESTIONS } from '@audit5s/domain';
@@ -149,6 +151,38 @@ export class ChecklistsService {
   }
 
   /**
+   * A Super Admin corrects a question's Hindi or Marathi (0036).
+   *
+   * Display text, never the record: no version changes, nothing an audit answered moves,
+   * and the English stays exactly as published. The fix reaches devices on their next
+   * catalogue sync, because the catalogue token already includes every translation.
+   */
+  async updateTranslation(
+    scope: ScopeContext,
+    request: UpdateQuestionTranslationRequest,
+  ): Promise<QuestionTranslation> {
+    const result = await this.repository.upsertTranslation(scope, request);
+    if (!result) {
+      throw AppError.notFound('No checklist question has that English wording');
+    }
+
+    await this.auditLog.record({
+      action: 'checklist.translation_updated',
+      resourceType: 'checklist_question_translation',
+      resourceId: null,
+      before: { sourceText: request.sourceText, language: request.language, text: result.before },
+      after: { sourceText: request.sourceText, language: request.language, text: result.row.text },
+    });
+
+    return {
+      sourceText: result.row.sourceText,
+      language: result.row.language,
+      text: result.row.text,
+      updatedAt: result.row.updatedAt.toISOString(),
+    };
+  }
+
+  /**
    * `DRAFT → PUBLISHED`, with the 5×10 check (CQ-1) applied one last time.
    *
    * The importer already refuses a malformed sheet, and the database refuses a bad
@@ -267,8 +301,7 @@ function toTemplate(row: ChecklistTemplateRow): ChecklistTemplate {
     name: row.name,
     description: row.description,
     isActive: row.isActive,
-    industryId: row.industryId,
-    industryName: row.industryName,
+    industries: row.industries ?? [],
     sortOrder: row.sortOrder,
     archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),

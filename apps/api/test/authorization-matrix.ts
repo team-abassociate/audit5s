@@ -421,6 +421,18 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'industries.e2e.test.ts',
   },
   {
+    method: 'PUT',
+    path: '/api/v1/industries/:id/checklist-templates',
+    description: 'industry:update — which checklists the industry is offered (0042)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: DENIED, outOfScope: DENIED },
+      COORDINATOR: { inScope: DENIED, outOfScope: DENIED },
+      ZONE_LEADER: { inScope: DENIED, outOfScope: DENIED },
+    },
+    coveredBy: 'industries.e2e.test.ts',
+  },
+  {
     method: 'DELETE',
     path: '/api/v1/industries/:id',
     description: 'industry:archive — Super Admin only; archives, never deletes (D8)',
@@ -463,6 +475,13 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/checklist-templates/:id',
     description: 'checklist_template:update — SUPER_ADMIN only',
     expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    coveredBy: 'checklists.e2e.test.ts',
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/checklist-translations',
+    description: 'checklist_template:update — correct a Hindi or Marathi question (0036)',
+    expected: { SUPER_ADMIN: { inScope: OK } },
     coveredBy: 'checklists.e2e.test.ts',
   },
   {

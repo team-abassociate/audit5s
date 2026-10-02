@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
-import type { CreateIndustryRequest, Industry } from '@audit5s/contracts';
+import type {
+  ChecklistTemplate,
+  CreateIndustryRequest,
+  Industry,
+  Page,
+} from '@audit5s/contracts';
 import { ApiError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import {
@@ -29,6 +34,7 @@ export function IndustriesPage() {
   const { can } = useSession();
   const queryClient = useQueryClient();
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [choosing, setChoosing] = useState<string | null>(null);
   const canWrite = can('industry', 'create');
 
   const industries = useQuery({
@@ -96,7 +102,8 @@ export function IndustriesPage() {
             </thead>
             <tbody>
               {industries.data.map((industry) => (
-                <tr key={industry.id}>
+                <Fragment key={industry.id}>
+                <tr>
                   <Td>
                     <span className="font-medium">{industry.name}</span>
                     {industry.archivedAt && (
@@ -113,16 +120,38 @@ export function IndustriesPage() {
                   <Td>{industry.unitCount}</Td>
                   <Td>
                     {canWrite && industry.archivedAt === null && (
-                      <Button
-                        variant="danger"
-                        disabled={archive.isPending}
-                        onClick={() => archive.mutate(industry.id)}
-                      >
-                        Archive
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => setChoosing(choosing === industry.id ? null : industry.id)}
+                        >
+                          {choosing === industry.id ? 'Close' : 'Choose checklists'}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          disabled={archive.isPending}
+                          onClick={() => archive.mutate(industry.id)}
+                        >
+                          Archive
+                        </Button>
+                      </div>
                     )}
                   </Td>
                 </tr>
+                {choosing === industry.id && (
+                  <tr>
+                    <td colSpan={5} className="bg-board p-0">
+                      <ChooseChecklists
+                        industry={industry}
+                        onSaved={async () => {
+                          setChoosing(null);
+                          await invalidate();
+                        }}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
               {industries.data.length === 0 && (
                 <tr>
@@ -135,6 +164,86 @@ export function IndustriesPage() {
       </Card>
 
       {canWrite && <AddIndustry onAdded={invalidate} />}
+    </div>
+  );
+}
+
+/**
+ * Tick the checklists this industry is offered (0042). Ticking one here never takes it
+ * away from another industry; a checklist ticked for no industry is offered to all.
+ */
+function ChooseChecklists({
+  industry,
+  onSaved,
+}: {
+  industry: Industry;
+  onSaved: () => Promise<void>;
+}) {
+  const templates = useQuery({
+    queryKey: ['checklist-templates', ''],
+    queryFn: () => api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
+  });
+  const [ticked, setTicked] = useState<Set<string> | null>(null);
+
+  const current =
+    ticked ??
+    new Set(
+      (templates.data?.data ?? [])
+        .filter((template) => template.industries.some((row) => row.id === industry.id))
+        .map((template) => template.id),
+    );
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.put<Industry>(`/industries/${industry.id}/checklist-templates`, {
+        templateIds: [...current],
+      }),
+    onSuccess: onSaved,
+  });
+
+  if (templates.isLoading) return <Spinner />;
+
+  return (
+    <div className="space-y-3 p-4">
+      <p className="text-sm text-ink-2">
+        Tick the checklists {industry.name} plants are offered. A checklist can serve several
+        industries; one ticked for none is offered to every industry.
+      </p>
+      <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+        {(templates.data?.data ?? []).map((template) => {
+          const others = template.industries.filter((row) => row.id !== industry.id);
+          return (
+            <label key={template.id} className="flex items-start gap-2 text-sm text-ink-2">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={current.has(template.id)}
+                onChange={(event) => {
+                  const next = new Set(current);
+                  if (event.target.checked) next.add(template.id);
+                  else next.delete(template.id);
+                  setTicked(next);
+                }}
+              />
+              <span>
+                <span className="text-ink">{template.name}</span>{' '}
+                <span className="font-mono text-xs text-ink-3">{template.code}</span>
+                <span className="block text-xs text-ink-3">
+                  {others.length > 0
+                    ? `Also: ${others.map((row) => row.name).join(', ')}`
+                    : template.industries.length === 0
+                      ? 'Currently offered to every industry'
+                      : ''}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <ErrorNotice error={save.error} />
+      <Button disabled={save.isPending} onClick={() => save.mutate()}>
+        {save.isPending ? 'Saving…' : `Save ${current.size} checklist${current.size === 1 ? '' : 's'}`}
+      </Button>
     </div>
   );
 }
