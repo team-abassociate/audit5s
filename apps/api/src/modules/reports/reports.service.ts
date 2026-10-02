@@ -19,6 +19,7 @@ import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
 import { freezePayload } from './report-payload';
+import { reportSubject } from './report-subject';
 import { ReportTokensService, type MintedTokens } from './report-tokens.service';
 import { ReportsRepository, type ReportSnapshotRow } from './reports.repository';
 import { TEMPLATE_VERSION } from './templates/version';
@@ -741,5 +742,6 @@ export function toContract(row: ReportSnapshotRow): ReportSnapshot {
     renderedAt: row.renderedAt?.toISOString() ?? null,
     failedReason: row.failedReason,
     withdrawnAt: row.withdrawnAt?.toISOString() ?? null,
+    subject: reportSubject(row.payload),
   };
 }

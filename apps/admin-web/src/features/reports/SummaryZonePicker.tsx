@@ -4,6 +4,7 @@ import { isAuditCompleted, reportZoneLabel } from '@audit5s/domain';
 import type { Audit, AuditScoreSummary, ReportSnapshot } from '@audit5s/contracts';
 import { api, fetchAll } from '@/lib/api';
 import { Badge, Button, ErrorNotice, Field, Select, Spinner } from '@/components/ui';
+import { formatWhen } from './report-library';
 
 /**
  * The unit summary's selection, made one audited Zone at a time.
@@ -220,13 +221,13 @@ export function SummaryZonePicker({
       {generate.error ? <ErrorNotice error={generate.error} /> : null}
       {notice ? <p className="gb-slip">{notice}</p> : null}
 
-      <div className="flex gap-2">
+      <div className="gb-picker-actions flex gap-2">
+        <PreviewButton disabled={chosen.length === 0} body={body} />
         <Button onClick={() => generate.mutate()} disabled={chosen.length === 0 || generate.isPending}>
           {generate.isPending
             ? 'Queuing…'
             : `Generate summary${chosen.length > 0 ? ` of ${chosen.length} Zone${chosen.length === 1 ? '' : 's'}` : ''}`}
         </Button>
-        <PreviewButton disabled={chosen.length === 0} body={body} />
       </div>
     </div>
   );
@@ -247,7 +248,7 @@ export function PreviewButton({ disabled, body }: { disabled: boolean; body: unk
     setBusy(true);
     setError(null);
     try {
-      const html = await api.postText('/reports/preview', body);
+      const html = markDraft(await api.postText('/reports/preview', body));
       const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
       window.open(url, '_blank', 'noopener');
       // Revoked on a timer rather than immediately: the new tab has to fetch it first.
@@ -261,12 +262,31 @@ export function PreviewButton({ disabled, body }: { disabled: boolean; body: unk
 
   return (
     <>
-      <Button variant="secondary" onClick={open} disabled={disabled || busy}>
-        {busy ? 'Rendering…' : 'Preview'}
+      <Button
+        variant="secondary"
+        onClick={open}
+        disabled={disabled || busy}
+        title="Opens the report as it would be issued, in a new tab. Nothing is issued and no link is created."
+      >
+        {busy ? 'Rendering…' : 'Preview draft ↗'}
       </Button>
       {error ? <ErrorNotice error={error} /> : null}
     </>
   );
+}
+
+/**
+ * A strip across the top of a preview, so a draft opened in a tab — and perhaps printed, or
+ * screenshotted to a client — cannot pass for the issued report. Drawn in the browser's own
+ * system colours: the preview is the report's palette, not the board's, and needs no token.
+ */
+function markDraft(html: string): string {
+  const strip =
+    '<div style="position:sticky;top:0;z-index:2147483647;padding:8px 14px;' +
+    'font:700 12px/1.3 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;' +
+    'background:Canvas;color:CanvasText;border-bottom:3px double CanvasText">' +
+    'Draft preview — not issued. It carries no live links, and nothing has been sent.</div>';
+  return /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, (tag) => tag + strip) : strip + html;
 }
 
 /** `2026-09-28`, in the viewer's own calendar — the day an auditor would name. */
@@ -289,13 +309,7 @@ function countOn(audits: readonly Audit[], key: string): number {
   return audits.filter((audit) => dayKey(audit.completedAt!) === key).length;
 }
 
+/** The one date-and-time format of the Reports page. */
 function formatDay(iso: string): string {
-  return new Date(iso).toLocaleString('en-IN', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatWhen(iso);
 }
