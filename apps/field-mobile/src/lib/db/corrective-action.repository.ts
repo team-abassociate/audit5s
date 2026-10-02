@@ -212,7 +212,8 @@ export function statusLabel(action: LocalAction): string {
     case 'NOT_POSSIBLE':
       return 'Not possible';
     case 'VERIFIED':
-      return 'Verified';
+      // R-43: the Zone Leader's own closure — closed, and not "verified" by anybody.
+      return 'Closed';
     case 'WITHDRAWN':
       // R-31: the auditor corrected the mark this rested on, so there is nothing to do.
       // Said plainly, because a Zone Leader who walked to the Zone deserves to know why.

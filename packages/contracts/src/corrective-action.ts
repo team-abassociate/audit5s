@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { booleanQuery, isoDateTimeSchema, paginationQuerySchema, uuidSchema } from './common';
 import {
   auditTypeSchema,
+  roleSchema,
   correctiveActionStatusSchema,
   correctiveOptionSchema,
   responseValueSchema,
@@ -54,7 +55,13 @@ export const correctiveActionSchema = z.object({
   lastSubmittedAt: isoDateTimeSchema.nullable(),
   /** Set on VERIFIED — which is also how an accepted NOT_POSSIBLE ends (§7.3). */
   resolvedAt: isoDateTimeSchema.nullable(),
+  /**
+   * Who verified it. Null on a Zone Leader's closure nobody has approved (R-23, R-43) — such
+   * an action is *closed*, not verified.
+   */
   verifiedByUserId: uuidSchema.nullable(),
+  /** R-43: the approver's name, for "Approved by …". Optional for an older API. */
+  verifiedByName: z.string().nullable().optional(),
   /**
    * R-39: who closed it — the name on the response that settled it, as they gave it
    * (R-22), beside `resolvedAt` for when. Null until the action is VERIFIED. Optional so a
@@ -114,6 +121,9 @@ export const correctiveActionSubmissionSchema = z.object({
   submittedVia: submissionChannelSchema,
   reviewOutcome: reviewOutcomeSchema.nullable(),
   reviewedByUserId: uuidSchema.nullable(),
+  /** R-43: the reviewer's name and role, as a report prints them. Optional for an older API. */
+  reviewedByName: z.string().nullable().optional(),
+  reviewedByRole: roleSchema.nullable().optional(),
   reviewedAt: isoDateTimeSchema.nullable(),
   reviewComment: z.string().nullable(),
   createdAt: isoDateTimeSchema,

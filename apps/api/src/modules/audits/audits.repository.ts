@@ -250,7 +250,15 @@ export class AuditsRepository extends BaseRepository {
       ];
 
       return tx
-        .select(auditColumns)
+        .select({
+          ...auditColumns,
+          // R-43: the Zones it covers, so a list can filter and group by Zone. Withdrawn
+          // Zones are not part of the audit any more. A correlated read of a handful of rows
+          // on `audit_zone (audit_id, …)`, under the same RLS as the audit itself.
+          zoneIds: sql<string[]>`COALESCE((
+            SELECT json_agg(z.zone_id ORDER BY z.sequence_no) FROM audit_zone z
+            WHERE z.audit_id = ${audits.id} AND z.status <> 'WITHDRAWN'), '[]'::json)`,
+        })
         .from(audits)
         .innerJoin(units, eq(units.id, audits.unitId))
         .innerJoin(users, eq(users.id, audits.auditorUserId))

@@ -8,6 +8,7 @@ import {
   type ReportPayload,
   type ReportPhoto,
   type ReportQuestion,
+  type ReportReview,
   type ReportSummaryExtras,
   type ReportZone,
   type SectionScorePayload,
@@ -238,6 +239,34 @@ function toOverallAction(
       questionText: null,
       section: null,
     }),
+    review: reviewOf(action),
+  };
+}
+
+/**
+ * R-43: the verdict on the latest attempt, or null while nobody has given one.
+ *
+ * APPROVED only beside an answer that stands — the item is settled. DISAPPROVED only while
+ * the item waits for a new answer, which is what a disapproval did to it; once the Zone
+ * Leader answers again, the latest attempt is the new, unreviewed one and this is null.
+ * An attempt reopened after it was approved carries its approval, not the reopening, and
+ * prints nothing here — CA-1 records a verdict once.
+ */
+function reviewOf(action: FreezeInput['actions'][number]): ReportReview | null {
+  if (!action.reviewOutcome || !action.reviewedAt) return null;
+  const verdict =
+    action.reviewOutcome === 'VERIFIED' && action.status === 'VERIFIED'
+      ? 'APPROVED'
+      : action.reviewOutcome === 'REOPENED' && awaitsResponse(action.status)
+        ? 'DISAPPROVED'
+        : null;
+  if (!verdict) return null;
+  return {
+    verdict,
+    reviewerName: action.reviewer?.name ?? null,
+    reviewerRole: action.reviewer?.role ?? null,
+    reviewedAt: action.reviewedAt.toISOString(),
+    comment: action.reviewComment,
   };
 }
 
@@ -319,6 +348,7 @@ function toNonconformity(
       dueAt: null,
       correctiveActionUrl: null,
       outcome: null,
+      review: null,
     };
   }
 
@@ -329,6 +359,7 @@ function toNonconformity(
     dueAt: action.dueAt?.toISOString() ?? null,
     correctiveActionUrl: urls.get(action.id) ?? null,
     outcome: outcomeOf(action, base),
+    review: reviewOf(action),
   };
 }
 

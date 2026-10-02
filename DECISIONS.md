@@ -39,6 +39,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-40 | Any after-photo may come from the gallery; a Super Admin may delete a response | Settled |
 | R-41 | A corrective-action link has no time limit | Settled |
 | R-42 | A Coordinator's last tab is My Unit; the audit board leads with the auditor | Settled |
+| R-43 | A closure is closed, not verified; a Coordinator reviews; boards filter by Zone | Settled |
 
 ---
 
@@ -1987,3 +1988,78 @@ The page is the one a Super Admin opens from Units, gated on `can()`:
   the field app narrows it on the device.
 - A card is one block — name, type, date, with the status chip and any score beside it —
   rather than a ruled header over a one-line footer.
+
+---
+
+## R-43 — A closure is closed, not verified; a Coordinator reviews; boards filter by Zone
+
+**Settled 2026-10-02 by the product owner.** **Refines R-23** (an after-photo closes a
+finding) and **R-24 / §6.3** (the Coordinator's grants). R-23's behaviour stands — the
+after-photo still closes the item on submission, with no review step in front of it — but
+the words, the reviewer and the report change.
+
+> The zone leader, when submitting an action, it automatically comes as verified, which is
+> incorrect … it should be known as closed, and you give the verification option to the
+> coordinator … don't make it a compulsion … The super admin and the coordinator should
+> have the powers to disapprove. Once it is disapproved, then after report generation it
+> will not be shown.
+
+### (a) Closed is not verified
+
+A Zone Leader's closure is still status `VERIFIED` in the database and still settled for
+every rollup and closure figure. Every screen and the report now call it **Closed**. It is
+*approved* only when `verified_by_user_id` is set — which, since R-23, only a reviewer
+does. `isUnapprovedClosure()` in `packages/domain` is the one test of the difference.
+
+### (b) Review: approve or disapprove, optional for a closure
+
+- **Approve** a closure: `POST /corrective-actions/{id}/verify` on a `VERIFIED` action nobody
+  has approved records the reviewer on the action and on the latest attempt (CA-1's review
+  columns, once). The status does not move, so the table has no edge for it. A second
+  approval is `409`.
+- **Disapprove** is the existing reopen edge (`→ REOPENED`, reason required) — the same edge
+  R-40 calls *Delete response*. The attempt is marked, the item waits for a new answer, the
+  Zone Leader answers again from the field app or the same PDF link, as attempt 2.
+- A **"not possible"** still needs a decision before it settles: approve (`→ VERIFIED`) or
+  disapprove (`→ REOPENED`). Nothing about that changes but who may take it.
+- A closure **need not be reviewed**. Unreviewed, it counts as closed and is printed.
+
+### (c) The Coordinator reviews their own Unit
+
+`corrective_action:verify` and `:reopen` now grant the Coordinator `own_unit`, and the
+corrective-action review edges name the role. Migration `0041` widens
+`corrective_action_submission_update` to a Coordinator of the action's Unit (CA-1's
+triggers still allow only the four review columns, once) and adds `app_reviewer()`, a
+scoped definer function for the reviewer's name and role. Disapproving the last closure of
+a `CLOSED` audit walks the audit back, so `CLOSED → PARTIALLY_CLOSED` names the
+Coordinator too — their only audit edge; the rollup writes the audit row as the system,
+as R-23's submission path already does. Answering an action stays the Zone Leader's.
+
+### (d) The after-evidence report
+
+Each item carries `review` (optional in the payload, so a payload frozen before this still
+renders): who approved or disapproved the latest answer, in which role, and when.
+
+- An unreviewed closure prints **✓ CLOSED** and *Not reviewed*; an approved one *Approved
+  by {name} ({role}), {date}*. A "not possible" prints *Awaiting review* or its approval.
+- A **disapproved** answer is not printed. The right half reads **✕ DISAPPROVED**, who,
+  when and why, and *Awaiting a new answer* with the deadline. Once the Zone Leader answers
+  again, the new attempt is printed, unreviewed.
+- An attempt reopened *after* it was approved keeps its approval (CA-1 records a verdict
+  once), so that row prints blank, as R-40 has it.
+
+### (e) Filtering a Coordinator's boards by Zone (field app)
+
+On **Actions** and **Audits**, a role holding one Unit gets a **Zone** button in the header
+("Zone ▾", or "Zones · 2" with two chosen). It opens a sheet of the Unit's Zones from the
+bottom edge, each with its count on the current board; ticking applies at once. Each
+chosen Zone shows as a removable chip under the board switch, the board counts follow the
+filter, and the list is **grouped by Zone** — in the Unit's Zone order, newest first within
+each. An audit covering two chosen Zones is listed under both; an assignment is placed by
+its suggested Zones. `GET /audits` returns each audit's `zoneIds` for this. A Super Admin's
+boards span Units, whose Zone numbers repeat, and are not filtered.
+
+**Review** on Actions now holds the "not possible" answers (first) and the closures nobody
+has approved. Overview's *Auditing now* is the Audits tab's Active board in brief, worn by
+the same card (`AuditCard`): auditor first for one Unit, `IN_PROGRESS` and `PAUSED` only,
+and the *Auditing* count is that list's.

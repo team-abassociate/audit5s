@@ -9,19 +9,20 @@ import {
   type EvidenceViewUrl,
   type Audit,
   type Page,
+  type Role,
   type Unit,
   type User,
 } from '@audit5s/contracts';
-import { awaitsReview, isOverdue, sectionLabel } from '@audit5s/domain';
+import { awaitsReview, isOverdue, isReviewable, isUnapprovedClosure, sectionLabel } from '@audit5s/domain';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { Badge, Button, Card, CardHeader, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
 
 /**
- * Corrective actions (PART 14, Phase 6's Web row): the Super Admin's queue with verify,
- * delete-response (the reopen edge, R-40) and the whole submission history, and — the same page, read-only — the
- * Coordinator's view of their Unit.
+ * Corrective actions (PART 14, Phase 6's Web row): the review queue — approve, and
+ * disapprove (the reopen edge, R-40) — and the whole submission history. A Coordinator
+ * reviews their own Unit's here as a Super Admin does (R-43).
  *
  * What a role may do is the server's answer (`/auth/me`), not this page's: the buttons
  * render from `can()`, and the API refuses anything else regardless.
@@ -369,7 +370,10 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
   if (detail.error) return <ErrorNotice error={detail.error} />;
   const action = detail.data!;
 
-  const reviewable = can('corrective_action', 'verify') && awaitsReview(action.status);
+  // R-43: a "not possible" waits for a decision; a Zone Leader's closure may be approved, and
+  // need not be. Either may be disapproved, which is the reopen edge (R-40).
+  const reviewable = can('corrective_action', 'verify') && isReviewable(action.status, action.verifiedByUserId);
+  const closure = isUnapprovedClosure(action.status, action.verifiedByUserId);
   const reopenable = can('corrective_action', 'reopen') && (reviewable || action.status === 'VERIFIED');
 
   return (
@@ -417,6 +421,8 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
                 <dd>{action.closedByName ?? '—'}</dd>
                 <dt>Closed at</dt>
                 <dd>{action.resolvedAt ? closedAt(action.resolvedAt) : '—'}</dd>
+                <dt>Reviewed</dt>
+                <dd>{closure ? 'Not reviewed' : `Approved by ${action.verifiedByName ?? '—'}`}</dd>
               </>
             )}
           </dl>
@@ -438,12 +444,19 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
 
           {(reviewable || reopenable) && (
             <div className="space-y-2 border border-edge-soft p-3">
-              {/* R-40: deleting a response is the reopen edge. Nothing is erased — the attempt
-                  stays below, marked Deleted — but the item waits for a new answer, the same
-                  link in the PDF takes it, and a regenerated report prints the row blank. */}
+              {/* R-40, R-43: disapproving is the reopen edge. Nothing is erased — the attempt
+                  stays below, marked Disapproved — but the item waits for a new answer, the
+                  same link in the PDF takes it, and a regenerated report prints the
+                  disapproval in place of the rejected answer. */}
+              {closure && (
+                <p className="text-xs text-ink-2">
+                  Closed by the Zone Leader. It already counts as closed and is in the
+                  after-evidence report; reviewing it is optional.
+                </p>
+              )}
               <Field
-                label={reviewable ? 'Comment, or the reason for deleting the response' : 'Reason for deleting the response'}
-                hint="Deleting needs a reason; the Zone Leader sees it. They can then answer again from the same link in the PDF, or from the field app."
+                label={reviewable ? 'Comment, or the reason for disapproving' : 'Reason for disapproving'}
+                hint="Disapproving needs a reason; the Zone Leader sees it. They can then answer again from the same link in the PDF, or from the field app."
               >
                 <Input value={note} onChange={(event) => setNote(event.target.value)} />
               </Field>
@@ -451,7 +464,7 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
               <div className="flex gap-2">
                 {reviewable && (
                   <Button disabled={review.isPending} onClick={() => review.mutate('verify')}>
-                    Verify
+                    Approve
                   </Button>
                 )}
                 <Button
@@ -459,7 +472,7 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
                   disabled={review.isPending || note.trim().length === 0}
                   onClick={() => review.mutate('reopen')}
                 >
-                  Delete response
+                  Disapprove
                 </Button>
               </div>
             </div>
@@ -492,8 +505,10 @@ function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
       {attempt.reviewOutcome && (
         <p className="mt-2 text-xs text-ink-2">
           <Badge tone={attempt.reviewOutcome === 'VERIFIED' ? 'good' : 'bad'}>
-            {attempt.reviewOutcome === 'VERIFIED' ? 'Verified' : 'Deleted'}
+            {attempt.reviewOutcome === 'VERIFIED' ? 'Approved' : 'Disapproved'}
           </Badge>{' '}
+          {attempt.reviewedByName &&
+            `${attempt.reviewedByName}${attempt.reviewedByRole ? ` (${REVIEWER_ROLE[attempt.reviewedByRole] ?? attempt.reviewedByRole})` : ''} · `}
           {attempt.reviewedAt && new Date(attempt.reviewedAt).toLocaleString()}
           {attempt.reviewComment && ` — ${attempt.reviewComment}`}
         </p>
@@ -575,6 +590,12 @@ function Closed({ action }: { action: CorrectiveAction }) {
     <span>
       {action.closedByName ?? '—'}
       <div className="text-xs text-ink-3">{closedAt(action.resolvedAt)}</div>
+      {/* R-43: closed is not verified — say whether anybody approved it. */}
+      <div className="text-xs text-ink-3">
+        {isUnapprovedClosure(action.status, action.verifiedByUserId)
+          ? 'Not reviewed'
+          : `✓ Approved by ${action.verifiedByName ?? '—'}`}
+      </div>
     </span>
   );
 }
@@ -611,9 +632,16 @@ const STATUS_LABEL: Record<CorrectiveActionStatus, string> = {
   OPEN: 'Open',
   ACTION_SUBMITTED: 'Submitted',
   NOT_POSSIBLE: 'Not possible',
-  VERIFIED: 'Verified',
+  // R-43: a Zone Leader's after-photo closes it with nobody verifying it, so it is "Closed";
+  // whether a reviewer approved it is said beside it, not folded into the status.
+  VERIFIED: 'Closed',
   REOPENED: 'Reopened',
   // R-31: the mark it rested on was corrected, so there was never anything to fix. Not
   // "Closed" — nobody did any work, and a reader scanning this column should see that.
   WITHDRAWN: 'Withdrawn',
+};
+
+const REVIEWER_ROLE: Partial<Record<Role, string>> = {
+  SUPER_ADMIN: 'Super Admin',
+  COORDINATOR: 'Coordinator',
 };

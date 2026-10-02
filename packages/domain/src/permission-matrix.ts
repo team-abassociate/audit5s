@@ -631,14 +631,16 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
   {
     resource: 'corrective_action',
     action: 'verify',
-    description: 'Verify a submitted corrective action',
-    grants: { SUPER_ADMIN: org },
+    description: 'Verify a submitted corrective action, or approve a closure',
+    // R-43: a Coordinator reviews their own Unit's — accepts a "not possible", approves a
+    // Zone Leader's closure. Approval is never required for a closure to count.
+    grants: { SUPER_ADMIN: org, COORDINATOR: ownUnit },
   },
   {
     resource: 'corrective_action',
     action: 'reopen',
-    description: 'Reopen a corrective action',
-    grants: { SUPER_ADMIN: org },
+    description: 'Reopen a corrective action, or disapprove a closure',
+    grants: { SUPER_ADMIN: org, COORDINATOR: ownUnit },
   },
   {
     resource: 'corrective_action',

@@ -18,6 +18,7 @@ import type {
   CorrectiveActionStatus,
   CorrectiveOption,
   ListCorrectiveActionsQuery,
+  Role,
   SubmissionChannel,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
@@ -64,6 +65,9 @@ const actionColumns = {
   lastSubmittedAt: correctiveActions.lastSubmittedAt,
   resolvedAt: correctiveActions.resolvedAt,
   verifiedByUserId: correctiveActions.verifiedByUserId,
+  // R-43: the approver's name, through 0041's narrow definer function — a Coordinator may
+  // not read a Super Admin's user row. Null on a closure nobody has approved.
+  verifiedByName: sql<string | null>`app_reviewer(${correctiveActions.verifiedByUserId}) ->> 'name'`,
   // R-39: who closed it, for the Coordinator's list. The latest attempt's name is the one
   // that settled a VERIFIED action — since R-23 an after-photo closes the item itself. A
   // correlated read of at most a handful of attempts, on `(corrective_action_id, …)`.
@@ -94,6 +98,11 @@ export type CorrectiveActionRow = NonNullable<
   Awaited<ReturnType<CorrectiveActionsRepository['findById'] >>
 >;
 export type SubmissionRow = typeof correctiveActionSubmissions.$inferSelect;
+/** An attempt with its reviewer's name and role, as the detail read carries them (R-43). */
+export type ReviewedSubmissionRow = SubmissionRow & {
+  reviewedByName?: string | null;
+  reviewedByRole?: Role | null;
+};
 
 export interface NewSubmission {
   id: string;
@@ -299,11 +308,15 @@ export class CorrectiveActionsRepository extends BaseRepository {
     });
   }
 
-  async listSubmissions(scope: ScopeContext, actionId: string): Promise<SubmissionRow[]> {
+  async listSubmissions(scope: ScopeContext, actionId: string): Promise<ReviewedSubmissionRow[]> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       return tx
-        .select({ submission: correctiveActionSubmissions })
+        .select({
+          submission: correctiveActionSubmissions,
+          // R-43: who reviewed it, by name and role, through 0041's definer function.
+          reviewer: sql<{ name: string; role: Role } | null>`app_reviewer(${correctiveActionSubmissions.reviewedByUserId})`,
+        })
         .from(correctiveActionSubmissions)
         .innerJoin(correctiveActions, eq(correctiveActions.id, correctiveActionSubmissions.correctiveActionId))
         .innerJoin(audits, eq(audits.id, correctiveActions.auditId))
@@ -311,7 +324,13 @@ export class CorrectiveActionsRepository extends BaseRepository {
           this.scoped(scope, scopeColumns, eq(correctiveActionSubmissions.correctiveActionId, actionId)),
         )
         .orderBy(asc(correctiveActionSubmissions.attemptNo))
-        .then((rows) => rows.map((row) => row.submission));
+        .then((rows) =>
+          rows.map((row) => ({
+            ...row.submission,
+            reviewedByName: row.reviewer?.name ?? null,
+            reviewedByRole: row.reviewer?.role ?? null,
+          })),
+        );
     });
   }
 

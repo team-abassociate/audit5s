@@ -147,8 +147,8 @@ export const AUDIT_TRANSITIONS: readonly Transition<AuditStatus>[] = [
   {
     from: 'CLOSED',
     to: 'PARTIALLY_CLOSED',
-    actors: ['SUPER_ADMIN'],
-    note: 'A Super Admin reopens a corrective action after the fact',
+    actors: ['SUPER_ADMIN', 'COORDINATOR'],
+    note: 'A Super Admin, or the Coordinator of the Unit (R-43), reopens a corrective action after the fact',
   },
   /*
    * R-33 — the way back from an accidental *Finish audit*.
@@ -268,13 +268,16 @@ export const CORRECTIVE_ACTION_TRANSITIONS: readonly Transition<CorrectiveAction
   { from: 'REOPENED', to: 'VERIFIED', actors: ['ZONE_LEADER'] },
   { from: 'OPEN', to: 'ACTION_SUBMITTED', actors: ['ZONE_LEADER'] },
   { from: 'OPEN', to: 'NOT_POSSIBLE', actors: ['ZONE_LEADER'], guards: ['reason_given'] },
-  { from: 'ACTION_SUBMITTED', to: 'VERIFIED', actors: ['SUPER_ADMIN'] },
-  { from: 'ACTION_SUBMITTED', to: 'REOPENED', actors: ['SUPER_ADMIN'], guards: ['reason_given'] },
-  { from: 'NOT_POSSIBLE', to: 'VERIFIED', actors: ['SUPER_ADMIN'] },
-  { from: 'NOT_POSSIBLE', to: 'REOPENED', actors: ['SUPER_ADMIN'], guards: ['reason_given'] },
+  // R-43: a Coordinator reviews their own Unit's actions as a Super Admin does — accepting
+  // or reopening a "not possible", and disapproving a closure (`VERIFIED → REOPENED`).
+  // Approving a closure moves no status, so it has no edge here.
+  { from: 'ACTION_SUBMITTED', to: 'VERIFIED', actors: ['SUPER_ADMIN', 'COORDINATOR'] },
+  { from: 'ACTION_SUBMITTED', to: 'REOPENED', actors: ['SUPER_ADMIN', 'COORDINATOR'], guards: ['reason_given'] },
+  { from: 'NOT_POSSIBLE', to: 'VERIFIED', actors: ['SUPER_ADMIN', 'COORDINATOR'] },
+  { from: 'NOT_POSSIBLE', to: 'REOPENED', actors: ['SUPER_ADMIN', 'COORDINATOR'], guards: ['reason_given'] },
   { from: 'REOPENED', to: 'ACTION_SUBMITTED', actors: ['ZONE_LEADER'] },
   { from: 'REOPENED', to: 'NOT_POSSIBLE', actors: ['ZONE_LEADER'], guards: ['reason_given'] },
-  { from: 'VERIFIED', to: 'REOPENED', actors: ['SUPER_ADMIN'], guards: ['reason_given'] },
+  { from: 'VERIFIED', to: 'REOPENED', actors: ['SUPER_ADMIN', 'COORDINATOR'], guards: ['reason_given'] },
 
   /**
    * R-31: the finding was withdrawn because the mark it rested on was corrected.

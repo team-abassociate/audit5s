@@ -11,9 +11,11 @@ export type {
   ReportPayload,
   ReportPhoto,
   ReportQuestion,
+  ReportReview,
   ReportSummaryExtras,
   ReportZone,
   SectionScorePayload,
+  Role,
 } from '@audit5s/contracts';
 
 /** The band shape as frozen on a payload — structurally the domain's `RatingBand`. */

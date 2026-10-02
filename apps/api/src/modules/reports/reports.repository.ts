@@ -23,6 +23,7 @@ import type {
   ReportKind,
   ReportPayload,
   ReportStatus,
+  Role,
 } from '@audit5s/contracts';
 import { COMPLETED_AUDIT_STATUSES, type ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../common/repository/base.repository';
@@ -414,6 +415,12 @@ export class ReportsRepository extends BaseRepository {
         afterObjectKey: evidence.objectKey,
         afterRedactedAt: evidence.redactedAt,
         afterCapturedAt: evidence.capturedAt,
+        // R-43: the latest attempt's review — an approval beside the answer, or the
+        // disapproval that reopened it — with the reviewer through 0041's definer function.
+        reviewOutcome: correctiveActionSubmissions.reviewOutcome,
+        reviewedAt: correctiveActionSubmissions.reviewedAt,
+        reviewComment: correctiveActionSubmissions.reviewComment,
+        reviewer: sql<{ name: string; role: Role } | null>`app_reviewer(${correctiveActionSubmissions.reviewedByUserId})`,
       })
       .from(correctiveActions)
       .leftJoin(

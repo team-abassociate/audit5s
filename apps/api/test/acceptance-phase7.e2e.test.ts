@@ -212,7 +212,9 @@ describe('Phase 7 acceptance', () => {
         `${base}/corrective-actions/${link.correctiveActionId}/verify`,
         { token: superAdmin, body: { comment: 'Confirmed on the floor.' } },
       );
-      expect(verified.status, JSON.stringify(verified.body)).toBe(409);
+      // R-43: approving the closure is optional and records who checked it.
+      expect(verified.status, JSON.stringify(verified.body)).toBe(200);
+      expect((verified.body as CorrectiveActionDetail).verifiedByUserId).toBe(world.actors.SUPER_ADMIN.userId);
 
       // ------------------------------- 4. …and regenerates as an After-Evidence v2
       //
@@ -247,7 +249,9 @@ describe('Phase 7 acceptance', () => {
       expect(v2Html).toContain('class="nc-answer"');
       expect(v2Html).toContain('AFTER PHOTO');
       expect(v2Html).toContain('Submitted by R. Deshmukh');
-      expect(v2Html).toContain('✓ VERIFIED');
+      // R-43: closed, not verified — and the approval above is printed beside it.
+      expect(v2Html).toContain('✓ CLOSED');
+      expect(v2Html).toMatch(/Approved by [^<]+ \(Super Admin\)/);
       expect(v2Html).toContain('PENDING');
       expect(v2Html).toContain('Closure summary');
 

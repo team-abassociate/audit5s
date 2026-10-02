@@ -457,7 +457,8 @@ function UnitContext({ unitId }: { unitId: string }) {
   const funnel = [
     { stage: 'Open', count: closure.data.opened },
     { stage: 'Submitted', count: closure.data.submitted },
-    { stage: 'Verified', count: closure.data.resolved },
+    // R-43: resolved is closed — a Zone Leader's closure counts whether or not anyone approved it.
+    { stage: 'Closed', count: closure.data.resolved },
   ];
 
   return (

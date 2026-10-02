@@ -35,7 +35,7 @@ import {
   CorrectiveActionsRepository,
   type CorrectiveActionRow,
   type CorrectiveActionWork,
-  type SubmissionRow,
+  type ReviewedSubmissionRow,
 } from './corrective-actions.repository';
 
 /**
@@ -529,7 +529,10 @@ export class CorrectiveActionsService {
 
   // ------------------------------------------------------------------------- review
 
-  /** `ACTION_SUBMITTED | NOT_POSSIBLE → VERIFIED` (§7.3). May close the audit. */
+  /**
+   * `ACTION_SUBMITTED | NOT_POSSIBLE → VERIFIED` (§7.3), which may close the audit — or, on
+   * a Zone Leader's closure nobody has approved, the approval itself (R-43).
+   */
   async verify(
     scope: ScopeContext,
     actionId: string,
@@ -539,7 +542,11 @@ export class CorrectiveActionsService {
     return this.get(scope, actionId);
   }
 
-  /** `→ REOPENED`, reason required, every prior attempt kept (§7.3). */
+  /**
+   * `→ REOPENED`, reason required, every prior attempt kept (§7.3). On a closure this is
+   * R-43's *disapprove*: the attempt is recorded as reopened, its photo leaves the next
+   * after-evidence report, and the Zone Leader answers again.
+   */
   async reopen(
     scope: ScopeContext,
     actionId: string,
@@ -591,6 +598,44 @@ export class CorrectiveActionsService {
         );
       }
 
+      /*
+       * R-43: approving a Zone Leader's closure.
+       *
+       * The closure already settled the item (R-23), so approval moves no status and has no
+       * edge in the table: it records who looked, on the action (`verified_by_user_id`) and on
+       * the attempt (CA-1's review columns, once). An approved closure is approved; asking
+       * again is a conflict rather than a second, silently ignored verdict.
+       */
+      if (current.status === 'VERIFIED' && outcome === 'VERIFIED') {
+        const attempt = current.verifiedByUserId === null ? await unit.latestUnreviewed(actionId) : null;
+        if (!attempt) {
+          throw AppError.conflict(
+            'INVALID_STATE_TRANSITION',
+            'This corrective action has already been reviewed; there is no closure to approve.',
+          );
+        }
+        const approved = await unit.moveAction(
+          actionId,
+          { status: 'VERIFIED', version: current.version },
+          { verifiedByUserId: scope.actor.userId },
+        );
+        if (!approved) throw this.versionConflict();
+        await unit.recordReview(attempt.id, 'VERIFIED', note);
+
+        await this.events.emit(unit.tx, {
+          type: 'CORRECTIVE_ACTION_VERIFIED',
+          actorUserId: scope.actor.userId,
+          unitId: current.unitId,
+          resourceType: 'corrective_action',
+          resourceId: actionId,
+          userIds: [
+            ...new Set([current.assignedZoneLeaderUserId, attempt.submittedByUserId].filter(isString)),
+          ],
+          data: describe(current),
+        });
+        return;
+      }
+
       try {
         assertTransition('corrective_action', current.status, outcome, {
           role: scope.actor.role,
@@ -624,7 +669,10 @@ export class CorrectiveActionsService {
         await unit.recordReview(attempt.id, outcome, note);
       }
 
-      await this.rollup(unit, current.auditId, scope.actor.role);
+      // As the system (R-23): the `audit` row's RLS admits a Super Admin or the auditor, not
+      // a Coordinator reviewing their Unit's action (R-43). The edge check below still runs
+      // as the reviewer — `CLOSED → PARTIALLY_CLOSED` is a person's, and names who may.
+      await unit.asSystem(() => this.rollup(unit, current.auditId, scope.actor.role));
 
       await this.events.emit(unit.tx, {
         type: outcome === 'VERIFIED' ? 'CORRECTIVE_ACTION_VERIFIED' : 'CORRECTIVE_ACTION_REOPENED',
@@ -645,7 +693,12 @@ export class CorrectiveActionsService {
       resourceId: actionId,
       unitId: before.unitId,
       before: { status: before.status },
-      after: { status: outcome, ...(note ? { note } : {}) },
+      after: {
+        status: outcome,
+        // R-43: an approval leaves the status where it was, so the log says what happened.
+        ...(before.status === 'VERIFIED' && outcome === 'VERIFIED' ? { approved: true } : {}),
+        ...(note ? { note } : {}),
+      },
     });
   }
 
@@ -796,6 +849,7 @@ export function toCorrectiveAction(row: CorrectiveActionRow): CorrectiveAction {
     lastSubmittedAt: row.lastSubmittedAt?.toISOString() ?? null,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     verifiedByUserId: row.verifiedByUserId,
+    verifiedByName: row.verifiedByName,
     closedByName: row.closedByName,
     reopenCount: row.reopenCount,
     version: row.version,
@@ -813,7 +867,7 @@ export function toCorrectiveAction(row: CorrectiveActionRow): CorrectiveAction {
   };
 }
 
-export function toSubmission(row: SubmissionRow): CorrectiveActionSubmission {
+export function toSubmission(row: ReviewedSubmissionRow): CorrectiveActionSubmission {
   return {
     id: row.id,
     correctiveActionId: row.correctiveActionId,
@@ -827,6 +881,8 @@ export function toSubmission(row: SubmissionRow): CorrectiveActionSubmission {
     submittedVia: row.submittedVia as SubmissionChannel,
     reviewOutcome: row.reviewOutcome as CorrectiveActionSubmission['reviewOutcome'],
     reviewedByUserId: row.reviewedByUserId,
+    ...(row.reviewedByName !== undefined ? { reviewedByName: row.reviewedByName } : {}),
+    ...(row.reviewedByRole !== undefined ? { reviewedByRole: row.reviewedByRole } : {}),
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
     reviewComment: row.reviewComment,
     createdAt: row.createdAt.toISOString(),

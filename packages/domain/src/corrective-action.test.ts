@@ -7,6 +7,8 @@ import {
   rollupAuditStatus,
   rollupPath,
   submissionTarget,
+  isUnapprovedClosure,
+  isReviewable,
 } from './corrective-action';
 import { canTransition } from './state-machine';
 
@@ -147,5 +149,42 @@ describe('corrective-action helpers', () => {
     expect(isOverdue('OPEN', past, now)).toBe(true);
     expect(isOverdue('ACTION_SUBMITTED', past, now)).toBe(false);
     expect(isOverdue('OPEN', null, now)).toBe(false);
+  });
+});
+
+describe('R-43 — a closure is closed, and reviewing it is optional', () => {
+  it('calls a VERIFIED action nobody approved an unapproved closure', () => {
+    expect(isUnapprovedClosure('VERIFIED', null)).toBe(true);
+    expect(isUnapprovedClosure('VERIFIED', '00000000-0000-7000-8000-000000000001')).toBe(false);
+    expect(isUnapprovedClosure('NOT_POSSIBLE', null)).toBe(false);
+    expect(isUnapprovedClosure('REOPENED', null)).toBe(false);
+  });
+
+  it('puts a required review and an optional approval on the reviewer’s list, nothing else', () => {
+    expect(isReviewable('NOT_POSSIBLE', null)).toBe(true);
+    expect(isReviewable('ACTION_SUBMITTED', null)).toBe(true);
+    expect(isReviewable('VERIFIED', null)).toBe(true);
+    expect(isReviewable('VERIFIED', '00000000-0000-7000-8000-000000000001')).toBe(false);
+    expect(isReviewable('OPEN', null)).toBe(false);
+    expect(isReviewable('REOPENED', null)).toBe(false);
+    expect(isReviewable('WITHDRAWN', null)).toBe(false);
+  });
+
+  it('still counts an unapproved closure as settled', () => {
+    expect(isSettled('VERIFIED')).toBe(true);
+    expect(rollupAuditStatus(['VERIFIED'])).toBe('CLOSED');
+  });
+});
+
+describe('R-43 — the review edges a Coordinator may take', () => {
+  const coordinator = { role: 'COORDINATOR' as const, satisfied: ['reason_given' as const] };
+  it('accepts or reopens a "not possible", and disapproves a closure', () => {
+    expect(canTransition('corrective_action', 'NOT_POSSIBLE', 'VERIFIED', coordinator).allowed).toBe(true);
+    expect(canTransition('corrective_action', 'NOT_POSSIBLE', 'REOPENED', coordinator).allowed).toBe(true);
+    expect(canTransition('corrective_action', 'VERIFIED', 'REOPENED', coordinator).allowed).toBe(true);
+  });
+  it('never answers one itself', () => {
+    expect(canTransition('corrective_action', 'OPEN', 'VERIFIED', coordinator).allowed).toBe(false);
+    expect(canTransition('corrective_action', 'OPEN', 'NOT_POSSIBLE', coordinator).allowed).toBe(false);
   });
 });

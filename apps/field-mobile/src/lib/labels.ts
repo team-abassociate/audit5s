@@ -1,4 +1,4 @@
-import type { AuditStatus, AuditType, Role, UserStatus } from '@audit5s/contracts';
+import type { AuditStatus, AuditType, CorrectiveActionStatus, Role, UserStatus } from '@audit5s/contracts';
 import type { Band } from './gemba';
 
 /** Words for the enums, in one place, so a status reads the same on every screen. */
@@ -50,6 +50,31 @@ export const AUDIT_STATUS_TONE: Record<AuditStatus, Tone> = {
 };
 
 /**
+ * A corrective action's status in words (R-43).
+ *
+ * VERIFIED reads **Closed**: since R-23 a Zone Leader's after-photo closes the item with
+ * nobody verifying it, and calling that "verified" claimed an inspection that never happened.
+ * Whether a reviewer approved it is said beside the status, not folded into it.
+ */
+export const ACTION_STATUS_LABELS: Record<CorrectiveActionStatus, string> = {
+  OPEN: 'Open',
+  ACTION_SUBMITTED: 'Submitted',
+  NOT_POSSIBLE: 'Not possible',
+  VERIFIED: 'Closed',
+  REOPENED: 'Reopened',
+  WITHDRAWN: 'Withdrawn',
+};
+
+export const ACTION_STATUS_TONE: Record<CorrectiveActionStatus, Tone> = {
+  OPEN: 'muted',
+  ACTION_SUBMITTED: 'warn',
+  NOT_POSSIBLE: 'warn',
+  VERIFIED: 'ok',
+  REOPENED: 'crit',
+  WITHDRAWN: 'muted',
+};
+
+/**
  * Finished, in the sense §7.1 means it.
  *
  * An audit rarely *rests* on `COMPLETED` — materialising its corrective actions rolls it
@@ -58,6 +83,14 @@ export const AUDIT_STATUS_TONE: Record<AuditStatus, Tone> = {
  */
 export function isFinished(status: string): boolean {
   return ['COMPLETED', 'CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED', 'CLOSED'].includes(status);
+}
+
+/**
+ * Somebody is actually auditing it. `?active=true` also returns ASSIGNED and READY (selfie
+ * taken, nothing answered), which are waiting rather than running.
+ */
+export function isRunning(status: string): boolean {
+  return status === 'IN_PROGRESS' || status === 'PAUSED';
 }
 
 /** `ACTION_SUBMITTED` → "Action submitted", for enums with no hand-written label. */

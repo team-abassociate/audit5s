@@ -86,9 +86,11 @@ export function rollupPath(from: AuditStatus, to: RollupStatus): Transition<Audi
 }
 
 /**
- * Option A closes the item at once (R-23): an answer with a live after-photo is the fix, and
- * there is no review step in front of it. Option B still lands on NOT_POSSIBLE, where a
- * Super Admin accepts or reopens it, because nothing was fixed.
+ * Option A closes the item at once (R-23): an answer with an after-photo is the fix, and no
+ * review step stands in front of it. The status is VERIFIED, but nobody has verified it —
+ * R-43 calls it *closed*, and a reviewer may approve or disapprove it afterwards. Option B
+ * still lands on NOT_POSSIBLE, where a Coordinator or Super Admin accepts or reopens it,
+ * because nothing was fixed.
  */
 export function submissionTarget(option: CorrectiveOption): CorrectiveActionStatus {
   return option === 'COMPLETED' ? 'VERIFIED' : 'NOT_POSSIBLE';
@@ -102,6 +104,29 @@ export function awaitsResponse(status: CorrectiveActionStatus): boolean {
 /** The Super Admin's to-do: an attempt waiting to be verified or reopened. */
 export function awaitsReview(status: CorrectiveActionStatus): boolean {
   return status === 'ACTION_SUBMITTED' || status === 'NOT_POSSIBLE';
+}
+
+/**
+ * R-43: a Zone Leader's closure nobody has approved yet.
+ *
+ * It is closed — settled, counted in every closure figure, printed in the after-evidence
+ * report — and it is **not** verified: nobody but the person who did the work has looked
+ * at it. A Coordinator or Super Admin may approve it (`verifiedByUserId` is then theirs) or
+ * disapprove it, which reopens it. Neither is required.
+ */
+export function isUnapprovedClosure(
+  status: CorrectiveActionStatus,
+  verifiedByUserId: string | null,
+): boolean {
+  return status === 'VERIFIED' && verifiedByUserId === null;
+}
+
+/** R-43: what a reviewer may act on — a required review, or an optional approval. */
+export function isReviewable(
+  status: CorrectiveActionStatus,
+  verifiedByUserId: string | null,
+): boolean {
+  return awaitsReview(status) || isUnapprovedClosure(status, verifiedByUserId);
 }
 
 export function isOverdue(

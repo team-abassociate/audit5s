@@ -910,15 +910,25 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   {
     method: 'POST',
     path: '/api/v1/corrective-actions/:correctiveActionId/verify',
-    description: 'corrective_action:verify — Super Admin only; may close the audit',
-    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    description:
+      'corrective_action:verify — a Super Admin, or the Coordinator of the Unit (R-43); ' +
+      'accepts a "not possible" (may close the audit) or approves a closure',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
     coveredBy: 'corrective-actions.e2e.test.ts',
   },
   {
     method: 'POST',
     path: '/api/v1/corrective-actions/:correctiveActionId/reopen',
-    description: 'corrective_action:reopen — Super Admin only, reason required, attempts kept',
-    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    description:
+      'corrective_action:reopen — a Super Admin, or the Coordinator of the Unit (R-43); ' +
+      'disapproves, reason required, attempts kept',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
     coveredBy: 'corrective-actions.e2e.test.ts',
   },
   {
