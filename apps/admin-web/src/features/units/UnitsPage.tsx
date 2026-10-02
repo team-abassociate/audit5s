@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { Button, Card, CardHeader, ErrorNotice, Field, Input, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { UnitZones } from '@/features/zones/UnitZones';
+import { rowToggleProps } from '@/features/audits/AuditsPage';
 import { UnitDetail } from './UnitDetail';
 
 export function UnitsPage() {
@@ -112,7 +113,7 @@ function UnitRow({
 
   return (
     <Fragment>
-      <tr>
+      <tr {...rowToggleProps(onToggle)}>
         <Td>
           <button
             type="button"

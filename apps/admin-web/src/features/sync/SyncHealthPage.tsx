@@ -15,6 +15,7 @@ import {
   Td,
   Th,
 } from '@/components/ui';
+import { rowToggleProps } from '@/features/audits/AuditsPage';
 
 /**
  * Sync health (PART 14, Phase 4's Web row): devices, the conflict queue, and what each
@@ -186,7 +187,7 @@ function ConflictRow({
 
   return (
     <>
-      <tr className="cursor-pointer hover:bg-board" onClick={onToggle}>
+      <tr className="cursor-pointer hover:bg-board" onClick={rowToggleProps(onToggle).onClick}>
         <Td className="whitespace-nowrap">
           {new Date(conflict.createdAt).toLocaleString()}
         </Td>

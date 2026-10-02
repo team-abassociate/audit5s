@@ -521,6 +521,8 @@ describe('reading and downloading', () => {
     expect(download.url).toContain('http');
     expect(download.expiresIn).toBeLessThanOrEqual(300);
     expect(download.checksumSha256).toBe('c'.repeat(64));
+    // Saved under what it is, not under the storage key's `v1.pdf`.
+    expect((response.body as { fileName: string }).fileName).toMatch(/ - Initial - .+ - v1\.pdf$/);
   }, 120_000);
 });
 

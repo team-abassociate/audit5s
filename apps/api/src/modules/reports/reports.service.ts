@@ -18,8 +18,9 @@ import { CONFIG, type AppConfig } from '../../config/env';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
-import { freezePayload } from './report-payload';
+import { reportFileName } from './report-file-name';
 import { reportSubject } from './report-subject';
+import { freezePayload } from './report-payload';
 import { ReportTokensService, type MintedTokens } from './report-tokens.service';
 import { ReportsRepository, type ReportSnapshotRow } from './reports.repository';
 import { TEMPLATE_VERSION } from './templates/version';
@@ -498,6 +499,7 @@ export class ReportsService {
       url: download.url,
       expiresIn: download.expiresIn,
       checksumSha256: snapshot.pdfChecksumSha256,
+      fileName: reportFileName(snapshot.payload),
     };
   }
 
