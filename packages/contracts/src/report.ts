@@ -296,6 +296,23 @@ export type ReportPayload = z.infer<typeof reportPayloadSchema>;
 
 // ------------------------------------------------------------------------ the snapshot
 
+/**
+ * What a report is *about*, read from its frozen payload — so the history names a report
+ * exactly as the PDF does, and a row reads `Nashik Plant · Zone 2 — Press · audited 30 Sep`
+ * rather than one more "Initial Zone report v2".
+ */
+export const reportSubjectSchema = z.object({
+  unitName: z.string(),
+  /** A Zone report's Zone, as the report names it (`zoneDisplayLabel`). Null on a summary. */
+  zoneLabel: z.string().nullable(),
+  zoneCount: z.number().int().nonnegative(),
+  auditorNames: z.array(z.string()),
+  /** When the audited work finished: one instant for a Zone report, a span for a summary. */
+  auditedFrom: isoDateTimeSchema.nullable(),
+  auditedTo: isoDateTimeSchema.nullable(),
+});
+export type ReportSubject = z.infer<typeof reportSubjectSchema>;
+
 export const reportSnapshotSchema = z.object({
   id: uuidSchema,
   kind: reportKindSchema,
@@ -325,6 +342,7 @@ export const reportSnapshotSchema = z.object({
   failedReason: z.string().nullable(),
   /** When it was CANCELLED or REMOVED; null otherwise. */
   withdrawnAt: isoDateTimeSchema.nullable(),
+  subject: reportSubjectSchema,
 });
 export type ReportSnapshot = z.infer<typeof reportSnapshotSchema>;
 

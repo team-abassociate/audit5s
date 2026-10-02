@@ -42,6 +42,41 @@ const finishedAudit = {
 };
 const generated = [];
 
+/** A report as `GET /reports` returns it: named by its `subject`, read from the payload. */
+function snapshot({ subject = {}, ...overrides }) {
+  return {
+    supersedesSnapshotId: null,
+    unitId: ids.unit,
+    auditId: ids.audit,
+    auditZoneId: null,
+    selectedZoneIds: null,
+    selectedAuditZoneIds: null,
+    assignmentGroupId: null,
+    payloadSchemaVersion: 1,
+    templateVersion: '1',
+    status: 'READY',
+    pdfObjectKey: null,
+    pdfChecksumSha256: null,
+    pageCount: 2,
+    generatedByUserId: ids.user,
+    generatedByName: 'Sam Admin',
+    generatedAt: now,
+    renderedAt: now,
+    failedReason: null,
+    withdrawnAt: null,
+    ...overrides,
+    subject: {
+      unitName: 'Nashik Plant',
+      zoneLabel: 'Zone 1 — Press shop',
+      zoneCount: 1,
+      auditorNames: ['Priya Nair'],
+      auditedFrom: now,
+      auditedTo: now,
+      ...subject,
+    },
+  };
+}
+
 await ready();
 const browser = await chromium.launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
@@ -106,17 +141,7 @@ await page.route('**/api/v1/**', async (route) => {
   }
   if (path === '/api/v1/reports') {
     return json({
-      data: [{
-        id: ids.report,
-        kind: 'INITIAL_ZONE',
-        version: 1,
-        supersedesSnapshotId: null,
-        generatedAt: now,
-        generatedByName: 'Sam Admin',
-        status: 'READY',
-        pageCount: 2,
-        failedReason: null,
-      }],
+      data: [snapshot({ id: ids.report, kind: 'INITIAL_ZONE', version: 1, auditZoneId: ids.auditZoneOne })],
       nextCursor: null,
     });
   }
@@ -144,7 +169,18 @@ await page.route('**/api/v1/**', async (route) => {
     return route.fulfill({
       status: 202,
       contentType: 'application/json',
-      body: JSON.stringify({ id: ids.report, version: 2, kind: 'MULTI_ZONE_SUMMARY' }),
+      body: JSON.stringify(
+        snapshot({
+          id: '00000000-0000-4000-8000-000000000009',
+          kind: 'MULTI_ZONE_SUMMARY',
+          version: 1,
+          status: 'QUEUED',
+          auditId: null,
+          auditZoneId: null,
+          selectedAuditZoneIds: [ids.auditZoneTwo],
+          subject: { zoneLabel: null, zoneCount: 1 },
+        }),
+      ),
     });
   }
   if (path === `/api/v1/units/${ids.unit}/zones`) {
@@ -203,16 +239,31 @@ try {
   // The shell's topbar carries the page's h1 (GEMBA-BOARD.md §5) and the section below it
   // has its own heading, so the level is what makes this unambiguous.
   await page.getByRole('heading', { name: 'Reports', level: 1 }).waitFor();
-  await page.getByRole('cell', { name: 'Initial Zone report' }).waitFor();
-  await page.getByRole('button', { name: 'Links' }).click();
-  await page.getByRole('heading', { name: 'Links — Initial Zone report v1' }).waitFor();
+  // The library names a report by what it covers, filed under the audit it came from.
+  await page.getByText('Zone 1 — Press shop').waitFor();
+  await page.getByText(/Audit finished .* · Priya Nair/).waitFor();
+  // Secondary actions sit behind one menu per row; Links opens over the list, not below it.
+  await page.getByRole('button', { name: 'More actions for v1' }).click();
+  await page.getByRole('menuitem', { name: 'Links in this report' }).click();
+  await page.getByRole('heading', { name: 'Links — v1' }).waitFor();
+  await page.getByText('This report prints no links.').waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('heading', { name: 'Links — v1' }).waitFor({ state: 'hidden' });
+
+  // One New report dialog: the kind, then the scope. The summary names its Unit itself.
+  await page.getByRole('button', { name: '+ New report' }).first().click();
+  await page.getByRole('heading', { name: 'New report' }).waitFor();
+  await page.getByRole('radio', { name: /Unit summary/ }).check();
+  await page.getByRole('combobox', { name: 'Unit' }).click();
+  await page.getByRole('option', { name: 'Nashik Plant' }).click();
 
   // The unit summary is chosen audited Zone by audited Zone, not handed every Zone.
-  await page.getByRole('button', { name: 'Generate unit summary report' }).click();
   await page.getByText('Priya Nair · 2 Zones').waitFor();
   await page.getByRole('checkbox', { name: /Stores/ }).check();
   await page.getByRole('button', { name: 'Generate summary of 1 Zone' }).click();
-  await page.getByText(/Summary of 1 Zone queued/).waitFor();
+  // The dialog closes and the slip says what was queued, in the report's own name.
+  await page.getByText('Report queued').waitFor();
+  await page.getByText(/Nashik Plant · Unit summary of 1 Zone/).waitFor();
   assert.deepEqual(generated, [
     { kind: 'MULTI_ZONE_SUMMARY', unitId: ids.unit, selectedAuditZoneIds: [ids.auditZoneTwo] },
   ]);

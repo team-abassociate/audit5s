@@ -1195,6 +1195,298 @@ body {
     transform: translateY(-4px);
   }
 }
+/* ==========================================================================
+   DIALOG — GEMBA-BOARD.md §6: native <dialog>, 2px ink border, 6px hard shadow,
+   label-above-field, actions right-aligned (secondary then primary).
+   ========================================================================== */
+.gb-dialog {
+  border: 2px solid var(--edge);
+  background: var(--tile);
+  color: var(--ink);
+  box-shadow: 6px 6px 0 var(--hard);
+  padding: 0;
+  width: calc(100% - 32px);
+  max-width: 520px;
+  max-height: calc(100vh - 16vh);
+  /* Pinned near the top, not centred: a dialog whose body changes height — a kind of
+     report chosen, a list loaded — keeps its controls where the pointer left them. */
+  margin: 8vh auto auto;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--motion) ease-out,
+    transform var(--motion) cubic-bezier(0.23, 1, 0.32, 1);
+  @starting-style {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.gb-dialog--wide {
+  max-width: 760px;
+}
+.gb-dialog::backdrop {
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+.gb-dialog-body {
+  padding: 0 0 18px;
+}
+.gb-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px 12px;
+  border-bottom: 2px solid var(--edge);
+}
+.gb-dialog-head p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.gb-dialog-close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 15px;
+  background: var(--tile);
+  color: var(--ink);
+  border: 1.5px solid var(--edge);
+  box-shadow: 2px 2px 0 var(--hard);
+  cursor: pointer;
+  transition: box-shadow var(--motion) ease-out, transform var(--motion) ease-out;
+}
+.gb-dialog-close:active {
+  box-shadow: 0 0 0 var(--hard);
+  transform: translate(2px, 2px);
+}
+.gb-dialog-section {
+  padding: 14px 18px 0;
+}
+.gb-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 18px 0;
+}
+/* The summary picker's own buttons, inside the dialog, sit where every dialog's do. */
+.gb-dialog .gb-picker-actions {
+  justify-content: flex-end;
+}
+.gb-dialog-actions .gb-hint {
+  margin-right: auto;
+}
+
+/* The choice between the two kinds of report: two magnets, one pressed. */
+.gb-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+.gb-choice label {
+  display: block;
+  cursor: pointer;
+  background: var(--tile);
+  border: 1.5px solid var(--edge);
+  box-shadow: 2px 2px 0 var(--hard);
+  padding: 10px 12px;
+  transition: box-shadow var(--motion) ease-out, transform var(--motion) ease-out;
+}
+.gb-choice label:has(input:checked) {
+  background: var(--tile-2);
+  box-shadow: 0 0 0 var(--hard);
+  transform: translate(2px, 2px);
+  outline: 2px solid var(--edge);
+}
+.gb-choice label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.gb-choice input {
+  margin-right: 6px;
+  accent-color: var(--ink);
+}
+.gb-choice b {
+  font-size: 13.5px;
+}
+.gb-choice span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+/* ==========================================================================
+   ROW MENU — a row's secondary actions. Fixed at the trigger, so the table's own
+   scroll container cannot clip it; scales from the trigger's corner.
+   ========================================================================== */
+.gb-menu-trigger {
+  padding: 6px 9px;
+  line-height: 1;
+}
+.gb-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 190px;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--tile);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+  transform-origin: top right;
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity var(--motion) ease-out,
+    transform var(--motion) cubic-bezier(0.23, 1, 0.32, 1);
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.gb-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  cursor: pointer;
+}
+.gb-menu-item:hover:not(:disabled),
+.gb-menu-item:focus-visible {
+  background: var(--tile-2);
+  outline: none;
+  box-shadow: inset 3px 0 0 var(--edge);
+}
+.gb-menu-item:disabled {
+  color: var(--ink-2);
+  cursor: not-allowed;
+}
+.gb-menu-item--danger {
+  color: var(--crit);
+}
+li:has(> .gb-menu-item--danger) {
+  border-top: 1px solid var(--edge-soft);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+/* ==========================================================================
+   REPORT LIBRARY — the issued reports, filed under the audit or Unit they cover.
+   ========================================================================== */
+.gb-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--edge-soft);
+}
+.gb-filters .gb-field {
+  min-width: 150px;
+}
+.gb-filters-search {
+  flex: 1 1 220px;
+}
+.gb-filters-count {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  padding-bottom: 8px;
+}
+.gb-tablewrap tr.gb-group td {
+  background: var(--tile-2);
+  border-top: 2px solid var(--edge);
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.gb-tablewrap tbody tr.gb-group:first-child td {
+  border-top: 0;
+}
+.gb-tablewrap tbody tr.gb-group:hover td {
+  background: var(--tile-2);
+}
+.gb-group-title {
+  font-weight: 800;
+  font-stretch: 110%;
+  font-size: 13.5px;
+}
+.gb-group-meta {
+  margin-left: 8px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.gb-doc-title {
+  font-weight: 600;
+}
+.gb-tablewrap tr.gb-row--earlier td {
+  background: var(--board);
+  color: var(--ink-2);
+}
+.gb-tablewrap tr.gb-row--earlier td:first-child {
+  padding-left: 34px;
+}
+.gb-earlier-toggle {
+  margin-top: 3px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.gb-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.gb-tablewrap tr.gb-row-confirm td {
+  background: var(--tile-2);
+  border-bottom: 2px solid var(--edge);
+}
+.gb-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 10px;
+  font-size: 13px;
+}
+.gb-confirm p {
+  margin: 0 auto 0 0;
+}
+.gb-empty {
+  padding: 28px 14px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.gb-slip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.gb-slip .gb-btn {
+  background: var(--tile);
+}
+
 /* A notification's target: tinted on arrival, then settles into the table. */
 .gb-tablewrap tr.gb-row--target td {
   animation: gb-arrive 2.4s ease-out both;

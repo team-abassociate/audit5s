@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   ButtonHTMLAttributes,
   ComponentProps,
@@ -99,12 +99,15 @@ export function Combobox({
   value,
   onChange,
   options,
+  keepOrder = false,
   className,
   ...props
 }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'list'> & {
   value: string;
   onChange: (id: string) => void;
   options: Array<{ id: string; label: string }>;
+  /** Keep the caller's order — newest first, say — instead of sorting by label. */
+  keepOrder?: boolean;
 }) {
   const listId = useId();
   const selectedLabel = options.find((option) => option.id === value)?.label ?? '';
@@ -116,10 +119,13 @@ export function Combobox({
   const [typing, setTyping] = useState(false);
   const matches = useMemo(() => {
     const query = typing ? text.trim().toLocaleLowerCase() : '';
-    return options
-      .filter((option) => option.label.toLocaleLowerCase().includes(query))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [options, text]);
+    const words = query.split(/\s+/).filter(Boolean);
+    const found = options.filter((option) => {
+      const label = option.label.toLocaleLowerCase();
+      return words.every((word) => label.includes(word));
+    });
+    return keepOrder ? found : found.sort((a, b) => a.label.localeCompare(b.label));
+  }, [options, text, typing, keepOrder]);
 
   // The selection can arrive from outside — a default that lands with its query.
   useEffect(() => setText(selectedLabel), [selectedLabel]);
@@ -324,4 +330,194 @@ export function ErrorNotice({ error }: { error: unknown }) {
 
 export function Spinner({ label = 'Loading…' }: { label?: string }) {
   return <p className="gb-label" style={{ padding: '18px 2px' }}>{label}</p>;
+}
+
+/**
+ * A modal, from the native `<dialog>` (§6 "Dialog"): 2px ink border, 6px hard shadow,
+ * label-above-field, actions right-aligned. Escape and a click on the scrim close it; focus
+ * is trapped and returned by the browser, which is why it is `showModal()` and not a div.
+ */
+export function Dialog({
+  open,
+  onClose,
+  title,
+  description,
+  wide = false,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  description?: ReactNode;
+  wide?: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      className={cn('gb-dialog', wide && 'gb-dialog--wide')}
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      // A press on the scrim lands on the dialog element itself, never on its content.
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      {open ? (
+        <div className="gb-dialog-body">
+          <header className="gb-dialog-head">
+            <div className="min-w-0">
+              <h2 id={titleId} className="gb-h2">
+                {title}
+              </h2>
+              {description ? <p>{description}</p> : null}
+            </div>
+            <button type="button" className="gb-dialog-close" onClick={onClose} aria-label="Close">
+              ✕
+            </button>
+          </header>
+          {children}
+        </div>
+      ) : null}
+    </dialog>
+  );
+}
+
+export interface MenuItem {
+  label: string;
+  onSelect: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+  hint?: string;
+}
+
+/**
+ * A row's secondary actions behind one "⋯" button, so a table of forty reports shows forty
+ * Download buttons rather than a hundred and sixty buttons, forty of them red.
+ *
+ * The list is `position: fixed` at the trigger's corner rather than absolute inside the row:
+ * a table scrolls inside its own `overflow-x: auto` container (§5), which would clip it.
+ * It scales in from the trigger's corner (origin-aware), closes on Escape, a press outside,
+ * a scroll or a choice, and hands focus back to the trigger.
+ */
+export function ActionMenu({ label, items }: { label: string; items: MenuItem[] }) {
+  const [at, setAt] = useState<{ top: number; right: number } | null>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const menuId = useId();
+  const open = at !== null;
+
+  const close = (refocus = true) => {
+    setAt(null);
+    if (refocus) trigger.current?.focus();
+  };
+
+  const show = () => {
+    const rect = trigger.current?.getBoundingClientRect();
+    if (!rect) return;
+    setAt({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+  };
+
+  // A menu near the bottom of the window opens upwards instead of off-screen.
+  useLayoutEffect(() => {
+    const menu = list.current;
+    const rect = trigger.current?.getBoundingClientRect();
+    if (!open || !menu || !rect) return;
+    if (rect.bottom + 4 + menu.offsetHeight > window.innerHeight - 8) {
+      menu.style.top = `${Math.max(8, rect.top - 4 - menu.offsetHeight)}px`;
+      menu.style.transformOrigin = 'bottom right';
+    }
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!list.current?.contains(target) && !trigger.current?.contains(target)) close(false);
+    };
+    const onScroll = () => close(false);
+    window.addEventListener('pointerdown', onPointer);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('pointerdown', onPointer);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    const buttons = [...(list.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      buttons[(index + step + buttons.length) % buttons.length]?.focus();
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        className="gb-btn gb-menu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={label}
+        title={label}
+        onClick={() => (open ? close() : show())}
+      >
+        ⋯
+      </button>
+      {open ? (
+        <ul
+          ref={list}
+          id={menuId}
+          role="menu"
+          aria-label={label}
+          className="gb-menu"
+          style={{ top: at.top, right: at.right }}
+          onKeyDown={onKeyDown}
+        >
+          {items.map((item) => (
+            <li key={item.label} role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className={cn('gb-menu-item', item.danger && 'gb-menu-item--danger')}
+                disabled={item.disabled}
+                title={item.hint}
+                onClick={() => {
+                  close();
+                  item.onSelect();
+                }}
+              >
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
+  );
 }

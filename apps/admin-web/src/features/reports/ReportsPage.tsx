@@ -1,311 +1,439 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { zoneDisplayLabel } from '@audit5s/domain';
-import {
-  type Audit,
-  type AuditDetail,
-  type Page,
-  type ReportAccessToken,
-  type ReportDownloadUrl,
-  type ReportKind,
-  type ReportSnapshot,
-  type Unit,
-} from '@audit5s/contracts';
+import type { ReportAccessToken, ReportDownloadUrl, ReportSnapshot } from '@audit5s/contracts';
 import { api, ApiError, fetchAll } from '@/lib/api';
-import { PreviewButton, SummaryZonePicker } from './SummaryZonePicker';
 import { useSession } from '@/lib/session';
+import { cn } from '@/lib/cn';
+import { NewReportDialog, type NewReportPreset } from './NewReportDialog';
 import {
+  EDITION_LABEL,
+  NO_FILTERS,
+  buildLibrary,
+  documentTitle,
+  filterLibrary,
+  formatDay,
+  formatWhen,
+  isFiltered,
+  isInFlight,
+  reportName,
+  unitsOf,
+  type LibraryFilters,
+  type ReportDocument,
+  type ReportGroup,
+  type StatusFilter,
+  type TypeFilter,
+} from './report-library';
+import {
+  ActionMenu,
   Badge,
   Button,
   Card,
   CardHeader,
-  Combobox,
+  Dialog,
   ErrorNotice,
   Field,
+  Input,
   Select,
   Spinner,
   Table,
   Td,
   Th,
+  type MenuItem,
 } from '@/components/ui';
 
 /**
- * Reports (PART 14, Phase 7's Web row).
+ * Reports (PART 14, Phase 7's Web row): the PDFs issued to clients.
  *
- * Three things live here and they are deliberately on one page, because they are one
- * workflow: generate a report, look at the version history, and manage the links the
- * report handed out.
+ * The page is a **library**, filed the way the work happened — each audit with the Zone
+ * reports issued from it, and each Unit with its summaries — and one **New report** dialog
+ * that asks what to issue. It used to be a generation form stacked on a flat log of every
+ * render, with a Unit selector at the top that filtered the log, steered one of the two
+ * generation forms, was ignored by the other and was changed behind the user's back by it.
  *
- * The page never hides an earlier version on its own (§10.5). An external certification
- * body may need to see exactly what was issued on a given date, so the history lists every
- * version with its generation date. What leaves it is what a Super Admin took out: a report
+ * Nothing is hidden for good (§10.5). A document shows its current version; every earlier
+ * version is a click away, so a certification body can still be shown exactly what was
+ * issued on a given date. What leaves the list is what a Super Admin took out: a report
  * cancelled before it rendered, or one deleted after (0035).
  */
-
-const KIND_LABEL: Record<ReportKind, string> = {
-  INITIAL_ZONE: 'Initial Zone report',
-  AFTER_EVIDENCE_ZONE: 'After-evidence report',
-  MULTI_ZONE_SUMMARY: 'Unit summary report',
-};
-
-/** The kinds that name one audited Zone; the summary has its own picker. */
-const ZONE_REPORT_KINDS = ['INITIAL_ZONE', 'AFTER_EVIDENCE_ZONE'] as const;
-type ZoneReportKind = (typeof ZONE_REPORT_KINDS)[number];
-
 export function ReportsPage() {
   const { can } = useSession();
   const mayGenerate = can('report', 'generate');
 
-  const [unitId, setUnitId] = useState('');
+  const [filters, setFilters] = useState<LibraryFilters>(NO_FILTERS);
   const [tokensFor, setTokensFor] = useState<ReportSnapshot | null>(null);
-
-  const units = useQuery({
-    queryKey: ['units'],
-    queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
-  });
-
-  const selectedUnit = unitId || units.data?.data[0]?.id || '';
+  const [newReport, setNewReport] = useState<NewReportPreset | null>(null);
+  const [openEarlier, setOpenEarlier] = useState<ReadonlySet<string>>(new Set());
+  const [slip, setSlip] = useState<{ title: string; text: string } | null>(null);
+  const [arrivedId, setArrivedId] = useState<string | null>(null);
 
   const reports = useQuery({
-    queryKey: ['reports', selectedUnit],
-    queryFn: () => api.get<Page<ReportSnapshot>>(`/reports?limit=200&unitId=${selectedUnit}`),
-    enabled: Boolean(selectedUnit),
+    queryKey: ['reports', 'all'],
+    queryFn: () => fetchAll<ReportSnapshot>('/reports?limit=200'),
     // A queued report becomes ready in the background; the page notices without a reload.
-    refetchInterval: (query) =>
-      (query.state.data?.data ?? []).some((row) => row.status === 'QUEUED' || row.status === 'RENDERING')
-        ? 4_000
-        : 60_000,
+    refetchInterval: (query) => ((query.state.data ?? []).some(isInFlight) ? 4_000 : 60_000),
   });
+
+  const snapshots = useMemo(() => reports.data ?? [], [reports.data]);
+  const library = useMemo(() => buildLibrary(snapshots), [snapshots]);
+  const shown = useMemo(() => filterLibrary(library, filters), [library, filters]);
+  const units = useMemo(() => unitsOf(snapshots), [snapshots]);
+  const documentCount = shown.reduce((sum, group) => sum + group.documents.length, 0);
+
+  /** A report was queued — by the dialog or by Regenerate. Say so, and show where it is. */
+  const announce = (snapshot: ReportSnapshot, how: 'queued' | 'regenerated') => {
+    setNewReport(null);
+    // A filter that would hide the new report is cleared rather than leaving it invisible.
+    setFilters((current) =>
+      filterLibrary(buildLibrary([snapshot]), current).length > 0 ? current : NO_FILTERS,
+    );
+    setArrivedId(snapshot.id);
+    setSlip({
+      title: how === 'queued' ? 'Report queued' : 'New version queued',
+      text:
+        `${reportName(snapshot)} — v${snapshot.version}. It renders in the background and ` +
+        'is marked Ready below when it can be downloaded; nothing has been sent to anyone.',
+    });
+  };
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader
-          title="Reports"
-          description={
-            'Every report is rendered from a frozen snapshot, so one reopened in December ' +
-            'is the document that was issued in March. Regenerating adds a version; it ' +
-            'never replaces one.'
-          }
-          action={
-            <div className="w-64">
-              <Field label="Unit">
-                <Combobox
-                  value={selectedUnit}
-                  onChange={setUnitId}
-                  options={(units.data?.data ?? []).map((unit) => ({ id: unit.id, label: unit.name }))}
-                  placeholder="Search Units…"
-                />
-              </Field>
+      {slip ? (
+        <div className="gb-slip" role="status">
+          <div className="gb-slip-row">
+            <div className="min-w-0">
+              <b>{slip.title}</b>
+              <p>{slip.text}</p>
             </div>
-          }
-        />
-      </Card>
-
-      {mayGenerate && selectedUnit ? (
-        <GeneratePanel unitId={selectedUnit} onUnitChange={setUnitId} />
+            <Button variant="secondary" onClick={() => setSlip(null)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
       ) : null}
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader
-          title="Version history"
-          description="Newest first. Cancel a report still in the queue; delete one generated by mistake."
+          title="Issued reports"
+          description="The PDFs issued to clients, filed under the audit or Unit they cover."
+          action={
+            mayGenerate ? <Button onClick={() => setNewReport({ mode: 'ZONE' })}>+ New report</Button> : null
+          }
         />
+
+        {snapshots.length > 0 ? (
+          <FilterBar filters={filters} onChange={setFilters} units={units} count={documentCount} />
+        ) : null}
+
         {reports.isLoading ? <Spinner /> : null}
         {reports.error ? <ErrorNotice error={reports.error} /> : null}
-        {reports.data ? (
-          <VersionHistory
-            snapshots={reports.data.data}
+
+        {reports.data && snapshots.length === 0 ? (
+          <div className="gb-empty">
+            <span>No reports issued yet.</span>
+            {mayGenerate ? (
+              <Button onClick={() => setNewReport({ mode: 'ZONE' })}>+ New report</Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {reports.data && snapshots.length > 0 && shown.length === 0 ? (
+          <div className="gb-empty">
+            <span>No report matches these filters.</span>
+            <Button variant="secondary" onClick={() => setFilters(NO_FILTERS)}>
+              Clear filters
+            </Button>
+          </div>
+        ) : null}
+
+        {shown.length > 0 ? (
+          <Library
+            groups={shown}
             mayGenerate={mayGenerate}
+            arrivedId={arrivedId}
+            openEarlier={openEarlier}
+            onToggleEarlier={(key) =>
+              setOpenEarlier((current) => {
+                const next = new Set(current);
+                if (!next.delete(key)) next.add(key);
+                return next;
+              })
+            }
             onManageTokens={setTokensFor}
+            onNewReport={setNewReport}
+            onRegenerated={(snapshot) => announce(snapshot, 'regenerated')}
           />
         ) : null}
       </Card>
 
-      {tokensFor ? <TokensPanel snapshot={tokensFor} onClose={() => setTokensFor(null)} /> : null}
+      {mayGenerate ? (
+        <NewReportDialog
+          open={newReport !== null}
+          preset={newReport ?? { mode: 'ZONE' }}
+          snapshots={snapshots}
+          onClose={() => setNewReport(null)}
+          onQueued={(snapshot) => announce(snapshot, 'queued')}
+        />
+      ) : null}
+
+      <LinksDialog snapshot={tokensFor} onClose={() => setTokensFor(null)} />
     </div>
   );
 }
 
-/**
- * The generation form (§8.9).
- *
- * A zone report names one completed audit-Zone. A unit summary names a **selection** of
- * audited Zones, chosen in `SummaryZonePicker` — any Zones, from any of the Unit's finished
- * audits. The selection is stored on the snapshot, so the report is reproducible and its
- * scope unambiguous.
- */
-function GeneratePanel({
-  unitId,
-  onUnitChange,
+// ------------------------------------------------------------------------------ filters
+
+function FilterBar({
+  filters,
+  onChange,
+  units,
+  count,
 }: {
-  unitId: string;
-  onUnitChange: (unitId: string) => void;
+  filters: LibraryFilters;
+  onChange: (filters: LibraryFilters) => void;
+  units: Array<{ id: string; name: string }>;
+  count: number;
 }) {
-  const queryClient = useQueryClient();
-  const [summaryOpen, setSummaryOpen] = useState(false);
-  const [kind, setKind] = useState<ZoneReportKind>('INITIAL_ZONE');
-  const [auditId, setAuditId] = useState('');
-  const [auditZoneId, setAuditZoneId] = useState('');
-  const [notice, setNotice] = useState<string | null>(null);
-
-  // Every audit the actor may see, not only the Unit picked at the top of the page. A
-  // report names one audit-Zone and nothing else, so scoping this list to the current Unit
-  // hid every audit of every other Unit behind a selector a person had no reason to touch
-  // first — the page looked like it had forgotten most of the work. Choosing an audit
-  // switches the Unit instead, which keeps the history below showing what was just queued.
-  const audits = useQuery({
-    queryKey: ['audits', 'completed', 'all-units'],
-    queryFn: () => fetchAll<Audit>('/audits?limit=200'),
-  });
-
-  // The audit's Zones come with the audit (`GET /audits/{id}`, §8.6). There is no
-  // `GET /audits/{id}/zones`: asking for one returned 404, which left the Zone picker empty
-  // and the Generate button permanently disabled.
-  const auditZones = useQuery({
-    queryKey: ['audit-detail', auditId],
-    queryFn: () => api.get<AuditDetail>(`/audits/${auditId}`),
-    enabled: Boolean(auditId),
-  });
-
-  // Only a completed audit can be reported on (§10.2), so the picker offers no other.
-  // Newest first: the report someone wants is nearly always the audit that just finished.
-  const completedAudits = useMemo(
-    () =>
-      (audits.data ?? [])
-        .filter((audit) => audit.completedAt !== null)
-        .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)),
-    [audits.data],
-  );
-
-  const generate = useMutation({
-    mutationFn: () => api.post<ReportSnapshot>('/reports/generate', { kind, auditZoneId }),
-    onSuccess: (snapshot) => {
-      setNotice(
-        `Version ${snapshot.version} queued. It renders in the background; the history ` +
-          'updates when it is ready.',
-      );
-      void queryClient.invalidateQueries({ queryKey: ['reports'] });
-    },
-  });
+  const set = (patch: Partial<LibraryFilters>) => onChange({ ...filters, ...patch });
 
   return (
-    <Card>
-      <CardHeader
-        title="Generate a report"
-        description="Rendering happens in the background; this returns as soon as the payload is frozen."
-      />
-      <div className="space-y-3 px-4 py-3">
-        <div className="space-y-3 border-b border-edge-soft pb-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant={summaryOpen ? 'secondary' : 'primary'}
-              onClick={() => setSummaryOpen((open) => !open)}
-              aria-expanded={summaryOpen}
-            >
-              {summaryOpen ? 'Close unit summary' : 'Generate unit summary report'}
-            </Button>
-            <span className="text-xs text-ink-2">
-              Choose the Zones yourself: every finished audit of this Unit is listed with its
-              date, and you can take any of its Zones.
-            </span>
-          </div>
-          {summaryOpen ? <SummaryZonePicker key={unitId} unitId={unitId} /> : null}
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <div className="w-72">
-            <Field label="Zone report">
-              <Select
-                value={kind}
-                onChange={(event) => {
-                  setKind(event.target.value as ZoneReportKind);
-                  setNotice(null);
-                }}
-              >
-                {ZONE_REPORT_KINDS.map((value) => (
-                  <option key={value} value={value}>
-                    {KIND_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-          <div className="w-72">
-            <Field label="Completed audit">
-              <Select
-                value={auditId}
-                onChange={(event) => {
-                  const chosen = completedAudits.find((audit) => audit.id === event.target.value);
-                  setAuditId(event.target.value);
-                  setAuditZoneId('');
-                  // The audit carries the Unit with it, so the history below follows the
-                  // report that is about to be queued rather than a Unit left behind.
-                  if (chosen && chosen.unitId !== unitId) onUnitChange(chosen.unitId);
-                }}
-              >
-                <option value="">Choose an audit…</option>
-                {completedAudits.map((audit) => (
-                  <option key={audit.id} value={audit.id}>
-                    {auditLabel(audit)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-          <div className="w-72">
-            <Field label="Zone">
-              <Select
-                value={auditZoneId}
-                onChange={(event) => setAuditZoneId(event.target.value)}
-                disabled={!auditId}
-              >
-                <option value="">Choose a Zone…</option>
-                {(auditZones.data?.zones ?? []).map((zone) => (
-                  <option key={zone.id} value={zone.id}>
-                    {zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-        </div>
-
-        {generate.error ? <ErrorNotice error={generate.error} /> : null}
-        {notice ? <p className="gb-slip">{notice}</p> : null}
-
-        <div className="flex gap-2">
-          <Button onClick={() => generate.mutate()} disabled={!auditZoneId || generate.isPending}>
-            {generate.isPending ? 'Queuing…' : 'Generate'}
-          </Button>
-          <PreviewButton disabled={!auditZoneId} body={{ kind, auditZoneId }} />
-        </div>
+    <div className="gb-filters" role="search" aria-label="Filter reports">
+      {/* One Unit in scope — a Zone Leader's — has nothing to choose between. */}
+      {units.length > 1 ? (
+        <Field label="Unit">
+          <Select value={filters.unitId} onChange={(event) => set({ unitId: event.target.value })}>
+            <option value="">All Units</option>
+            {units.map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
+      <Field label="Type">
+        <Select value={filters.type} onChange={(event) => set({ type: event.target.value as TypeFilter })}>
+          <option value="ALL">All reports</option>
+          <option value="ZONE">Zone reports</option>
+          <option value="SUMMARY">Unit summaries</option>
+        </Select>
+      </Field>
+      <Field label="Status">
+        <Select
+          value={filters.status}
+          onChange={(event) => set({ status: event.target.value as StatusFilter })}
+        >
+          <option value="ALL">Any status</option>
+          <option value="READY">Ready</option>
+          <option value="IN_PROGRESS">Queued or rendering</option>
+          <option value="FAILED">Failed</option>
+        </Select>
+      </Field>
+      <div className="gb-filters-search">
+        <Field label="Search">
+          <Input
+            type="search"
+            value={filters.search}
+            onChange={(event) => set({ search: event.target.value })}
+            placeholder="Zone, Unit or auditor…"
+          />
+        </Field>
       </div>
-    </Card>
+      <span className="gb-filters-count" aria-live="polite">
+        {count} report{count === 1 ? '' : 's'}
+      </span>
+      {isFiltered(filters) ? (
+        <Button variant="secondary" onClick={() => onChange(NO_FILTERS)}>
+          Clear filters
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
-function VersionHistory({
-  snapshots,
+// ------------------------------------------------------------------------------ library
+
+type Pending = { snapshotId: string; action: 'regenerate' | 'delete' } | null;
+
+function Library({
+  groups,
   mayGenerate,
+  arrivedId,
+  openEarlier,
+  onToggleEarlier,
   onManageTokens,
+  onNewReport,
+  onRegenerated,
 }: {
-  snapshots: ReportSnapshot[];
+  groups: ReportGroup[];
   mayGenerate: boolean;
+  arrivedId: string | null;
+  openEarlier: ReadonlySet<string>;
+  onToggleEarlier: (documentKey: string) => void;
   onManageTokens: (snapshot: ReportSnapshot) => void;
+  onNewReport: (preset: NewReportPreset) => void;
+  onRegenerated: (snapshot: ReportSnapshot) => void;
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<unknown>(null);
+  const [pending, setPending] = useState<Pending>(null);
 
   const regenerate = useMutation({
-    mutationFn: (snapshotId: string) =>
-      api.post<ReportSnapshot>(`/reports/${snapshotId}/regenerate`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports'] }),
+    mutationFn: (snapshotId: string) => api.post<ReportSnapshot>(`/reports/${snapshotId}/regenerate`),
+    onMutate: () => setError(null),
+    onSuccess: async (snapshot) => {
+      setPending(null);
+      await queryClient.invalidateQueries({ queryKey: ['reports'] });
+      onRegenerated(snapshot);
+    },
+    onError: setError,
   });
 
-  if (snapshots.length === 0) {
-    return <p className="px-4 py-6 text-sm text-ink-2">No reports generated yet.</p>;
-  }
+  // Cancel is one press: nothing was issued, and the worker simply skips it. Delete asks
+  // first, in place, because it removes the PDF.
+  const withdraw = useMutation({
+    mutationFn: (snapshot: ReportSnapshot) =>
+      api.post<ReportSnapshot>(`/reports/${snapshot.id}/${isInFlight(snapshot) ? 'cancel' : 'remove'}`),
+    onMutate: () => setError(null),
+    onSuccess: async () => {
+      setPending(null);
+      await queryClient.invalidateQueries({ queryKey: ['reports'] });
+    },
+    onError: setError,
+  });
+
+  // A report just queued is brought into view once, when its row first appears.
+  const shownArrival = useRef<string | null>(null);
+  useEffect(() => {
+    if (!arrivedId || shownArrival.current === arrivedId) return;
+    const row = document.querySelector(`[data-snapshot="${arrivedId}"]`);
+    if (!row) return;
+    shownArrival.current = arrivedId;
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+
+  const menuFor = (snapshot: ReportSnapshot, isLatest: boolean): MenuItem[] => {
+    const inFlight = isInFlight(snapshot);
+    const items: MenuItem[] = [];
+    if (isLatest) {
+      items.push({
+        label: 'Regenerate…',
+        disabled: inFlight,
+        hint: inFlight ? 'This version is still rendering.' : 'Issue a new version from the current data.',
+        onSelect: () => setPending({ snapshotId: snapshot.id, action: 'regenerate' }),
+      });
+    }
+    items.push({
+      label: 'Links in this report',
+      hint: 'See and revoke the corrective-action links this PDF prints.',
+      onSelect: () => onManageTokens(snapshot),
+    });
+    items.push(
+      inFlight
+        ? {
+            label: withdraw.isPending ? 'Cancelling…' : 'Cancel rendering',
+            danger: true,
+            disabled: withdraw.isPending,
+            onSelect: () => withdraw.mutate(snapshot),
+          }
+        : {
+            label: `Delete v${snapshot.version}…`,
+            danger: true,
+            onSelect: () => setPending({ snapshotId: snapshot.id, action: 'delete' }),
+          },
+    );
+    return items;
+  };
+
+  const row = (doc: ReportDocument, snapshot: ReportSnapshot, isLatest: boolean, replacedBy?: number) => {
+    const confirming = pending?.snapshotId === snapshot.id ? pending.action : null;
+    return (
+      <Fragment key={snapshot.id}>
+        <tr
+          data-snapshot={snapshot.id}
+          className={cn(!isLatest && 'gb-row--earlier', snapshot.id === arrivedId && 'gb-row--target')}
+        >
+          <Td>
+            {isLatest ? (
+              <>
+                <span className="gb-doc-title">{documentTitle(snapshot)}</span>
+                {doc.earlier.length > 0 ? (
+                  <div>
+                    <button
+                      type="button"
+                      className="gb-earlier-toggle"
+                      aria-expanded={openEarlier.has(doc.key)}
+                      onClick={() => onToggleEarlier(doc.key)}
+                    >
+                      {openEarlier.has(doc.key)
+                        ? 'Hide earlier versions'
+                        : `${doc.earlier.length} earlier version${doc.earlier.length === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>Replaced by v{replacedBy}</>
+            )}
+          </Td>
+          <Td>
+            <Badge>{EDITION_LABEL[snapshot.kind]}</Badge>
+          </Td>
+          <Td className="gb-data">v{snapshot.version}</Td>
+          <Td>
+            <StatusBadge snapshot={snapshot} />
+          </Td>
+          <Td className="gb-data">
+            <span title={`Generated by ${snapshot.generatedByName}`}>{formatWhen(snapshot.generatedAt)}</span>
+          </Td>
+          <Td>
+            <div className="gb-row-actions">
+              <DownloadButton snapshot={snapshot} primary={isLatest} onError={setError} />
+              {mayGenerate ? (
+                <ActionMenu label={`More actions for v${snapshot.version}`} items={menuFor(snapshot, isLatest)} />
+              ) : null}
+            </div>
+          </Td>
+        </tr>
+        {confirming ? (
+          <tr className="gb-row-confirm">
+            <Td colSpan={COLUMNS}>
+              {confirming === 'regenerate' ? (
+                <div className="gb-confirm">
+                  <p>
+                    Regenerate from the current data? It is issued as a new version; v{snapshot.version}{' '}
+                    stays in the history.
+                  </p>
+                  <Button variant="secondary" onClick={() => setPending(null)}>
+                    Keep v{snapshot.version}
+                  </Button>
+                  <Button onClick={() => regenerate.mutate(snapshot.id)} disabled={regenerate.isPending}>
+                    {regenerate.isPending ? 'Queuing…' : 'Regenerate'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="gb-confirm">
+                  <p>
+                    Delete v{snapshot.version}? Its PDF is deleted for good and it leaves this list;
+                    the record that it was issued is kept.
+                  </p>
+                  <Button variant="secondary" onClick={() => setPending(null)}>
+                    Keep
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => withdraw.mutate(snapshot)}
+                    disabled={withdraw.isPending}
+                  >
+                    {withdraw.isPending ? 'Deleting…' : `Delete v${snapshot.version}`}
+                  </Button>
+                </div>
+              )}
+            </Td>
+          </tr>
+        ) : null}
+      </Fragment>
+    );
+  };
 
   return (
     <>
@@ -313,52 +441,54 @@ function VersionHistory({
       <Table>
         <thead>
           <tr>
-            <Th>Kind</Th>
+            <Th>Report</Th>
+            <Th>Edition</Th>
             <Th>Version</Th>
-            <Th>Generated</Th>
-            <Th>By</Th>
             <Th>Status</Th>
-            <Th>Pages</Th>
-            <Th>Actions</Th>
+            <Th>Generated</Th>
+            <Th>
+              <span className="sr-only">Actions</span>
+            </Th>
           </tr>
         </thead>
         <tbody>
-          {snapshots.map((snapshot) => (
-            <tr key={snapshot.id}>
-              <Td>{KIND_LABEL[snapshot.kind]}</Td>
-              <Td>
-                v{snapshot.version}
-                {snapshot.supersedesSnapshotId ? (
-                  <span className="ml-1 text-xs text-ink-3">supersedes earlier</span>
-                ) : null}
-              </Td>
-              <Td>{formatDateTime(snapshot.generatedAt)}</Td>
-              <Td>{snapshot.generatedByName}</Td>
-              <Td>
-                <StatusBadge snapshot={snapshot} />
-              </Td>
-              <Td className="text-right">{snapshot.pageCount ?? '—'}</Td>
-              <Td>
-                <div className="flex flex-wrap gap-2">
-                  <DownloadButton snapshot={snapshot} onError={setError} />
-                  {mayGenerate ? (
-                    <>
+          {groups.map((group) => (
+            <Fragment key={group.key}>
+              <tr className="gb-group">
+                <Td colSpan={COLUMNS}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="gb-group-title">{group.unitName}</span>
+                      <span className="gb-group-meta">{groupMeta(group)}</span>
+                    </div>
+                    {mayGenerate ? (
                       <Button
                         variant="secondary"
-                        onClick={() => regenerate.mutate(snapshot.id)}
-                        disabled={regenerate.isPending}
+                        onClick={() =>
+                          onNewReport(
+                            group.kind === 'AUDIT'
+                              ? { mode: 'ZONE', auditId: group.documents[0]?.latest.auditId ?? undefined }
+                              : { mode: 'SUMMARY', unitId: group.unitId },
+                          )
+                        }
                       >
-                        Regenerate
+                        {group.kind === 'AUDIT' ? 'Report another Zone' : 'New summary'}
                       </Button>
-                      <Button variant="secondary" onClick={() => onManageTokens(snapshot)}>
-                        Links
-                      </Button>
-                      <WithdrawButton snapshot={snapshot} onError={setError} />
-                    </>
-                  ) : null}
-                </div>
-              </Td>
-            </tr>
+                    ) : null}
+                  </div>
+                </Td>
+              </tr>
+              {group.documents.map((doc) => (
+                <Fragment key={doc.key}>
+                  {row(doc, doc.latest, true)}
+                  {openEarlier.has(doc.key)
+                    ? doc.earlier.map((snapshot, index) =>
+                        row(doc, snapshot, false, (doc.earlier[index - 1] ?? doc.latest).version),
+                      )
+                    : null}
+                </Fragment>
+              ))}
+            </Fragment>
           ))}
         </tbody>
       </Table>
@@ -366,60 +496,14 @@ function VersionHistory({
   );
 }
 
-/**
- * Cancel a report still queued or rendering; delete one that is ready or failed.
- *
- * Cancel is one press: nothing was issued, and the worker simply skips it. Delete asks
- * first, in place, because it removes the PDF — the row stays as the record that a report
- * was issued, but the document itself is gone.
- */
-function WithdrawButton({
-  snapshot,
-  onError,
-}: {
-  snapshot: ReportSnapshot;
-  onError: (error: unknown) => void;
-}) {
-  const queryClient = useQueryClient();
-  const [confirming, setConfirming] = useState(false);
-  const inFlight = snapshot.status === 'QUEUED' || snapshot.status === 'RENDERING';
+const COLUMNS = 6;
 
-  const withdraw = useMutation({
-    mutationFn: () =>
-      api.post<ReportSnapshot>(`/reports/${snapshot.id}/${inFlight ? 'cancel' : 'remove'}`),
-    onMutate: () => onError(null),
-    onSuccess: async () => {
-      setConfirming(false);
-      await queryClient.invalidateQueries({ queryKey: ['reports'] });
-    },
-    onError,
-  });
-
-  if (inFlight) {
-    return (
-      <Button variant="danger" onClick={() => withdraw.mutate()} disabled={withdraw.isPending}>
-        {withdraw.isPending ? 'Cancelling…' : 'Cancel'}
-      </Button>
-    );
+function groupMeta(group: ReportGroup): string {
+  if (group.kind === 'SUMMARIES') {
+    return `Unit summaries · ${group.documents.length}`;
   }
-
-  return (
-    <>
-      <Button
-        variant="danger"
-        title="Remove from every list and delete the PDF."
-        disabled={withdraw.isPending}
-        onClick={() => (confirming ? withdraw.mutate() : setConfirming(true))}
-      >
-        {withdraw.isPending ? 'Deleting…' : confirming ? `Delete v${snapshot.version}` : 'Delete'}
-      </Button>
-      {confirming && !withdraw.isPending ? (
-        <Button variant="secondary" onClick={() => setConfirming(false)}>
-          Keep
-        </Button>
-      ) : null}
-    </>
-  );
+  const who = group.auditorNames.length > 0 ? ` · ${group.auditorNames.join(', ')}` : '';
+  return `Audit finished ${group.auditedAt ? formatWhen(group.auditedAt) : 'on an unknown date'}${who}`;
 }
 
 function StatusBadge({ snapshot }: { snapshot: ReportSnapshot }) {
@@ -446,9 +530,11 @@ function StatusBadge({ snapshot }: { snapshot: ReportSnapshot }) {
  */
 function DownloadButton({
   snapshot,
+  primary,
   onError,
 }: {
   snapshot: ReportSnapshot;
+  primary: boolean;
   onError: (error: unknown) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -467,20 +553,45 @@ function DownloadButton({
   }
 
   return (
-    <Button onClick={download} disabled={snapshot.status !== 'READY' || busy}>
+    <Button
+      variant={primary ? 'primary' : 'secondary'}
+      onClick={download}
+      disabled={snapshot.status !== 'READY' || busy}
+      title={snapshot.status === 'READY' ? undefined : 'Available once the report is ready.'}
+    >
       {busy ? 'Preparing…' : 'Download'}
     </Button>
   );
 }
 
+// -------------------------------------------------------------------------------- links
+
 /**
- * Token management (§8.9, §10.4).
+ * Token management (§8.9, §10.4), in a dialog over the list it was opened from.
  *
  * The secret is not shown and cannot be: only its hash is stored, and the raw value exists
- * in the link the PDF prints. What this panel offers is what a Super Admin actually needs —
+ * in the link the PDF prints. What this offers is what a Super Admin actually needs —
  * seeing that a link has been used, and revoking one that went to the wrong person.
  */
-function TokensPanel({ snapshot, onClose }: { snapshot: ReportSnapshot; onClose: () => void }) {
+function LinksDialog({ snapshot, onClose }: { snapshot: ReportSnapshot | null; onClose: () => void }) {
+  return (
+    <Dialog
+      open={snapshot !== null}
+      onClose={onClose}
+      wide
+      title={snapshot ? `Links — v${snapshot.version}` : 'Links'}
+      description={
+        snapshot
+          ? `${reportName(snapshot)}. One link per finding, printed in the PDF. A link is never shown here — only its hash is stored.`
+          : undefined
+      }
+    >
+      {snapshot ? <TokensTable snapshot={snapshot} /> : null}
+    </Dialog>
+  );
+}
+
+function TokensTable({ snapshot }: { snapshot: ReportSnapshot }) {
   const queryClient = useQueryClient();
   const [reason, setReason] = useState<Record<string, string>>({});
 
@@ -491,32 +602,21 @@ function TokensPanel({ snapshot, onClose }: { snapshot: ReportSnapshot; onClose:
 
   const revoke = useMutation({
     mutationFn: (input: { tokenId: string; reason: string }) =>
-      api.post<ReportAccessToken>(
-        `/reports/${snapshot.id}/tokens/${input.tokenId}/revoke`,
-        { reason: input.reason },
-      ),
+      api.post<ReportAccessToken>(`/reports/${snapshot.id}/tokens/${input.tokenId}/revoke`, {
+        reason: input.reason,
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['report-tokens', snapshot.id] }),
   });
 
   return (
-    <Card>
-      <CardHeader
-        title={`Links — ${KIND_LABEL[snapshot.kind]} v${snapshot.version}`}
-        description={
-          'One link per nonconformity, printed in the PDF. The link itself is never shown ' +
-          'here: only its hash is stored, which is what makes an invalid link and an ' +
-          'expired one indistinguishable from outside.'
-        }
-        action={
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-        }
-      />
+    <div className="gb-dialog-section">
       {tokens.isLoading ? <Spinner /> : null}
       {tokens.error ? <ErrorNotice error={tokens.error} /> : null}
       {revoke.error ? <ErrorNotice error={revoke.error} /> : null}
-      {tokens.data ? (
+      {tokens.data && tokens.data.length === 0 ? (
+        <p className="m-0 text-sm text-ink-2">This report prints no links.</p>
+      ) : null}
+      {tokens.data && tokens.data.length > 0 ? (
         <Table>
           <thead>
             <tr>
@@ -530,79 +630,63 @@ function TokensPanel({ snapshot, onClose }: { snapshot: ReportSnapshot; onClose:
             </tr>
           </thead>
           <tbody>
-            {tokens.data.map((token) => (
-              <tr key={token.id}>
-                <Td>
-                  {token.zoneCode ? `Zone ${token.zoneCode}` : '—'}
-                  {token.questionGlobalOrder ? ` · Q${token.questionGlobalOrder}` : ''}
-                </Td>
-                <Td>{token.issuedToName ?? '—'}</Td>
-                {/* R-41: a link with no limit carries the last possible day. */}
-                <Td>{token.expiresAt.startsWith('9999-') ? 'Never' : formatDate(token.expiresAt)}</Td>
-                <Td className="text-right">{token.useCount}</Td>
-                <Td>{token.lastUsedAt ? formatDateTime(token.lastUsedAt) : 'Never'}</Td>
-                <Td>
-                  {token.revokedAt ? (
-                    <span className="flex flex-col gap-0.5">
-                      <Badge tone="bad">Revoked</Badge>
-                      <span className="text-xs text-ink-2">{token.revokeReason}</span>
-                    </span>
-                  ) : token.active ? (
-                    <Badge tone="good">Active</Badge>
-                  ) : (
-                    <Badge tone="warn">Expired</Badge>
-                  )}
-                </Td>
-                <Td>
-                  {token.revokedAt ? null : (
-                    <div className="flex gap-1">
-                      <input
-                        className="w-40 border border-edge px-2 py-1 text-sm"
-                        placeholder="Reason"
-                        value={reason[token.id] ?? ''}
-                        onChange={(event) =>
-                          setReason((current) => ({ ...current, [token.id]: event.target.value }))
-                        }
-                      />
-                      <Button
-                        variant="danger"
-                        disabled={!reason[token.id]?.trim() || revoke.isPending}
-                        onClick={() =>
-                          revoke.mutate({ tokenId: token.id, reason: reason[token.id]!.trim() })
-                        }
-                      >
-                        Revoke
-                      </Button>
-                    </div>
-                  )}
-                </Td>
-              </tr>
-            ))}
+            {tokens.data.map((token) => {
+              const item = `${token.zoneCode ? `Zone ${token.zoneCode}` : '—'}${
+                token.questionGlobalOrder ? ` · Q${token.questionGlobalOrder}` : ''
+              }`;
+              return (
+                <tr key={token.id}>
+                  <Td>{item}</Td>
+                  <Td>{token.issuedToName ?? '—'}</Td>
+                  {/* R-41: a link with no limit carries the last possible day. */}
+                  <Td>{token.expiresAt.startsWith('9999-') ? 'Never' : formatDay(token.expiresAt)}</Td>
+                  <Td className="text-right">{token.useCount}</Td>
+                  <Td>{token.lastUsedAt ? formatWhen(token.lastUsedAt) : 'Never'}</Td>
+                  <Td>
+                    {token.revokedAt ? (
+                      <span className="flex flex-col gap-0.5">
+                        <Badge tone="bad">Revoked</Badge>
+                        <span className="text-xs text-ink-2">{token.revokeReason}</span>
+                      </span>
+                    ) : token.active ? (
+                      <Badge tone="good">Active</Badge>
+                    ) : (
+                      <Badge tone="warn">Expired</Badge>
+                    )}
+                  </Td>
+                  <Td>
+                    {token.revokedAt ? null : (
+                      <div className="flex gap-1">
+                        <label className="sr-only" htmlFor={`revoke-${token.id}`}>
+                          Reason for revoking the link for {item}
+                        </label>
+                        <Input
+                          id={`revoke-${token.id}`}
+                          className="w-40"
+                          placeholder="Reason"
+                          value={reason[token.id] ?? ''}
+                          onChange={(event) =>
+                            setReason((current) => ({ ...current, [token.id]: event.target.value }))
+                          }
+                        />
+                        <Button
+                          variant="danger"
+                          disabled={!reason[token.id]?.trim() || revoke.isPending}
+                          onClick={() => revoke.mutate({ tokenId: token.id, reason: reason[token.id]!.trim() })}
+                        >
+                          Revoke
+                        </Button>
+                      </div>
+                    )}
+                  </Td>
+                </tr>
+              );
+            })}
           </tbody>
         </Table>
       ) : null}
-    </Card>
+    </div>
   );
-}
-
-function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString() : '—';
-}
-
-/**
- * `GE · Pune Plant · 16/09/2026` — who audited, where, and when, in that order.
- *
- * The auditor is two letters rather than a full name because the Unit is the thing being
- * scanned for; the date is what separates two audits of the same Unit by the same person,
- * which is exactly the pair a list sorted newest-first puts next to each other.
- */
-function auditLabel(audit: Audit): string {
-  const initials = audit.auditorName.trim().slice(0, 2).toUpperCase() || '??';
-  return `${initials} · ${audit.unitName} · ${formatDate(audit.completedAt)}`;
-}
-
-function formatDateTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : '—';
 }
 
 /** Re-exported so a caller can branch on the shape without importing the client. */
