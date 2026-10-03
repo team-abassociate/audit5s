@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Device, Page, SyncConflict } from '@audit5s/contracts';
 import { api } from '@/lib/api';
@@ -175,6 +175,7 @@ function ConflictRow({
 }) {
   const queryClient = useQueryClient();
   const [note, setNote] = useState('');
+  const detailId = useId();
 
   const resolve = useMutation({
     mutationFn: (resolution: 'APPLY' | 'DISCARD') =>
@@ -213,13 +214,21 @@ function ConflictRow({
               {conflict.resolution === 'APPLY' ? 'Applied' : 'Set aside'}
             </Badge>
           ) : (
-            <span className="text-xs text-ink">{expanded ? 'Hide' : 'Review'}</span>
+            <button
+              type="button"
+              className="cursor-pointer text-xs text-ink underline decoration-edge-soft underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--accent)"
+              aria-expanded={expanded}
+              aria-controls={detailId}
+              onClick={onToggle}
+            >
+              {expanded ? 'Hide' : 'Review'}
+            </button>
           )}
         </Td>
       </tr>
 
       {expanded && (
-        <tr>
+        <tr id={detailId}>
           <td colSpan={5} className="bg-board px-4 py-4">
             <div className="space-y-4">
               {conflict.detail && (
