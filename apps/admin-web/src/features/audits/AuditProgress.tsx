@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { Audit, AuditDetail, AuditZoneStatus } from '@audit5s/contracts';
 import { formatDateTime } from '@audit5s/domain';
 import { bandTextClass } from '@/lib/bands';
@@ -43,6 +43,9 @@ export function AuditProgress({ auditId, compact = false }: { auditId: string; c
   const live = zones.filter((zone) => zone.status !== 'WITHDRAWN');
   const done = live.filter((zone) => zone.status === 'COMPLETED').length;
   const going = live.filter((zone) => zone.status === 'IN_PROGRESS').length;
+  // Shares of the track, 0–1: the meter sizes its segments by transform, never by width.
+  const doneShare = live.length ? done / live.length : 0;
+  const goingShare = live.length ? going / live.length : 0;
 
   return (
     <div className="space-y-2">
@@ -58,8 +61,8 @@ export function AuditProgress({ auditId, compact = false }: { auditId: string; c
       {zones.length > 0 && (
         <>
           <div className="gb-meter" aria-hidden>
-            <i style={{ width: `${live.length ? (done / live.length) * 100 : 0}%` }} />
-            <i className="gb-meter--going" style={{ width: `${live.length ? (going / live.length) * 100 : 0}%` }} />
+            <i style={{ '--v': doneShare } as CSSProperties} />
+            <i className="gb-meter--going" style={{ '--at': doneShare, '--v': goingShare } as CSSProperties} />
           </div>
           <ul className={cn('gb-zonelist', compact && 'gb-zonelist--compact')}>
             {zones.map((zone) => (
