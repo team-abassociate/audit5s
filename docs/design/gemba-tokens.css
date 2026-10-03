@@ -15,7 +15,12 @@
   /* --- ink --- */
   --ink:#1D1B16;                      /* primary text, tile borders */
   --ink-2:#5B5647;                    /* secondary text */
-  --ink-3:#8A8372;                    /* labels, axes, disabled */
+  --ink-3:#6B6556;                    /* labels, axes, disabled — ≥4.5:1 on every surface */
+  /* --ink-3 was #8A8372 / dark #7B7D71 until 2026-10 (owner decision D6): 3.16–4.27:1,
+     under WCAG 1.4.3 for the 10.5px labels it exists for. Now, measured:
+     light on board 4.86 · tile 5.60 · tile-2/rail 5.23;
+     dark  on board 6.41 · tile 5.77 · tile-2/rail 6.10.
+     Mirrored in apps/field-mobile/src/lib/gemba.ts (§8). */
 
   /* --- edges --- */
   --edge:#1D1B16;                     /* structural border (1.5px / 2px) */
@@ -38,6 +43,10 @@
   /* --- rhythm --- */
   --u:14px;                           /* base unit; all spacing is a multiple */
   --motion:143ms;                     /* the only duration; ease-out only */
+  --press:3px;                        /* how far a pressed object sinks; 0 under reduced motion */
+
+  /* native controls (checkboxes, date pickers, scrollbars) follow the theme */
+  color-scheme:light;
 }
 
 /* system dark (no stamp on <html>) */
@@ -49,7 +58,7 @@
     --tile-2:#191D1B;
     --ink:#EDEAE0;
     --ink-2:#A8A899;
-    --ink-3:#7B7D71;
+    --ink-3:#9A9C8F;
     --edge:#3C423D;
     --edge-soft:#2C312D;
     --hard:rgba(0,0,0,.55);
@@ -60,16 +69,18 @@
     --crit:#F27458;   --crit-band:#D94A2E;
     --accent:#4FD2D8;
     --accent-soft:#12302F;
+    color-scheme:dark;
   }
 }
 
 /* explicit choice wins in both directions */
 :root[data-theme="dark"]{
   --board:#151816; --board-line:rgba(255,255,255,.045); --tile:#1E2220; --tile-2:#191D1B;
-  --ink:#EDEAE0; --ink-2:#A8A899; --ink-3:#7B7D71; --edge:#3C423D; --edge-soft:#2C312D;
+  --ink:#EDEAE0; --ink-2:#A8A899; --ink-3:#9A9C8F; --edge:#3C423D; --edge-soft:#2C312D;
   --hard:rgba(0,0,0,.55); --tape:#57512F; --tape-ink:#EDE6C4; --slip:#D2C92F; --slip-ink:#33301F;
   --ok:#6FC27E; --ok-band:#49A05A; --warn:#E7B03A; --warn-band:#D79A05;
   --crit:#F27458; --crit-band:#D94A2E; --accent:#4FD2D8; --accent-soft:#12302F;
+  color-scheme:dark;
 }
 
 /* ============================================================================
@@ -128,8 +139,7 @@ body{
   cursor:pointer;
   transition:box-shadow var(--motion) ease-out,transform var(--motion) ease-out;
 }
-.gb-tile--interactive:hover{box-shadow:5px 5px 0 var(--hard)}
-.gb-tile--interactive:active{box-shadow:0 0 0 var(--hard);transform:translate(3px,3px)}
+.gb-tile--interactive:active{box-shadow:0 0 0 var(--hard);transform:translate(var(--press),var(--press))}
 .gb-tile[aria-pressed="true"],.gb-tile--selected{
   border-width:2.5px;box-shadow:5px 5px 0 var(--hard);background:var(--tile-2);
 }
@@ -165,14 +175,22 @@ body{
   padding:6px 11px;cursor:pointer;white-space:nowrap;
   transition:box-shadow var(--motion) ease-out,transform var(--motion) ease-out;
 }
-.gb-btn:hover{box-shadow:3px 3px 0 var(--hard)}
-.gb-btn:active{box-shadow:0 0 0 var(--hard);transform:translate(2px,2px)}
+.gb-btn:active{box-shadow:0 0 0 var(--hard);transform:translate(var(--press),var(--press))}
 .gb-btn--primary{background:var(--ink);color:var(--board)}
+
+/* Hover lifts only for a real pointer: a tap fires :hover and would leave the lift behind. */
+@media (hover:hover) and (pointer:fine){
+  .gb-tile--interactive:hover{box-shadow:5px 5px 0 var(--hard)}
+  .gb-btn:hover{box-shadow:3px 3px 0 var(--hard)}
+}
 
 /* Focus — one treatment everywhere, the only place accent appears by default. */
 :where(a,button,select,input,textarea,[tabindex]):focus-visible{
   outline:2px solid var(--accent);outline-offset:2px;
 }
+
+/* Native checkboxes and radios are inked, not the browser's blue. */
+:where(input[type="checkbox"],input[type="radio"]){accent-color:var(--ink)}
 
 /* Status chip — outline only, colour carried by currentColor. */
 .gb-chip{
@@ -195,6 +213,12 @@ body{
   color:var(--ink-3);
 }
 
+/* Reduced motion removes movement, not feedback: a press still drops its shadow, fades and
+   colour changes stay. Components that slide or scale in drop the transform in their own
+   stylesheet; keyframes collapse to a single 1ms frame. */
 @media (prefers-reduced-motion:reduce){
-  *{transition:none !important;animation:none !important}
+  :root{--press:0px}
+  *,*::before,*::after{
+    animation-duration:1ms !important;animation-iteration-count:1 !important;animation-delay:0s !important;
+  }
 }
