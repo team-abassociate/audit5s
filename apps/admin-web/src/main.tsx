@@ -13,6 +13,7 @@ import {
 import type { ReactNode } from 'react';
 import './styles.css';
 import { AppShell, NotFoundPage, useDocumentTitle } from '@/components/AppShell';
+import { componentsRoute } from '@/components/dev/route';
 import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
@@ -242,6 +243,7 @@ const routeTree = rootRoute.addChildren([
   // Outside the gate, deliberately and alone.
   correctiveActionRoute,
   resetPasswordRoute,
+  ...(import.meta.env.DEV ? [componentsRoute(rootRoute)] : []), // the component gallery (UX audit S4)
   gatedRoute.addChildren([
     indexRoute,
     dashboardRoute,
