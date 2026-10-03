@@ -2,7 +2,6 @@ import { Fragment, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm } from 'react-hook-form';
 import {
-  ROLES,
   type Audit,
   type AuditAssignment,
   type AuditStatus,
@@ -17,14 +16,36 @@ import {
   type Zone,
 } from '@audit5s/contracts';
 import { ApiError, api } from '@/lib/api';
-import { Badge, Button, Card, CardHeader, Combobox, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardHeader,
+  Combobox,
+  ConfirmDialog,
+  EmptyState,
+  ErrorNotice,
+  Field,
+  Input,
+  RowActions,
+  Select,
+  Skeleton,
+  Spinner,
+  StatusChip,
+  Table,
+  Td,
+  Th,
+  type RowAction,
+} from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { Link, useSearch } from '@tanstack/react-router';
 import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
-import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, ROLE_LABEL, USER_STATUS_LABEL, roleLabel } from '@/lib/labels';
+import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, ROLE_LABEL, roleLabel } from '@/lib/labels';
 import { formatDate, formatDateTime } from '@audit5s/domain';
+
+/** Least privileged first, so a slip of the hand never lands on Super Admin (US3). */
+const ROLES_BY_REACH: readonly Role[] = ['ZONE_LEADER', 'CONSULTANT', 'COORDINATOR', 'SUPER_ADMIN'];
 
 const mobileDigits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
 
@@ -50,6 +71,26 @@ export function UsersPage() {
     queryKey: ['users'],
     queryFn: () => api.get<Page<User>>('/users?limit=200'),
   });
+  // US2: which plant each person runs or works in — their memberships, and for a Consultant
+  // (who holds none, R-28) the Units of their open assignments. One page of each, like the list.
+  const memberships = useQuery({
+    queryKey: ['memberships', 'all'],
+    queryFn: () => api.get<Page<MembershipDetail>>('/memberships?status=ACTIVE&limit=200'),
+    enabled: can('unit_membership', 'read'),
+  });
+  const assignments = useQuery({
+    queryKey: ['audit-assignments', 'open', 'all'],
+    queryFn: () => api.get<Page<AuditAssignment>>('/audit-assignments?open=true&limit=200'),
+    enabled: can('audit_assignment', 'read'),
+  });
+  const unitsOf = new Map<string, Set<string>>();
+  for (const [userId, unitName] of [
+    ...(memberships.data?.data ?? []).map((m) => [m.userId, m.unitName] as const),
+    ...(assignments.data?.data ?? []).map((a) => [a.auditorUserId, a.unitName] as const),
+  ]) {
+    unitsOf.set(userId, (unitsOf.get(userId) ?? new Set<string>()).add(unitName));
+  }
+
   const query = search.trim().toLocaleLowerCase();
   const list = (users.data?.data ?? []).filter(
     (user) =>
@@ -101,27 +142,40 @@ export function UsersPage() {
           <Field label="Role">
             <Select value={role} onChange={(event) => setRole(event.target.value as Role | '')}>
               <option value="">All roles</option>
-              <option value="CONSULTANT">Consultants</option>
-              <option value="COORDINATOR">Coordinators</option>
-              <option value="ZONE_LEADER">Zone Leaders</option>
-              <option value="SUPER_ADMIN">Super Admins</option>
+              {ROLES_BY_REACH.map((value) => (
+                <option key={value} value={value}>
+                  {ROLE_LABEL[value]}
+                </option>
+              ))}
             </Select>
           </Field>
         </div>
 
-        {users.isLoading && <Spinner />}
+        {users.isLoading && (
+          <Skeleton
+            variant="rows"
+            columns={['Name', 'Login ID', 'Role', 'Units', 'Status', 'Last sign-in', '']}
+            label="Loading users…"
+          />
+        )}
         {users.error && <div className="p-4"><ErrorNotice error={users.error} /></div>}
 
-        {users.data && (
-          <Table>
+        {users.data && list.length === 0 && (
+          <EmptyState title="No matching users.">Try another name, or All roles.</EmptyState>
+        )}
+
+        {users.data && list.length > 0 && (
+          <div className="[&_table]:min-w-[860px]!">
+          <Table variant="register" label="Users">
             <thead>
               <tr>
-                <Th>Name</Th>
-                <Th>Login ID</Th>
-                <Th>Role</Th>
-                <Th>Status</Th>
-                <Th>Last sign-in</Th>
-                <Th>Actions</Th>
+                <Th width="19%">Name</Th>
+                <Th width="10%">Login ID</Th>
+                <Th width="11%">Role</Th>
+                <Th width="17%">Units</Th>
+                <Th width="13%">Status</Th>
+                <Th width="16%">Last sign-in</Th>
+                <Th width="14%"><span className="sr-only">Actions</span></Th>
               </tr>
             </thead>
             <tbody>
@@ -129,69 +183,106 @@ export function UsersPage() {
                 <UserRow
                   key={user.id}
                   user={user}
+                  units={user.role === 'SUPER_ADMIN' ? null : [...(unitsOf.get(user.id) ?? [])]}
                   open={expanded === user.id}
                   onToggle={() => setExpanded(expanded === user.id ? null : user.id)}
                 />
               ))}
-              {list.length === 0 && (
-                <tr>
-                  <Td className="text-ink-3">No matching users.</Td>
-                </tr>
-              )}
             </tbody>
           </Table>
+          </div>
         )}
       </Card>
     </div>
   );
 }
 
-function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle: () => void }) {
+function UserRow({
+  user,
+  units,
+  open,
+  onToggle,
+}: {
+  user: User;
+  /** `null` for a Super Admin, who reaches every Unit. */
+  units: string[] | null;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const { can, scope, user: self } = useSession();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
-
-  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
-  const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['users'] });
 
   const revokeAccess = useMutation({
     mutationFn: () => api.post<void>(`/users/${user.id}/disable`),
-    onSuccess: async () => {
-      setConfirmingRevoke(false);
-      await queryClient.invalidateQueries({ queryKey: ['users'] });
-    },
+    onSuccess: refresh,
   });
 
   /** Undoes "Revoke access"; the person signs in again on each phone. */
   const restoreAccess = useMutation({
     mutationFn: () => api.post<void>(`/users/${user.id}/enable`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: refresh,
   });
 
   const reset = useMutation({
     mutationFn: () => api.post<{ loginId: string }>(`/users/${user.id}/reset-password`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: refresh,
   });
 
   /**
-   * Removal, as far as D8 allows (R-25): archived and disabled, never deleted. Their audits,
+   * Archiving, as far as D8 allows (R-25): archived and disabled, never deleted. Their audits,
    * photographs and log entries stay exactly as they are — they simply leave every list.
    */
-  const remove = useMutation({
+  const archive = useMutation({
     mutationFn: () => api.post<void>(`/users/${user.id}/archive`),
-    onSuccess: async () => {
-      setConfirmingRemoval(false);
-      await queryClient.invalidateQueries({ queryKey: ['users'] });
-    },
+    onSuccess: refresh,
   });
 
-  const statusTone =
-    user.status === 'ACTIVE' ? 'good' : user.status === 'DISABLED' ? 'bad' : 'warn';
-  // A Coordinator manages Zone Leaders and nobody else (§6.3). Offering them a button the
+  // A Coordinator manages Zone Leaders and nobody else (§6.3). Offering them an action the
   // server refuses for anyone else is an invitation to a 403.
   const manageable = scope?.role === 'SUPER_ADMIN' || user.role === 'ZONE_LEADER';
   const isSelf = user.id === self?.id;
   const toggleRow = rowToggleProps(onToggle);
+
+  const items: RowAction[] = [];
+  if (can('user', 'reset_password') && (manageable || isSelf)) {
+    items.push({ label: 'Reset password', disabled: reset.isPending, onSelect: () => reset.mutate() });
+  }
+  if (can('user', 'disable') && manageable && !isSelf) {
+    items.push(
+      user.status === 'DISABLED'
+        ? {
+            label: 'Restore access',
+            disabled: restoreAccess.isPending,
+            onSelect: () => restoreAccess.mutate(),
+          }
+        : {
+            label: 'Revoke access',
+            danger: true,
+            confirm: {
+              title: `Revoke ${user.fullName}’s access?`,
+              body: `${user.fullName} is signed out of every phone and cannot sign in until access is restored. They stay in this list. Work still on their phone stays there and syncs once they are back.`,
+              confirmLabel: 'Revoke access',
+              pendingLabel: 'Revoking…',
+              run: () => revokeAccess.mutateAsync(),
+            },
+          },
+    );
+  }
+  if (can('user', 'archive') && !isSelf) {
+    items.push({
+      label: 'Archive',
+      danger: true,
+      confirm: {
+        title: `Archive ${user.fullName}?`,
+        body: `${user.fullName} leaves every list and can no longer sign in. Everything they recorded (audits, photographs, the activity log) is kept, because a 5S record that could be erased would not be a record.`,
+        confirmLabel: 'Archive',
+        pendingLabel: 'Archiving…',
+        run: () => archive.mutateAsync(),
+      },
+    });
+  }
 
   return (
     <Fragment>
@@ -204,111 +295,54 @@ function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle
         <Td className="font-mono text-xs">{user.loginId}</Td>
         <Td>{ROLE_LABEL[user.role]}</Td>
         <Td>
-          <div className="flex gap-1">
-            <Badge tone={statusTone}>{USER_STATUS_LABEL[user.status]}</Badge>
-            {user.mustResetPassword && <Badge tone="warn">Password reset pending</Badge>}
-          </div>
+          {units === null ? (
+            <span className="text-ink-3">Every Unit</span>
+          ) : units.length ? (
+            units.join(', ')
+          ) : (
+            <span className="text-ink-3">None</span>
+          )}
+        </Td>
+        <Td>
+          <StatusChip kind="user" status={user.status} />
+          {user.mustResetPassword && <div className="mt-1 text-xs text-ink-3">Must set a password</div>}
         </Td>
         <Td className="text-xs text-ink-3">
           {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}
         </Td>
         <Td>
-          <div className="flex flex-wrap gap-2">
-            {can('user', 'update') && manageable && (
-              <Button variant="secondary" onClick={() => setEditing((open) => !open)}>
-                {editing ? 'Close' : 'Edit'}
-              </Button>
-            )}
-            {can('user', 'reset_password') && (manageable || isSelf) && (
-              <Button
-                variant="secondary"
-                disabled={reset.isPending}
-                onClick={() => reset.mutate()}
-              >
-                Reset password
-              </Button>
-            )}
-            {can('user', 'disable') && manageable && user.status !== 'DISABLED' && !isSelf && (
-              <Button
-                variant="danger"
-                title="Disable sign-in and revoke every session and device. They stay in this list."
-                disabled={revokeAccess.isPending}
-                onClick={() => (confirmingRevoke ? revokeAccess.mutate() : setConfirmingRevoke(true))}
-              >
-                {revokeAccess.isPending
-                  ? 'Revoking…'
-                  : confirmingRevoke
-                    ? 'Confirm revoke'
-                    : 'Revoke access'}
-              </Button>
-            )}
-            {confirmingRevoke && !revokeAccess.isPending && (
-              <Button variant="secondary" onClick={() => setConfirmingRevoke(false)}>
-                Keep access
-              </Button>
-            )}
-            {can('user', 'disable') && manageable && user.status === 'DISABLED' && !isSelf && (
-              <Button
-                variant="secondary"
-                title="Let them sign in again. They sign in once on each phone they use."
-                disabled={restoreAccess.isPending}
-                onClick={() => restoreAccess.mutate()}
-              >
-                {restoreAccess.isPending ? 'Restoring…' : 'Restore access'}
-              </Button>
-            )}
-            {can('user', 'archive') && !isSelf && (
-              <Button
-                variant="danger"
-                title="Remove from every list. Their audits, photographs and activity log stay."
-                disabled={remove.isPending}
-                onClick={() => (confirmingRemoval ? remove.mutate() : setConfirmingRemoval(true))}
-              >
-                {remove.isPending
-                  ? 'Removing…'
-                  : confirmingRemoval
-                    ? 'Confirm removal'
-                    : 'Remove'}
-              </Button>
-            )}
-            {confirmingRemoval && !remove.isPending && (
-              <Button variant="secondary" onClick={() => setConfirmingRemoval(false)}>
-                Keep
-              </Button>
-            )}
-          </div>
-          {confirmingRevoke && (
-            <p className="mt-2 text-xs text-ink-2">
-              {user.fullName} is signed out of every phone and cannot sign in until access is
-              restored. Work still on their phone stays there and syncs once they are back.
-            </p>
-          )}
-          {confirmingRemoval && (
-            <p className="mt-2 text-xs text-ink-2">
-              {user.fullName} leaves every list and can no longer sign in. Everything they
-              recorded — audits, photographs, the activity log — is kept, because a 5S record
-              that could be erased would not be a record.
-            </p>
-          )}
-          {(revokeAccess.error || restoreAccess.error || reset.error || remove.error) && (
+          <RowActions
+            subject={user.fullName}
+            primary={
+              can('user', 'update') && manageable ? (
+                <Button
+                  variant="secondary"
+                  aria-expanded={editing}
+                  onClick={() => setEditing((open) => !open)}
+                >
+                  {editing ? 'Close' : 'Edit'}
+                </Button>
+              ) : null
+            }
+            items={items}
+          />
+          {(restoreAccess.error || reset.error) && (
             <div className="mt-2">
-              <ErrorNotice
-                error={revokeAccess.error ?? restoreAccess.error ?? reset.error ?? remove.error}
-              />
+              <ErrorNotice error={restoreAccess.error ?? reset.error} />
             </div>
           )}
         </Td>
       </tr>
       {open && (
         <tr className="gb-row-expand">
-          <td colSpan={6}>
+          <td colSpan={7}>
             <UserActivity user={user} />
           </td>
         </tr>
       )}
       {editing && (
         <tr>
-          <td colSpan={6} className="bg-board p-0">
+          <td colSpan={7} className="bg-board p-0">
             <EditUserForm user={user} onDone={() => setEditing(false)} />
           </td>
         </tr>
@@ -317,7 +351,8 @@ function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle
   );
 }
 
-const OPEN_AUDIT_STATUSES: ReadonlySet<AuditStatus> = new Set(['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED']);
+const NOT_STARTED: ReadonlySet<AuditStatus> = new Set(['ASSIGNED', 'READY']);
+const RUNNING: ReadonlySet<AuditStatus> = new Set(['IN_PROGRESS', 'PAUSED']);
 
 /**
  * What a person is responsible for: the Units they belong to, the assignments waiting on
@@ -354,7 +389,14 @@ function UserActivity({ user }: { user: User }) {
     ).values(),
   ];
   const all = [...(audits.data?.data ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const running = all.filter((audit) => OPEN_AUDIT_STATUSES.has(audit.status));
+  // US6: each bucket by its own status, so "In progress" never lists an audit that says
+  // Assigned. An unstarted audit whose assignment is already listed is not listed twice.
+  const waiting = (assignments.data?.data ?? []).filter((a) => a.status !== 'IN_PROGRESS');
+  const waitingIds = new Set(waiting.map((a) => a.id));
+  const notStarted = all.filter(
+    (audit) => NOT_STARTED.has(audit.status) && !(audit.assignmentId && waitingIds.has(audit.assignmentId)),
+  );
+  const running = all.filter((audit) => RUNNING.has(audit.status));
   const conducted = all.filter((audit) => audit.completedAt !== null);
 
   const error = memberships.error ?? assignments.error ?? audits.error;
@@ -380,8 +422,9 @@ function UserActivity({ user }: { user: User }) {
       {conducts && (
         <>
           <section>
-            <h3 className="gb-label">Assigned, not started · {(assignments.data?.data ?? []).filter((a) => a.status !== 'IN_PROGRESS').length}</h3>
-            <AssignmentList assignments={(assignments.data?.data ?? []).filter((a) => a.status !== 'IN_PROGRESS')} />
+            <h3 className="gb-label">Assigned, not started · {waiting.length + notStarted.length}</h3>
+            {waiting.length > 0 || notStarted.length === 0 ? <AssignmentList assignments={waiting} /> : null}
+            {notStarted.length > 0 && <AuditList audits={notStarted} empty="" />}
           </section>
           <section>
             <h3 className="gb-label">In progress · {running.length}</h3>
@@ -738,104 +781,127 @@ export function CreateUserForm({
 
   // A Coordinator may create Zone Leaders only, in their own Unit — the server takes the
   // Unit from their membership regardless of what is sent (AZ-2).
-  const roles = isCoordinator ? (['ZONE_LEADER'] as const) : ROLES;
+  const roles = isCoordinator ? (['ZONE_LEADER'] as const) : ROLES_BY_REACH;
+  // US3: making someone a Super Admin is asked about by name before it is done.
+  const [elevating, setElevating] = useState<CreateUserRequest | null>(null);
 
   return (
-    <form
-      className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2"
-      onSubmit={handleSubmit((values) => create.mutate(values))}
-    >
-      <Field label="Full name" hint="The login ID is derived from this and the phone number">
-        <Input placeholder="Rahul Sharma" {...register('fullName', { required: true })} />
-      </Field>
-
-      <Field
-        label="Mobile number"
-        hint="10 digits only. Also the temporary password, for 72 hours."
-        error={errors.phone?.message}
+    <>
+      {/* Outside the form: its buttons would otherwise submit it. */}
+      <ConfirmDialog
+        open={elevating !== null}
+        title={`Make ${elevating?.fullName ?? 'this person'} a Super Admin?`}
+        tone="primary"
+        confirmLabel="Create Super Admin"
+        pendingLabel="Creating…"
+        pending={create.isPending}
+        error={create.error}
+        onCancel={() => setElevating(null)}
+        onConfirm={() => {
+          if (elevating) create.mutate(elevating, { onSuccess: () => setElevating(null) });
+        }}
       >
-        <Input
-          type="tel"
-          inputMode="numeric"
-          autoComplete="tel-national"
-          maxLength={10}
-          pattern="[0-9]{10}"
-          placeholder="9876543210"
-          onInput={keepMobileDigits}
-          {...register('phone', {
-            required: 'Enter a 10-digit mobile number',
-            pattern: { value: /^\d{10}$/, message: 'Enter exactly 10 digits' },
-          })}
-        />
-      </Field>
-
-      <Field label="Email (optional)">
-        <Input type="email" {...register('email')} />
-      </Field>
-
-      {!fixedRole && (
-        <Field label="Role">
-          <Select disabled={isCoordinator} {...register('role', { required: true })}>
-            {roles.map((role) => (
-              <option key={role} value={role}>
-                {ROLE_LABEL[role]}
-              </option>
-            ))}
-          </Select>
+        A Super Admin sees and changes everything in every Unit, including other people’s
+        accounts. Choose a narrower role unless they run the whole organization.
+      </ConfirmDialog>
+      <form
+        className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2"
+        onSubmit={handleSubmit((values) =>
+          (fixedRole ?? values.role) === 'SUPER_ADMIN' ? setElevating(values) : create.mutate(values),
+        )}
+      >
+        <Field label="Full name" hint="The login ID is derived from this and the phone number">
+          <Input placeholder="Rahul Sharma" {...register('fullName', { required: true })} />
         </Field>
-      )}
 
-      {!isCoordinator && !fixedUnitId && requiresUnit && (
-        <Field label="Unit" hint="Required for Coordinators and Zone Leaders" error={errors.unitId?.message}>
-          <Controller
-            control={control}
-            name="unitId"
-            rules={{ required: 'Choose a Unit' }}
-            render={({ field }) => (
-              <Combobox
-                value={field.value ?? ''}
-                onChange={field.onChange}
-                options={(units.data?.data ?? []).map((unit) => ({ id: unit.id, label: unit.name }))}
-                placeholder="Search Units…"
-              />
-            )}
+        <Field
+          label="Mobile number"
+          hint="10 digits only. Also the temporary password, for 72 hours."
+          error={errors.phone?.message}
+        >
+          <Input
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel-national"
+            maxLength={10}
+            pattern="[0-9]{10}"
+            placeholder="9876543210"
+            onInput={keepMobileDigits}
+            {...register('phone', {
+              required: 'Enter a 10-digit mobile number',
+              pattern: { value: /^\d{10}$/, message: 'Enter exactly 10 digits' },
+            })}
           />
         </Field>
-      )}
 
-      {picksZone && (
-        <Field
-          label={isCoordinator ? 'Leads Zone' : 'Leads Zone (optional)'}
-          hint={
-            zones.data && zones.data.data.length === 0
-              ? 'This Unit has no Zones yet. Create the Zone first, and make its leader there.'
-              : 'Their Zone. They may still audit, and fix the findings of, every Zone of the Unit.'
-          }
-          error={errors.zoneId?.message}
-        >
-          <Select
-            {...register('zoneId', { required: isCoordinator ? 'Choose the Zone they lead' : false })}
-          >
-            <option value="">{isCoordinator ? 'Choose a Zone' : 'No Zone yet'}</option>
-            {(zones.data?.data ?? []).map((zone) => (
-              <option key={zone.id} value={zone.id}>
-                {`Zone ${zone.code} — ${zone.name}`}
-                {zone.zoneLeaderName ? ` (now ${zone.zoneLeaderName})` : ''}
-              </option>
-            ))}
-          </Select>
+        <Field label="Email (optional)">
+          <Input type="email" {...register('email')} />
         </Field>
-      )}
 
-      <div className="sm:col-span-2">
-        <ErrorNotice error={create.error} />
-      </div>
+        {!fixedRole && (
+          <Field label="Role">
+            <Select disabled={isCoordinator} {...register('role', { required: true })}>
+              {roles.map((role) => (
+                <option key={role} value={role}>
+                  {ROLE_LABEL[role]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
 
-      <div className="sm:col-span-2">
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? 'Creating…' : 'Create user'}
-        </Button>
-      </div>
-    </form>
+        {!isCoordinator && !fixedUnitId && requiresUnit && (
+          <Field label="Unit" hint="Required for Coordinators and Zone Leaders" error={errors.unitId?.message}>
+            <Controller
+              control={control}
+              name="unitId"
+              rules={{ required: 'Choose a Unit' }}
+              render={({ field }) => (
+                <Combobox
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  options={(units.data?.data ?? []).map((unit) => ({ id: unit.id, label: unit.name }))}
+                  placeholder="Search Units…"
+                />
+              )}
+            />
+          </Field>
+        )}
+
+        {picksZone && (
+          <Field
+            label={isCoordinator ? 'Leads Zone' : 'Leads Zone (optional)'}
+            hint={
+              zones.data && zones.data.data.length === 0
+                ? 'This Unit has no Zones yet. Create the Zone first, and make its leader there.'
+                : 'Their Zone. They may still audit, and fix the findings of, every Zone of the Unit.'
+            }
+            error={errors.zoneId?.message}
+          >
+            <Select
+              {...register('zoneId', { required: isCoordinator ? 'Choose the Zone they lead' : false })}
+            >
+              <option value="">{isCoordinator ? 'Choose a Zone' : 'No Zone yet'}</option>
+              {(zones.data?.data ?? []).map((zone) => (
+                <option key={zone.id} value={zone.id}>
+                  {`Zone ${zone.code} — ${zone.name}`}
+                  {zone.zoneLeaderName ? ` (now ${zone.zoneLeaderName})` : ''}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        <div className="sm:col-span-2">
+          <ErrorNotice error={create.error} />
+        </div>
+
+        <div className="sm:col-span-2">
+          <Button type="submit" disabled={create.isPending}>
+            {create.isPending ? 'Creating…' : 'Create user'}
+          </Button>
+        </div>
+      </form>
+    </>
   );
 }

@@ -15,13 +15,15 @@ import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from '@audit5s/contracts';
 import { zoneCodeChoices, zoneCodeForNumber, zoneDisplayLabel } from '@audit5s/domain';
 import { ApiError, api } from '@/lib/api';
 import {
-  Badge,
   Button,
+  EmptyState,
   ErrorNotice,
   Field,
   Input,
+  RowActions,
   Select,
   Spinner,
+  StatusChip,
   Table,
   Td,
   Th,
@@ -102,24 +104,26 @@ export function UnitZones({ unitId }: { unitId: string }) {
       )}
 
       {zones.data && list.length === 0 && (
-        <p className="px-4 pb-4 text-sm text-ink-3">
-          {query ? 'No matching Zones.' : 'No Zones in this Unit yet. '}
-          {!query && (can('zone', 'create')
-            ? 'Create the first one — auditors choose from these when they start an audit.'
-            : 'A Coordinator creates them.')}
-        </p>
+        <EmptyState title={query ? 'No matching Zones.' : 'No Zones in this Unit yet.'}>
+          {query
+            ? null
+            : can('zone', 'create')
+              ? 'An auditor adds one by naming it in the field, or create one here with New Zone.'
+              : 'An auditor adds one by naming it in the field.'}
+        </EmptyState>
       )}
 
       {list.length > 0 && (
-        <Table>
+        <div className="[&_table]:min-w-[760px]!">
+        <Table variant="register" label="Zones">
           <thead>
             <tr>
-              <Th>Zone</Th>
-              <Th>Description</Th>
-              <Th>Zone Leader</Th>
-              <Th>Default checklist</Th>
-              <Th>Status</Th>
-              <Th>Actions</Th>
+              <Th width="22%">Zone</Th>
+              <Th width="17%">Description</Th>
+              <Th width="18%">Zone Leader</Th>
+              <Th width="13%">Default checklist</Th>
+              <Th width="13%">Status</Th>
+              <Th width="17%"><span className="sr-only">Actions</span></Th>
             </tr>
           </thead>
           <tbody>
@@ -128,6 +132,7 @@ export function UnitZones({ unitId }: { unitId: string }) {
             ))}
           </tbody>
         </Table>
+        </div>
       )}
     </div>
   );
@@ -140,13 +145,14 @@ function ZoneRow({ zone, unitId }: { zone: Zone; unitId: string }) {
 
   const archive = useMutation({
     mutationFn: () => api.post(`/zones/${zone.id}/archive`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['zones', unitId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['zones'] }),
   });
 
   const templates = useQuery({
     queryKey: ['checklist-templates'],
     queryFn: () => api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
   });
+  const label = zoneDisplayLabel(zone.code, zone.name);
   const template = templates.data?.data.find(
     (candidate) => candidate.id === zone.defaultChecklistTemplateId,
   );
@@ -155,35 +161,51 @@ function ZoneRow({ zone, unitId }: { zone: Zone; unitId: string }) {
     <>
       <tr className={zone.archivedAt ? 'opacity-60' : undefined}>
         <Td>
-          <span className="font-medium">{zoneDisplayLabel(zone.code, zone.name)}</span>
+          <span className="font-medium break-words">{label}</span>
         </Td>
-        <Td className="max-w-xs truncate text-ink-2">{zone.description ?? '—'}</Td>
+        <Td className="truncate text-ink-2">{zone.description ?? '—'}</Td>
         <Td>{zone.zoneLeaderName ?? <span className="text-ink-3">Unassigned</span>}</Td>
         <Td>{template?.name ?? '—'}</Td>
         <Td>
-          {zone.archivedAt ? <Badge tone="neutral">Archived</Badge> : <Badge tone="good">Active</Badge>}
+          {zone.archivedAt ? (
+            <StatusChip shape="ended">Archived</StatusChip>
+          ) : (
+            <StatusChip shape="active">Active</StatusChip>
+          )}
         </Td>
         <Td>
-          <div className="flex gap-2">
-            {can('zone', 'update') && !zone.archivedAt && (
-              <Button variant="secondary" onClick={() => setEditing((open) => !open)}>
-                {editing ? 'Close' : 'Edit'}
-              </Button>
-            )}
-            {can('zone', 'archive') && !zone.archivedAt && (
-              <Button
-                variant="danger"
-                disabled={archive.isPending}
-                onClick={() => archive.mutate()}
-              >
-                Archive
-              </Button>
-            )}
-          </div>
-          {archive.error && (
-            <div className="mt-2">
-              <ErrorNotice error={archive.error} />
-            </div>
+          {!zone.archivedAt && (
+            <RowActions
+              subject={label}
+              primary={
+                can('zone', 'update') ? (
+                  <Button
+                    variant="secondary"
+                    aria-expanded={editing}
+                    onClick={() => setEditing((open) => !open)}
+                  >
+                    {editing ? 'Close' : 'Edit'}
+                  </Button>
+                ) : null
+              }
+              items={
+                can('zone', 'archive')
+                  ? [
+                      {
+                        label: 'Archive',
+                        danger: true,
+                        confirm: {
+                          title: `Archive ${label}?`,
+                          body: 'It is no longer offered for new audits. Its audits, scores and photographs stay on record, and it stays listed here as Archived.',
+                          confirmLabel: 'Archive',
+                          pendingLabel: 'Archiving…',
+                          run: () => archive.mutateAsync(),
+                        },
+                      },
+                    ]
+                  : []
+              }
+            />
           )}
         </Td>
       </tr>
@@ -251,7 +273,7 @@ function CreateZoneForm({
     onSuccess: async () => {
       setFieldErrors({});
       reset({ zoneNumber: '' });
-      await queryClient.invalidateQueries({ queryKey: ['zones', unitId] });
+      await queryClient.invalidateQueries({ queryKey: ['zones'] });
       onCreated();
     },
     onError: (error) => setFieldErrors(error instanceof ApiError ? error.fieldErrors() : {}),
