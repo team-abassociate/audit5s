@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AUDIT_LOG_ACTIONS, type AuditLogEntry, type Page } from '@audit5s/contracts';
 import { api } from '@/lib/api';
-import { Card, CardHeader, ErrorNotice, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import { Card, CardHeader, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { rowToggleProps } from '@/features/audits/AuditsPage';
 
@@ -26,14 +26,16 @@ export function AuditLogPage() {
         title="Audit log"
         description="Append-only. Every administrative action, with the actor snapshotted as it was at the time."
         action={
-          <Select className="w-64" value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="">All actions</option>
-            {AUDIT_LOG_ACTIONS.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
+          <Field label="Action">
+            <Select className="w-64" value={action} onChange={(e) => setAction(e.target.value)}>
+              <option value="">All actions</option>
+              {AUDIT_LOG_ACTIONS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </Select>
+          </Field>
         }
       />
 
