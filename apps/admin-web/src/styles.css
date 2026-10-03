@@ -2407,9 +2407,13 @@ li:has(> .gb-menu-item--danger) {
   z-index: 1;
   white-space: normal;
 }
-.gb-table--register th,
 .gb-table--register td {
   overflow-wrap: anywhere;
+}
+/* A header wraps between words, never inside one ("CHECKLIS / TS"): size its column instead. */
+.gb-table--register th {
+  overflow-wrap: normal;
+  hyphens: none;
 }
 
 /* --- /__components, the development gallery (components/dev). --- */
