@@ -7,6 +7,7 @@ import type {
   CreateUserResponse,
   Page,
   Unit,
+  UpdateZoneRequest,
   User,
   Zone,
 } from '@audit5s/contracts';
@@ -27,6 +28,14 @@ import {
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { BootstrapNotice, CreateUserForm } from '@/features/users/UsersPage';
+import {
+  changedZoneFields,
+  editZoneDefaults,
+  leaderAccountOptions,
+  typedLeaderOf,
+  TYPED_LEADER,
+  type EditZoneValues,
+} from './zone-edit';
 
 /**
  * A Unit's Zones, cascaded open under its row on Units & zones.
@@ -210,7 +219,7 @@ function CreateZoneForm({
   const [issuedLeader, setIssuedLeader] = useState<CreateUserResponse | null>(null);
   const taken = new Set(existing.map((zone) => zone.code));
 
-  const templates = useOfferedTemplates(unitId);
+  const templates = useOfferedTemplates(unitId).data;
 
   const leaders = useQuery({
     queryKey: ['users', 'zone-leaders', unitId],
@@ -370,34 +379,81 @@ function EditZoneForm({
   unitId: string;
   onDone: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
   const templates = useOfferedTemplates(unitId, zone.defaultChecklistTemplateId);
   const leaders = useQuery({
     queryKey: ['users', 'zone-leaders', unitId],
     queryFn: () => api.get<Page<User>>(`/users?role=ZONE_LEADER&unitId=${unitId}&limit=200`),
   });
 
-  const { register, handleSubmit } = useForm({
-    defaultValues: {
-      name: zone.name,
-      description: zone.description ?? '',
-      zoneLeaderId: zone.zoneLeaderId ?? '',
-      defaultChecklistTemplateId: zone.defaultChecklistTemplateId ?? '',
-    },
-  });
+  // The form mounts once its option lists are in, so each select opens on the value it
+  // holds. Mounted earlier, a select whose option has not arrived shows its first option
+  // ("Unassigned", "None") and keeps showing it after the list loads (U1).
+  // A failed list stays `isPending` (no data yet) in TanStack Query v5, so the error is
+  // checked first; otherwise a failure would leave the form spinning for ever.
+  const loadError = leaders.error ?? templates.error;
+  if (loadError) {
+    return (
+      <div className="space-y-2 p-4">
+        <ErrorNotice error={loadError} />
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            onClick={() => {
+              void leaders.refetch();
+              templates.refetch();
+            }}
+          >
+            Try again
+          </Button>
+          <Button type="button" variant="secondary" onClick={onDone}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  if (leaders.isPending || templates.isPending) {
+    return <Spinner />;
+  }
+
+  return (
+    <EditZoneFields
+      zone={zone}
+      unitId={unitId}
+      leaders={leaders.data?.data ?? []}
+      templates={templates.data}
+      onDone={onDone}
+    />
+  );
+}
+
+function EditZoneFields({
+  zone,
+  unitId,
+  leaders,
+  templates,
+  onDone,
+}: {
+  zone: Zone;
+  unitId: string;
+  leaders: readonly User[];
+  templates: readonly ChecklistTemplate[];
+  onDone: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const typedLeader = typedLeaderOf(zone);
+  const leaderOptions = leaderAccountOptions(zone, leaders);
+  const [defaultValues] = useState(() => editZoneDefaults(zone));
+  const {
+    register,
+    handleSubmit,
+    formState: { dirtyFields },
+  } = useForm<EditZoneValues>({ defaultValues });
 
   const update = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api.patch<Zone>(`/zones/${zone.id}`, {
-        ...body,
-        // An empty select means "no leader", which is a clear rather than a no-op.
-        zoneLeaderId: body.zoneLeaderId === '' ? null : body.zoneLeaderId,
-        defaultChecklistTemplateId:
-          body.defaultChecklistTemplateId === '' ? null : body.defaultChecklistTemplateId,
-        version: zone.version,
-      }),
+    mutationFn: (body: UpdateZoneRequest) => api.patch<Zone>(`/zones/${zone.id}`, body),
     onSuccess: async () => {
       setFieldErrors({});
       await queryClient.invalidateQueries({ queryKey: ['zones', unitId] });
@@ -409,7 +465,14 @@ function EditZoneForm({
   return (
     <form
       className="grid gap-3 p-4 sm:grid-cols-2"
-      onSubmit={handleSubmit((body) => update.mutate(body))}
+      onSubmit={handleSubmit((values) => {
+        const body = changedZoneFields(values, defaultValues, dirtyFields);
+        if (!body) {
+          onDone();
+          return;
+        }
+        update.mutate({ ...body, version: zone.version });
+      })}
     >
       <Field label="Name" error={fieldErrors.name}>
         <Input {...register('name')} />
@@ -421,12 +484,24 @@ function EditZoneForm({
       >
         <Input {...register('description')} />
       </Field>
-      <Field label="Zone Leader" error={fieldErrors.zoneLeaderId}>
+      <Field
+        label="Zone Leader"
+        error={fieldErrors.zoneLeaderId}
+        hint={
+          typedLeader
+            ? 'Typed by the auditor. Choose a Zone Leader account to replace it.'
+            : undefined
+        }
+      >
         <Select {...register('zoneLeaderId')}>
-          <option value="">Unassigned</option>
-          {(leaders.data?.data ?? []).map((leader) => (
-            <option key={leader.id} value={leader.id}>
-              {leader.fullName} ({leader.loginId})
+          {typedLeader ? (
+            <option value={TYPED_LEADER}>{typedLeader}</option>
+          ) : (
+            <option value="">Unassigned</option>
+          )}
+          {leaderOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </Select>
@@ -468,7 +543,10 @@ function firstFreeNumber(taken: Set<string>): number {
  * industry is offered everything. `keepId` stays in the list even when it no longer
  * fits, so editing a Zone never silently drops the choice it already has.
  */
-function useOfferedTemplates(unitId: string, keepId?: string | null): ChecklistTemplate[] {
+function useOfferedTemplates(
+  unitId: string,
+  keepId?: string | null,
+): { data: ChecklistTemplate[]; isPending: boolean; error: unknown; refetch: () => void } {
   const unit = useQuery({
     queryKey: ['unit', unitId],
     queryFn: () => api.get<Unit>(`/units/${unitId}`),
@@ -478,11 +556,19 @@ function useOfferedTemplates(unitId: string, keepId?: string | null): ChecklistT
     queryFn: () => api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
   });
   const industryId = unit.data?.industryId ?? null;
-  return (templates.data?.data ?? []).filter(
-    (template) =>
-      template.id === keepId ||
-      industryId === null ||
-      template.industries.length === 0 ||
-      template.industries.some((industry) => industry.id === industryId),
-  );
+  return {
+    isPending: unit.isPending || templates.isPending,
+    error: unit.error ?? templates.error,
+    refetch: () => {
+      void unit.refetch();
+      void templates.refetch();
+    },
+    data: (templates.data?.data ?? []).filter(
+      (template) =>
+        template.id === keepId ||
+        industryId === null ||
+        template.industries.length === 0 ||
+        template.industries.some((industry) => industry.id === industryId),
+    ),
+  };
 }
