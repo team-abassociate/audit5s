@@ -515,7 +515,7 @@ await page.getByRole('link', { name: 'Sync health' }).click();
 await page.waitForLoadState('networkidle');
 await page.screenshot({ path: `${shots}/22-sync-health.png`, fullPage: true });
 
-await page.getByText('Payload could not be read').first().click();
+await page.getByText('Could not be applied').first().click();
 await page.waitForSelector('text=What the device sent', { timeout: 10000 });
 await page.screenshot({ path: `${shots}/23-conflict-payload.png`, fullPage: true });
 
