@@ -31,6 +31,7 @@ import { CorrectiveActionsService } from '../corrective-actions/corrective-actio
 import { DevicesService } from '../devices/devices.service';
 import { EvidenceService } from '../evidence/evidence.service';
 import { ResponsesService } from '../question-responses/responses.service';
+import { heldItemSentence, rawFailure } from './held-item-detail';
 import { SyncRepository } from './sync.repository';
 import { SyncEventsService } from './sync-events.service';
 
@@ -253,11 +254,11 @@ export class SyncBatchService {
     }
 
     const reason = QUARANTINE_REASONS[code ?? ''] ?? null;
-    // Built once, for the row as well as the log. `reason` is the category a Super Admin
-    // filters on; this is the sentence that tells them which rule actually refused the
-    // item, and until 0020 it reached the log and nothing else.
-    const errors = this.describe(error);
-    const detail = errors.join('; ');
+    // `reason` is the category a Super Admin filters on; `detail` is the plain sentence that
+    // tells them which rule refused the item. The raw failure — for a database error, the
+    // SQL and its parameters — goes to the server log and nowhere else (UX audit S1x).
+    const detail = heldItemSentence(error, reason ?? 'VALIDATION_FAILED');
+    const raw = rawFailure(error);
 
     if (reason) {
       // §9.5's `AUDIT_ALREADY_COMPLETED` carve-out: a byte-identical late item is a
@@ -279,7 +280,7 @@ export class SyncBatchService {
       });
 
       this.logger.warn(
-        `quarantined ${item.entityType} ${item.entityId} from device ${deviceId}: ${reason} (${detail})`,
+        `quarantined ${item.entityType} ${item.entityId} from device ${deviceId} as conflict ${conflictId}: ${reason} (${raw})`,
       );
 
       return { ...base, status: 'CONFLICT', reason, conflictId, resolution: 'QUARANTINED' };
@@ -300,7 +301,7 @@ export class SyncBatchService {
     });
 
     this.logger.warn(
-      `rejected ${item.entityType} ${item.entityId} from device ${deviceId}: ${detail}`,
+      `rejected ${item.entityType} ${item.entityId} from device ${deviceId} as conflict ${conflictId}: ${raw}`,
     );
 
     return {
@@ -308,7 +309,7 @@ export class SyncBatchService {
       status: 'REJECTED',
       reason: 'VALIDATION_FAILED',
       conflictId,
-      errors,
+      errors: [detail],
     };
   }
 
@@ -641,20 +642,6 @@ export class SyncBatchService {
       ]);
     }
     return value;
-  }
-
-  /** A human-readable reason, for the verdict and for the log. */
-  private describe(error: unknown): string[] {
-    if (error instanceof AppError) {
-      const fields = error.fieldErrors?.map((e) => `${e.field}: ${e.message}`) ?? [];
-      return fields.length > 0 ? fields : [error.detail ?? error.title];
-    }
-    if (error && typeof error === 'object' && 'issues' in error) {
-      // A Zod failure from one of the shared schemas.
-      const issues = (error as { issues: Array<{ path: unknown[]; message: string }> }).issues;
-      return issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`);
-    }
-    return [error instanceof Error ? error.message : 'Unknown error'];
   }
 
   /** The grace period a paused audit's device lock survives (§9.5 Layer 1). */

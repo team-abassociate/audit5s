@@ -18,6 +18,7 @@ import {
 import { rowToggleProps } from '@/features/audits/AuditsPage';
 import { syncEntityLabel } from '@/lib/labels';
 import { formatDateTime, formatWeekdayDate } from '@audit5s/domain';
+import { useSession } from '@/lib/session';
 
 /**
  * Sync health (PART 14, Phase 4's Web row): devices, the conflict queue, and what each
@@ -176,6 +177,7 @@ function ConflictRow({
   onToggle: () => void;
 }) {
   const queryClient = useQueryClient();
+  const { scope } = useSession();
   const [note, setNote] = useState('');
 
   const resolve = useMutation({
@@ -199,8 +201,9 @@ function ConflictRow({
         </Td>
         <Td>
           <Badge tone={REASON_TONE[conflict.reason] ?? 'warn'}>{REASON_LABEL[conflict.reason]}</Badge>
-          {/* The server's own sentence, in the list and not only under Review: the badge is a
-              category, and one category covers several different refusals. */}
+          {/* The server's sentence, in the list and not only under Review: the badge is a
+              category, and one category covers several different refusals. The API sends a
+              plain sentence only — the raw error stays in the server log (UX audit S1x). */}
           {conflict.detail && <div className="mt-1 text-xs text-ink-2">{conflict.detail}</div>}
         </Td>
         <Td>
@@ -224,17 +227,27 @@ function ConflictRow({
         <tr>
           <td colSpan={5} className="bg-board px-4 py-4">
             <div className="space-y-4">
-              {conflict.detail && (
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
-                    Why it was held
-                  </h4>
-                  {/* The server's own sentence. `reason` is the category; this is the rule
-                      that actually refused the item, and before 0020 it reached the
-                      container log and nowhere a Super Admin could read it. */}
-                  <p className="mt-1 text-sm text-ink">{conflict.detail}</p>
-                </div>
-              )}
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
+                  Why it was held
+                </h4>
+                {/* The server's sentence. `reason` is the category; this is the rule that
+                    actually refused the item. It is plain words by construction: SQL, bound
+                    values and stack frames never leave the server (UX audit S1x). */}
+                <p className="mt-1 text-sm text-ink">
+                  {conflict.detail ?? REASON_LABEL[conflict.reason]}
+                </p>
+                {/* The stable code, for a Super Admin matching this row to the server log or
+                    describing it to support. The code only — never the raw error. */}
+                {scope?.role === 'SUPER_ADMIN' && (
+                  <details className="mt-2 text-xs">
+                    <summary className="cursor-pointer text-ink-2">Technical details</summary>
+                    <p className="mt-1 text-ink-2">
+                      Reason code <code className="font-mono text-ink">{conflict.reason}</code>
+                    </p>
+                  </details>
+                )}
+              </div>
 
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-3">
@@ -449,7 +462,10 @@ const REASON_LABEL: Record<string, string> = {
   // under this code (`sync-batch.service.ts`), so it read as an administrator having cut
   // somebody off when nobody had (2026-09-28). The row's own sentence says which it was.
   SCOPE_REVOKED: 'Refused: not found or not allowed',
-  VALIDATION_FAILED: 'Could not be read',
+  // Not only a malformed payload: the server also files its own failures here — a database
+  // error while saving — so "could not be read" blamed the device for the server's fault
+  // (UX audit S1x). The row's sentence says which it was.
+  VALIDATION_FAILED: 'Could not be applied',
 };
 
 const REASON_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
