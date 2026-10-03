@@ -199,6 +199,10 @@ const notificationsRoute = createRoute({
 const syncRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/sync',
+  // A "field work held" notification opens the queue filtered to the phone it came from (N3).
+  validateSearch: (search: Record<string, unknown>): { device?: string } => ({
+    device: typeof search.device === 'string' ? search.device : undefined,
+  }),
   component: SyncHealthPage,
 });
 
