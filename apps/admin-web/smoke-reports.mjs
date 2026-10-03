@@ -299,7 +299,7 @@ try {
   await panel.waitFor({ state: 'hidden' });
 
   // One New report dialog: the kind, then the scope. The summary names its Unit itself.
-  await page.getByRole('button', { name: '+ New report' }).first().click();
+  await page.getByRole('button', { name: 'New report' }).first().click();
   await page.getByRole('heading', { name: 'New report' }).waitFor();
   await page.getByRole('radio', { name: /Unit summary/ }).check();
   await page.getByRole('combobox', { name: 'Unit' }).click();
