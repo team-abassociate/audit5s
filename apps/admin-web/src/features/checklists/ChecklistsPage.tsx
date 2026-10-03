@@ -8,7 +8,8 @@ import type {
   Industry,
   Page,
 } from '@audit5s/contracts';
-import { S_SECTION_LABELS, S_SECTION_ORDER } from '@audit5s/domain';
+import { S_SECTION_ORDER, formatDate } from '@audit5s/domain';
+import { CHECKLIST_VERSION_STATUS_LABEL, SECTION_LABEL } from '@/lib/labels';
 import { api } from '@/lib/api';
 import {
   Badge,
@@ -235,13 +236,11 @@ function TemplateDetail({ template }: { template: ChecklistTemplate }) {
                             : 'neutral'
                       }
                     >
-                      {version.status}
+                      {CHECKLIST_VERSION_STATUS_LABEL[version.status]}
                     </Badge>
                   </Td>
                   <Td>
-                    {version.publishedAt
-                      ? new Date(version.publishedAt).toLocaleDateString()
-                      : '—'}
+                    {formatDate(version.publishedAt)}
                   </Td>
                   <Td>
                     <div className="flex gap-2">
@@ -295,13 +294,13 @@ function QuestionList({ versionId }: { versionId: string }) {
       <h3 className="gb-h2">
         Questions — v{detail.data.versionNumber}
         <span className="ml-2 text-xs font-normal text-ink-3">
-          published versions never change (CV-1)
+          a published version never changes
         </span>
       </h3>
       {S_SECTION_ORDER.map((section) => (
         <div key={section}>
           <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">
-            {S_SECTION_LABELS[section]}
+            {SECTION_LABEL[section]}
           </p>
           <ol className="mt-1 space-y-0.5">
             {detail.data!.questions

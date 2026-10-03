@@ -9,7 +9,7 @@ import { formatDate } from './templates/components';
  * A consultant forwards these files to a client, and a folder of `v1.pdf`, `v2.pdf` says
  * nothing about which plant, Zone or visit each one is. Everything here comes from the
  * frozen payload, so a report saved in December is named for what was issued in March, and
- * the date is the one the report itself prints (`formatDate`, UTC), never the day it was
+ * the date is the one the report itself prints (`formatDate`, IST), never the day it was
  * downloaded.
  *
  * Plain hyphens rather than the em dash `zoneDisplayLabel` writes, and no character a

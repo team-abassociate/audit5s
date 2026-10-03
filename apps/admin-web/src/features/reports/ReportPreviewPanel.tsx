@@ -6,7 +6,8 @@ import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { Badge, Button, ErrorNotice } from '@/components/ui';
 import { PdfViewer, type PdfViewerHandle, type PdfZoom } from './PdfViewer';
-import { documentTitle, formatWhen, reportName } from './report-library';
+import { documentTitle, reportName } from './report-library';
+import { formatDateTime } from '@audit5s/domain';
 import {
   REPORT_PDF_ROOT,
   fetchReportPdf,
@@ -197,7 +198,7 @@ export function ReportPreviewPanel({
           <h2 className="gb-h2">{documentTitle(snapshot)}</h2>
           <p>
             {snapshot.subject.unitName} · {kindLabel[snapshot.kind]} · v{snapshot.version} ·{' '}
-            {formatWhen(snapshot.generatedAt)} · {snapshot.generatedByName}
+            {formatDateTime(snapshot.generatedAt)} · {snapshot.generatedByName}
             {snapshots.length > 1 ? ` · ${index + 1} of ${snapshots.length}` : ''}
           </p>
         </div>

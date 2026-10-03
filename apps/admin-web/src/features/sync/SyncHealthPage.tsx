@@ -16,6 +16,8 @@ import {
   Th,
 } from '@/components/ui';
 import { rowToggleProps } from '@/features/audits/AuditsPage';
+import { syncEntityLabel } from '@/lib/labels';
+import { formatDateTime, formatWeekdayDate } from '@audit5s/domain';
 
 /**
  * Sync health (PART 14, Phase 4's Web row): devices, the conflict queue, and what each
@@ -61,9 +63,9 @@ export function SyncHealthPage() {
         <CardHeader
           title="Sync health"
           description={
-            'Work that could not be applied is held here with its full payload — nothing is ' +
-            'ever discarded. Applying an item routes through the post-completion override, ' +
-            'so it is audit-logged like any other change to a finished audit.'
+            'Field work that could not be saved is held here, exactly as the phone sent it; ' +
+            'nothing is thrown away. Applying an item changes the finished audit the same way ' +
+            'a correction does, so it is recorded in the Activity log.'
           }
           action={
             <Button variant="secondary" onClick={() => setShowResolved((value) => !value)}>
@@ -189,10 +191,10 @@ function ConflictRow({
     <>
       <tr className="cursor-pointer hover:bg-board" onClick={rowToggleProps(onToggle).onClick}>
         <Td className="whitespace-nowrap">
-          {new Date(conflict.createdAt).toLocaleString()}
+          {formatDateTime(conflict.createdAt)}
         </Td>
         <Td>
-          <span className="font-medium">{conflict.entityType.replace(/_/g, ' ')}</span>
+          <span className="font-medium">{syncEntityLabel(conflict.entityType)}</span>
           <div className="font-mono text-xs text-ink-3">{conflict.entityId}</div>
         </Td>
         <Td>
@@ -286,9 +288,9 @@ function ConflictRow({
                   </div>
 
                   <p className="text-xs text-ink-3">
-                    Setting aside keeps the payload — it records that you decided not to act
-                    on it, not that it should be deleted. Applying it writes an audit-log
-                    entry with the before and after.
+                    Setting aside keeps what the phone sent — it records that you decided not
+                    to act on it, not that it should be deleted. Applying it writes an Activity
+                    log entry with the old and new values.
                   </p>
                 </div>
               )}
@@ -424,15 +426,9 @@ function StalenessBadge({ iso }: { iso: string }) {
   return <Badge tone={tone}>{relative(iso)}</Badge>;
 }
 
-/** The calendar day a row was held on, as the heading above that day's rows. */
+/** The IST calendar day a row was held on, as the heading above that day's rows. */
 function dayOf(iso: string | undefined): string {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString(undefined, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  return iso ? formatWeekdayDate(iso) : '';
 }
 
 function relative(iso: string): string {
@@ -453,7 +449,7 @@ const REASON_LABEL: Record<string, string> = {
   // under this code (`sync-batch.service.ts`), so it read as an administrator having cut
   // somebody off when nobody had (2026-09-28). The row's own sentence says which it was.
   SCOPE_REVOKED: 'Refused: not found or not allowed',
-  VALIDATION_FAILED: 'Payload could not be read',
+  VALIDATION_FAILED: 'Could not be read',
 };
 
 const REASON_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {

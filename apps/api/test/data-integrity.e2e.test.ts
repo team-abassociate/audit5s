@@ -86,10 +86,10 @@ describe('nightly data-integrity checks (§16.4)', () => {
       title: 'Data integrity check',
     });
     expect(alert!.body).toBe(
-      '1 evidence row without an uploaded photograph; ' +
+      '1 photo recorded but never uploaded; ' +
         '1 audit open for more than a week; ' +
         '1 device holding an audit and not syncing; ' +
-        '1 audit score that does not match a recomputation (of 2 checked). Nothing was changed.',
+        '1 audit score that does not match a recomputation (of 2 checked). The check only reports these; it did not change anything.',
     );
 
     // The counts survive as data, so a later reader can act on them without re-parsing prose.

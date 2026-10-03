@@ -1,4 +1,6 @@
-import type { ReportKind, ReportSnapshot } from '@audit5s/contracts';
+import type { ReportSnapshot } from '@audit5s/contracts';
+import { formatDate } from '@audit5s/domain';
+import { REPORT_EDITION_LABEL } from '@/lib/labels';
 
 /**
  * The Reports page as a library of documents rather than a log of renders.
@@ -18,12 +20,6 @@ import type { ReportKind, ReportSnapshot } from '@audit5s/contracts';
  * different documents — so a summary document is keyed by its exact selection, which a
  * regeneration keeps.
  */
-
-export const EDITION_LABEL: Record<ReportKind, string> = {
-  INITIAL_ZONE: 'Initial',
-  AFTER_EVIDENCE_ZONE: 'After evidence',
-  MULTI_ZONE_SUMMARY: 'Unit summary',
-};
 
 export interface ReportDocument {
   key: string;
@@ -157,7 +153,7 @@ export function filterLibrary(groups: readonly ReportGroup[], filters: LibraryFi
       latest.subject.unitName,
       latest.subject.zoneLabel ?? '',
       ...latest.subject.auditorNames,
-      EDITION_LABEL[latest.kind],
+      REPORT_EDITION_LABEL[latest.kind],
     ]
       .join(' ')
       .toLocaleLowerCase();
@@ -192,45 +188,13 @@ export function documentTitle(snapshot: ReportSnapshot): string {
 export function reportName(snapshot: ReportSnapshot): string {
   return snapshot.kind === 'MULTI_ZONE_SUMMARY'
     ? `${snapshot.subject.unitName} · Unit summary of ${documentTitle(snapshot)}`
-    : `${snapshot.subject.unitName} · ${documentTitle(snapshot)} · ${EDITION_LABEL[snapshot.kind]}`;
+    : `${snapshot.subject.unitName} · ${documentTitle(snapshot)} · ${REPORT_EDITION_LABEL[snapshot.kind]}`;
 }
 
 function auditedSpan(subject: ReportSnapshot['subject']): string {
-  const from = formatDay(subject.auditedFrom);
-  const to = formatDay(subject.auditedTo);
+  const from = formatDate(subject.auditedFrom);
+  const to = formatDate(subject.auditedTo);
   return from === to ? from : `${from} – ${to}`;
-}
-
-// --------------------------------------------------------------------------- formatting
-// One format for every date on the Reports page, in the viewer's own Indian calendar:
-// `30 Sep 2026` and `30 Sep 2026, 7:07 pm`. Two locales on one page was a finding.
-
-export function formatDay(iso: string | null): string {
-  return iso
-    ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-    : '—';
-}
-
-export function formatWhen(iso: string | null): string {
-  return iso
-    ? new Date(iso).toLocaleString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    : '—';
-}
-
-/** `Wed, 30 Sep 2026` — a day an auditor would name. */
-export function formatWeekday(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
 }
 
 function byNewestVersion(a: ReportSnapshot, b: ReportSnapshot): number {

@@ -1,4 +1,5 @@
 import type { NotificationEventType, Role } from '@audit5s/contracts';
+import { formatDate, NO_DATE, RESPONSE_TOKENS } from '@audit5s/domain';
 import type { DomainEventJob } from '../../infrastructure/queue/domain-events';
 
 /**
@@ -96,14 +97,13 @@ function aAudit(label: string): string {
 }
 
 /**
- * A date a person reads, from an ISO timestamp. Falls back to the leading date portion
- * rather than throwing: a malformed timestamp must not cost someone their notification.
+ * A date a person reads, from an ISO timestamp: the shared formatter, in IST (proposed
+ * R-45(b)). Falls back to the leading date portion rather than throwing: a malformed
+ * timestamp must not cost someone their notification.
  */
 function formatDay(iso: string): string {
-  const at = new Date(iso);
-  return Number.isNaN(at.getTime())
-    ? iso.slice(0, 10)
-    : at.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const day = formatDate(iso);
+  return day === NO_DATE ? iso.slice(0, 10) : day;
 }
 
 export function renderNotification(event: DomainEventJob): { title: string; body: string } {
@@ -222,8 +222,8 @@ export function renderNotification(event: DomainEventJob): { title: string; body
           ? `New corrective action after ${who} corrected an audit`
           : 'New corrective action on a completed audit',
         body:
-          `${item}${question} is now a nonconformity: the mark was corrected to ` +
-          `${String(data.value ?? 'a lower score')}. ` +
+          `${item}${question} is now a nonconformity: the mark was changed to ` +
+          `${markInWords(data.value)}. ` +
           'Answer it with an after photo, or mark it not possible.',
       };
     }
@@ -278,7 +278,7 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       // Only the non-zero findings are named. A body that lists four checks and four
       // zeroes every time teaches the reader to skip the line that matters.
       const parts = [
-        count(data.orphanEvidence, 'evidence row', 'without an uploaded photograph'),
+        count(data.orphanEvidence, 'photo', 'recorded but never uploaded'),
         count(data.staleAudits, 'audit', 'open for more than a week'),
         count(data.unsyncedDevices, 'device', 'holding an audit and not syncing'),
         count(data.scoreDrift, 'audit score', `that does not match a recomputation (of ${String(data.auditsSampled ?? 0)} checked)`),
@@ -288,7 +288,10 @@ export function renderNotification(event: DomainEventJob): { title: string; body
         // The worker only emits when something was found, so the empty case is unreachable
         // from the sweep. It is still written out, because a renderer whose fallback is a
         // bare full stop is one refactor away from sending one.
-        body: parts.length === 0 ? 'No findings.' : `${parts.join('; ')}. Nothing was changed.`,
+        body:
+          parts.length === 0
+            ? 'No findings.'
+            : `${parts.join('; ')}. The check only reports these; it did not change anything.`,
       };
     }
     case 'REPORT_GENERATED': {
@@ -303,7 +306,16 @@ export function renderNotification(event: DomainEventJob): { title: string; body
   }
 }
 
-/** `"3 evidence rows without an uploaded photograph"`, or null when there are none. */
+/**
+ * A mark as the auditor saw it — "Needs improvement" — never the stored token (`SCORE_0`).
+ * An unknown value from an older event still reads as a sentence.
+ */
+function markInWords(value: unknown): string {
+  const token = typeof value === 'string' ? RESPONSE_TOKENS[value] : undefined;
+  return token ? `“${token.label}”` : 'a lower score';
+}
+
+/** `"3 photos recorded but never uploaded"`, or null when there are none. */
 function count(value: unknown, noun: string, tail: string): string | null {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n) || n <= 0) return null;

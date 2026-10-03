@@ -33,14 +33,9 @@ import { useToken } from '@/lib/tokens';
 import { Button, Card, CardHeader, Combobox, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { SECTION_SHORT_LABEL } from '@/lib/labels';
+import { formatDate } from '@audit5s/domain';
 
-const SECTION_LABELS: Record<string, string> = {
-  S1_SORT: 'Sort',
-  S2_SET_IN_ORDER: 'Set in order',
-  S3_SHINE: 'Shine',
-  S4_STANDARDIZE: 'Standardize',
-  S5_SUSTAIN: 'Sustain',
-};
 /** Score-band tokens, resolved from the document so both themes work (§8). */
 const BAND_TOKEN = { ok: '--ok-band', warn: '--warn-band', crit: '--crit-band', none: '--edge-soft' } as const;
 
@@ -313,7 +308,7 @@ function AuditPanel({ row, zoneCode }: { row: NumberedAudit; zoneCode: string })
     }))
     .sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
   const sectionRows = (zone ?? summary.data.audit).sections.map((section) => ({
-    section: SECTION_LABELS[section.section] ?? section.section,
+    section: SECTION_SHORT_LABEL[section.section] ?? section.section,
     score: section.pct,
     raw: section.raw,
     max: section.max,
@@ -450,7 +445,7 @@ function UnitContext({ unitId }: { unitId: string }) {
   if (error) return <ErrorNotice error={error} />;
   if (!sections.data || !closure.data) return null;
 
-  const radarRows = sections.data.radar.map((row) => ({ section: SECTION_LABELS[row.section], current: row.currentScorePercentage, previous: row.previousScorePercentage, samples: row.sampleCount }));
+  const radarRows = sections.data.radar.map((row) => ({ section: SECTION_SHORT_LABEL[row.section], current: row.currentScorePercentage, previous: row.previousScorePercentage, samples: row.sampleCount }));
   // A Unit audited once has nothing to compare against, so the second ring is not drawn and
   // the legend does not name a cycle that never happened.
   const hasPrevious = radarRows.some((row) => row.previous !== null);
@@ -514,10 +509,6 @@ const TOOLTIP = {
 
 function auditLabel({ audit, number }: NumberedAudit): string {
   return `Audit ${number} · ${formatDate(audit.completedAt)} · ${audit.auditorName}`;
-}
-
-function formatDate(value: string | null): string {
-  return value === null ? '—' : new Date(value).toLocaleDateString();
 }
 
 function Kpis({ values }: { values: Array<[string, ReactNode]> }) {

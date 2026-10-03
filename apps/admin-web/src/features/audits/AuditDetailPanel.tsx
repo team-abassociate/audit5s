@@ -9,7 +9,7 @@ import type {
   Page,
   SectionScorePayload,
 } from '@audit5s/contracts';
-import { RESPONSE_TOKENS, S_SECTION_LABELS, zoneDisplayLabel } from '@audit5s/domain';
+import { RESPONSE_TOKENS, zoneDisplayLabel } from '@audit5s/domain';
 import { bandLabel, bandTextClass, responseTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { api } from '@/lib/api';
@@ -28,7 +28,7 @@ import {
   Th,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
-import { AUDIT_TYPE_LABELS, STATUS_LABELS } from './AuditsPage';
+import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, EVIDENCE_KIND_LABEL, SECTION_LABEL, ZONE_STATUS_LABEL } from '@/lib/labels';
 
 /**
  * One audit: its S-wise scores, every response, and the two administrative actions PART 6
@@ -73,8 +73,8 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
   return (
     <Card>
       <CardHeader
-        title={`${AUDIT_TYPE_LABELS[audit.auditType]} — ${audit.unitName}`}
-        description={`${audit.auditorName} · ${STATUS_LABELS[audit.status]}${
+        title={`${AUDIT_TYPE_LABEL[audit.auditType]} — ${audit.unitName}`}
+        description={`${audit.auditorName} · ${AUDIT_STATUS_LABEL[audit.status]}${
           audit.pauseReason ? ` · paused: ${audit.pauseReason}` : ''
         }`}
         action={<Button variant="secondary" onClick={onClose}>Close</Button>}
@@ -127,7 +127,7 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
                 </p>
               </div>
               <Badge tone={zone.status === 'COMPLETED' ? 'good' : zone.status === 'WITHDRAWN' ? 'neutral' : 'warn'}>
-                {zone.status}
+                {ZONE_STATUS_LABEL[zone.status]}
               </Badge>
             </div>
 
@@ -174,7 +174,7 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
                         <tr key={response.id} className="border-t border-edge-soft">
                           <Td>{response.globalOrder}</Td>
                           <Td className="text-ink-3">
-                            {S_SECTION_LABELS[response.section]}
+                            {SECTION_LABEL[response.section]}
                           </Td>
                           <Td>
                             <span className={cn('font-medium', responseTextClass(response.value))}>
@@ -198,7 +198,7 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
         <div className="border-t border-edge-soft p-4">
           <Field
             label="Cancel this audit"
-            hint="Voids it and keeps every row (A-1). There is no delete, for anybody."
+            hint="Cancelling keeps everything that was recorded. No one can delete an audit."
           >
             <div className="flex gap-2">
               <Input
@@ -338,7 +338,7 @@ function EvidenceTile({ evidence, onOpen }: { evidence: Evidence; onOpen: () => 
           <Badge tone={evidenceTone(evidence.classification)}>{label}</Badge>
           {evidence.isSummaryFlagged && <Badge tone="warn">Summary photo</Badge>}
         </div>
-        <p className="text-xs text-ink-3">{evidence.kind.replaceAll('_', ' ').toLowerCase()}</p>
+        <p className="text-xs text-ink-3">{EVIDENCE_KIND_LABEL[evidence.kind]}</p>
         {evidence.remark && <p className="line-clamp-2 text-sm text-ink-2">{evidence.remark}</p>}
         {!evidence.mediaProcessedAt && <p className="text-xs text-ink-3">Thumbnail processing</p>}
       </div>
@@ -399,7 +399,7 @@ function SectionTable({ sections }: { sections: SectionScorePayload[] }) {
         {sections.map((section) => {
           return (
             <tr key={section.section} className="border-t border-edge-soft">
-              <Td>{S_SECTION_LABELS[section.section]}</Td>
+              <Td>{SECTION_LABEL[section.section]}</Td>
               <Td>{section.raw}</Td>
               <Td>{section.max}</Td>
               <Td>
@@ -455,8 +455,8 @@ function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail 
     >
       <h3 className="gb-h2">Correct a completed audit</h3>
       <p className="text-xs text-ink-2">
-        This is the only way a completed audit changes (A-2). Every change is written to the
-        audit log with its before and after, and the scores are recomputed.
+        This is the only way to change a completed audit. Each change is saved in the Activity
+        log with the old and new answer, and the scores are worked out again.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">

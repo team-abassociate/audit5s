@@ -5,7 +5,9 @@ import type { Audit, AuditDetail, Page, ReportSnapshot, Unit } from '@audit5s/co
 import { api, fetchAll } from '@/lib/api';
 import { Button, Combobox, Dialog, ErrorNotice, Field, Select, Spinner } from '@/components/ui';
 import { PreviewButton, SummaryZonePicker } from './SummaryZonePicker';
-import { EDITION_LABEL, formatDay, formatWhen, zoneDocumentKey } from './report-library';
+import { zoneDocumentKey } from './report-library';
+import { REPORT_EDITION_LABEL } from '@/lib/labels';
+import { formatDate, formatDateTime } from '@audit5s/domain';
 
 export type NewReportPreset =
   | { mode: 'ZONE'; auditId?: string }
@@ -140,7 +142,7 @@ function ZoneReportForm({
         .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!))
         .map((audit) => ({
           id: audit.id,
-          label: `${audit.unitName} · ${formatWhen(audit.completedAt)} · ${audit.auditorName}`,
+          label: `${audit.unitName} · ${formatDateTime(audit.completedAt)} · ${audit.auditorName}`,
         })),
     [audits.data],
   );
@@ -222,8 +224,8 @@ function ZoneReportForm({
         </p>
         {existing ? (
           <p className="gb-notice m-0">
-            This Zone already has v{existing.version} ({EDITION_LABEL[existing.kind]}, generated{' '}
-            {formatDay(existing.generatedAt)}). Generating issues v{existing.version + 1}; v
+            This Zone already has v{existing.version} ({REPORT_EDITION_LABEL[existing.kind]}, generated{' '}
+            {formatDate(existing.generatedAt)}). Generating issues v{existing.version + 1}; v
             {existing.version} stays in the history.
           </p>
         ) : null}

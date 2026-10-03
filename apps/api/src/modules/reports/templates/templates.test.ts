@@ -97,6 +97,16 @@ describe('§4.1 — the initial Zone report', () => {
     expect(html).toContain('On Track');
   });
 
+  it('prints the audit date as the IST day, in the shared format (template 1.7.0)', () => {
+    // 20:00 UTC on 3 Mar is 1:30 AM on 4 Mar in India: the plant's day, not the server's.
+    const late = fixtureZonePayload();
+    late.zones[0]!.auditDate = '2026-03-03T20:00:00.000Z';
+    expect(renderReportHtml(late, resolve)).toContain('04 Mar 2026');
+    const september = fixtureZonePayload();
+    september.zones[0]!.auditDate = '2026-09-30T08:35:00.000Z';
+    expect(renderReportHtml(september, resolve)).toContain('30 Sept 2026');
+  });
+
   it('names a Zone added by number as the auditor did: "Zone 1 — Press Shop" (template 1.5.0)', () => {
     const base = fixtureZonePayload();
     const numbered = renderReportHtml(

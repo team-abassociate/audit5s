@@ -30,6 +30,8 @@ import {
   Th,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { ASSIGNMENT_STATUS_LABEL, AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL } from '@/lib/labels';
+import { formatDate, formatDateTime } from '@audit5s/domain';
 import { AuditDetailPanel } from './AuditDetailPanel';
 import { AuditProgress, TeamProgress } from './AuditProgress';
 
@@ -196,7 +198,7 @@ export function AuditsPage() {
                           {audit.unitName}
                         </RowToggle>
                       </Td>
-                      <Td>{AUDIT_TYPE_LABELS[audit.auditType]}</Td>
+                      <Td>{AUDIT_TYPE_LABEL[audit.auditType]}</Td>
                       <Td>
                         <div className="flex items-center gap-2">
                           {audit.auditorName}
@@ -205,14 +207,14 @@ export function AuditsPage() {
                       </Td>
                       <Td>
                         <div className="flex items-center gap-2">
-                          <Badge tone={STATUS_TONE[audit.status]}>{STATUS_LABELS[audit.status]}</Badge>
+                          <Badge tone={STATUS_TONE[audit.status]}>{AUDIT_STATUS_LABEL[audit.status]}</Badge>
                         </div>
                       </Td>
                       <Td>
                         <ScoreCell audit={audit} />
                       </Td>
                       <Td className="text-ink-3">
-                        {new Date(audit.updatedAt).toLocaleString()}
+                        {formatDateTime(audit.updatedAt)}
                       </Td>
                       <Td>
                         <Button
@@ -252,7 +254,7 @@ export function AuditsPage() {
         <Card>
           <CardHeader
             title="Open assignments"
-            description="Assigned work not yet completed, newest first. Click a Unit to see how far its auditors have got. Revoking a Unit membership cancels these rather than deleting them (AA-1)."
+            description="Assigned audits not yet completed, newest first. Click a Unit to see how far its auditors have got. Removing someone from a Unit cancels their assignments there; nothing is deleted."
           />
           <Table>
             <thead>
@@ -414,11 +416,11 @@ function AssignmentRow({
             )}
           </div>
         </Td>
-        <Td>{AUDIT_TYPE_LABELS[assignment.auditType]}</Td>
-        <Td>{assignment.dueAt ? new Date(assignment.dueAt).toLocaleDateString() : '—'}</Td>
+        <Td>{AUDIT_TYPE_LABEL[assignment.auditType]}</Td>
+        <Td>{formatDate(assignment.dueAt)}</Td>
         <Td>
           <Badge tone={assignment.status === 'IN_PROGRESS' ? 'warn' : 'neutral'}>
-            {assignment.status.replace(/_/g, ' ').toLowerCase()}
+            {ASSIGNMENT_STATUS_LABEL[assignment.status]}
           </Badge>
         </Td>
         <Td>
@@ -658,24 +660,6 @@ function CreateAssignmentForm({ onCreated }: { onCreated: () => void }) {
     </form>
   );
 }
-
-export const AUDIT_TYPE_LABELS: Record<string, string> = {
-  EXTERNAL_5S: 'External 5S',
-  CROSS_5S: 'Cross audit',
-  WALK_BY: 'Walk-by',
-};
-
-export const STATUS_LABELS: Record<AuditStatus, string> = {
-  ASSIGNED: 'Assigned',
-  READY: 'Ready',
-  IN_PROGRESS: 'In progress',
-  PAUSED: 'Paused',
-  COMPLETED: 'Completed',
-  CORRECTIVE_ACTION_OPEN: 'Corrective actions open',
-  PARTIALLY_CLOSED: 'Partially closed',
-  CLOSED: 'Closed',
-  CANCELLED: 'Cancelled',
-};
 
 const STATUS_TONE: Record<AuditStatus, 'neutral' | 'good' | 'warn' | 'bad'> = {
   ASSIGNED: 'neutral',

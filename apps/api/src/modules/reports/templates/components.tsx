@@ -4,7 +4,7 @@ import type {
   ReportPhoto,
   SectionScorePayload,
 } from './payload-types';
-import { S_SECTION_SHORT_LABELS, S_SECTION_LABELS } from '@audit5s/domain';
+import { S_SECTION_SHORT_LABELS, S_SECTION_LABELS, formatDate as formatDomainDate } from '@audit5s/domain';
 import { encodeQr } from './qr';
 import { REPORT_LOGO } from './logo';
 
@@ -30,17 +30,16 @@ export function formatMarks(raw: number, max: number): string {
   return `${raw} / ${max}`;
 }
 
+/**
+ * The date a report prints: "30 Sept 2026", in India Standard Time (proposed R-45(b)).
+ *
+ * The one formatter the web portal and the field app use too, from `@audit5s/domain`. It is
+ * fixed-offset arithmetic rather than the host's locale, so the same payload renders the same
+ * HTML on any machine (R-35). Only new renders use it: an issued PDF is never re-rendered.
+ */
 export function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  // Fixed locale and calendar: `toLocaleDateString()` with the host's default would make
-  // the same payload render differently on two machines.
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  const month = MONTHS[date.getUTCMonth()];
-  return `${day} ${month} ${date.getUTCFullYear()}`;
+  return formatDomainDate(iso);
 }
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export function bandOf(bands: readonly ReportBand[], pct: number | null): ReportBand | null {
   if (pct === null || Number.isNaN(pct)) return null;

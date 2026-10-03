@@ -28,7 +28,7 @@ describe('reportFileName', () => {
     };
     const name = reportFileName(payload);
     expect(name).toContain(` - Unit summary - ${payload.zones.length} Zone`);
-    expect(name).toContain(' - 01 Sep 2026 to 04 Sep 2026 - ');
+    expect(name).toContain(' - 01 Sept 2026 to 04 Sept 2026 - ');
   });
 
   it('strips what a file system or mail client refuses, and stays short', () => {

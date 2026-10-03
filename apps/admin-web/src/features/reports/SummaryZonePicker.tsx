@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAuditCompleted, reportZoneLabel } from '@audit5s/domain';
+import { formatDateTime, formatWeekdayDate, isAuditCompleted, istDateKey, reportZoneLabel } from '@audit5s/domain';
 import type { Audit, AuditScoreSummary, ReportSnapshot } from '@audit5s/contracts';
 import { api, fetchAll } from '@/lib/api';
 import { Badge, Button, ErrorNotice, Field, Select, Spinner } from '@/components/ui';
-import { formatWhen } from './report-library';
 
 /**
  * The unit summary's selection, made one audited Zone at a time.
@@ -168,9 +167,9 @@ export function SummaryZonePicker({
                   }}
                   disabled={ids.length === 0}
                   onChange={(event) => toggle(ids, event.target.checked)}
-                  aria-label={`Every Zone of the audit finished ${formatDay(audit.completedAt!)}`}
+                  aria-label={`Every Zone of the audit finished ${formatDateTime(audit.completedAt!)}`}
                 />
-                <span className="font-medium text-ink">{formatDay(audit.completedAt!)}</span>
+                <span className="font-medium text-ink">{formatDateTime(audit.completedAt!)}</span>
                 <span className="text-ink-2">
                   {audit.auditorName} · {zones.length} Zone{zones.length === 1 ? '' : 's'}
                 </span>
@@ -289,27 +288,16 @@ function markDraft(html: string): string {
   return /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, (tag) => tag + strip) : strip + html;
 }
 
-/** `2026-09-28`, in the viewer's own calendar — the day an auditor would name. */
+/** `2026-09-28`: the IST calendar day, the day an auditor would name. */
 function dayKey(iso: string): string {
-  const at = new Date(iso);
-  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+  return istDateKey(iso) ?? '';
 }
 
+/** "Mon, 28 Sept 2026" for a day key. Noon IST, so the key's own day is the one named. */
 function dayLabel(key: string): string {
-  const [year, month, date] = key.split('-').map(Number);
-  return new Date(year!, month! - 1, date!).toLocaleDateString('en-IN', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  return formatWeekdayDate(`${key}T12:00:00+05:30`);
 }
 
 function countOn(audits: readonly Audit[], key: string): number {
   return audits.filter((audit) => dayKey(audit.completedAt!) === key).length;
-}
-
-/** The one date-and-time format of the Reports page. */
-function formatDay(iso: string): string {
-  return formatWhen(iso);
 }

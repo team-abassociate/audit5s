@@ -25,7 +25,10 @@
 // printed `Zone Z-01 — Zone 1` and left out what the auditor typed.
 // 1.6.0 — R-38: the auditor's overall remark moves after the photo evidence, followed by
 // the overall corrective-action suggestions, each with its own link and outcome.
-export const TEMPLATE_VERSION = '1.6.0';
+// 1.7.0 — proposed R-45(b): dates print in India Standard Time with the domain formatter
+// ("30 Sept 2026"), where they printed the UTC day as "30 Sep 2026". A report rendered
+// between 18:30 and 24:00 UTC now names the IST day.
+export const TEMPLATE_VERSION = '1.7.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

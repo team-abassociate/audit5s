@@ -8,7 +8,7 @@ import type {
   CommitChecklistImportResponse,
   Industry,
 } from '@audit5s/contracts';
-import { S_SECTION_LABELS } from '@audit5s/domain';
+import { SECTION_LABEL } from '@/lib/labels';
 import { ApiError, api, loadSession } from '@/lib/api';
 import {
   Badge,
@@ -505,7 +505,7 @@ function SideBySideDiff({ diff }: { diff: ChecklistSheetDiff }) {
           {entries.map((entry) => (
             <tr key={`${entry.section}-${entry.orderInSection}`}>
               <Td className="whitespace-nowrap text-xs text-ink-3">
-                {S_SECTION_LABELS[entry.section]}
+                {SECTION_LABEL[entry.section]}
               </Td>
               <Td>{entry.orderInSection}</Td>
               <Td

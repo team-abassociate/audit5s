@@ -1,19 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { Audit, AuditDetail, AuditZoneStatus } from '@audit5s/contracts';
+import { formatDateTime } from '@audit5s/domain';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { api } from '@/lib/api';
 import { Badge, Button, ErrorNotice, Spinner } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { SummaryZonePicker } from '@/features/reports/SummaryZonePicker';
-
-const ZONE_STATUS_LABEL: Record<AuditZoneStatus, string> = {
-  DRAFT: 'Not started',
-  IN_PROGRESS: 'In progress',
-  COMPLETED: 'Completed',
-  WITHDRAWN: 'Withdrawn',
-};
+import { ZONE_STATUS_LABEL } from '@/lib/labels';
 
 const ZONE_STATUS_TONE: Record<AuditZoneStatus, 'neutral' | 'warn' | 'good'> = {
   DRAFT: 'neutral',
@@ -58,7 +53,7 @@ export function AuditProgress({ auditId, compact = false }: { auditId: string; c
           : ` · ${done} of ${live.length} Zone${live.length === 1 ? '' : 's'} completed` +
             (going > 0 ? ` · ${going} in progress` : '') +
             (live.length < zones.length ? ` · ${zones.length - live.length} withdrawn` : '')}
-        {audit.startedAt ? ` · started ${new Date(audit.startedAt).toLocaleString()}` : ''}
+        {audit.startedAt ? ` · started ${formatDateTime(audit.startedAt)}` : ''}
       </p>
       {zones.length > 0 && (
         <>

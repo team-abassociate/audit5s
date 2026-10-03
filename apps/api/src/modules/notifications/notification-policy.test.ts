@@ -39,9 +39,8 @@ describe('notification policy (§5.9)', () => {
     expect(title).toContain('Priya Nair');
     expect(title).toContain('Nashik Plant');
     expect(body).toContain('3 corrective actions opened');
-    // en-IN abbreviates September as "Sept", not "Sep" — the assertion allows either
-    // rather than pinning a detail of the platform's locale data.
-    expect(body).toMatch(/12 Sept? 2026/);
+    // The shared formatter (packages/domain), in IST: no longer the platform's locale data.
+    expect(body).toContain('12 Sept 2026');
   });
 
   it('still renders a sentence for an event stored before those fields existed', () => {
@@ -149,7 +148,9 @@ describe('notification policy (§5.9)', () => {
     );
     expect(title).toContain('Priya Nair');
     expect(body).toContain('Zone 4 — Assembly, Q7');
-    expect(body).toContain('SCORE_0');
+    // The auditor's words, never the stored token.
+    expect(body).toContain('“Needs improvement”');
+    expect(body).not.toContain('SCORE_0');
   });
 
   it('renders both R-31 events without the auditor, for an older stored row', () => {
@@ -183,8 +184,8 @@ describe('notification policy (§5.9)', () => {
     expect(title).toBe('Data integrity check');
     // Singular and plural both, and the two zero counts absent rather than printed as "0".
     expect(body).toBe(
-      '2 evidence rows without an uploaded photograph; ' +
-        '1 device holding an audit and not syncing. Nothing was changed.',
+      '2 photos recorded but never uploaded; ' +
+        '1 device holding an audit and not syncing. The check only reports these; it did not change anything.',
     );
     expect(body).not.toMatch(/stale|recomputation/);
   });
@@ -195,7 +196,7 @@ describe('notification policy (§5.9)', () => {
     );
 
     expect(body).toBe(
-      '1 audit score that does not match a recomputation (of 20 checked). Nothing was changed.',
+      '1 audit score that does not match a recomputation (of 20 checked). The check only reports these; it did not change anything.',
     );
   });
 

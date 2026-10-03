@@ -9,12 +9,20 @@ import {
   type EvidenceViewUrl,
   type Audit,
   type Page,
-  type Role,
   type Unit,
   type User,
 } from '@audit5s/contracts';
-import { awaitsReview, isOverdue, isReviewable, isUnapprovedClosure, sectionLabel } from '@audit5s/domain';
+import {
+  awaitsReview,
+  formatDate,
+  formatDateTime,
+  isOverdue,
+  isReviewable,
+  isUnapprovedClosure,
+  zoneDisplayLabel,
+} from '@audit5s/domain';
 import { api } from '@/lib/api';
+import { ACTION_STATUS_LABEL, SECTION_LABEL, SUBMISSION_CHANNEL_LABEL, auditTypeLabel, roleLabel } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import { Badge, Button, Card, CardHeader, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
@@ -162,7 +170,7 @@ export function CorrectiveActionsPage() {
                   .reverse()
                   .map(({ audit, number }) => (
                     <option key={audit.id} value={audit.id}>
-                      {`Audit ${number} · ${new Date(audit.completedAt!).toLocaleDateString()} · ${audit.auditorName}`}
+                      {`Audit ${number} · ${formatDate(audit.completedAt)} · ${audit.auditorName}`}
                     </option>
                   ))}
               </Select>
@@ -174,7 +182,7 @@ export function CorrectiveActionsPage() {
                 <option value="">Any</option>
                 {CORRECTIVE_ACTION_STATUSES.map((value) => (
                   <option key={value} value={value}>
-                    {STATUS_LABEL[value]}
+                    {ACTION_STATUS_LABEL[value]}
                   </option>
                 ))}
               </Select>
@@ -272,7 +280,7 @@ export function CorrectiveActionsPage() {
                           >
                             <Td>
                               <span className="font-medium">
-                                Zone {action.zoneCode} — {action.zoneName}
+                                {zoneDisplayLabel(action.zoneCode, action.zoneName)}
                               </span>
                               <div className="text-xs text-ink-3">{itemLabel(action)}</div>
                             </Td>
@@ -290,14 +298,14 @@ export function CorrectiveActionsPage() {
                                 // The word as well as the colour: an overdue row has to
                                 // survive a projector and a colour-blind reader.
                                 <span className={late ? 'text-crit' : ''}>
-                                  {new Date(action.dueAt).toLocaleDateString()}
+                                  {formatDate(action.dueAt)}
                                   {late && <b className="ml-1">Overdue</b>}
                                 </span>
                               ) : (
                                 '—'
                               )}
                             </Td>
-                            <Td>{new Date(action.openedAt).toLocaleDateString()}</Td>
+                            <Td>{formatDate(action.openedAt)}</Td>
                             <Td>
                               <Closed action={action} />
                             </Td>
@@ -324,10 +332,8 @@ export function CorrectiveActionsPage() {
  * because numbering audits across Units would invent a sequence that does not exist.
  */
 function auditHeading(sample: CorrectiveAction, number: number | undefined): string {
-  const when = sample.auditCompletedAt
-    ? new Date(sample.auditCompletedAt).toLocaleDateString()
-    : 'not completed';
-  const kind = sample.auditType.replace(/_/g, ' ').toLowerCase();
+  const when = sample.auditCompletedAt ? formatDate(sample.auditCompletedAt) : 'not completed';
+  const kind = auditTypeLabel(sample.auditType);
   // The auditor's name, because the question asked of every finding in this list is which
   // audit it came out of — and a date and a kind do not answer that when two Consultants
   // audited the same Unit the same week. Omitted rather than faked when the read that
@@ -379,7 +385,7 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
   return (
     <Card>
       <CardHeader
-        title={`Zone ${action.zoneCode} — ${action.zoneName}`}
+        title={zoneDisplayLabel(action.zoneCode, action.zoneName)}
         description={itemLabel(action)}
         action={
           <Button variant="secondary" onClick={onClose}>
@@ -414,13 +420,13 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
             <dt>Assigned</dt>
             <dd>{action.assignedZoneLeaderName ?? '—'}</dd>
             <dt>Due</dt>
-            <dd>{action.dueAt ? new Date(action.dueAt).toLocaleDateString() : '—'}</dd>
+            <dd>{formatDate(action.dueAt)}</dd>
             {action.status === 'VERIFIED' && (
               <>
                 <dt>Closed by</dt>
                 <dd>{action.closedByName ?? '—'}</dd>
                 <dt>Closed at</dt>
-                <dd>{action.resolvedAt ? closedAt(action.resolvedAt) : '—'}</dd>
+                <dd>{action.resolvedAt ? formatDateTime(action.resolvedAt) : '—'}</dd>
                 <dt>Reviewed</dt>
                 <dd>{closure ? 'Not reviewed' : `Approved by ${action.verifiedByName ?? '—'}`}</dd>
               </>
@@ -492,8 +498,8 @@ function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
           {attempt.option === 'COMPLETED' ? 'Completed' : 'Not possible'}
         </Badge>
         <span className="text-xs text-ink-3">
-          {attempt.submittedByName} · {new Date(attempt.createdAt).toLocaleString()} ·{' '}
-          {attempt.submittedVia.replace('_', ' ').toLowerCase()}
+          {attempt.submittedByName} · {formatDateTime(attempt.createdAt)} · via{' '}
+          {SUBMISSION_CHANNEL_LABEL[attempt.submittedVia]}
         </span>
       </div>
       <div className="mt-2 grid gap-3 md:grid-cols-[10rem_1fr]">
@@ -508,8 +514,8 @@ function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
             {attempt.reviewOutcome === 'VERIFIED' ? 'Approved' : 'Disapproved'}
           </Badge>{' '}
           {attempt.reviewedByName &&
-            `${attempt.reviewedByName}${attempt.reviewedByRole ? ` (${REVIEWER_ROLE[attempt.reviewedByRole] ?? attempt.reviewedByRole})` : ''} · `}
-          {attempt.reviewedAt && new Date(attempt.reviewedAt).toLocaleString()}
+            `${attempt.reviewedByName}${attempt.reviewedByRole ? ` (${roleLabel(attempt.reviewedByRole)})` : ''} · `}
+          {attempt.reviewedAt && formatDateTime(attempt.reviewedAt)}
           {attempt.reviewComment && ` — ${attempt.reviewComment}`}
         </p>
       )}
@@ -589,7 +595,7 @@ function Closed({ action }: { action: CorrectiveAction }) {
   return (
     <span>
       {action.closedByName ?? '—'}
-      <div className="text-xs text-ink-3">{closedAt(action.resolvedAt)}</div>
+      <div className="text-xs text-ink-3">{formatDateTime(action.resolvedAt)}</div>
       {/* R-43: closed is not verified — say whether anybody approved it. */}
       <div className="text-xs text-ink-3">
         {isUnapprovedClosure(action.status, action.verifiedByUserId)
@@ -600,48 +606,15 @@ function Closed({ action }: { action: CorrectiveAction }) {
   );
 }
 
-/**
- * The date **and** time it closed, as the field app prints it: `en-IN`, 24-hour, to the
- * minute — "30 Sept 2026, 14:05" — rather than whatever the browser's locale chooses.
- */
-const CLOSED_AT = new Intl.DateTimeFormat('en-IN', {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
-function closedAt(value: string): string {
-  return CLOSED_AT.format(new Date(value));
-}
-
 function StatusBadge({ status }: { status: CorrectiveActionStatus }) {
   const tone = status === 'VERIFIED' ? 'good' : status === 'REOPENED' ? 'bad' : awaitsReview(status) ? 'warn' : 'neutral';
-  return <Badge tone={tone}>{STATUS_LABEL[status]}</Badge>;
+  return <Badge tone={tone}>{ACTION_STATUS_LABEL[status]}</Badge>;
 }
 
 function itemLabel(action: CorrectiveAction): string {
   if (action.suggestionNo) return `Overall action ${action.suggestionNo}: ${action.suggestion ?? ''}`;
   if (action.questionGlobalOrder === null) return 'Walk-by observation';
-  const section = action.section ? `${sectionLabel(action.section)} · ` : '';
+  const section = action.section ? `${SECTION_LABEL[action.section]} · ` : '';
   return `${section}Q${action.questionGlobalOrder}: ${action.questionText ?? ''}`;
 }
 
-const STATUS_LABEL: Record<CorrectiveActionStatus, string> = {
-  OPEN: 'Open',
-  ACTION_SUBMITTED: 'Submitted',
-  NOT_POSSIBLE: 'Not possible',
-  // R-43: a Zone Leader's after-photo closes it with nobody verifying it, so it is "Closed";
-  // whether a reviewer approved it is said beside it, not folded into the status.
-  VERIFIED: 'Closed',
-  REOPENED: 'Reopened',
-  // R-31: the mark it rested on was corrected, so there was never anything to fix. Not
-  // "Closed" — nobody did any work, and a reader scanning this column should see that.
-  WITHDRAWN: 'Withdrawn',
-};
-
-const REVIEWER_ROLE: Partial<Record<Role, string>> = {
-  SUPER_ADMIN: 'Super Admin',
-  COORDINATOR: 'Coordinator',
-};

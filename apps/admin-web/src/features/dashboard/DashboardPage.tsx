@@ -17,8 +17,9 @@ import { Combobox } from '@/components/ui';
 import { TopbarTools } from '@/components/AppShell';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL } from '@/lib/labels';
+import { daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime } from '@audit5s/domain';
 import {
-  SECTION_LABEL,
   TARGET,
   awaitingRollup,
   bandLabel,
@@ -34,16 +35,9 @@ import {
   type LatestZoneAudit,
 } from './board';
 
-/** The rollup's clock, in the Unit's own timezone — a plant reads its own wall clock. */
-function lastSync(at: number | undefined, timezone = 'Asia/Kolkata'): string {
-  if (!at) return '—';
-  return new Date(at).toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: timezone,
-    timeZoneName: 'short',
-  });
+/** The rollup's clock: "Synced 2:05 PM", in IST like every time in the portal (R-45(b)). */
+function lastSync(at: number | undefined): string {
+  return at ? formatTime(at) : '—';
 }
 
 const PERIODS = [
@@ -228,7 +222,7 @@ export function DashboardPage() {
       .slice()
       .reverse()
       .map((audit) => ({
-        period: formatDate(audit.completedAt),
+        period: formatDayMonth(audit.completedAt),
         scorePercentage: audit.totals.scorePercentage,
       }));
   }, [scorable]);
@@ -356,7 +350,7 @@ export function DashboardPage() {
         ) : null}
         <div className="gb-pill" title="Last sync">
           <i />
-          <span className="gb-pill-label">Last sync</span> <span className="gb-data">{lastSync(overview.dataUpdatedAt, unitName?.timezone)}</span>
+          <span className="gb-pill-label">Last sync</span> <span className="gb-data">{lastSync(overview.dataUpdatedAt)}</span>
         </div>
         {can('report', 'read_snapshot') ? (
           <Link className="gb-btn" to="/reports">
@@ -429,9 +423,9 @@ export function DashboardPage() {
             value={score2(unitScore)}
             context={
               chosenZone
-                ? `${bandLabel(unitScore)} · ${chosenZone.zoneName} · ${formatDate(chosenAudit!.completedAt)}`
+                ? `${bandLabel(unitScore)} · ${chosenZone.zoneName} · ${formatDayMonth(chosenAudit!.completedAt)}`
                 : chosenAudit
-                  ? `${bandLabel(unitScore)} · ${chosenAudit.auditorName} · ${formatDate(chosenAudit.completedAt)}`
+                  ? `${bandLabel(unitScore)} · ${chosenAudit.auditorName} · ${formatDayMonth(chosenAudit.completedAt)}`
                   : bandLabel(unitScore)
             }
             band={bandOf(unitScore)}
@@ -451,7 +445,7 @@ export function DashboardPage() {
           <Kpi
             label="Open corrective actions"
             value={String(open.length)}
-            context={`${zeroScored.length} captured at score 0`}
+            context={`${zeroScored.length} marked “Needs improvement”`}
             band={open.length === 0 ? 'ok' : 'warn'}
           />
           <Kpi
@@ -459,7 +453,7 @@ export function DashboardPage() {
             value={String(overdue.length)}
             context={
               oldestOverdue
-                ? `oldest ${Math.floor((now - Date.parse(oldestOverdue.dueAt!)) / DAY)} days`
+                ? `oldest: ${daysBetween(oldestOverdue.openedAt, now)} d open · ${daysBetween(oldestOverdue.dueAt, now)} d overdue`
                 : 'nothing past its due date'
             }
             band={overdue.length === 0 ? 'ok' : 'crit'}
@@ -519,11 +513,13 @@ export function DashboardPage() {
             <h2 className="gb-h1">Zones × 5S</h2>
             <p>
               Every section of every zone in one grid, from each zone&apos;s latest completed
-              audit. A section marked not applicable throughout is hatched `N/A` and excluded
-              from the zone average.
+              audit. A section marked not applicable throughout is hatched N/A and left out of
+              the zone average.
             </p>
           </div>
-          <span className="gb-badge">Last {RECENT} audits</span>
+          <span className="gb-badge">
+            Last {recent.length} {recent.length === 1 ? 'audit' : 'audits'}
+          </span>
         </div>
         <div className="gb-matrix" style={{ marginTop: 14 }}>
           <table>
@@ -532,7 +528,7 @@ export function DashboardPage() {
                 <th>Zone</th>
                 {S_SECTIONS.map((section) => (
                   <th key={section} className="gb-c">
-                    {SECTION_LABEL[section]}
+                    {SECTION_SHORT_LABEL[section]}
                   </th>
                 ))}
                 <th className="gb-c">Zone avg</th>
@@ -599,7 +595,7 @@ export function DashboardPage() {
               </div>
               <div className="gb-warn">
                 <b className="gb-figure">{zeroScored.length}</b>
-                <span className="gb-label">Captured at 0</span>
+                <span className="gb-label">Needs improvement</span>
               </div>
               <div>
                 <b className="gb-figure">{dueThisWeek.length}</b>
@@ -633,7 +629,7 @@ export function DashboardPage() {
                 <span>
                   {audited} of {board.length} zones audited
                 </span>
-                <span>{board.length ? ((audited / board.length) * 100).toFixed(1) : '0.0'} %</span>
+                <span>{board.length ? ((audited / board.length) * 100).toFixed(1) : '0.0'}%</span>
               </div>
             </div>
           </div>
@@ -662,7 +658,7 @@ export function DashboardPage() {
                 <th>Owner</th>
                 <th>Raised</th>
                 <th>Due</th>
-                <th>Age</th>
+                <th>Days open</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -679,7 +675,7 @@ export function DashboardPage() {
                       <td className="gb-data">{formatDate(action.openedAt)}</td>
                       <td className="gb-data">{formatDate(action.dueAt)}</td>
                       <td className="gb-data">
-                        {Math.floor((now - Date.parse(action.openedAt)) / DAY)} d
+                        {daysBetween(action.openedAt, now)} d
                       </td>
                       <td>
                         <span className={`gb-chip gb-chip--${chipTone(state.band)}`}>
@@ -707,8 +703,10 @@ export function DashboardPage() {
           <div>
             <h2 className="gb-h1">Recent audits</h2>
             <p>
-              The last {RECENT} completed audits in this Unit. Scores are the server&apos;s, to
-              three decimals, because this table stands in for the record.
+              {recent.length === RECENT
+                ? `The last ${RECENT} completed audits in this Unit.`
+                : `All ${recent.length} completed ${recent.length === 1 ? 'audit' : 'audits'} in this Unit for the period.`}{' '}
+              Scores show two decimals, because this table is the record.
             </p>
           </div>
           <span className="gb-label">Walk-by audits carry no score</span>
@@ -736,7 +734,7 @@ export function DashboardPage() {
                       {formatDateTime(audit.completedAt)}
                     </td>
                     <td>{audit.auditorName}</td>
-                    <td>{audit.auditType.replace(/_/g, ' ')}</td>
+                    <td>{AUDIT_TYPE_LABEL[audit.auditType]}</td>
                     <td className="gb-data">{summary?.zones.length ?? '—'}</td>
                     <td className="gb-data">{score2(pct)}</td>
                     <td>
@@ -744,7 +742,7 @@ export function DashboardPage() {
                         {bandLabel(pct)}
                       </span>
                     </td>
-                    <td>{audit.status.replace(/_/g, ' ').toLowerCase()}</td>
+                    <td>{AUDIT_STATUS_LABEL[audit.status]}</td>
                   </tr>
                 );
               })}
@@ -871,7 +869,7 @@ function DetailPanel({ zone, actions }: { zone: BoardZone; actions: CorrectiveAc
             const band = row ? bandOf(row.pct) : 'none';
             return (
               <div key={section} className={`gb-srow gb-${band}`}>
-                <u>{SECTION_LABEL[section]}</u>
+                <u>{SECTION_SHORT_LABEL[section]}</u>
                 <div className={`gb-track${row && row.pct === null ? ' gb-na' : ''}`}>
                   {row?.pct !== null && row !== undefined ? (
                     <i style={{ width: `${row.pct}%` }} />
@@ -947,10 +945,10 @@ function DetailPanel({ zone, actions }: { zone: BoardZone; actions: CorrectiveAc
                     <i />
                     <div className="gb-finding-text">
                       {findingTitle(action)}
-                      {action.scoreAtCapture === 'SCORE_0' ? <b> · captured at 0</b> : null}
+                      {action.scoreAtCapture === 'SCORE_0' ? <b> · marked “Needs improvement”</b> : null}
                     </div>
                     <em>{state.label}</em>
-                    <span>{Math.floor((until - Date.parse(action.openedAt)) / DAY)} d</span>
+                    <span>{daysBetween(action.openedAt, until)} d open</span>
                   </li>
                 );
               })}
@@ -1146,19 +1144,4 @@ const FINDING_ORDER: Record<'open' | 'submitted' | 'closed', number> = {
 
 function findingTitle(action: CorrectiveAction): string {
   return action.questionText ?? action.suggestion ?? action.findingRemark ?? 'Walk-by observation';
-}
-
-function formatDate(iso: string | null): string {
-  return iso === null ? '—' : new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
-}
-
-function formatDateTime(iso: string | null): string {
-  return iso === null
-    ? '—'
-    : new Date(iso).toLocaleString(undefined, {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 }
