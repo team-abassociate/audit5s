@@ -85,15 +85,23 @@
 
 /* ============================================================================
    TYPE
-   Two families. No third.
+   Two families. No third — except Noto Sans Devanagari, which renders Devanagari
+   (Hindi, Marathi) and nothing else (GEMBA-BOARD.md §2.4 extension, D14, 2026-10).
+   It sits second in each stack: Archivo and DM Mono have no Devanagari glyphs, so only
+   those characters fall through to it, and Google serves it with a Devanagari
+   unicode-range, so a page without Hindi or Marathi never downloads it.
    ============================================================================ */
 /* <link rel="stylesheet"
-     href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=DM+Mono:wght@400;500&display=swap"> */
+     href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=DM+Mono:wght@400;500&family=Noto+Sans+Devanagari:wght@400..700&display=swap"> */
 
 :root{
-  --font-display:"Archivo","Helvetica Neue",Arial,sans-serif;
-  --font-data:"DM Mono",ui-monospace,SFMono-Regular,monospace;
+  --font-display:"Archivo","Noto Sans Devanagari","Helvetica Neue",Arial,sans-serif;
+  --font-data:"DM Mono","Noto Sans Devanagari",ui-monospace,SFMono-Regular,monospace;
 }
+
+/* Matras sit above and below the line: Devanagari needs more leading than Latin. Mark the
+   text with lang="hi" / lang="mr" (WCAG 3.1.2) and it gets it. */
+:lang(hi),:lang(mr){line-height:1.6}
 
 body{
   background:var(--board);

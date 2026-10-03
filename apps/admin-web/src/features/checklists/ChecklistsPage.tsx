@@ -19,6 +19,7 @@ import {
   ErrorNotice,
   Field,
   Input,
+  RowActions,
   Select,
   Spinner,
   Table,
@@ -27,6 +28,7 @@ import {
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { ImportWizard } from './ImportWizard';
+import { downloadTemplate } from './template';
 
 /**
  * The checklist catalogue: nine departments, each with one published version and its
@@ -69,7 +71,12 @@ export function ChecklistsPage() {
           description="One template per department, five sections of ten questions each."
           action={
             can('checklist_import', 'upload') ? (
-              <Button onClick={() => setImporting(true)}>Import workbook</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={downloadTemplate}>
+                  Download template
+                </Button>
+                <Button onClick={() => setImporting(true)}>Import workbook</Button>
+              </div>
             ) : null
           }
         />
@@ -243,26 +250,36 @@ function TemplateDetail({ template }: { template: ChecklistTemplate }) {
                     {formatDate(version.publishedAt)}
                   </Td>
                   <Td>
-                    <div className="flex gap-2">
-                      {can('checklist_version', 'publish') && version.status === 'DRAFT' && (
-                        <Button
-                          disabled={publish.isPending}
-                          onClick={() => publish.mutate(version.id)}
-                        >
-                          Publish
-                        </Button>
-                      )}
-                      {can('checklist_version', 'deactivate') &&
-                        version.status === 'PUBLISHED' && (
+                    <RowActions
+                      subject={`${template.name} v${version.versionNumber}`}
+                      primary={
+                        can('checklist_version', 'publish') && version.status === 'DRAFT' ? (
                           <Button
-                            variant="secondary"
-                            disabled={deactivate.isPending}
-                            onClick={() => deactivate.mutate(version.id)}
+                            disabled={publish.isPending}
+                            onClick={() => publish.mutate(version.id)}
                           >
-                            Deactivate
+                            Publish
                           </Button>
-                        )}
-                    </div>
+                        ) : null
+                      }
+                      items={
+                        can('checklist_version', 'deactivate') && version.status === 'PUBLISHED'
+                          ? [
+                              {
+                                label: 'Deactivate',
+                                danger: true,
+                                confirm: {
+                                  title: `Deactivate ${template.name} v${version.versionNumber}?`,
+                                  body: 'New audits can no longer use this checklist until another version is published. Audits already started keep it.',
+                                  confirmLabel: 'Deactivate',
+                                  pendingLabel: 'Deactivating…',
+                                  run: () => deactivate.mutateAsync(version.id),
+                                },
+                              },
+                            ]
+                          : []
+                      }
+                    />
                   </Td>
                 </tr>
               ))}
@@ -270,7 +287,6 @@ function TemplateDetail({ template }: { template: ChecklistTemplate }) {
           </Table>
         )}
         {publish.error && <ErrorNotice error={publish.error} />}
-        {deactivate.error && <ErrorNotice error={deactivate.error} />}
       </div>
 
       {template.publishedVersionId && (
@@ -291,12 +307,13 @@ function QuestionList({ versionId }: { versionId: string }) {
 
   return (
     <div className="space-y-3">
-      <h3 className="gb-h2">
-        Questions — v{detail.data.versionNumber}
-        <span className="ml-2 text-xs font-normal text-ink-3">
-          a published version never changes
-        </span>
-      </h3>
+      <div>
+        <h3 className="gb-h2">Questions — v{detail.data.versionNumber}</h3>
+        <p className="text-xs text-ink-3">
+          The English of a published version never changes. Hindi and Marathi can be corrected
+          here.
+        </p>
+      </div>
       {S_SECTION_ORDER.map((section) => (
         <div key={section}>
           <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">
@@ -358,9 +375,13 @@ function QuestionRow({ question }: { question: ChecklistQuestion }) {
           <div className="text-ink">{question.text}</div>
           {!editing &&
             LANGUAGES.map(({ key, label }) => (
-              <div key={key} className="text-xs">
-                <span className="mr-1 text-ink-3">{label}:</span>
-                {question.translations?.[key] ?? <span className="text-ink-3">not translated</span>}
+              <div key={key} className="text-sm">
+                <span className="mr-1 text-xs text-ink-3">{label}:</span>
+                {question.translations?.[key] ? (
+                  <span lang={key}>{question.translations[key]}</span>
+                ) : (
+                  <span className="text-xs text-ink-3">not translated</span>
+                )}
               </div>
             ))}
           {editing && (
@@ -368,6 +389,7 @@ function QuestionRow({ question }: { question: ChecklistQuestion }) {
               {LANGUAGES.map(({ key, label }) => (
                 <Field key={key} label={label}>
                   <Input
+                    lang={key}
                     value={draft[key]}
                     onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
                   />
@@ -388,6 +410,7 @@ function QuestionRow({ question }: { question: ChecklistQuestion }) {
         {can('checklist_template', 'update') && !editing && (
           <Button
             variant="secondary"
+            aria-label={`Edit translation of question ${question.globalOrder}`}
             onClick={() => {
               setDraft({ hi: question.translations?.hi ?? '', mr: question.translations?.mr ?? '' });
               setEditing(true);
