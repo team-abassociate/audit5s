@@ -22,7 +22,9 @@ import { useSession } from '@/lib/session';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { Link, useSearch } from '@tanstack/react-router';
-import { AUDIT_TYPE_LABELS, RowToggle, STATUS_LABELS, rowToggleProps } from '@/features/audits/AuditsPage';
+import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
+import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, ROLE_LABEL, USER_STATUS_LABEL, roleLabel } from '@/lib/labels';
+import { formatDate, formatDateTime } from '@audit5s/domain';
 
 const mobileDigits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
 
@@ -200,15 +202,15 @@ function UserRow({ user, open, onToggle }: { user: User; open: boolean; onToggle
           </RowToggle>
         </Td>
         <Td className="font-mono text-xs">{user.loginId}</Td>
-        <Td>{user.role.replace(/_/g, ' ').toLowerCase()}</Td>
+        <Td>{ROLE_LABEL[user.role]}</Td>
         <Td>
           <div className="flex gap-1">
-            <Badge tone={statusTone}>{user.status.toLowerCase()}</Badge>
-            {user.mustResetPassword && <Badge tone="warn">reset pending</Badge>}
+            <Badge tone={statusTone}>{USER_STATUS_LABEL[user.status]}</Badge>
+            {user.mustResetPassword && <Badge tone="warn">Password reset pending</Badge>}
           </div>
         </Td>
         <Td className="text-xs text-ink-3">
-          {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'never'}
+          {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}
         </Td>
         <Td>
           <div className="flex flex-wrap gap-2">
@@ -346,7 +348,7 @@ function UserActivity({ user }: { user: User }) {
   const units = [
     ...new Map(
       [
-        ...(memberships.data?.data ?? []).map((m) => [m.unitId, { name: m.unitName, via: m.role.replace(/_/g, ' ').toLowerCase() }] as const),
+        ...(memberships.data?.data ?? []).map((m) => [m.unitId, { name: m.unitName, via: roleLabel(m.role) }] as const),
         ...(assignments.data?.data ?? []).map((a) => [a.unitId, { name: a.unitName, via: 'assignment' }] as const),
       ],
     ).values(),
@@ -405,8 +407,8 @@ function AssignmentList({ assignments }: { assignments: AuditAssignment[] }) {
             {assignment.unitName}
           </Link>
           <span className="text-ink-3">
-            {' '}· {AUDIT_TYPE_LABELS[assignment.auditType]}
-            {assignment.dueAt ? ` · due ${new Date(assignment.dueAt).toLocaleDateString()}` : ''}
+            {' '}· {AUDIT_TYPE_LABEL[assignment.auditType]}
+            {assignment.dueAt ? ` · due ${formatDate(assignment.dueAt)}` : ''}
           </span>
         </li>
       ))}
@@ -424,8 +426,8 @@ function AuditList({ audits, empty }: { audits: Audit[]; empty: string }) {
             {audit.unitName}
           </Link>
           <span className="text-ink-3">
-            {' '}· {STATUS_LABELS[audit.status]} ·{' '}
-            {new Date(audit.completedAt ?? audit.startedAt ?? audit.createdAt).toLocaleDateString()}
+            {' '}· {AUDIT_STATUS_LABEL[audit.status]} ·{' '}
+            {formatDate(audit.completedAt ?? audit.startedAt ?? audit.createdAt)}
           </span>
           {audit.scored && audit.totals.scorePercentage !== null && audit.completedAt ? (
             <span className={cn('gb-data ml-2', bandTextClass(audit.totals.scorePercentage))}>
@@ -623,7 +625,7 @@ function UserUnits({ user }: { user: User }) {
       {user.role !== 'CONSULTANT' && (
         <p className="mt-2 text-xs text-ink-2">
           A {user.role === 'COORDINATOR' ? 'Coordinator' : 'Zone Leader'} belongs to one Unit
-          at a time (M-1); adding a second is refused.
+          at a time; adding a second is refused.
         </p>
       )}
     </div>
@@ -654,7 +656,7 @@ export function BootstrapNotice({
           </p>
           <p className="text-ink-2">
             Their temporary password is their own registered phone number. They must change
-            it on first sign-in, and it stops working {expires.toLocaleString()}.
+            it on first sign-in, and it stops working {formatDateTime(expires)}.
           </p>
           <p className="text-xs text-ink-3">
             No password is shown here or sent by message — that is deliberate.
@@ -776,7 +778,7 @@ export function CreateUserForm({
           <Select disabled={isCoordinator} {...register('role', { required: true })}>
             {roles.map((role) => (
               <option key={role} value={role}>
-                {role.replace(/_/g, ' ').toLowerCase()}
+                {ROLE_LABEL[role]}
               </option>
             ))}
           </Select>

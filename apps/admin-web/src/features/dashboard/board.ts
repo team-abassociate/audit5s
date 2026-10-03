@@ -140,14 +140,6 @@ export function worstIndex(board: BoardZone[]): number {
   return index === -1 ? 0 : index;
 }
 
-export const SECTION_LABEL: Record<SSection, string> = {
-  S1_SORT: 'S1 Sort',
-  S2_SET_IN_ORDER: 'S2 Order',
-  S3_SHINE: 'S3 Shine',
-  S4_STANDARDIZE: 'S4 Std.',
-  S5_SUSTAIN: 'S5 Sustain',
-};
-
 /**
  * The Outstanding boundary (R-6b, ≥ 90) is the target rule on the trend. GEMBA-BOARD.md §6
  * draws that rule at 85, a number this product's rating scale does not contain; the scale

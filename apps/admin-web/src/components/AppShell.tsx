@@ -5,6 +5,7 @@ import type { NotificationPage } from '@audit5s/contracts';
 import { api } from '@/lib/api';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useSession } from '@/lib/session';
+import { roleLabel } from '@/lib/labels';
 
 interface NavItem {
   to: string;
@@ -31,7 +32,7 @@ const NAV: NavItem[] = [
   // Beside the catalogue it labels. Hidden from anyone who cannot add one — a read-only
   // list of four sector names is not worth a rail entry.
   { to: '/industries', label: 'Industries', resource: 'industry', action: 'create', group: 2 },
-  { to: '/users', label: 'Users & roles', resource: 'user', action: 'read', group: 2 },
+  { to: '/users', label: 'Users', resource: 'user', action: 'read', group: 2 },
   { to: '/analytics', label: 'Analytics', resource: 'analytics', action: 'unit_dashboard', group: 3 },
   { to: '/reports', label: 'Reports', resource: 'report', action: 'read_snapshot', group: 3 },
   { to: '/sync', label: 'Sync health', resource: 'sync_conflict', action: 'read', group: 3 },
@@ -56,7 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="gb-rail">
         <div className="gb-brand">
           <img className="gb-brand-logo" src="/audit5s-logo.png" alt="audit5s" width="42" height="42" />
-          <span>audit5s · admin</span>
+          <span>audit5s · portal</span>
         </div>
         <nav className="gb-nav">
           {items.map((item, i) => (
@@ -71,7 +72,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="gb-railfoot">
           <b>{scope?.organizationWide ? 'Organization-wide' : `${scope?.unitIds.length ?? 0} Unit scope`}</b>
-          {scope?.role.replace(/_/g, ' ').toLowerCase()}
+          {roleLabel(scope?.role)}
         </div>
       </aside>
 

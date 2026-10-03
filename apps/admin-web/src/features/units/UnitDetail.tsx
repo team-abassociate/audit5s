@@ -13,6 +13,8 @@ import {
 import { ApiError, api } from '@/lib/api';
 import { Badge, Button, Card, CardHeader, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { roleLabel } from '@/lib/labels';
+import { formatDate } from '@audit5s/domain';
 
 /**
  * Unit master data, plus the Consultant and Coordinator assignments for this Unit.
@@ -70,10 +72,10 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
 
       <Card>
         <CardHeader
-          title="Master data"
+          title="Unit details"
           description={
             isCoordinator
-              ? 'You may edit address, contact and timezone. Name and code are set by a Super Admin (U-1).'
+              ? 'You may edit address, contact and timezone. Name and code are set by a Super Admin .'
               : undefined
           }
         />
@@ -92,7 +94,7 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
         >
           <Field
             label="Name"
-            hint={isCoordinator ? 'Super Admin only (U-1)' : undefined}
+            hint={isCoordinator ? 'Only a Super Admin can change this' : undefined}
             error={fieldErrors.name}
           >
             <Input disabled={!editable('name')} {...register('name')} />
@@ -107,7 +109,7 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
           <Field label="Contact name" error={fieldErrors.contactName}>
             <Input {...register('contactName')} />
           </Field>
-          <Field label="Contact phone" hint="E.164, e.g. +919876543210" error={fieldErrors.contactPhone}>
+          <Field label="Contact phone" hint="With the country code, e.g. +919876543210" error={fieldErrors.contactPhone}>
             <Input {...register('contactPhone')} />
           </Field>
           <Field label="Timezone" error={fieldErrors.timezone}>
@@ -192,7 +194,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
     <Card>
       <CardHeader
         title="Assignments"
-        description="Revoking takes effect on the user's next request, not at token expiry."
+        description="Removing someone from this Unit takes effect straight away."
       />
 
       {can('unit_membership', 'create') && (
@@ -200,7 +202,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
           <div className="flex-1">
             <Field
               label="Assign a user to this Unit"
-              hint="A Coordinator or Zone Leader may hold only one active Unit (M-1)."
+              hint="A Coordinator or Zone Leader can belong to only one Unit at a time."
             >
               <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
                 <option value="">Select a user…</option>
@@ -208,7 +210,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
                   .filter((u) => u.role !== 'SUPER_ADMIN')
                   .map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.fullName} ({u.loginId}) — {u.role.replace(/_/g, ' ').toLowerCase()}
+                      {u.fullName} ({u.loginId}) — {roleLabel(u.role)}
                     </option>
                   ))}
               </Select>
@@ -246,11 +248,11 @@ function UnitMemberships({ unitId }: { unitId: string }) {
                 <Td className="font-mono text-xs">{m.userLoginId}</Td>
                 <Td>
                   <Badge tone={m.role === 'CONSULTANT' ? 'good' : 'neutral'}>
-                    {m.role.replace(/_/g, ' ').toLowerCase()}
+                    {roleLabel(m.role)}
                   </Badge>
                 </Td>
                 <Td className="text-xs text-ink-3">
-                  {new Date(m.validFrom).toLocaleDateString()}
+                  {formatDate(m.validFrom)}
                 </Td>
                 <Td>
                   {can('unit_membership', 'revoke') && (

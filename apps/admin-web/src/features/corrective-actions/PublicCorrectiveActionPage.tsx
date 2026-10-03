@@ -5,7 +5,7 @@ import type {
   PublicCorrectiveAction,
   UploadIntentResponse,
 } from '@audit5s/contracts';
-import { sectionLabel } from '@audit5s/domain';
+import { formatDate, sectionLabel } from '@audit5s/domain';
 // The address only — not the client, which carries a session this page must never send.
 import { BASE_URL } from '@/lib/api';
 
@@ -838,8 +838,4 @@ function Labelled({ label, children }: { label: string; children: React.ReactNod
       {children}
     </label>
   );
-}
-
-function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString() : '—';
 }

@@ -10,6 +10,10 @@ import type {
 import { Link } from '@tanstack/react-router';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { NOTIFICATION_CATEGORY_LABEL, NOTIFICATION_EVENT_LABEL } from '@/lib/labels';
+import { formatDateTime } from '@audit5s/domain';
+
+const CHANNEL_LABEL = { IN_APP: 'In-app', WHATSAPP: 'WhatsApp', SMS: 'SMS' } as const;
 import { Button, Card, CardHeader, ErrorNotice, Spinner, Table, Td, Th } from '@/components/ui';
 
 
@@ -33,25 +37,6 @@ const TARGET_LABEL: Record<NotificationTarget, string> = {
   '/users': 'users',
   '/sync': 'sync health',
   '/dashboard': 'dashboard',
-};
-
-const EVENT_LABEL: Record<NotificationEventType, string> = {
-  UNIT_ASSIGNED: 'Unit access',
-  UNIT_ACCESS_REVOKED: 'Unit access',
-  AUDIT_ASSIGNED: 'Audit',
-  AUDIT_STARTED: 'Audit',
-  AUDIT_PAUSED: 'Audit',
-  AUDIT_COMPLETED: 'Audit',
-  CORRECTIVE_ACTION_SUBMITTED: 'Corrective action',
-  CORRECTIVE_ACTION_VERIFIED: 'Corrective action',
-  CORRECTIVE_ACTION_REOPENED: 'Corrective action',
-  CORRECTIVE_ACTION_OPENED: 'Corrective action',
-  CORRECTIVE_ACTION_WITHDRAWN: 'Corrective action',
-  CORRECTIVE_ACTION_OVERDUE: 'Overdue',
-  SYNC_FAILURE: 'Sync',
-  CHECKLIST_PUBLISHED: 'Checklist',
-  REPORT_GENERATED: 'Report',
-  DATA_INTEGRITY_ALERT: 'Integrity',
 };
 
 /**
@@ -200,13 +185,13 @@ export function NotificationsPage() {
                         {notification.title}
                       </span>
                       <span className="shrink-0 text-xs text-ink-3">
-                        {new Date(notification.createdAt).toLocaleString()}
+                        {formatDateTime(notification.createdAt)}
                       </span>
                     </span>
                     <span className="block text-sm text-ink-2">{notification.body}</span>
                     <span className="mt-1 flex items-center gap-2">
                       <span className="gb-chip gb-chip--muted">
-                        {EVENT_LABEL[notification.eventType]}
+                        {NOTIFICATION_CATEGORY_LABEL[notification.eventType]}
                       </span>
                       <span className="text-xs text-ink-3">
                         {search
@@ -270,12 +255,12 @@ function Preferences() {
         <tbody>
           {events.map((eventType) => (
             <tr key={eventType}>
-              <Td>{eventType.replaceAll('_', ' ').toLowerCase()}</Td>
+              <Td>{NOTIFICATION_EVENT_LABEL[eventType]}</Td>
               {(['IN_APP', 'WHATSAPP', 'SMS'] as const).map((channel) => (
                 <Td key={channel}>
                   <input
                     type="checkbox"
-                    aria-label={`${eventType} ${channel}`}
+                    aria-label={`${NOTIFICATION_EVENT_LABEL[eventType]}: ${CHANNEL_LABEL[channel]}`}
                     checked={enabled.get(`${eventType}:${channel}`) ?? true}
                     disabled={channel === 'IN_APP' || save.isPending}
                     onChange={(event) => save.mutate({ eventType, channel, enabled: event.target.checked })}
