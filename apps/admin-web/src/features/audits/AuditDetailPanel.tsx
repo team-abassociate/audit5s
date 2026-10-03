@@ -1,59 +1,95 @@
 import { useEffect, useState } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  Audit,
   AuditDetail,
   AuditScoreSummary,
+  ChecklistVersionDetail,
   Evidence,
   EvidenceClassification,
   EvidenceViewUrl,
   Page,
+  QuestionResponse,
   SectionScorePayload,
 } from '@audit5s/contracts';
-import { RESPONSE_TOKENS, zoneDisplayLabel } from '@audit5s/domain';
-import { bandLabel, bandTextClass, responseTextClass } from '@/lib/bands';
+import { RESPONSE_TOKENS, formatDateTime, zoneDisplayLabel } from '@audit5s/domain';
+import { bandTextClass, responseTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { api } from '@/lib/api';
 import {
   Badge,
+  BandLabel,
   Button,
-  Card,
-  CardHeader,
   Dialog,
   ErrorNotice,
   Field,
   Input,
   Select,
   Spinner,
+  StatusChip,
   Table,
   Td,
   Th,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
-import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, EVIDENCE_KIND_LABEL, SECTION_LABEL, ZONE_STATUS_LABEL } from '@/lib/labels';
+import { EVIDENCE_KIND_LABEL, SECTION_LABEL } from '@/lib/labels';
+import { TeamProgress } from './AuditProgress';
+import { read } from './data';
+
+/** Question id → its English wording, from the checklist versions the audit's Zones used. */
+type Questions = Map<string, string>;
 
 /**
- * One audit: its S-wise scores, every response, and the two administrative actions PART 6
- * gives a Super Admin — cancel, and the post-completion override.
+ * One audit, as the body of the audits page's side panel (AU1): the team's progress when it
+ * was audited together, its S-wise scores, each Zone with every answer beside its question
+ * (AU2), the photos captioned with where they were taken (AU5), and the two administrative
+ * actions PART 6 gives a Super Admin — cancel, and the post-completion override.
  *
  * The score comes from `GET /audits/{id}/summary`, which recomputes rather than reading a
  * cache, so this panel and the eventual report cannot disagree. Percentages are rendered
  * with one decimal (A6) and coloured by `bandFor`, the same table the PDF uses (R-6c).
+ *
+ * The question wording is not on the audit: each Zone names its binding checklist version
+ * (QR-2), and `GET /checklist-versions/{id}` — readable by every role — holds the questions.
+ * A version is immutable once published, so it is fetched once and kept.
  */
-export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClose: () => void }) {
+export function AuditDetailPanel({
+  auditId,
+  team,
+}: {
+  auditId: string;
+  /** Set when this audit is one auditor's share of a Unit audit done together. */
+  team?: { unitId: string; audits: Audit[]; pending: string[] };
+}) {
   const { can } = useSession();
   const queryClient = useQueryClient();
   const [cancelReason, setCancelReason] = useState('');
 
   const detail = useQuery({
     queryKey: ['audit', auditId],
-    queryFn: () => api.get<AuditDetail>(`/audits/${auditId}`),
+    queryFn: () => read<AuditDetail>(`/audits/${auditId}`),
   });
 
   const summary = useQuery({
     queryKey: ['audit-summary', auditId],
-    queryFn: () => api.get<AuditScoreSummary>(`/audits/${auditId}/summary`),
+    queryFn: () => read<AuditScoreSummary>(`/audits/${auditId}/summary`),
     enabled: detail.data?.scored === true,
   });
+
+  const versionIds = [
+    ...new Set((detail.data?.zones ?? []).flatMap((zone) => (zone.checklistVersionId ? [zone.checklistVersionId] : []))),
+  ];
+  const versions = useQueries({
+    queries: versionIds.map((id) => ({
+      queryKey: ['checklist-version', id],
+      queryFn: () => read<ChecklistVersionDetail>(`/checklist-versions/${id}`),
+      staleTime: Infinity,
+    })),
+  });
+  const questions: Questions = new Map(
+    versions.flatMap((version) => version.data?.questions.map((question) => [question.id, question.text] as const) ?? []),
+  );
+  const questionsPending = versions.some((version) => version.isLoading);
 
   const cancel = useMutation({
     mutationFn: () => api.post(`/audits/${auditId}/cancel`, { reason: cancelReason }),
@@ -63,140 +99,114 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
     },
   });
 
-  if (detail.isLoading) return <Spinner />;
+  if (detail.isLoading) return <Spinner label="Loading the audit…" />;
   if (detail.error) return <ErrorNotice error={detail.error} />;
   if (!detail.data) return null;
 
   const audit = detail.data;
   const overall = summary.data?.audit;
   const cancellable = ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'].includes(audit.status);
+  const percentage = overall?.totals.scorePercentage ?? null;
 
   return (
-    <Card>
-      <CardHeader
-        title={`${AUDIT_TYPE_LABEL[audit.auditType]} — ${audit.unitName}`}
-        description={`${audit.auditorName} · ${AUDIT_STATUS_LABEL[audit.status]}${
-          audit.pauseReason ? ` · paused: ${audit.pauseReason}` : ''
-        }`}
-        action={<Button variant="secondary" onClick={onClose}>Close</Button>}
-      />
+    <div className="space-y-5">
+      <p className="text-xs text-ink-2">
+        {audit.startedAt ? `Started ${formatDateTime(audit.startedAt)}` : 'Not started on the phone yet'}
+        {audit.completedAt ? ` · completed ${formatDateTime(audit.completedAt)}` : ''}
+        {audit.pauseReason ? ` · paused: ${audit.pauseReason}` : ''}
+      </p>
 
-      {audit.scored ? (
-        <div className="grid gap-4 p-4 sm:grid-cols-3">
+      {team ? (
+        <section className="space-y-2">
+          <h3 className="gb-label">Team</h3>
+          <TeamProgress unitId={team.unitId} audits={team.audits} pending={team.pending} />
+        </section>
+      ) : null}
+
+      {!audit.scored ? (
+        <p className="text-sm text-ink-2">Walk-by audits are observations and are not scored.</p>
+      ) : audit.status === 'CANCELLED' ? (
+        <p className="text-sm text-ink-2">Cancelled audits have no score. What was recorded is kept below.</p>
+      ) : (
+        <div className="grid grid-cols-3 gap-4">
           <Metric label="Marks" value={`${audit.totals.rawScore} / ${audit.totals.maxScore}`} />
           <Metric
             label="Percentage"
-            value={
-              overall?.totals.scorePercentage === null || overall === undefined
-                ? 'N/A'
-                : `${overall.totals.scorePercentage.toFixed(1)}%`
-            }
-            tone={bandTextClass(overall?.totals.scorePercentage ?? null)}
+            value={percentage === null ? 'N/A' : `${percentage.toFixed(1)}%`}
+            tone={bandTextClass(percentage)}
           />
-          <Metric
-            label="Rating"
-            value={bandLabel(overall?.totals.scorePercentage ?? null)}
-            tone={bandTextClass(overall?.totals.scorePercentage ?? null)}
-          />
+          <div>
+            <p className="gb-label">Rating</p>
+            <p className="mt-1 text-sm font-semibold">
+              {overall ? <BandLabel score={percentage} /> : '…'}
+            </p>
+          </div>
         </div>
-      ) : (
-        <p className="p-4 text-sm text-ink-2">Walk-by audits are observations and are not scored.</p>
       )}
 
-      <EvidenceGallery auditId={auditId} zones={audit.zones} />
-
-      {audit.zones.length === 0 && (
-        <p className="px-4 pb-4 text-sm text-ink-3">No Zones have been added yet.</p>
-      )}
-
-      {audit.zones.map((zone) => {
-        const zoneScore = summary.data?.zones.find((candidate) => candidate.auditZoneId === zone.id);
-        return (
-          <div key={zone.id} className="border-t border-edge-soft">
-            <div className="flex items-baseline justify-between px-4 py-3">
-              <div>
+      <section className="space-y-2">
+        <h3 className="gb-label">
+          {audit.zones.length} Zone{audit.zones.length === 1 ? '' : 's'}
+        </h3>
+        {audit.zones.length === 0 && <p className="text-sm text-ink-3">No Zones have been added yet.</p>}
+        {audit.zones.map((zone) => {
+          const zoneScore = summary.data?.zones.find((candidate) => candidate.auditZoneId === zone.id);
+          const pct = zone.totals.scorePercentage;
+          return (
+            <details key={zone.id} className="border border-edge-soft">
+              <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                 {/* The D6 snapshots, never the live Zone: renaming it must not move this. */}
-                <h3 className="gb-h2">
+                <span className="min-w-0 flex-1 font-semibold [overflow-wrap:anywhere]">
                   {zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
-                </h3>
-                {zone.zoneDescriptionSnapshot && (
-                  <p className="text-xs text-ink-3">{zone.zoneDescriptionSnapshot}</p>
-                )}
+                </span>
+                <StatusChip kind="zone" status={zone.status} />
+                {audit.scored && audit.status !== 'CANCELLED' && zone.status === 'COMPLETED' ? (
+                  <span className={cn('gb-data w-14 text-right font-semibold', bandTextClass(pct))}>
+                    {pct === null ? 'N/A' : `${pct.toFixed(1)}%`}
+                  </span>
+                ) : null}
+              </summary>
+              <div className="space-y-3 border-t border-edge-soft px-3 py-3">
                 <p className="text-xs text-ink-3">
+                  {zone.zoneDescriptionSnapshot ? `${zone.zoneDescriptionSnapshot} · ` : ''}
                   {zone.checklistTemplateNameSnapshot ?? 'No checklist'}
                   {zone.zoneLeaderNameSnapshot ? ` · Zone Leader: ${zone.zoneLeaderNameSnapshot}` : ''}
                 </p>
+
+                {audit.scored && <SectionTable sections={zoneScore?.sections ?? zone.sections} />}
+
+                {zone.zoneRemark && (
+                  <p className="text-sm text-ink-2">
+                    <span className="font-semibold">Zone remark: </span>
+                    {zone.zoneRemark}
+                  </p>
+                )}
+
+                {/* R-38: each of these becomes a corrective action when the audit completes. */}
+                {(zone.overallActionSuggestions ?? []).length > 0 && (
+                  <div className="text-sm text-ink-2">
+                    <span className="font-semibold">Overall corrective action suggestions:</span>
+                    <ol className="mt-1 list-decimal space-y-1 pl-5">
+                      {zone.overallActionSuggestions.map((suggestion, index) => (
+                        <li key={index}>{suggestion}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {zone.responses.length > 0 && (
+                  <Answers responses={zone.responses} questions={questions} pending={questionsPending} />
+                )}
               </div>
-              <Badge tone={zone.status === 'COMPLETED' ? 'good' : zone.status === 'WITHDRAWN' ? 'neutral' : 'warn'}>
-                {ZONE_STATUS_LABEL[zone.status]}
-              </Badge>
-            </div>
+            </details>
+          );
+        })}
+      </section>
 
-            {audit.scored && <SectionTable sections={zoneScore?.sections ?? zone.sections} />}
-
-            {zone.zoneRemark && (
-              <p className="px-4 pb-3 text-sm text-ink-2">
-                <span className="font-semibold">Zone remark: </span>
-                {zone.zoneRemark}
-              </p>
-            )}
-
-            {/* R-38: each of these becomes a corrective action when the audit completes. */}
-            {(zone.overallActionSuggestions ?? []).length > 0 && (
-              <div className="px-4 pb-3 text-sm text-ink-2">
-                <span className="font-semibold">Overall corrective action suggestions:</span>
-                <ol className="mt-1 list-decimal space-y-1 pl-5">
-                  {zone.overallActionSuggestions.map((suggestion, index) => (
-                    <li key={index}>{suggestion}</li>
-                  ))}
-                </ol>
-              </div>
-            )}
-
-            {zone.responses.length > 0 && (
-              <details className="px-4 pb-4">
-                <summary className="cursor-pointer text-sm text-ink-2">
-                  {zone.responses.length} response{zone.responses.length === 1 ? '' : 's'}
-                </summary>
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th>Sr.</Th>
-                      <Th>S</Th>
-                      <Th>Response</Th>
-                      <Th>Marks</Th>
-                      <Th>Remark</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {zone.responses.map((response) => {
-                      const token = RESPONSE_TOKENS[response.value]!;
-                      return (
-                        <tr key={response.id} className="border-t border-edge-soft">
-                          <Td>{response.globalOrder}</Td>
-                          <Td className="text-ink-3">
-                            {SECTION_LABEL[response.section]}
-                          </Td>
-                          <Td>
-                            <span className={cn('font-medium', responseTextClass(response.value))}>
-                              {token.label}
-                            </span>
-                          </Td>
-                          <Td>{response.numericScore ?? 'NA'}</Td>
-                          <Td className="text-ink-2">{response.remark ?? ''}</Td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </Table>
-              </details>
-            )}
-          </div>
-        );
-      })}
+      <EvidenceGallery auditId={auditId} zones={audit.zones} questions={questions} />
 
       {can('audit', 'cancel') && cancellable && (
-        <div className="border-t border-edge-soft p-4">
+        <div className="border-t border-edge-soft pt-4">
           <Field
             label="Cancel this audit"
             hint="Cancelling keeps everything that was recorded. No one can delete an audit."
@@ -223,16 +233,84 @@ export function AuditDetailPanel({ auditId, onClose }: { auditId: string; onClos
       {audit.scored && can('audit', 'edit_after_completion') && audit.status === 'COMPLETED' && (
         <OverrideForm auditId={auditId} audit={audit} />
       )}
-    </Card>
+    </div>
+  );
+}
+
+/**
+ * Every answer of one Zone beside its question (AU2), grouped under its S, so "why did this
+ * Zone score 7.3?" is read here rather than in the PDF. `NA` reads "N/A" and has no marks.
+ */
+function Answers({
+  responses,
+  questions,
+  pending,
+}: {
+  responses: QuestionResponse[];
+  questions: Questions;
+  pending: boolean;
+}) {
+  const rows = [...responses].sort((a, b) => a.globalOrder - b.globalOrder);
+  return (
+    <details>
+      <summary className="cursor-pointer text-sm text-ink-2">
+        {responses.length} answer{responses.length === 1 ? '' : 's'}
+      </summary>
+      <Table>
+        <thead>
+          <tr>
+            <Th width="3.5rem">Sr.</Th>
+            <Th>Question</Th>
+            <Th width="8rem">Answer</Th>
+            <Th width="4rem">Marks</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((response, index) => {
+            const token = RESPONSE_TOKENS[response.value]!;
+            const newSection = index === 0 || rows[index - 1]!.section !== response.section;
+            return [
+              newSection ? (
+                <tr key={`${response.section}-head`} className="gb-group">
+                  <Td colSpan={4}>
+                    <span className="gb-group-title">{SECTION_LABEL[response.section]}</span>
+                  </Td>
+                </tr>
+              ) : null,
+              <tr key={response.id}>
+                <Td className="gb-data">{response.globalOrder}</Td>
+                <Td>
+                  <span className="[overflow-wrap:anywhere]">
+                    {questions.get(response.checklistQuestionId) ??
+                      (pending ? 'Loading question…' : 'Question wording unavailable')}
+                  </span>
+                  {response.remark ? (
+                    <span className="mt-1 block text-xs text-ink-2">Remark: {response.remark}</span>
+                  ) : null}
+                </Td>
+                <Td>
+                  <span className={cn('font-medium', responseTextClass(response.value))}>
+                    {response.value === 'NA' ? 'N/A' : token.label}
+                  </span>
+                </Td>
+                <Td className="gb-data">{response.numericScore ?? 'N/A'}</Td>
+              </tr>,
+            ];
+          })}
+        </tbody>
+      </Table>
+    </details>
   );
 }
 
 function EvidenceGallery({
   auditId,
   zones,
+  questions,
 }: {
   auditId: string;
   zones: AuditDetail['zones'];
+  questions: Questions;
 }) {
   const [zoneId, setZoneId] = useState('');
   const [classification, setClassification] = useState<'' | EvidenceClassification>('');
@@ -248,69 +326,77 @@ function EvidenceGallery({
       if (classification) query.set('classification', classification);
       if (flaggedOnly) query.set('summaryFlaggedOnly', 'true');
       if (pageParam) query.set('cursor', pageParam);
-      return api.get<Page<Evidence>>(`/audits/${auditId}/evidence?${query}`);
+      return read<Page<Evidence>>(`/audits/${auditId}/evidence?${query}`);
     },
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
 
-  const evidence = gallery.data?.pages.flatMap((page) => page.data) ?? [];
+  // AU5: the auditor's own photo is not a finding, so it sits after the findings' photos.
+  const evidence = (gallery.data?.pages.flatMap((page) => page.data) ?? []).sort(
+    (a, b) => Number(a.kind === 'AUDITOR_SELFIE') - Number(b.kind === 'AUDITOR_SELFIE'),
+  );
 
   return (
-    <section className="border-t border-edge-soft p-4">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h3 className="gb-h2">Evidence gallery</h3>
-          <p className="text-xs text-ink-3">Thumbnails load here; originals load only when opened.</p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <Field label="Zone">
-            <Select value={zoneId} onChange={(event) => setZoneId(event.target.value)}>
-              <option value="">All Zones</option>
-              {zones.map((zone) => (
-                <option key={zone.id} value={zone.id}>
-                  {zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Classification">
-            <Select
-              value={classification}
-              onChange={(event) =>
-                setClassification(event.target.value as '' | EvidenceClassification)
-              }
-            >
-              <option value="">All</option>
-              <option value="GOOD">Good</option>
-              <option value="NONCONFORMITY">Nonconformity</option>
-              <option value="NEUTRAL">Neutral</option>
-            </Select>
-          </Field>
-          <Button variant={flaggedOnly ? 'primary' : 'secondary'} onClick={() => setFlaggedOnly((value) => !value)}>
-            Flagged only
-          </Button>
-        </div>
+    <section className="space-y-3 border-t border-edge-soft pt-4">
+      <div>
+        <h3 className="gb-label">Photos</h3>
+        <p className="text-xs text-ink-3">Thumbnails load here; originals load only when opened.</p>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Zone">
+          <Select value={zoneId} onChange={(event) => setZoneId(event.target.value)}>
+            <option value="">All Zones</option>
+            {zones.map((zone) => (
+              <option key={zone.id} value={zone.id}>
+                {zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Classification">
+          <Select
+            value={classification}
+            onChange={(event) => setClassification(event.target.value as '' | EvidenceClassification)}
+          >
+            <option value="">All</option>
+            <option value="GOOD">Good</option>
+            <option value="NONCONFORMITY">Nonconformity</option>
+            <option value="NEUTRAL">Neutral</option>
+          </Select>
+        </Field>
+        <Button
+          variant={flaggedOnly ? 'primary' : 'secondary'}
+          aria-pressed={flaggedOnly}
+          onClick={() => setFlaggedOnly((value) => !value)}
+        >
+          Flagged only
+        </Button>
       </div>
 
-      {gallery.isLoading && <Spinner label="Loading evidence…" />}
+      {gallery.isLoading && <Spinner label="Loading photos…" />}
       {gallery.error && <ErrorNotice error={gallery.error} />}
       {!gallery.isLoading && evidence.length === 0 && (
-        <p className="py-4 text-sm text-ink-3">No evidence matches these filters.</p>
+        <p className="py-2 text-sm text-ink-3">No photos match these filters.</p>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
         {evidence.map((item) => (
-          <EvidenceTile key={item.id} evidence={item} onOpen={() => setSelected(item)} />
+          <EvidenceTile
+            key={item.id}
+            evidence={item}
+            caption={evidenceCaption(item, zones, questions)}
+            onOpen={() => setSelected(item)}
+          />
         ))}
       </div>
       {gallery.hasNextPage && (
-        <Button className="mt-3" variant="secondary" disabled={gallery.isFetchingNextPage} onClick={() => gallery.fetchNextPage()}>
+        <Button variant="secondary" disabled={gallery.isFetchingNextPage} onClick={() => gallery.fetchNextPage()}>
           {gallery.isFetchingNextPage ? 'Loading…' : 'Load more'}
         </Button>
       )}
       {selected && (
         <EvidenceViewer
           evidence={selected}
-          caption={evidenceCaption(selected, zones)}
+          caption={evidenceCaption(selected, zones, questions)}
           onClose={() => setSelected(null)}
         />
       )}
@@ -318,35 +404,44 @@ function EvidenceGallery({
   );
 }
 
-function EvidenceTile({ evidence, onOpen }: { evidence: Evidence; onOpen: () => void }) {
+function EvidenceTile({
+  evidence,
+  caption,
+  onOpen,
+}: {
+  evidence: Evidence;
+  caption: string | undefined;
+  onOpen: () => void;
+}) {
   const thumbnail = useQuery({
     queryKey: ['evidence-view-url', evidence.id, 'thumbnail'],
     queryFn: () => api.get<EvidenceViewUrl>(`/evidence/${evidence.id}/view-url?variant=thumbnail`),
     staleTime: 240_000,
   });
   const label = evidence.classification === 'NONCONFORMITY' ? 'Nonconformity' : evidence.classification === 'GOOD' ? 'Good' : 'Neutral';
+  const where = evidence.kind === 'AUDITOR_SELFIE' ? EVIDENCE_KIND_LABEL.AUDITOR_SELFIE : (caption ?? EVIDENCE_KIND_LABEL[evidence.kind]);
 
   return (
     <button
       type="button"
-      className="overflow-hidden border border-edge-soft bg-tile text-left hover:border-edge focus:ring-2 focus:ring-accent focus:outline-none"
-      aria-label={`Open ${label} evidence`}
+      className="min-w-0 overflow-hidden border border-edge-soft bg-tile text-left hover:border-edge focus:ring-2 focus:ring-accent focus:outline-none"
+      aria-label={`Open photo: ${where}, ${label}`}
       onClick={onOpen}
     >
       {thumbnail.data ? (
-        <img className="aspect-4/3 w-full bg-tile-2 object-cover" src={thumbnail.data.url} alt={`${label} audit evidence`} />
+        <img className="aspect-4/3 w-full bg-tile-2 object-cover" src={thumbnail.data.url} alt="" />
       ) : (
         <div className="aspect-4/3 grid place-items-center bg-tile-2 text-xs text-ink-3">
           {thumbnail.error ? 'Preview unavailable' : 'Loading preview…'}
         </div>
       )}
-      <div className="space-y-1 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <Badge tone={evidenceTone(evidence.classification)}>{label}</Badge>
+      <div className="space-y-1 p-2">
+        <div className="flex flex-wrap items-center gap-1">
+          {evidence.kind !== 'AUDITOR_SELFIE' && <Badge tone={evidenceTone(evidence.classification)}>{label}</Badge>}
           {evidence.isSummaryFlagged && <Badge tone="warn">Summary photo</Badge>}
         </div>
-        <p className="text-xs text-ink-3">{EVIDENCE_KIND_LABEL[evidence.kind]}</p>
-        {evidence.remark && <p className="line-clamp-2 text-sm text-ink-2">{evidence.remark}</p>}
+        <p className="line-clamp-3 text-xs text-ink-2 [overflow-wrap:anywhere]">{where}</p>
+        {evidence.remark && <p className="line-clamp-2 text-xs text-ink-3">{evidence.remark}</p>}
         {!evidence.mediaProcessedAt && <p className="text-xs text-ink-3">Thumbnail processing</p>}
       </div>
     </button>
@@ -354,15 +449,19 @@ function EvidenceTile({ evidence, onOpen }: { evidence: Evidence; onOpen: () => 
 }
 
 /**
- * Where a photo was taken, from what the detail already holds: the Zone, and the response's
- * Sr. and S. The question's wording is not on the audit detail, so it is not guessed at.
+ * Where a photo was taken (AU5): the Zone, then the answer's Sr. and S, then its question
+ * when the checklist has loaded — "Zone 16 · Sr. 3 · S1 Sort (Seiri) · Are unwanted items…".
  */
-function evidenceCaption(evidence: Evidence, zones: AuditDetail['zones']): string | undefined {
+function evidenceCaption(evidence: Evidence, zones: AuditDetail['zones'], questions: Questions): string | undefined {
   const zone = zones.find((candidate) => candidate.id === evidence.auditZoneId);
   if (!zone) return undefined;
   const parts = [zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)];
   const response = zone.responses.find((candidate) => candidate.id === evidence.questionResponseId);
-  if (response) parts.push(`Sr. ${response.globalOrder} · ${SECTION_LABEL[response.section]}`);
+  if (response) {
+    parts.push(`Sr. ${response.globalOrder}`, SECTION_LABEL[response.section]);
+    const question = questions.get(response.checklistQuestionId);
+    if (question) parts.push(question);
+  }
   return parts.join(' · ');
 }
 
@@ -566,8 +665,8 @@ function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink-3">{label}</p>
-      <p className={cn('text-lg font-semibold', tone)}>
+      <p className="gb-label">{label}</p>
+      <p className={cn('mt-1 text-lg font-semibold tabular-nums', tone)}>
         {value}
       </p>
     </div>
