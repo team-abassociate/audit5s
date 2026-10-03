@@ -129,6 +129,10 @@ export function Combobox({
 
   // The selection can arrive from outside — a default that lands with its query.
   useEffect(() => setText(selectedLabel), [selectedLabel]);
+  // Keep the highlighted row in view, including the current choice on open.
+  useEffect(() => {
+    if (open) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' });
+  }, [open, active, listId]);
 
   const choose = (option: (typeof options)[number]) => {
     setTyping(false);
@@ -172,6 +176,9 @@ export function Combobox({
           // Open on the whole list, with the current text selected so typing replaces it.
           setTyping(false);
           setOpen(true);
+          // Open on the current choice, not the first row (B15).
+          const all = keepOrder ? options : [...options].sort((a, b) => a.label.localeCompare(b.label));
+          setActive(Math.max(0, all.findIndex((option) => option.id === value)));
           event.target.select();
         }}
         onBlur={() => {

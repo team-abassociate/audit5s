@@ -188,37 +188,42 @@ body {
   gap: 10px;
   flex: none;
 }
+/*
+ * Row 2, the scope row: the portal's Unit, then the page's own selectors and actions. It is
+ * not sticky — only the title row is (UX audit G15) — so on a laptop it scrolls away and
+ * gives the height back to the board. Hidden when neither the shell nor the page fills it.
+ */
 .gb-tools {
   display: flex;
   align-items: center;
   gap: 8px 14px;
   flex-wrap: wrap;
-  padding-top: 10px;
-  border-top: 1px solid var(--edge-soft);
+  padding: 10px 28px;
+  background: var(--tile-2);
+  border-bottom: 1px solid var(--edge-soft);
 }
-.gb-tools:empty {
+.gb-tools-slot {
+  display: contents;
+}
+.gb-tools:not(:has(> .gb-scope, > .gb-tools-slot > *)) {
   display: none;
+}
+.gb-scope-fixed {
+  font-size: 13px;
+  font-weight: 700;
 }
 /* The Unit is the one selector whose value must read in full. */
 .gb-tools .gb-sel .gb-sel-input {
   width: 210px;
 }
 /*
- * Below ~1320px the toolbar row cannot hold three labelled selectors and three actions.
- * The labels go first: each select's value already says what it is ("Last 12 months",
- * "Weighted, all audits"), and the label stays in the accessibility tree.
+ * Below ~1320px the row cannot hold three labelled selectors and three actions on one line.
+ * It wraps, and every selector keeps its visible label (B19): a bare "Last 12 months" does
+ * not say it is the period. The row scrolls away, so a second line costs nothing sticky.
  */
 @media (max-width: 1320px) and (min-width: 861px) {
   .gb-tools {
     gap: 8px 10px;
-  }
-  .gb-tools .gb-sel > .gb-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 }
 .gb-sel {
@@ -295,6 +300,57 @@ body {
   flex-direction: column;
   gap: 28px;
   max-width: 1520px;
+}
+/* The skip link's target is focused only to move the reading position; it is not a control. */
+.gb-page:focus {
+  outline: none;
+}
+/* WCAG 2.4.1: the first stop on every page, off-screen until it has focus. */
+.gb-skip {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  padding: 8px 12px;
+  background: var(--tile);
+  color: var(--ink);
+  border: 2px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+.gb-skip:focus {
+  transform: none;
+}
+/* A path nothing answers (E1): one magnet, what was asked for, and the way back. */
+.gb-notfound {
+  max-width: 62ch;
+  padding: 22px;
+  background: var(--tile);
+  border: 2px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.gb-notfound h2 {
+  font-size: 16px;
+  font-weight: 800;
+  font-stretch: 110%;
+  text-transform: uppercase;
+}
+.gb-notfound p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+/* "More ▾" exists only on the phone-width strip (G13); the rail shows every link. */
+.gb-navmore {
+  display: none;
 }
 .gb-head {
   display: flex;
@@ -845,8 +901,27 @@ body {
   }
 }
 @media (max-width: 860px) {
+  /* minmax(0, …): the column is the viewport, never the width of its widest child. */
   .gb-app {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* The title row must fit 400px: the title gives way first, and the identity chip keeps
+     its avatar; the name stays for screen readers and in the chip's tooltip. */
+  .gb-top h1 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gb-shell-tools {
+    gap: 8px;
+  }
+  .gb-who > div:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .gb-rail {
     position: static;
@@ -855,7 +930,6 @@ body {
     border-bottom: 2px solid var(--edge);
     flex-direction: row;
     align-items: center;
-    overflow-x: auto;
   }
   .gb-brand {
     border-bottom: 0;
@@ -870,13 +944,83 @@ body {
     width: 32px;
     height: 32px;
   }
+  /* The wordmark only ever showed clipped here ("audit5s · admi"); the logo names the app. */
   .gb-brand span {
-    margin-top: 0;
+    display: none;
   }
+  /* The strip scrolls on its own, and fades at whichever edge has more to show (G13). */
   .gb-nav {
     flex-direction: row;
+    flex: 1;
+    min-width: 0;
     padding: 8px 10px;
     gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .gb-nav[data-fade='end'] {
+    mask-image: linear-gradient(to right, var(--ink) calc(100% - 36px), transparent);
+  }
+  .gb-nav[data-fade='start'] {
+    mask-image: linear-gradient(to left, var(--ink) calc(100% - 36px), transparent);
+  }
+  .gb-nav[data-fade='start end'] {
+    mask-image: linear-gradient(to right, transparent, var(--ink) 36px, var(--ink) calc(100% - 36px), transparent);
+  }
+  .gb-nav .gb-nav-more-item {
+    display: none;
+  }
+  .gb-navmore {
+    display: block;
+    position: relative;
+    flex: none;
+    padding-right: 10px;
+  }
+  .gb-navmore-btn {
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--ink-2);
+    background: var(--tile);
+    border: 1.5px solid var(--edge-soft);
+    cursor: pointer;
+  }
+  .gb-navmore-btn[aria-expanded='true'] {
+    border-color: var(--edge);
+    color: var(--ink);
+  }
+  .gb-navmore-btn[data-current] {
+    border-color: var(--edge);
+    color: var(--ink);
+    font-weight: 700;
+    box-shadow: 2px 2px 0 var(--hard);
+  }
+  .gb-navmore-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 10px;
+    z-index: 10;
+    min-width: 200px;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--tile);
+    border: 2px solid var(--edge);
+    box-shadow: 3px 3px 0 var(--hard);
+  }
+  .gb-navmore-list a {
+    display: block;
+    padding: 9px 10px;
+    color: var(--ink-2);
+    font-size: 13.5px;
+    text-decoration: none;
+  }
+  .gb-navmore-list a[aria-current='page'] {
+    background: var(--tile-2);
+    color: var(--ink);
+    font-weight: 700;
   }
   .gb-nav a {
     white-space: nowrap;
@@ -891,6 +1035,7 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
   .gb-top,
+  .gb-tools,
   .gb-page,
   .gb-foot {
     padding-left: 16px;
@@ -1926,11 +2071,8 @@ li:has(> .gb-menu-item--danger) {
 }
 /* Laptop widths: less gutter, and the identity chip keeps only the avatar and name. */
 @media (max-width: 1440px) and (min-width: 861px) {
-  /* The sync pill keeps its dot and its time; "Last sync" moves to the tooltip. */
-  .gb-pill-label {
-    display: none;
-  }
-  .gb-top {
+  .gb-top,
+  .gb-tools {
     padding-left: 22px;
     padding-right: 22px;
   }

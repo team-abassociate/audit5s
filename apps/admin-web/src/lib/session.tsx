@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MeResponse, LoginRequest, LoginResponse, ResolvedScope } from '@audit5s/contracts';
 import { api, loadSession, onSessionLost, setSession } from './api';
 
@@ -21,48 +22,56 @@ interface SessionState {
 
 const SessionContext = createContext<SessionState | null>(null);
 
+/** `/auth/me`, cached: one request per sign-in or reload, not one per screen. */
+const ME_KEY = ['auth', 'me'] as const;
+const fetchMe = () => api.get<MeResponse>('/auth/me');
+
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<MeResponse['user'] | null>(null);
-  const [scope, setScope] = useState<ResolvedScope | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [signedIn, setSignedIn] = useState(() => loadSession() !== null);
+
+  const me = useQuery({
+    queryKey: ME_KEY,
+    queryFn: fetchMe,
+    enabled: signedIn,
+    // What a role may do changes when an administrator changes it, not every 30 seconds.
+    // The API refuses a stale permission regardless; a reload or a sign-in refreshes it.
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const user = signedIn ? (me.data?.user ?? null) : null;
+  const scope = signedIn ? (me.data?.scope ?? null) : null;
+  const loading = signedIn && me.isPending;
+
+  const forget = useCallback(() => {
+    setSignedIn(false);
+    // Someone else may sign in next in this tab: nothing the last person fetched survives.
+    queryClient.clear();
+  }, [queryClient]);
 
   const reload = useCallback(async () => {
     if (!loadSession()) {
-      setUser(null);
-      setScope(null);
-      setLoading(false);
+      forget();
       return;
     }
-    try {
-      const me = await api.get<MeResponse>('/auth/me');
-      setUser(me.user);
-      setScope(me.scope);
-    } catch {
-      setUser(null);
-      setScope(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    setSignedIn(true);
+    await queryClient.fetchQuery({ queryKey: ME_KEY, queryFn: fetchMe, staleTime: 0 }).catch(() => undefined);
+  }, [forget, queryClient]);
 
   useEffect(() => {
-    onSessionLost(() => {
-      setUser(null);
-      setScope(null);
-    });
-    void reload();
-  }, [reload]);
+    onSessionLost(forget);
+  }, [forget]);
 
   const signIn = useCallback(
     async (credentials: LoginRequest) => {
       const result = await api.post<LoginResponse>('/auth/login', credentials);
       setSession({ accessToken: result.accessToken, refreshToken: result.refreshToken });
-      setUser(result.user);
-      setScope(result.scope);
-      setLoading(false);
+      queryClient.setQueryData<MeResponse>(ME_KEY, { user: result.user, scope: result.scope });
+      setSignedIn(true);
       return result;
     },
-    [],
+    [queryClient],
   );
 
   const signOut = useCallback(async () => {
@@ -71,9 +80,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await api.post('/auth/logout', { refreshToken: current.refreshToken }).catch(() => undefined);
     }
     setSession(null);
-    setUser(null);
-    setScope(null);
-  }, []);
+    forget();
+  }, [forget]);
 
   const value = useMemo<SessionState>(
     () => ({

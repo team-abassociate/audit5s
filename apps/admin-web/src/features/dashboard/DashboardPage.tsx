@@ -13,10 +13,10 @@ import type {
 } from '@audit5s/contracts';
 import { S_SECTIONS } from '@audit5s/contracts';
 import { Link } from '@tanstack/react-router';
-import { Combobox } from '@/components/ui';
 import { TopbarTools } from '@/components/AppShell';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL } from '@/lib/labels';
 import { daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime } from '@audit5s/domain';
 import {
@@ -60,7 +60,8 @@ const DAY = 86_400_000;
  */
 export function DashboardPage() {
   const { can } = useSession();
-  const [unitId, setUnitId] = useState('');
+  // The Unit is the portal's scope, chosen in the shell's topbar (lib/scope.ts).
+  const { unitId } = useUnitScope();
   const [months, setMonths] = useState<number>(12);
   /**
    * What the Unit score tile reports: the period's weighted score, or one audit's own.
@@ -82,7 +83,7 @@ export function DashboardPage() {
     queryKey: ['units'],
     queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
   });
-  const unit = unitId || units.data?.data[0]?.id || '';
+  const unit = unitId ?? '';
   const unitName = units.data?.data.find((candidate) => candidate.id === unit);
   const from = useMemo(() => {
     const start = new Date();
@@ -266,22 +267,6 @@ export function DashboardPage() {
     <>
       <TopbarTools>
         <div className="gb-sel">
-          <label className="gb-label" htmlFor="gb-unit">
-            Unit
-          </label>
-          <Combobox
-            id="gb-unit"
-            className="gb-sel-input"
-            value={unit}
-            onChange={setUnitId}
-            options={(units.data?.data ?? []).map((candidate) => ({
-              id: candidate.id,
-              label: candidate.name,
-            }))}
-            placeholder="Search Units…"
-          />
-        </div>
-        <div className="gb-sel">
           <label className="gb-label" htmlFor="gb-period">
             Period
           </label>
@@ -348,9 +333,9 @@ export function DashboardPage() {
             </select>
           </div>
         ) : null}
-        <div className="gb-pill" title="Last sync">
+        <div className="gb-pill" title="When this board last loaded from the server">
           <i />
-          <span className="gb-pill-label">Last sync</span> <span className="gb-data">{lastSync(overview.dataUpdatedAt)}</span>
+          <span className="gb-pill-label">Synced</span> <span className="gb-data">{lastSync(overview.dataUpdatedAt)}</span>
         </div>
         {can('report', 'read_snapshot') ? (
           <Link className="gb-btn" to="/reports">
