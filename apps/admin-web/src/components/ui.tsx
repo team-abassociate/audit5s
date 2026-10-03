@@ -1,13 +1,29 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type {
-  ButtonHTMLAttributes,
   ComponentProps,
   InputHTMLAttributes,
   KeyboardEvent,
   ReactNode,
+  RefObject,
   SelectHTMLAttributes,
 } from 'react';
 import { cn } from '@/lib/cn';
+
+export { SidePanel, useRoutedPanel } from './SidePanel';
+export { StatusChip, BandLabel, type StatusShape } from './Status';
+export { Skeleton } from './Skeleton';
+export { EmptyState } from './EmptyState';
+export { Slip } from './Slip';
 
 /**
  * The shared controls, built from the Gemba Board primitives
@@ -22,7 +38,7 @@ export function Button({
   className,
   variant = 'primary',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' }) {
+}: ComponentProps<'button'> & { variant?: 'primary' | 'secondary' | 'danger' }) {
   return (
     <button
       className={cn(
@@ -253,8 +269,36 @@ export function CardHeader({ title, description, action }: { title: string; desc
   );
 }
 
-/** Tables scroll inside their own container; the page never scrolls sideways (§5). */
-export function Table({ children }: { children: ReactNode }) {
+/**
+ * Tables scroll inside their own container; the page never scrolls sideways (§5).
+ *
+ * `variant="register"` is for a long list someone works down — Activity log, Users, Industries:
+ * fixed column widths, so opening a row or relabelling a button moves nothing (U9, I4, L7),
+ * and a header that stays in sight while the rows scroll inside the box. Give it a `label`
+ * (the scroll box is a keyboard-reachable region) and give its `Th`s widths; columns without
+ * one share what is left.
+ */
+export function Table({
+  children,
+  variant = 'flush',
+  label,
+}: {
+  children: ReactNode;
+  variant?: 'flush' | 'register';
+  label?: string;
+}) {
+  if (variant === 'register') {
+    return (
+      <div
+        className="gb-tablewrap gb-tablewrap--flush gb-tablewrap--register"
+        role="region"
+        aria-label={label}
+        tabIndex={0}
+      >
+        <table className="gb-table--register">{children}</table>
+      </div>
+    );
+  }
   return (
     <div className="gb-tablewrap gb-tablewrap--flush">
       <table>{children}</table>
@@ -262,8 +306,21 @@ export function Table({ children }: { children: ReactNode }) {
   );
 }
 
-export function Th({ children }: { children: ReactNode }) {
-  return <th>{children}</th>;
+/** A column head. `width` fixes the column in a register (`'22%'`, `120`). */
+export function Th({
+  children,
+  width,
+  className,
+}: {
+  children?: ReactNode;
+  width?: number | string;
+  className?: string;
+}) {
+  return (
+    <th scope="col" className={className} style={width === undefined ? undefined : { width }}>
+      {children}
+    </th>
+  );
 }
 
 /** `colSpan` so a table can carry group headings without hand-rolling a second cell. */
@@ -329,13 +386,44 @@ export function ErrorNotice({ error }: { error: unknown }) {
 }
 
 export function Spinner({ label = 'Loading…' }: { label?: string }) {
-  return <p className="gb-label" style={{ padding: '18px 2px' }}>{label}</p>;
+  return (
+    <p className="gb-label" role="status" style={{ padding: '18px 2px' }}>
+      {label}
+    </p>
+  );
+}
+
+/** How long a closing dialog keeps its content while it fades (matches `.gb-dialog` in styles.css). */
+const DIALOG_EXIT_MS = 120;
+
+const DialogCloseContext = createContext<(() => void) | null>(null);
+
+/**
+ * The close that respects the dialog's unsaved-changes guard. A form's own Cancel button
+ * calls this rather than the `onClose` it was given, so Cancel, Escape, ✕ and the scrim
+ * all ask the same question before anything typed is thrown away.
+ */
+export function useDialogClose(): () => void {
+  const close = useContext(DialogCloseContext);
+  if (!close) throw new Error('useDialogClose() is only available inside a <Dialog>.');
+  return close;
 }
 
 /**
- * A modal, from the native `<dialog>` (§6 "Dialog"): 2px ink border, 6px hard shadow,
- * label-above-field, actions right-aligned. Escape and a click on the scrim close it; focus
- * is trapped and returned by the browser, which is why it is `showModal()` and not a div.
+ * A modal, from the native `<dialog>` (GEMBA-BOARD.md §6 "Dialog"): 2px ink border, 6px hard
+ * shadow, label above field, actions right-aligned, secondary then primary. It is
+ * `showModal()` and not a div, so the browser traps focus, makes the page behind inert and
+ * hands focus back to whatever opened it.
+ *
+ * - **Closing.** Escape, ✕ and a press on the scrim all go through one request. With `dirty`
+ *   set, that request asks first ("Discard changes?") instead of throwing the form away;
+ *   a form's own Cancel button gets the same request from `useDialogClose()`.
+ * - **Focus.** It lands on `initialFocus` when given — a confirmation puts it on Cancel, so
+ *   Enter never destroys anything — and otherwise where the browser puts it.
+ * - **Motion.** Fades and scales from 0.98 in 160ms, centred; leaves in 120ms. Both are
+ *   transitions, so a dialog closed mid-entry reverses rather than finishing first.
+ *
+ * Footer actions go in `DialogActions`; body blocks in `.gb-dialog-section`.
  */
 export function Dialog({
   open,
@@ -343,6 +431,9 @@ export function Dialog({
   title,
   description,
   wide = false,
+  dirty = false,
+  alert = false,
+  initialFocus,
   children,
 }: {
   open: boolean;
@@ -350,49 +441,267 @@ export function Dialog({
   title: string;
   description?: ReactNode;
   wide?: boolean;
+  /** Something typed here is unsaved: closing asks before discarding it. */
+  dirty?: boolean;
+  /** A confirmation that interrupts (`role="alertdialog"`), not a form. */
+  alert?: boolean;
+  /** The control that takes focus on open. */
+  initialFocus?: RefObject<HTMLElement | null>;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const descriptionId = useId();
+  const [guarding, setGuarding] = useState(false);
+  // The content stays mounted while the dialog fades out, so it does not empty first.
+  const [present, setPresent] = useState(open);
+  if (open && !present) setPresent(true);
+
+  const requestClose = useCallback(() => {
+    if (dirty) setGuarding(true);
+    else onClose();
+  }, [dirty, onClose]);
 
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    if (open) {
+      if (!dialog.open) {
+        dialog.showModal();
+        initialFocus?.current?.focus();
+      }
+      return;
+    }
+    if (dialog.open) dialog.close();
+    setGuarding(false);
+    const settle = window.setTimeout(() => setPresent(false), DIALOG_EXIT_MS);
+    return () => window.clearTimeout(settle);
+    // `initialFocus` is read once, at opening; `open` alone drives the element.
   }, [open]);
 
   return (
-    <dialog
-      ref={ref}
-      className={cn('gb-dialog', wide && 'gb-dialog--wide')}
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      // A press on the scrim lands on the dialog element itself, never on its content.
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      {open ? (
-        <div className="gb-dialog-body">
-          <header className="gb-dialog-head">
-            <div className="min-w-0">
-              <h2 id={titleId} className="gb-h2">
-                {title}
-              </h2>
-              {description ? <p>{description}</p> : null}
+    <>
+      <dialog
+        ref={ref}
+        className={cn('gb-dialog', wide && 'gb-dialog--wide')}
+        role={alert ? 'alertdialog' : undefined}
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        onCancel={(event) => {
+          event.preventDefault();
+          requestClose();
+        }}
+        // A press on the scrim lands on the dialog element itself, never on its content.
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) requestClose();
+        }}
+      >
+        {present ? (
+          <DialogCloseContext.Provider value={requestClose}>
+            <div className="gb-dialog-body">
+              <header className="gb-dialog-head">
+                <div className="min-w-0">
+                  <h2 id={titleId} className="gb-h2">
+                    {title}
+                  </h2>
+                  {description ? <p id={descriptionId}>{description}</p> : null}
+                </div>
+                <button type="button" className="gb-dialog-close" onClick={requestClose} aria-label="Close">
+                  ✕
+                </button>
+              </header>
+              {children}
             </div>
-            <button type="button" className="gb-dialog-close" onClick={onClose} aria-label="Close">
-              ✕
-            </button>
-          </header>
-          {children}
+          </DialogCloseContext.Provider>
+        ) : null}
+      </dialog>
+      {dirty ? (
+        <ConfirmDialog
+          open={guarding}
+          title="Discard changes?"
+          confirmLabel="Discard"
+          cancelLabel="Keep editing"
+          onCancel={() => setGuarding(false)}
+          onConfirm={() => {
+            setGuarding(false);
+            onClose();
+          }}
+        >
+          What you entered in “{title}” has not been saved.
+        </ConfirmDialog>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * A dialog's footer: actions right-aligned, secondary then primary (§6). When the primary
+ * is disabled, `reason` says why, on the left of the row — a disabled button with no
+ * reason is a dead end. The line is a polite live region, so the reason is announced
+ * when it changes.
+ */
+export function DialogActions({ reason, children }: { reason?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="gb-dialog-actions">
+      <p className="gb-dialog-reason" role="status">
+        {reason}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * A question before something that cannot be taken back, named for what it does to what
+ * ("Archive Zone 7?"), never "Are you sure?". Cancel holds focus, so Enter is the safe
+ * answer. The dialog stays open while `pending`, and shows `error` in place if the action
+ * fails, so a failure is read where it was caused.
+ */
+export function ConfirmDialog({
+  open,
+  title,
+  children,
+  confirmLabel,
+  pendingLabel,
+  cancelLabel = 'Cancel',
+  tone = 'danger',
+  pending = false,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  children?: ReactNode;
+  confirmLabel: string;
+  pendingLabel?: string;
+  cancelLabel?: string;
+  tone?: 'danger' | 'primary';
+  pending?: boolean;
+  error?: unknown;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const cancel = useRef<HTMLButtonElement>(null);
+  return (
+    <Dialog
+      open={open}
+      onClose={() => {
+        if (!pending) onCancel();
+      }}
+      title={title}
+      alert
+      initialFocus={cancel}
+    >
+      {children ? <div className="gb-dialog-section gb-dialog-text">{children}</div> : null}
+      {error ? (
+        <div className="gb-dialog-section">
+          <ErrorNotice error={error} />
         </div>
       ) : null}
-    </dialog>
+      <DialogActions>
+        <Button ref={cancel} variant="secondary" onClick={onCancel} disabled={pending}>
+          {cancelLabel}
+        </Button>
+        <Button variant={tone} onClick={onConfirm} disabled={pending}>
+          {pending ? (pendingLabel ?? `${confirmLabel}…`) : confirmLabel}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** A destructive row action's question, and the work it confirms. */
+export interface RowActionConfirm {
+  /** Names the object: "Archive Zone 7?". */
+  title: string;
+  body?: ReactNode;
+  confirmLabel: string;
+  pendingLabel?: string;
+  /** Resolve to close the dialog; reject to show the error inside it. */
+  run: () => Promise<unknown>;
+}
+
+/** A safe item runs at once; a destructive one must carry its confirmation. */
+export type RowAction =
+  | { label: string; onSelect: () => void; disabled?: boolean; hint?: string; danger?: never; confirm?: never }
+  | { label: string; danger: true; confirm: RowActionConfirm; disabled?: boolean; hint?: string; onSelect?: never };
+
+/**
+ * A row's actions: the one safe, frequent action in sight (`primary`), everything else
+ * behind "⋯". Destructive items sit last, under a rule, and never run from the menu: each
+ * opens a `ConfirmDialog` naming the object. Nothing destructive is one mis-click away (G6).
+ *
+ * `subject` names the row for the menu's label ("More actions for Zone 7").
+ */
+export function RowActions({
+  subject,
+  primary,
+  items,
+}: {
+  subject: string;
+  primary?: ReactNode;
+  items: RowAction[];
+}) {
+  const [confirming, setConfirming] = useState<RowActionConfirm | null>(null);
+  // The last question asked stays on screen while its dialog fades out.
+  const [shown, setShown] = useState<RowActionConfirm | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  const ask = (confirm: RowActionConfirm) => {
+    setError(null);
+    setShown(confirm);
+    setConfirming(confirm);
+  };
+
+  const confirm = async () => {
+    if (!confirming) return;
+    setPending(true);
+    setError(null);
+    try {
+      await confirming.run();
+      setConfirming(null);
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const menu: MenuItem[] = [
+    ...items.filter((item) => !item.danger),
+    ...items.filter((item) => item.danger),
+  ].map((item) => {
+    const question = item.confirm;
+    return {
+      label: item.label,
+      disabled: item.disabled,
+      hint: item.hint,
+      danger: Boolean(item.danger),
+      onSelect: question ? () => ask(question) : (item.onSelect ?? (() => undefined)),
+    };
+  });
+
+  return (
+    <div className="gb-rowactions">
+      {primary}
+      {menu.length > 0 ? <ActionMenu label={`More actions for ${subject}`} items={menu} /> : null}
+      {shown ? (
+        <ConfirmDialog
+          open={confirming !== null}
+          title={shown.title}
+          confirmLabel={shown.confirmLabel}
+          pendingLabel={shown.pendingLabel}
+          pending={pending}
+          error={error}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => void confirm()}
+        >
+          {shown.body}
+        </ConfirmDialog>
+      ) : null}
+    </div>
   );
 }
 
@@ -449,7 +758,14 @@ export function ActionMenu({ label, items }: { label: string; items: MenuItem[] 
       const target = event.target as Node;
       if (!list.current?.contains(target) && !trigger.current?.contains(target)) close(false);
     };
-    const onScroll = () => close(false);
+    // A scroll moves the trigger out from under the list, so the list goes. Not the scroll
+    // that focusing the trigger itself queued just before opening; and focus that was in
+    // the list goes back to the trigger rather than to <body>.
+    const openedAt = performance.now();
+    const onScroll = () => {
+      if (performance.now() - openedAt < 120) return;
+      close(list.current?.contains(document.activeElement) ?? false);
+    };
     window.addEventListener('pointerdown', onPointer);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onScroll);
@@ -513,6 +829,8 @@ export function ActionMenu({ label, items }: { label: string; items: MenuItem[] 
                 }}
               >
                 {item.label}
+                {/* Why it is unavailable, in sight rather than in a tooltip. */}
+                {item.disabled && item.hint ? <span className="gb-menu-hint">{item.hint}</span> : null}
               </button>
             </li>
           ))}
