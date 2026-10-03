@@ -115,10 +115,10 @@ export function IndustriesPage() {
           <Table variant="register" label="Industries">
             <thead>
               <tr>
-                <Th width="34%">Industry</Th>
-                <Th width="18%">Code</Th>
-                <Th width="12%">Checklists</Th>
-                <Th width="10%">Units</Th>
+                <Th width="31%">Industry</Th>
+                <Th width="17%">Code</Th>
+                <Th width="15%">Checklists</Th>
+                <Th width="11%">Units</Th>
                 <Th width="26%">{canWrite ? <span className="sr-only">Actions</span> : null}</Th>
               </tr>
             </thead>
