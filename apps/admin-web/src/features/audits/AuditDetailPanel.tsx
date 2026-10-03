@@ -362,7 +362,7 @@ function evidenceCaption(evidence: Evidence, zones: AuditDetail['zones']): strin
   if (!zone) return undefined;
   const parts = [zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)];
   const response = zone.responses.find((candidate) => candidate.id === evidence.questionResponseId);
-  if (response) parts.push(`Sr. ${response.globalOrder} · ${S_SECTION_LABELS[response.section]}`);
+  if (response) parts.push(`Sr. ${response.globalOrder} · ${SECTION_LABEL[response.section]}`);
   return parts.join(' · ');
 }
 
