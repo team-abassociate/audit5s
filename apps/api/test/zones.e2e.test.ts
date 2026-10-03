@@ -251,6 +251,90 @@ describe('editing a Zone', () => {
   });
 });
 
+/**
+ * U1 (UX audit 2026-10-03): editing a Zone's description must not touch its leader.
+ * `PATCH /zones/:id` is a patch — an omitted field is left alone — and a leader is either an
+ * account (`zone_leader_id`) or the name an auditor typed (`zone_leader_name`, 0015).
+ */
+describe('a description-only edit keeps the leader (U1)', () => {
+  let typedZoneId: string;
+  let accountZoneId: string;
+
+  beforeAll(async () => {
+    const typed = await createZone(asCoordinator(), world.unitA, { code: 'Z-55', name: 'Paint' });
+    typedZoneId = (typed.body as Zone).id;
+    // The typed name only ever arrives from an audit (`app_set_zone_leader_name`); set it
+    // directly here, as the owner, rather than conducting a whole audit to get one.
+    await world.owner.query(`UPDATE zone SET zone_leader_name = 'Typed Leader' WHERE id = $1`, [
+      typedZoneId,
+    ]);
+
+    const account = await createZone(asCoordinator(), world.unitA, {
+      code: 'Z-56',
+      name: 'Stores',
+      zoneLeaderId: world.actors.ZONE_LEADER.userId,
+    });
+    accountZoneId = (account.body as Zone).id;
+  });
+
+  async function leaderColumns(zoneId: string) {
+    const result = await world.owner.query<{
+      zone_leader_id: string | null;
+      zone_leader_name: string | null;
+    }>(`SELECT zone_leader_id, zone_leader_name FROM zone WHERE id = $1`, [zoneId]);
+    return result.rows[0];
+  }
+
+  it('keeps a typed leader when only the description changes', async () => {
+    const response = await world.request('PATCH', `${base}/zones/${typedZoneId}`, {
+      token: asCoordinator(),
+      body: { description: 'Paint line' },
+    });
+    expect(response.status).toBe(200);
+    const zone = response.body as Zone;
+    expect(zone.description).toBe('Paint line');
+    expect(zone.zoneLeaderId).toBeNull();
+    expect(zone.zoneLeaderName).toBe('Typed Leader');
+    expect(await leaderColumns(typedZoneId)).toEqual({
+      zone_leader_id: null,
+      zone_leader_name: 'Typed Leader',
+    });
+  });
+
+  it('keeps an account leader when only the description changes', async () => {
+    const response = await world.request('PATCH', `${base}/zones/${accountZoneId}`, {
+      token: asCoordinator(),
+      body: { description: 'Spares and consumables' },
+    });
+    expect(response.status).toBe(200);
+    const zone = response.body as Zone;
+    expect(zone.zoneLeaderId).toBe(world.actors.ZONE_LEADER.userId);
+    expect(zone.zoneLeaderName).toBe('Zoe Leader');
+  });
+
+  it('still clears the account with an explicit null', async () => {
+    const response = await world.request('PATCH', `${base}/zones/${accountZoneId}`, {
+      token: asCoordinator(),
+      body: { zoneLeaderId: null },
+    });
+    expect(response.status).toBe(200);
+    expect((response.body as Zone).zoneLeaderId).toBeNull();
+    expect((await leaderColumns(accountZoneId))?.zone_leader_id).toBeNull();
+  });
+
+  it('leaves a typed name alone when the account pointer is nulled', async () => {
+    // The update contract has no field for the typed name, so `zoneLeaderId: null` clears
+    // the account only. Released field-app builds send it on every Zone edit; making it
+    // erase the typed name would wipe the leader on each of those saves.
+    const response = await world.request('PATCH', `${base}/zones/${typedZoneId}`, {
+      token: asCoordinator(),
+      body: { zoneLeaderId: null },
+    });
+    expect(response.status).toBe(200);
+    expect((response.body as Zone).zoneLeaderName).toBe('Typed Leader');
+  });
+});
+
 describe('archiving', () => {
   let zoneId: string;
 

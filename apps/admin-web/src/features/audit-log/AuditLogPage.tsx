@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AUDIT_LOG_ACTIONS, type AuditLogEntry, type Page } from '@audit5s/contracts';
 import { formatDateTime } from '@audit5s/domain';
 import { api } from '@/lib/api';
-import { Card, CardHeader, ErrorNotice, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import { Card, CardHeader, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { rowToggleProps } from '@/features/audits/AuditsPage';
 
@@ -27,14 +27,16 @@ export function AuditLogPage() {
         title="Activity log"
         description="Every change made in the portal: who made it, and when. Entries cannot be edited or removed."
         action={
-          <Select className="w-64" value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="">All actions</option>
-            {AUDIT_LOG_ACTIONS.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
+          <Field label="Action">
+            <Select className="w-64" value={action} onChange={(e) => setAction(e.target.value)}>
+              <option value="">All actions</option>
+              {AUDIT_LOG_ACTIONS.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </Select>
+          </Field>
         }
       />
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AuditDetail,
@@ -18,6 +18,7 @@ import {
   Button,
   Card,
   CardHeader,
+  Dialog,
   ErrorNotice,
   Field,
   Input,
@@ -306,7 +307,13 @@ function EvidenceGallery({
           {gallery.isFetchingNextPage ? 'Loading…' : 'Load more'}
         </Button>
       )}
-      {selected && <EvidenceViewer evidence={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <EvidenceViewer
+          evidence={selected}
+          caption={evidenceCaption(selected, zones)}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </section>
   );
 }
@@ -346,35 +353,80 @@ function EvidenceTile({ evidence, onOpen }: { evidence: Evidence; onOpen: () => 
   );
 }
 
-/** The full-size original, fetched on demand (PART 16). Shared with the corrective-action queue. */
+/**
+ * Where a photo was taken, from what the detail already holds: the Zone, and the response's
+ * Sr. and S. The question's wording is not on the audit detail, so it is not guessed at.
+ */
+function evidenceCaption(evidence: Evidence, zones: AuditDetail['zones']): string | undefined {
+  const zone = zones.find((candidate) => candidate.id === evidence.auditZoneId);
+  if (!zone) return undefined;
+  const parts = [zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)];
+  const response = zone.responses.find((candidate) => candidate.id === evidence.questionResponseId);
+  if (response) parts.push(`Sr. ${response.globalOrder} · ${S_SECTION_LABELS[response.section]}`);
+  return parts.join(' · ');
+}
+
+/**
+ * The full-size original, fetched on demand (PART 16). Shared with the corrective-action queue.
+ *
+ * A native modal `<dialog>` (the system's `Dialog`): focus moves in on open, Escape and a press
+ * on the scrim close it, and the page behind is inert. The caller mounts it only while open,
+ * so the dialog leaves the DOM rather than being `close()`d, and the browser's own focus return
+ * never runs; the control that opened it is remembered at first render, before the dialog took
+ * focus, and handed focus back once the dialog is gone.
+ */
 export function EvidenceViewer({
   evidence,
+  caption,
   onClose,
 }: {
   evidence: Pick<Evidence, 'id' | 'remark'>;
+  /** Where the photo was taken, when the caller knows. */
+  caption?: string;
   onClose: () => void;
 }) {
+  const [opener] = useState(() =>
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+  // A passive cleanup runs after the dialog has left the DOM, so the page is no longer inert.
+  // The focus waits one task: a press on the scrim closes the dialog during `mousedown`, and
+  // the browser's own focus step for that press runs afterwards and would land on <body>.
+  useEffect(
+    () => () => {
+      window.setTimeout(() => opener?.focus(), 0);
+    },
+    [opener],
+  );
+
   const original = useQuery({
     queryKey: ['evidence-view-url', evidence.id, 'original'],
     queryFn: () => api.get<EvidenceViewUrl>(`/evidence/${evidence.id}/view-url?variant=original`),
     staleTime: 240_000,
   });
 
+  const description =
+    caption || evidence.remark ? (
+      <>
+        {caption}
+        {caption && evidence.remark ? <br /> : null}
+        {evidence.remark}
+      </>
+    ) : undefined;
+
   return (
-    <div role="dialog" aria-modal="true" aria-label="Full-size evidence" className="fixed inset-0 z-50 grid place-items-center bg-ink/80 p-4">
-      <div className="max-h-full w-full max-w-5xl overflow-auto bg-tile p-4">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <h3 className="font-semibold text-ink">Full-size evidence</h3>
-            {evidence.remark && <p className="text-sm text-ink-2">{evidence.remark}</p>}
-          </div>
-          <Button variant="secondary" onClick={onClose}>Close viewer</Button>
-        </div>
+    <Dialog open onClose={onClose} title="Full-size evidence" description={description} wide>
+      <div className="gb-dialog-section">
         {original.isLoading && <Spinner label="Loading original…" />}
         {original.error && <ErrorNotice error={original.error} />}
-        {original.data && <img className="max-h-[75vh] w-full object-contain" src={original.data.url} alt="Full-size audit evidence" />}
+        {original.data && (
+          <img
+            className="max-h-[65vh] w-full object-contain"
+            src={original.data.url}
+            alt={caption ? `Full-size audit evidence, ${caption}` : 'Full-size audit evidence'}
+          />
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 }
 

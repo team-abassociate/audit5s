@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CORRECTIVE_ACTION_STATUSES,
@@ -41,6 +41,20 @@ export function CorrectiveActionsPage() {
   const [unitId, setUnitId] = useState('');
   const [auditId, setAuditId] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  // CA1 (keyboard part): the item title is the row's button. Opening from it moves focus to
+  // the detail, wherever on the page it renders, and Close hands focus back to the title.
+  const [focusRequest, setFocusRequest] = useState(0);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const panelId = useId();
+  useEffect(() => {
+    if (focusRequest > 0) panel.current?.focus();
+  }, [focusRequest]);
+  const closePanel = () => {
+    setSelected(null);
+    opener.current?.focus();
+    opener.current = null;
+  };
 
   const units = useQuery({
     queryKey: ['units'],
@@ -276,12 +290,27 @@ export function CorrectiveActionsPage() {
                           <tr
                             key={action.id}
                             className="cursor-pointer hover:bg-board"
-                            onClick={() => setSelected(action.id)}
+                            onClick={(event) => {
+                              // The title is a button with its own handler; the rest of
+                              // the row stays a mouse target.
+                              if ((event.target as Element).closest('button')) return;
+                              setSelected(action.id);
+                            }}
                           >
                             <Td>
-                              <span className="font-medium">
+                              <button
+                                type="button"
+                                className="gb-rowtoggle"
+                                aria-expanded={selected === action.id}
+                                aria-controls={panelId}
+                                onClick={(event) => {
+                                  opener.current = event.currentTarget;
+                                  setSelected(action.id);
+                                  setFocusRequest((count) => count + 1);
+                                }}
+                              >
                                 {zoneDisplayLabel(action.zoneCode, action.zoneName)}
-                              </span>
+                              </button>
                               <div className="text-xs text-ink-3">{itemLabel(action)}</div>
                             </Td>
                             <Td>
@@ -321,7 +350,18 @@ export function CorrectiveActionsPage() {
         )}
       </Card>
 
-      {selected && <ActionPanel actionId={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <div
+          ref={panel}
+          id={panelId}
+          tabIndex={-1}
+          role="region"
+          aria-label="Corrective action detail"
+          className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--accent)"
+        >
+          <ActionPanel actionId={selected} onClose={closePanel} />
+        </div>
+      )}
     </div>
   );
 }

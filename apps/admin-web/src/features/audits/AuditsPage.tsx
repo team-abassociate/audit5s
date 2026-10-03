@@ -425,12 +425,10 @@ function AssignmentRow({
         </Td>
         <Td>
           {can('audit_assignment', 'cancel') && (
-            <div className="flex gap-2">
-              <Input
-                placeholder="Reason"
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-              />
+            <div className="flex items-end gap-2">
+              <Field label="Reason to cancel">
+                <Input value={reason} onChange={(event) => setReason(event.target.value)} />
+              </Field>
               <Button
                 variant="secondary"
                 disabled={reason.trim().length === 0 || cancel.isPending}

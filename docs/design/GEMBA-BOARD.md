@@ -182,10 +182,10 @@ and import them everywhere; the file below is generated from `gemba-tokens.css`,
 ```ts
 export const gemba = {
   light: { board:"#EEEBE1", tile:"#FCFBF7", tile2:"#F6F3EA", ink:"#1D1B16",
-           ink2:"#5B5647", ink3:"#8A8372", edge:"#1D1B16", edgeSoft:"#CFC9B8",
+           ink2:"#5B5647", ink3:"#6B6556", edge:"#1D1B16", edgeSoft:"#CFC9B8",
            slip:"#E8E24B", ok:"#3E8E4B", warn:"#D79A05", crit:"#B4321F", accent:"#0B6E77" },
   dark:  { board:"#151816", tile:"#1E2220", tile2:"#191D1B", ink:"#EDEAE0",
-           ink2:"#A8A899", ink3:"#7B7D71", edge:"#3C423D", edgeSoft:"#2C312D",
+           ink2:"#A8A899", ink3:"#9A9C8F", edge:"#3C423D", edgeSoft:"#2C312D",
            slip:"#D2C92F", ok:"#49A05A", warn:"#D79A05", crit:"#D94A2E", accent:"#4FD2D8" },
 } as const;
 ```
