@@ -24,6 +24,7 @@ import {
 import { api } from '@/lib/api';
 import { ACTION_STATUS_LABEL, SECTION_LABEL, SUBMISSION_CHANNEL_LABEL, auditTypeLabel, roleLabel } from '@/lib/labels';
 import { useSession } from '@/lib/session';
+import { useUnitScope } from '@/lib/scope';
 import { Badge, Button, Card, CardHeader, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
 
@@ -38,8 +39,14 @@ import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
 export function CorrectiveActionsPage() {
   const [status, setStatus] = useState<CorrectiveActionStatus | ''>('');
   const [overdue, setOverdue] = useState(false);
-  const [unitId, setUnitId] = useState('');
-  const [auditId, setAuditId] = useState('');
+  // The Unit is the portal's scope, chosen in the shell's topbar (lib/scope.ts); `null`
+  // there is "All Units", which only an organization-wide role is offered.
+  const scope = useUnitScope();
+  const unitId = scope.unitId ?? '';
+  // An audit belongs to one Unit, so a Unit change can only invalidate the audit filter.
+  const [auditPick, setAuditPick] = useState({ unitId: '', auditId: '' });
+  const auditId = auditPick.unitId === unitId ? auditPick.auditId : '';
+  const setAuditId = (id: string) => setAuditPick({ unitId, auditId: id });
   const [selected, setSelected] = useState<string | null>(null);
   // CA1 (keyboard part): the item title is the row's button. Opening from it moves focus to
   // the detail, wherever on the page it renders, and Close hands focus back to the title.
@@ -87,6 +94,7 @@ export function CorrectiveActionsPage() {
           `${auditId ? `&auditId=${auditId}` : ''}`,
       ),
     refetchInterval: 60_000,
+    enabled: scope.ready,
   });
 
   const rows = actions.data?.data ?? [];
@@ -144,29 +152,10 @@ export function CorrectiveActionsPage() {
           action={waiting > 0 ? <Badge tone="warn">{waiting} awaiting review</Badge> : undefined}
         />
         <div className="flex flex-wrap items-end gap-3 border-b border-edge-soft px-4 py-3">
-          <div className="w-56">
-            <Field label="Unit">
-              <Select
-                value={unitId}
-                onChange={(event) => {
-                  setUnitId(event.target.value);
-                  // An audit belongs to one Unit, so a Unit change can only invalidate it.
-                  setAuditId('');
-                }}
-              >
-                <option value="">Every unit</option>
-                {(units.data?.data ?? []).map((unit) => (
-                  <option key={unit.id} value={unit.id}>
-                    {unit.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
           <div className="w-64">
             <Field
               label="Audit"
-              hint={unitId === '' ? 'Pick a unit first' : undefined}
+              hint={unitId === '' ? 'Choose one Unit at the top of the page' : undefined}
             >
               <Select
                 value={auditId}

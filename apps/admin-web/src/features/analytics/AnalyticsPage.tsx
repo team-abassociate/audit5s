@@ -30,9 +30,10 @@ import type {
 } from '@audit5s/contracts';
 import { bandOf } from '@/lib/bands';
 import { useToken } from '@/lib/tokens';
-import { Button, Card, CardHeader, Combobox, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import { Button, Card, CardHeader, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { useUnitScope } from '@/lib/scope';
 import { SECTION_SHORT_LABEL } from '@/lib/labels';
 import { formatDate } from '@audit5s/domain';
 
@@ -52,8 +53,9 @@ export function AnalyticsPage() {
     queryKey: ['analytics', 'units'],
     queryFn: () => fetchAll<Unit>('/units?limit=200'),
   });
-  const [unitId, setUnitId] = useState('');
-  const selectedUnit = unitId || units.data?.[0]?.id || '';
+  // The Unit is the portal's scope, chosen in the shell's topbar (lib/scope.ts).
+  const scope = useUnitScope();
+  const selectedUnit = scope.unitId ?? '';
 
   return (
     <div className="space-y-4">
@@ -69,20 +71,8 @@ export function AnalyticsPage() {
 
       <Card>
         <CardHeader
-          title="Unit analytics"
-          description="Pick the Unit, then the audit. Every figure below is that audit's own, not an average of audits."
-          action={
-            <div className="w-64">
-              <Field label="Unit">
-                <Combobox
-                  value={selectedUnit}
-                  onChange={setUnitId}
-                  options={(units.data ?? []).map((unit) => ({ id: unit.id, label: unit.name }))}
-                  placeholder="Search Units…"
-                />
-              </Field>
-            </div>
-          }
+          title={scope.unit ? `Unit analytics · ${scope.unit.name}` : 'Unit analytics'}
+          description="Change the Unit at the top of the page, then pick the audit. Every figure below is that audit's own, not an average of audits."
         />
       </Card>
 

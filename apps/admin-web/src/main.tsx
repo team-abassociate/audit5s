@@ -8,9 +8,11 @@ import {
   createRouter,
   Navigate,
   Outlet,
+  retainSearchParams,
 } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import './styles.css';
-import { AppShell } from '@/components/AppShell';
+import { AppShell, NotFoundPage, useDocumentTitle } from '@/components/AppShell';
 import { componentsRoute } from '@/components/dev/route';
 import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
@@ -30,6 +32,7 @@ import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { UnitsPage } from '@/features/units/UnitsPage';
 import { UsersPage, type UsersSearch } from '@/features/users/UsersPage';
 import { SessionProvider, useSession } from '@/lib/session';
+import { validateScopeSearch, type ScopeSearch } from '@/lib/scope';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,18 +55,15 @@ const queryClient = new QueryClient({
  * signed in but holding a bootstrap credential → forced reset and nothing else (CH-1);
  * otherwise the application.
  */
-function Gate() {
+function Gate({ children }: { children?: ReactNode }) {
   const { user, loading, mustResetPassword } = useSession();
+  useDocumentTitle(loading || user ? undefined : 'Sign in');
 
   if (loading) return <Spinner label="Signing in…" />;
   if (!user) return <LoginPage />;
   if (mustResetPassword) return <ForcedResetPage />;
 
-  return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
-  );
+  return <AppShell>{children ?? <Outlet />}</AppShell>;
 }
 
 /**
@@ -74,7 +74,16 @@ function Gate() {
  * session, and who must not be sent to a login screen. Everything else hangs off the
  * pathless `gatedRoute` below and passes through `Gate` exactly as it did before.
  */
-const rootRoute = createRootRoute({ component: () => <Outlet /> });
+const rootRoute = createRootRoute({
+  component: () => <Outlet />,
+  // A path nothing matches (`/nope`, `/audits/does-not-exist`) still gets the shell, behind
+  // the same gate, with a way back (UX audit E1) — never a bare "Not Found".
+  notFoundComponent: () => (
+    <Gate>
+      <NotFoundPage />
+    </Gate>
+  ),
+});
 
 /**
  * The signed corrective-action page (§10.4). No session, no app shell, no navigation to
@@ -85,6 +94,7 @@ const correctiveActionRoute = createRoute({
   path: '/ca/$token',
   component: function PublicCorrectiveAction() {
     const { token } = correctiveActionRoute.useParams();
+    useDocumentTitle('Corrective action');
     return <PublicCorrectiveActionPage token={token} />;
   },
 });
@@ -104,15 +114,24 @@ const resetPasswordRoute = createRoute({
   }),
   component: function ResetPassword() {
     const { token } = resetPasswordRoute.useSearch();
+    useDocumentTitle('Reset password');
     return <ResetPasswordPage token={token} />;
   },
 });
 
-/** Everything below here is login-gated, which is what `Gate` enforces. */
+/**
+ * Everything below here is login-gated, which is what `Gate` enforces.
+ *
+ * It also owns the portal's Unit scope, `?unit=` (`lib/scope.ts`): validated once here and
+ * carried onto every navigation, so a link that names only its own route keeps the Unit.
+ */
 const gatedRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: 'gated',
-  component: Gate,
+  validateSearch: (search: Record<string, unknown>): ScopeSearch => validateScopeSearch(search),
+  search: { middlewares: [retainSearchParams<ScopeSearch>(['unit'])] },
+  component: () => <Gate />,
+  notFoundComponent: NotFoundPage,
 });
 
 /**
@@ -132,6 +151,7 @@ const indexRoute = createRoute({
 const dashboardRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/dashboard',
+  staticData: { unitScope: 'one' },
   component: DashboardPage,
 });
 
@@ -144,6 +164,7 @@ const unitsRoute = createRoute({
 const analyticsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/analytics',
+  staticData: { unitScope: 'one' },
   component: AnalyticsPage,
 });
 
@@ -173,6 +194,7 @@ const auditsRoute = createRoute({
 const correctiveActionsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/corrective-actions',
+  staticData: { unitScope: 'any' },
   component: CorrectiveActionsPage,
 });
 
