@@ -321,7 +321,7 @@ describe('§9.3 — per-item results', () => {
     expect((conflict.body as SyncConflict).incomingPayload).toMatchObject({ value: 'SCORE_9' });
 
     // 0020: the refusal is kept on the row, not only in the container log. Without this a
-    // Super Admin reads "Payload could not be read" over a payload that looks well formed
+    // Super Admin reads "Could not be applied" over a payload that looks well formed
     // and has no way to tell which rule refused it.
     expect((conflict.body as SyncConflict).detail).toMatch(/value/i);
   });
@@ -760,6 +760,85 @@ describe('§9.5 Layer 3 — the quarantine', () => {
     });
     expect(again.status).toBe(409);
     expect((again.body as { code: string }).code).toBe('CONFLICT_ALREADY_RESOLVED');
+  });
+
+  it('holds an item the database refused with a plain sentence, never the SQL (UX audit S1x)', async () => {
+    const { auditZoneId } = await startedAudit();
+    const marker = `h1-db-failure-${randomUUID()}`;
+    const internals = /select|update|insert|\$1|params|failed query/i;
+
+    // A genuine database failure, raised by PostgreSQL itself, for this one remark only:
+    // Drizzle then throws its `Failed query: insert into … params: …` wrapper, which is
+    // exactly what reached Sync Health before.
+    await world.owner.query(`
+      CREATE OR REPLACE FUNCTION h1_refuse_marked_remark() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.remark = '${marker}' THEN
+          RAISE EXCEPTION 'refused by the H1 test trigger';
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`);
+    await world.owner.query(`
+      CREATE TRIGGER h1_refuse_marked_remark BEFORE INSERT OR UPDATE ON question_response
+      FOR EACH ROW EXECUTE FUNCTION h1_refuse_marked_remark()`);
+
+    let response: SyncBatchResponse;
+    try {
+      response = await push([
+        {
+          outboxId: randomUUID(),
+          entityType: 'question_response',
+          entityId: randomUUID(),
+          operation: 'upsert',
+          payload: {
+            auditZoneId,
+            checklistQuestionId: questionIds[0],
+            value: 'SCORE_2',
+            remark: marker,
+            answeredAt: new Date().toISOString(),
+          },
+        },
+      ]);
+    } finally {
+      await world.owner.query(`DROP TRIGGER IF EXISTS h1_refuse_marked_remark ON question_response`);
+      await world.owner.query(`DROP FUNCTION IF EXISTS h1_refuse_marked_remark()`);
+    }
+
+    const verdict = response.results[0]!;
+    expect(verdict.status).toBe('REJECTED');
+    expect(verdict.conflictId).toBeTruthy();
+    expect(verdict.errors?.join(' ')).not.toMatch(internals);
+
+    const conflict = await world.request('GET', `${base}/sync-conflicts/${verdict.conflictId}`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    expect(conflict.status).toBe(200);
+    const held = conflict.body as SyncConflict;
+    expect(held.reason).toBe('VALIDATION_FAILED');
+    expect(held.detail).toMatch(/server/i);
+    expect(held.detail).not.toMatch(internals);
+    // The work itself is kept whole — sanitising the sentence never touches the payload.
+    expect(held.incomingPayload).toMatchObject({ remark: marker });
+
+    // Sanitised on write: the row itself carries the sentence, not the SQL.
+    const { rows: stored } = await world.owner.query(
+      `SELECT detail FROM sync_conflict WHERE id = $1`,
+      [verdict.conflictId],
+    );
+    expect(stored[0].detail).not.toMatch(internals);
+
+    // And on read: a row held before the fix kept the raw message, and it is replaced on
+    // the way out rather than shown.
+    await world.owner.query(`UPDATE sync_conflict SET detail = $2 WHERE id = $1`, [
+      verdict.conflictId,
+      'Failed query: update "evidence" set "byte_size" = $1 where "evidence"."id" = $2\nparams: 14850,01a0cd3a-147a-7591-9542-31e8ea911ab9',
+    ]);
+    const queue = await world.request('GET', `${base}/sync-conflicts?limit=200`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    const listed = (queue.body as Page<SyncConflict>).data.find((c) => c.id === verdict.conflictId);
+    expect(listed?.detail).toMatch(/server/i);
+    expect(listed?.detail).not.toMatch(internals);
   });
 
   it('shows a Consultant none of the queue, even their own payloads', async () => {

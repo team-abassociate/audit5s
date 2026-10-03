@@ -10,6 +10,7 @@ import type { ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { AuditsService } from '../audits/audits.service';
+import { presentHeldDetail } from './held-item-detail';
 import { SyncRepository, type SyncConflictRow } from './sync.repository';
 
 /**
@@ -155,7 +156,8 @@ export function toSyncConflict(row: SyncConflictRow): SyncConflict {
     entityType: row.entityType,
     entityId: row.entityId,
     reason: row.reason as SyncConflictReason,
-    detail: row.detail,
+    // Rows held before UX audit S1x stored the raw error; it is replaced on the way out.
+    detail: presentHeldDetail(row.reason, row.detail),
     incomingPayload: (row.incomingPayload ?? {}) as Record<string, unknown>,
     existingPayload: (row.existingPayload ?? null) as Record<string, unknown> | null,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
