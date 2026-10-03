@@ -10,14 +10,18 @@ import type {
 import { ApiError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import {
-  Badge,
   Button,
   Card,
   CardHeader,
+  EmptyState,
   ErrorNotice,
   Field,
   Input,
+  RowActions,
+  Skeleton,
+  Slip,
   Spinner,
+  StatusChip,
   Table,
   Td,
   Th,
@@ -35,6 +39,7 @@ export function IndustriesPage() {
   const queryClient = useQueryClient();
   const [includeArchived, setIncludeArchived] = useState(false);
   const [choosing, setChoosing] = useState<string | null>(null);
+  const [archivedName, setArchivedName] = useState<string | null>(null);
   const canWrite = can('industry', 'create');
 
   const industries = useQuery({
@@ -55,8 +60,17 @@ export function IndustriesPage() {
     onSuccess: invalidate,
   });
 
+  const rows = industries.data ?? [];
+  const archivedCount = rows.filter((industry) => industry.archivedAt !== null).length;
+
   return (
     <div className="space-y-4">
+      {archivedName ? (
+        <Slip title={`${archivedName} archived`} onDismiss={() => setArchivedName(null)}>
+          It is no longer offered for Units or checklists. It stays on record; Show archived lists it.
+        </Slip>
+      ) : null}
+
       <Card>
         <CardHeader
           title="Industries"
@@ -66,7 +80,7 @@ export function IndustriesPage() {
             'a screen offers — never who may see what.'
           }
           action={
-            <label className="flex items-center gap-2 text-sm text-ink-2">
+            <label className="flex items-center gap-2 whitespace-nowrap text-sm text-ink-2">
               <input
                 type="checkbox"
                 checked={includeArchived}
@@ -77,90 +91,119 @@ export function IndustriesPage() {
           }
         />
 
-        {industries.isLoading && <Spinner />}
+        {industries.isLoading ? (
+          <Skeleton
+            variant="rows"
+            columns={['Industry', 'Code', 'Checklists', 'Units', '']}
+            rows={4}
+            label="Loading industries…"
+          />
+        ) : null}
         {industries.error && (
           <div className="p-4">
             <ErrorNotice error={industries.error} />
           </div>
         )}
-        {archive.error && (
-          <div className="p-4">
-            <ErrorNotice error={archive.error} />
-          </div>
-        )}
 
-        {industries.data && (
-          <Table>
+        {industries.data && rows.length === 0 ? (
+          <EmptyState title="No industries yet.">
+            {canWrite ? 'Add the first one below.' : 'A Super Admin adds them.'}
+          </EmptyState>
+        ) : null}
+
+        {industries.data && rows.length > 0 && (
+          <Table variant="register" label="Industries">
             <thead>
               <tr>
-                <Th>Industry</Th>
-                <Th>Code</Th>
-                <Th>Checklists</Th>
-                <Th>Units</Th>
-                <Th>{canWrite ? 'Actions' : ''}</Th>
+                <Th width="31%">Industry</Th>
+                <Th width="17%">Code</Th>
+                <Th width="15%">Checklists</Th>
+                <Th width="11%">Units</Th>
+                <Th width="26%">{canWrite ? <span className="sr-only">Actions</span> : null}</Th>
               </tr>
             </thead>
             <tbody>
-              {industries.data.map((industry) => (
-                <Fragment key={industry.id}>
-                <tr>
-                  <Td>
-                    <span className="font-medium">{industry.name}</span>
-                    {industry.archivedAt && (
-                      <Badge tone="neutral">
-                        <span className="ml-2">archived</span>
-                      </Badge>
+              {rows.map((industry) => {
+                const inUse = industry.templateCount > 0 || industry.unitCount > 0;
+                return (
+                  <Fragment key={industry.id}>
+                    <tr>
+                      <Td>
+                        <span className="font-medium">{industry.name}</span>
+                        {industry.archivedAt && (
+                          <span className="ml-2">
+                            <StatusChip shape="ended">Archived</StatusChip>
+                          </span>
+                        )}
+                        {industry.description && (
+                          <div className="text-xs text-ink-3">{industry.description}</div>
+                        )}
+                      </Td>
+                      <Td className="font-mono text-xs">{industry.code}</Td>
+                      <Td className="gb-data">{industry.templateCount}</Td>
+                      <Td className="gb-data">{industry.unitCount}</Td>
+                      <Td>
+                        {canWrite && industry.archivedAt === null && (
+                          <RowActions
+                            subject={industry.name}
+                            primary={
+                              <Button
+                                variant="secondary"
+                                aria-expanded={choosing === industry.id}
+                                onClick={() => setChoosing(choosing === industry.id ? null : industry.id)}
+                              >
+                                {choosing === industry.id ? 'Close' : 'Choose checklists'}
+                              </Button>
+                            }
+                            items={[
+                              {
+                                label: 'Archive',
+                                danger: true,
+                                disabled: inUse,
+                                hint: inUse
+                                  ? 'Still in use. Untick its checklists and move its Units to another industry first.'
+                                  : undefined,
+                                confirm: {
+                                  title: `Archive ${industry.name}?`,
+                                  body: 'It is no longer offered for Units or checklists. It stays on record, and Show archived lists it.',
+                                  confirmLabel: 'Archive',
+                                  pendingLabel: 'Archiving…',
+                                  run: async () => {
+                                    await archive.mutateAsync(industry.id);
+                                    if (choosing === industry.id) setChoosing(null);
+                                    setArchivedName(industry.name);
+                                  },
+                                },
+                              },
+                            ]}
+                          />
+                        )}
+                      </Td>
+                    </tr>
+                    {choosing === industry.id && (
+                      <tr>
+                        <td colSpan={5} className="bg-board p-0">
+                          <ChooseChecklists
+                            industry={industry}
+                            onSaved={async () => {
+                              setChoosing(null);
+                              await invalidate();
+                            }}
+                          />
+                        </td>
+                      </tr>
                     )}
-                    {industry.description && (
-                      <div className="text-xs text-ink-3">{industry.description}</div>
-                    )}
-                  </Td>
-                  <Td className="font-mono text-xs">{industry.code}</Td>
-                  <Td>{industry.templateCount}</Td>
-                  <Td>{industry.unitCount}</Td>
-                  <Td>
-                    {canWrite && industry.archivedAt === null && (
-                      <div className="flex gap-2">
-                        <Button
-                          variant="secondary"
-                          onClick={() => setChoosing(choosing === industry.id ? null : industry.id)}
-                        >
-                          {choosing === industry.id ? 'Close' : 'Choose checklists'}
-                        </Button>
-                        <Button
-                          variant="danger"
-                          disabled={archive.isPending}
-                          onClick={() => archive.mutate(industry.id)}
-                        >
-                          Archive
-                        </Button>
-                      </div>
-                    )}
-                  </Td>
-                </tr>
-                {choosing === industry.id && (
-                  <tr>
-                    <td colSpan={5} className="bg-board p-0">
-                      <ChooseChecklists
-                        industry={industry}
-                        onSaved={async () => {
-                          setChoosing(null);
-                          await invalidate();
-                        }}
-                      />
-                    </td>
-                  </tr>
-                )}
-                </Fragment>
-              ))}
-              {industries.data.length === 0 && (
-                <tr>
-                  <Td className="text-ink-3">No industries yet.</Td>
-                </tr>
-              )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </Table>
         )}
+
+        {/* Ticking "Show archived" with none to show must still answer (I3). */}
+        {includeArchived && industries.data && rows.length > 0 && archivedCount === 0 ? (
+          <EmptyState title="No archived industries." />
+        ) : null}
       </Card>
 
       {canWrite && <AddIndustry onAdded={invalidate} />}

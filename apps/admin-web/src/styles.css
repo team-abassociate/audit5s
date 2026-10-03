@@ -1454,21 +1454,44 @@ body {
   /* Pinned near the top, not centred: a dialog whose body changes height — a kind of
      report chosen, a list loaded — keeps its controls where the pointer left them. */
   margin: 8vh auto auto;
+  /* Fades and scales from its centre, 0.98 → 1 in 160ms (report §10.3 #4); leaves in 120ms.
+     `overlay` and `display` are discrete, so the closing dialog stays in the top layer long
+     enough to be seen leaving. Transitions, so a dialog closed mid-entry reverses. */
   opacity: 1;
-  transform: translateY(0);
+  transform: scale(1);
+  transform-origin: 50% 50%;
   transition:
-    opacity var(--motion) ease-out,
-    transform var(--motion) cubic-bezier(0.23, 1, 0.32, 1);
+    opacity 160ms ease-out,
+    transform 160ms cubic-bezier(0.23, 1, 0.32, 1),
+    overlay 160ms allow-discrete,
+    display 160ms allow-discrete;
   @starting-style {
     opacity: 0;
-    transform: translateY(6px);
+    transform: scale(0.98);
   }
+}
+.gb-dialog:not([open]) {
+  opacity: 0;
+  transform: scale(0.98);
+  transition-duration: 120ms;
 }
 .gb-dialog--wide {
   max-width: 760px;
 }
 .gb-dialog::backdrop {
   background: color-mix(in srgb, var(--ink) 45%, transparent);
+  opacity: 1;
+  transition:
+    opacity 160ms ease-out,
+    overlay 160ms allow-discrete,
+    display 160ms allow-discrete;
+  @starting-style {
+    opacity: 0;
+  }
+}
+.gb-dialog:not([open])::backdrop {
+  opacity: 0;
+  transition-duration: 120ms;
 }
 .gb-dialog-body {
   padding: 0 0 18px;
@@ -1520,8 +1543,28 @@ body {
 .gb-dialog .gb-picker-actions {
   justify-content: flex-end;
 }
-.gb-dialog-actions .gb-hint {
-  margin-right: auto;
+.gb-dialog-actions .gb-hint,
+.gb-dialog-reason {
+  margin: 0 auto 0 0;
+}
+/* Why the primary is disabled: on the left of the actions row, where the eye goes next. */
+.gb-dialog-reason {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+  max-width: 34ch;
+}
+.gb-dialog-reason:empty {
+  display: none;
+}
+/* A confirmation's body: one or two sentences about what happens to what. */
+.gb-dialog-text {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.gb-dialog-text p {
+  margin: 0 0 6px;
 }
 
 /* The choice between the two kinds of report: two magnets, one pressed. */
@@ -1617,6 +1660,18 @@ body {
 }
 .gb-menu-item--danger {
   color: var(--crit);
+}
+/* Why an item is unavailable, under its label rather than in a tooltip. */
+.gb-menu-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-2);
+  white-space: normal;
+}
+.gb-menu {
+  max-width: min(280px, calc(100vw - 16px));
 }
 li:has(> .gb-menu-item--danger) {
   border-top: 1px solid var(--edge-soft);
@@ -1943,6 +1998,336 @@ li:has(> .gb-menu-item--danger) {
   }
 }
 
+/* ==========================================================================
+   SHARED COMPONENTS — SidePanel, RowActions, StatusChip, BandLabel, Skeleton,
+   EmptyState, Slip, the register table (components/*.tsx; UX audit S4).
+   ========================================================================== */
+
+/* --- SidePanel: a detail beside its list (§5 detail panel, generalised from the report
+   preview). The list makes room only while a panel is in it. --- */
+.gb-withpanel:has(> .gb-sidepanel) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 40%);
+  gap: 22px;
+  align-items: start;
+}
+.gb-sidepanel {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 86px - 22px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--tile);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+  /* In from 16px to the right, 220ms; out the same way in 160ms (report §10.3 #1). */
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 220ms ease-out,
+    transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
+  @starting-style {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+.gb-sidepanel[data-state='closing'] {
+  opacity: 0;
+  transform: translateX(16px);
+  transition-duration: 160ms;
+  pointer-events: none;
+}
+.gb-sidepanel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 2px solid var(--edge);
+}
+.gb-sidepanel-head h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+/* The heading takes focus programmatically; it is not a control, so it draws no ring. */
+.gb-sidepanel-head h2:focus {
+  outline: none;
+}
+.gb-sidepanel-head p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.gb-sidepanel-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--edge-soft);
+  background: var(--tile-2);
+}
+.gb-sidepanel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+}
+@media (max-width: 1180px) {
+  .gb-withpanel:has(> .gb-sidepanel) {
+    display: block;
+  }
+  /* A full-width sheet over the list: there is no room beside it. */
+  .gb-sidepanel {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    max-height: none;
+    border: 0;
+    box-shadow: none;
+  }
+}
+
+/* --- RowActions: one safe action in sight, the rest behind ⋯. --- */
+.gb-rowactions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* --- StatusChip: ink, a drawn glyph, never a band colour (G12). --- */
+.gb-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink);
+}
+.gb-status-glyph {
+  flex: none;
+  width: 9px;
+  height: 9px;
+}
+.gb-status--ended {
+  color: var(--ink-2);
+  border-style: dashed;
+}
+
+/* --- BandLabel: word + band colour + shape, unbordered (B2, B10). --- */
+.gb-bandlabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.gb-bandlabel-glyph {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+.gb-bandlabel--none {
+  color: var(--ink-3);
+}
+.gb-bandlabel-na {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--edge-soft);
+}
+
+/* --- Skeleton: the shape of what is coming, and no value (B8). --- */
+/* As a grid or flex item it must not stretch the page to its table's width. */
+.gb-skeleton {
+  min-width: 0;
+}
+.gb-skeleton-bar,
+.gb-skeleton-band {
+  display: block;
+  background: var(--tile-2);
+  animation: gb-skeleton-pulse 1.6s ease-in-out infinite;
+}
+.gb-skeleton-bar {
+  height: 10px;
+  max-width: 100%;
+  border: 1px solid var(--edge-soft);
+}
+.gb-skeleton-bar--figure {
+  height: 26px;
+  margin: 8px 0;
+}
+.gb-skeleton-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 14px;
+}
+.gb-skeleton-tile {
+  background: var(--tile);
+  border: 1.5px dashed var(--edge-soft);
+  padding: 12px 14px 14px;
+  display: grid;
+  gap: 6px;
+}
+.gb-skeleton-band {
+  height: 6px;
+  margin-top: 6px;
+}
+.gb-skeleton-chart {
+  background: var(--tile);
+  border: 1.5px dashed var(--edge-soft);
+  padding: 14px 16px;
+}
+.gb-skeleton-plot {
+  display: block;
+  height: 180px;
+  margin-top: 12px;
+  border-left: 1.5px solid var(--edge-soft);
+  border-bottom: 1.5px solid var(--edge-soft);
+}
+.gb-skeleton .gb-tablewrap td {
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+@keyframes gb-skeleton-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* --- EmptyState: the fact, then the way out (CA5, I3). --- */
+.gb-emptystate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding: 22px 14px;
+  border-left: 4px solid var(--edge-soft);
+  background: var(--tile);
+}
+.gb-emptystate-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.gb-emptystate-text {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+.gb-emptystate-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- Slip arrival: down 8px and in, 180ms; gone at once on dismiss (§10.3 #3). --- */
+.gb-slip--arrive {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  @starting-style {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* --- The register table: fixed columns and a header that stays (U9, I4, L7). The box
+   scrolls both ways itself, which is what lets the header stick: a sticky header inside an
+   overflow-x box sticks to that box, never to the page. --- */
+.gb-tablewrap--register {
+  max-height: calc(100vh - 200px);
+  overflow: auto;
+  overscroll-behavior-x: contain;
+}
+.gb-tablewrap--register:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.gb-table--register {
+  table-layout: fixed;
+}
+.gb-table--register thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  white-space: normal;
+}
+.gb-table--register td {
+  overflow-wrap: anywhere;
+}
+/* A header wraps between words, never inside one ("CHECKLIS / TS"): size its column instead. */
+.gb-table--register th {
+  overflow-wrap: normal;
+  hyphens: none;
+}
+
+/* --- /__components, the development gallery (components/dev). --- */
+.gb-gallery {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px 16px 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+}
+.gb-gallery-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--edge);
+}
+.gb-gallery-head h1,
+.gb-gallery-section > h2 {
+  margin: 0;
+}
+.gb-gallery-section > h2 {
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--edge);
+}
+.gb-gallery-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--edge-soft);
+}
+.gb-gallery-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  list-style: none;
+  background: var(--tile);
+  border: 1.5px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+}
+.gb-gallery-list .gb-rowtoggle[aria-current='true'] {
+  text-decoration-color: var(--ink);
+  text-decoration-thickness: 2px;
+}
+@media (max-width: 600px) {
+  .gb-gallery-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /*
  * Reduced motion drops movement, not feedback (the token file zeroes --press). What slides or
  * scales in here only fades; the chevron flips at once; fades stay at or under 150ms.
@@ -1951,9 +2336,20 @@ li:has(> .gb-menu-item--danger) {
   .gb-row-expand > td > *,
   .gb-pdfpanel,
   .gb-dialog,
-  .gb-menu {
+  .gb-menu,
+  .gb-sidepanel,
+  .gb-sidepanel[data-state='closing'],
+  .gb-slip--arrive {
     transition: opacity 150ms ease-out;
     transform: none;
+  }
+  .gb-dialog:not([open]) {
+    transform: none;
+  }
+  .gb-skeleton-bar,
+  .gb-skeleton-band,
+  .gb-skeleton-plot {
+    animation: none;
   }
   .gb-rowtoggle-chev,
   .gb-meter i {
