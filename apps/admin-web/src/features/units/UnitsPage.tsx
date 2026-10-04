@@ -1,28 +1,24 @@
-import { Fragment, useEffect, useRef, useState, type RefObject } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
 import { Link } from '@tanstack/react-router';
-import type { CreateUnitRequest, Industry, MembershipDetail, Page, Unit, Zone } from '@audit5s/contracts';
-import { ApiError, api } from '@/lib/api';
+import type { MembershipDetail, Page, Unit, Zone } from '@audit5s/contracts';
+import { api } from '@/lib/api';
 import { devGet } from '@/features/units/worst-case';
 import {
   Button,
   Card,
   CardHeader,
-  Dialog,
-  DialogActions,
   EmptyState,
   ErrorNotice,
   Field,
   Input,
   RowActions,
-  Select,
   Skeleton,
   Table,
   Td,
   Th,
-  useDialogClose,
 } from '@/components/ui';
+import { NewUnitDialog } from '@/features/units/NewUnitDialog';
 import { useSession } from '@/lib/session';
 import { UnitZones } from '@/features/zones/UnitZones';
 import { rowToggleProps } from '@/features/audits/AuditsPage';
@@ -31,9 +27,7 @@ export function UnitsPage() {
   const { can } = useSession();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [search, setSearch] = useState('');
-  const nameField = useRef<HTMLInputElement>(null);
 
   const units = useQuery({
     queryKey: ['units'],
@@ -70,9 +64,14 @@ export function UnitsPage() {
         />
 
         {can('unit', 'create') && (
-          <Dialog open={creating} onClose={() => setCreating(false)} title="New Unit" dirty={dirty} initialFocus={nameField}>
-            <CreateUnitForm onDone={() => setCreating(false)} onDirty={setDirty} nameField={nameField} />
-          </Dialog>
+          <NewUnitDialog
+            open={creating}
+            onClose={(unitId) => {
+              setCreating(false);
+              // A Unit made here opens on its row, its new Zones in view (report §5 Task 1, step 4).
+              if (unitId) setExpanded(unitId);
+            }}
+          />
         )}
 
         <div className="border-b border-edge-soft bg-board p-4">
@@ -206,92 +205,5 @@ function UnitRow({
         </tr>
       )}
     </Fragment>
-  );
-}
-
-/** U5: a dialog, the name marked as the one thing needed, Create held until it is there. */
-function CreateUnitForm({
-  onDone,
-  onDirty,
-  nameField,
-}: {
-  onDone: () => void;
-  onDirty: (dirty: boolean) => void;
-  /** Where the dialog puts focus on opening. */
-  nameField: RefObject<HTMLInputElement | null>;
-}) {
-  const queryClient = useQueryClient();
-  const close = useDialogClose();
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const {
-    register,
-    handleSubmit,
-    watch,
-    formState: { isDirty },
-  } = useForm<CreateUnitRequest>({
-    // Empty, not undefined: otherwise an untouched form reads as changed and Close asks to discard.
-    defaultValues: { name: '', city: '', industryId: '' },
-  });
-  const { ref: nameRef, ...nameProps } = register('name', { required: true });
-  const nameInput = {
-    ...nameProps,
-    ref: (element: HTMLInputElement | null) => {
-      nameRef(element);
-      nameField.current = element;
-    },
-  };
-  const named = Boolean(watch('name')?.trim());
-  useEffect(() => {
-    onDirty(isDirty);
-    return () => onDirty(false);
-  }, [isDirty, onDirty]);
-
-  const industries = useQuery({
-    queryKey: ['industries', false],
-    queryFn: () => api.get<Industry[]>('/industries'),
-  });
-
-  const create = useMutation({
-    mutationFn: (body: CreateUnitRequest) =>
-      api.post<Unit>('/units', { ...body, industryId: body.industryId || undefined }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['units'] });
-      onDirty(false);
-      onDone();
-    },
-    onError: (error) => setFieldErrors(error instanceof ApiError ? error.fieldErrors() : {}),
-  });
-
-  return (
-    <form onSubmit={handleSubmit((values) => create.mutate(values))}>
-      <div className="gb-dialog-section grid gap-3">
-        <Field label="Name" hint="Unique. Auditors and reports see this, e.g. Nashik Plant." error={fieldErrors.name}>
-          <Input required {...nameInput} />
-        </Field>
-        <Field label="City (optional)" error={fieldErrors.city}>
-          <Input {...register('city')} />
-        </Field>
-        <Field label="Industry (optional)" hint="Decides which checklists this Unit is offered. “Not set” offers every checklist." error={fieldErrors.industryId}>
-          <Select {...register('industryId')}>
-            <option value="">Not set</option>
-            {(industries.data ?? []).map((industry) => (
-              <option key={industry.id} value={industry.id}>
-                {industry.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <p className="gb-hint">Time zone is India (IST). Address and contact can be added after.</p>
-        <ErrorNotice error={create.error} />
-      </div>
-      <DialogActions reason={named ? undefined : 'Enter the Unit’s name to create it.'}>
-        <Button type="button" variant="secondary" onClick={close}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={!named || create.isPending}>
-          {create.isPending ? 'Creating…' : 'Create Unit'}
-        </Button>
-      </DialogActions>
-    </form>
   );
 }

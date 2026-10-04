@@ -736,7 +736,7 @@ function sameOriginWhenSecure(url: string): string {
  * camera and the checksum still require HTTPS and still say so — but Option B, which needs
  * neither, now works instead of taking the page down with it.
  */
-function newId(): string {
+export function newId(): string {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
 
   const bytes = crypto.getRandomValues(new Uint8Array(16));
