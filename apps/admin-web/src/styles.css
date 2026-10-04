@@ -940,6 +940,8 @@ body {
   /* minmax(0, …): the column is the viewport, never the width of its widest child. */
   .gb-app {
     grid-template-columns: minmax(0, 1fr);
+    /* The strip keeps its height: on a short page (a 404) min-height:100vh stretched it. */
+    align-content: start;
   }
   /* The title row must fit 400px: the title gives way first, and the identity chip keeps
      its avatar; the name stays for screen readers and in the chip's tooltip. */
@@ -1308,6 +1310,21 @@ body {
   letter-spacing: 0.13em;
   text-transform: uppercase;
   font-weight: 600;
+}
+/* The public corrective-action page (/ca): a phone in a Zone Leader's hand. */
+.gb-ca .gb-input {
+  font-size: 16px; /* below 16px, iOS Safari zooms the page on focus */
+}
+.gb-ca .gb-btn {
+  min-height: 48px; /* a thumb, not a cursor */
+  font-size: 15px;
+}
+/* The question the Zone Leader must answer: read, not shouted — sentence case, not .gb-h1. */
+.gb-ca-q {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .gb-stack {
   display: flex;
