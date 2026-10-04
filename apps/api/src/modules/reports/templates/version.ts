@@ -30,7 +30,9 @@
 // between 18:30 and 24:00 UTC now names the IST day.
 // 1.8.0 — UX audit R2: the rating key is square outlined chips with the admin app's band
 // shapes (▲ ● ◆ ▼), where it was filled, rounded capsules. Issued PDFs keep their bytes (R-35).
-export const TEMPLATE_VERSION = '1.8.0';
+// 1.9.0 — D15: scores print truncated to one decimal (59.994 → "59.9"), never rounded up past
+// a band line. Issued PDFs keep their bytes (R-35).
+export const TEMPLATE_VERSION = '1.9.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

@@ -65,6 +65,15 @@ export function roundPercentage(value: number): number {
   return Math.round(value * factor) / factor;
 }
 
+/**
+ * A score for display, as one decimal: truncated, never rounded up (D15). Rounding would print
+ * 59.994 as "60.0" beside "Needs Support", because the band reads the exact score.
+ */
+export function formatScore(percentage: number): string {
+  // The epsilon absorbs binary error (70 held as 69.9999…), far below the stored third decimal.
+  return (Math.floor(percentage * 10 + 1e-6) / 10).toFixed(1);
+}
+
 /** `null` when the denominator is zero — the D4 rule, in one place. */
 export function percentageOf(rawScore: number, maxScore: number): number | null {
   if (maxScore <= 0) {

@@ -434,7 +434,11 @@ function ClosureSummary({ payload }: { payload: ReportPayload }) {
         <MetaCell label="Closed" value={String(closure.closed)} />
         <MetaCell label="Not possible" value={String(closure.notPossible)} />
         <MetaCell label="Open" value={String(closure.open)} />
-        <MetaCell label="Closure rate" value={formatPercentage(closure.closureRatePercentage)} />
+        {/* A rate, not a score: no band to agree with, so it rounds (D15 covers scores only). */}
+        <MetaCell
+          label="Closure rate"
+          value={closure.closureRatePercentage === null ? 'N/A' : `${closure.closureRatePercentage.toFixed(1)}%`}
+        />
       </div>
       {closure.averageClosureHours !== null ? (
         <div className="caption">

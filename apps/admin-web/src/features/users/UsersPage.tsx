@@ -43,7 +43,7 @@ import { cn } from '@/lib/cn';
 import { Link, useSearch } from '@tanstack/react-router';
 import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, ROLE_LABEL, roleLabel } from '@/lib/labels';
-import { formatDate, formatDateTime } from '@audit5s/domain';
+import { formatDate, formatDateTime, formatScore } from '@audit5s/domain';
 
 /** Least privileged first, so a slip of the hand never lands on Super Admin (US3). */
 const ROLES_BY_REACH: readonly Role[] = ['ZONE_LEADER', 'CONSULTANT', 'COORDINATOR', 'SUPER_ADMIN'];
@@ -479,7 +479,7 @@ function AuditList({ audits, empty }: { audits: Audit[]; empty: string }) {
           </span>
           {audit.scored && audit.totals.scorePercentage !== null && audit.completedAt ? (
             <span className={cn('gb-data ml-2', bandTextClass(audit.totals.scorePercentage))}>
-              {audit.totals.scorePercentage.toFixed(1)}%
+              {formatScore(audit.totals.scorePercentage)}%
             </span>
           ) : null}
         </li>

@@ -6,6 +6,7 @@ import type {
   ZoneRankingItem,
 } from '@audit5s/contracts';
 import { bandOf, type Band } from '@/lib/bands';
+import { formatScore } from '@audit5s/domain';
 
 export { bandLabel, bandOf, type Band } from '@/lib/bands';
 
@@ -18,7 +19,7 @@ export { bandLabel, bandOf, type Band } from '@/lib/bands';
 
 /** One decimal in tiles and charts (§3). `null` is `N/A`, never `0`. */
 export function score1(percentage: number | null): string {
-  return percentage === null ? 'N/A' : percentage.toFixed(1);
+  return percentage === null ? 'N/A' : formatScore(percentage);
 }
 
 /**

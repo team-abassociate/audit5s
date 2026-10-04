@@ -30,7 +30,7 @@ import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
 import { SECTION_SHORT_LABEL } from '@/lib/labels';
 import { cn } from '@/lib/cn';
-import { formatDate, formatDayMonth } from '@audit5s/domain';
+import { formatDate, formatDayMonth, formatScore } from '@audit5s/domain';
 import { Trend } from '@/features/dashboard/DashboardPage';
 import { TARGET } from '@/features/dashboard/board';
 
@@ -645,7 +645,7 @@ function DatasetCard({ title, note, rows, filename, alt, tools, children }: {
 }
 
 /** One decimal in tiles and charts (GEMBA §3); `null` is N/A, never 0. */
-function pct(value: number | null, unit = '%'): string { return value === null ? 'N/A' : `${value.toFixed(1)}${unit}`; }
+function pct(value: number | null, unit = '%'): string { return value === null ? 'N/A' : `${formatScore(value)}${unit}`; }
 function asScore(value: unknown): number | null { return typeof value === 'number' ? value : null; }
 function clip(name: string): string { return name.length > 22 ? `${name.slice(0, 21)}…` : name; }
 function display(value: unknown): string { return value === null || value === undefined ? '—' : typeof value === 'number' ? Number.isInteger(value) ? String(value) : value.toFixed(2) : String(value); }

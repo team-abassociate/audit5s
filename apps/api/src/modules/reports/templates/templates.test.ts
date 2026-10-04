@@ -473,7 +473,8 @@ describe('§4.3 — the multi-Zone summary', () => {
     // apart. The summed marks can, and the per-S row is where they differ outright:
     // 1S is 15/20 + 10/20 = 25/40, which an average would never produce.
     expect(html).toContain('106 / 160');
-    expect(html).toContain('66.3%');
+    // 106 / 160 = 66.25: scores truncate, never round up (D15).
+    expect(html).toContain('66.2%');
     expect(sectionOf(html, 'S-wise scoring')).toContain('25');
     expect(sectionOf(html, 'Zone-wise marks per S')).toContain('25/40');
   });
