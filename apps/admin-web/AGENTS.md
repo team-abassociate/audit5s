@@ -21,7 +21,8 @@ The rejectable violations, restated so they are unmissable:
 1. **No `border-radius`.** Zero is the only value.
 2. **No blurred shadows.** Elevation is `box-shadow: Npx Npx 0 var(--hard)` — 2px buttons,
    3px at rest, 5px hover/selected, 0 on press with `translate(3px,3px)`.
-3. **Two families only** — Archivo (display/UI) and DM Mono (small data). Display figures are
+3. **Two families only** — Archivo (display/UI) and DM Mono (small data); Noto Sans
+   Devanagari renders Devanagari text and nothing else (GEMBA §2.4 extension, D14). Display figures are
    **Archivo 900**, `letter-spacing:-.04em`, tabular. Mono is never used for a big number.
 4. **No hex literal outside `gemba-tokens.css`.**
 5. **Accent (`--accent`) is interaction only** — focus and selection. Never a chart fill,

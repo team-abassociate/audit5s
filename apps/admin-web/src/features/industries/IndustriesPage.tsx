@@ -1,6 +1,8 @@
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
+import { Link } from '@tanstack/react-router';
+import { templateCodeForSheet } from '@audit5s/domain';
 import type {
   ChecklistTemplate,
   CreateIndustryRequest,
@@ -9,6 +11,7 @@ import type {
 } from '@audit5s/contracts';
 import { ApiError, api } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { isWorstCase, worstIndustries, worstTemplates } from '@/features/checklists/worst-case';
 import {
   Button,
   Card,
@@ -45,7 +48,9 @@ export function IndustriesPage() {
   const industries = useQuery({
     queryKey: ['industries', includeArchived],
     queryFn: () =>
-      api.get<Industry[]>(`/industries${includeArchived ? '?includeArchived=true' : ''}`),
+      isWorstCase()
+        ? Promise.resolve(worstIndustries(includeArchived))
+        : api.get<Industry[]>(`/industries${includeArchived ? '?includeArchived=true' : ''}`),
   });
 
   const invalidate = async () => {
@@ -75,9 +80,9 @@ export function IndustriesPage() {
         <CardHeader
           title="Industries"
           description={
-            'The sector a plant operates in, and the sector a checklist belongs to. Tagging ' +
-            'both means a hospital is never offered a press shop checklist. It changes what ' +
-            'a screen offers — never who may see what.'
+            'Industries decide which checklists a plant is offered: a hospital is never ' +
+            'offered a press shop checklist. Set a Unit’s industry on its page under Units; ' +
+            'a Unit with none is offered every checklist.'
           }
           action={
             <label className="flex items-center gap-2 whitespace-nowrap text-sm text-ink-2">
@@ -141,7 +146,15 @@ export function IndustriesPage() {
                       </Td>
                       <Td className="font-mono text-xs">{industry.code}</Td>
                       <Td className="gb-data">{industry.templateCount}</Td>
-                      <Td className="gb-data">{industry.unitCount}</Td>
+                      <Td className="gb-data">
+                        {industry.unitCount > 0 ? (
+                          <Link to="/units" className="underline">
+                            {industry.unitCount}
+                          </Link>
+                        ) : (
+                          industry.unitCount
+                        )}
+                      </Td>
                       <Td>
                         {canWrite && industry.archivedAt === null && (
                           <RowActions
@@ -224,7 +237,10 @@ function ChooseChecklists({
 }) {
   const templates = useQuery({
     queryKey: ['checklist-templates', ''],
-    queryFn: () => api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
+    queryFn: () =>
+      isWorstCase()
+        ? Promise.resolve(worstTemplates())
+        : api.get<Page<ChecklistTemplate>>('/checklist-templates?limit=200'),
   });
   const [ticked, setTicked] = useState<Set<string> | null>(null);
 
@@ -293,7 +309,8 @@ function ChooseChecklists({
 
 function AddIndustry({ onAdded }: { onAdded: () => Promise<void> }) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const { register, handleSubmit, reset } = useForm<CreateIndustryRequest>();
+  const { register, handleSubmit, reset, setValue, getFieldState, formState } =
+    useForm<CreateIndustryRequest>();
 
   const create = useMutation({
     mutationFn: (body: CreateIndustryRequest) => api.post<Industry>('/industries', body),
@@ -311,7 +328,7 @@ function AddIndustry({ onAdded }: { onAdded: () => Promise<void> }) {
     <Card>
       <CardHeader
         title="Add an industry"
-        description="The code is permanent; the name is not. Templates and Units point at the row, but people recognise it by its code, and a code that can change means something different in two places at once."
+        description="The name can change later; the code cannot."
       />
       <form
         className="grid gap-3 p-4 sm:grid-cols-2"
@@ -324,9 +341,18 @@ function AddIndustry({ onAdded }: { onAdded: () => Promise<void> }) {
         )}
       >
         <Field label="Name" hint="e.g. Hospital" error={fieldErrors.name}>
-          <Input {...register('name')} />
+          <Input
+            {...register('name', {
+              // The code follows the name until someone types their own (I2).
+              onChange: (event: { target: { value: string } }) => {
+                if (!getFieldState('code', formState).isDirty) {
+                  setValue('code', templateCodeForSheet(event.target.value).slice(0, 40));
+                }
+              },
+            })}
+          />
         </Field>
-        <Field label="Code" hint="Capitals and underscores, e.g. HOSPITAL" error={fieldErrors.code}>
+        <Field label="Code" hint="Made from the name; edit it if you like." error={fieldErrors.code}>
           <Input className="font-mono" {...register('code')} />
         </Field>
         <div className="sm:col-span-2">
