@@ -7,9 +7,11 @@ import {
   Cell,
   ReferenceLine,
   ResponsiveContainer,
+  Text,
   Tooltip,
   XAxis,
   YAxis,
+  type YAxisTickContentProps,
 } from 'recharts';
 import type {
   Audit,
@@ -161,7 +163,7 @@ function OrganizationSection({ units, loading }: { units: Unit[]; loading: boole
       {ranking.length > 0 ? (
         <DatasetCard
           title="Unit ranking"
-          note={`Weighted score over the ${WINDOW}. A Unit needs 3 scored audits in that time to be ranked.`}
+          note={`Weighted score over the ${WINDOW}, highest first. A Unit gets a rank number once it has 3 scored audits in that time; until then the table lists it as Not ranked.`}
           rows={ranking}
           filename="unit-ranking.csv"
           alt={rankingAlt('Unit ranking', bars)}
@@ -633,16 +635,16 @@ function UnitContext({ unitId }: { unitId: string }) {
 /**
  * Scores as horizontal bars, one per row, in the order given: the band colour (what the
  * colour means), the value in the right-hand column, the dashed Outstanding line, and the full name
- * on the axis — clipped there, whole in the tooltip and the table.
+ * on the axis — wrapped to two lines there (the rest on hover), whole in the tooltip and the table.
  */
 function ScoreBars({ rows }: { rows: Array<{ name: string; score: number | null; highlighted?: boolean }> }) {
   const token = useToken();
   return (
-    <ResponsiveContainer width="100%" height={rows.length * 30 + 56}>
+    <ResponsiveContainer width="100%" height={rows.length * 36 + 56}>
       <BarChart data={rows} layout="vertical" accessibilityLayer={false} margin={{ top: 18, right: 4, left: 4, bottom: 0 }}>
         <CartesianGrid horizontal={false} stroke={token('--edge-soft')} />
         <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--ink-3')} />
-        <YAxis dataKey="name" type="category" width={150} interval={0} tickFormatter={clip} stroke={token('--ink-3')} />
+        <YAxis dataKey="name" type="category" width={150} interval={0} tick={NameTick} stroke={token('--ink-3')} />
         {valueAxis(token, 48, (index) => pct(rows[index]?.score ?? null, ''))}
         <Tooltip contentStyle={TOOLTIP} formatter={(value) => [pct(asScore(value)), 'Score']} />
         <ReferenceLine x={TARGET} stroke={token('--crit-band')} strokeDasharray="4 4" label={targetLabel(token)} />
@@ -751,7 +753,7 @@ function DatasetCard({ title, note, rows, filename, alt, tools, children }: {
   useEffect(() => { if (!children) setTable(true); }, [children]);
   return (
     <Card>
-      <CardHeader title={title} description={note} action={<div className="flex flex-wrap items-start justify-end gap-2">
+      <CardHeader title={title} description={note} action={<div className="flex flex-wrap items-start justify-end gap-2 lg:flex-nowrap">
         {tools}
         {children ? <Button variant="secondary" onClick={() => setTable((value) => !value)}>{table ? 'Show chart' : 'Show table'}</Button> : null}
         <Button variant="secondary" disabled={rows.length === 0} onClick={() => downloadCsv(filename, rows)}>Export CSV</Button>
@@ -766,7 +768,18 @@ function DatasetCard({ title, note, rows, filename, alt, tools, children }: {
 /** One decimal in tiles and charts (GEMBA §3); `null` is N/A, never 0. */
 function pct(value: number | null, unit = '%'): string { return value === null ? 'N/A' : `${formatScore(value)}${unit}`; }
 function asScore(value: unknown): number | null { return typeof value === 'number' ? value : null; }
-function clip(name: string): string { return name.length > 22 ? `${name.slice(0, 21)}…` : name; }
+/** A bar's name on the axis: up to two lines, then an ellipsis; the whole name on hover. */
+function NameTick({ x, y, fill, payload }: YAxisTickContentProps) {
+  const name = String(payload.value ?? '');
+  return (
+    <g>
+      <title>{name}</title>
+      <Text x={x} y={y} width={140} maxLines={2} textAnchor="end" verticalAnchor="middle" fill={fill}>
+        {name}
+      </Text>
+    </g>
+  );
+}
 function display(value: unknown): string { return value === null || value === undefined ? '—' : typeof value === 'number' ? Number.isInteger(value) ? String(value) : value.toFixed(2) : String(value); }
 function label(value: string): string { return value.replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`).replace(/^./, (char) => char.toUpperCase()); }
 

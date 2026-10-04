@@ -425,7 +425,7 @@ function ActionRow({
       </Td>
       <Td>
         <StatusChip kind="action" status={action.status} />
-        {action.reopenCount > 0 && <span className="ml-1 text-xs text-ink-3">reopened ×{action.reopenCount}</span>}
+        {action.reopenCount > 0 && <div className="mt-1 text-xs whitespace-nowrap text-ink-3">reopened ×{action.reopenCount}</div>}
       </Td>
       <Td>{leader ?? '—'}</Td>
       <Td className="gb-data">

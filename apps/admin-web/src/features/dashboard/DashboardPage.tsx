@@ -307,12 +307,10 @@ export function DashboardPage() {
   const loading =
     units.isLoading || [overview, ranking, zones, audits, actions].some((query) => query.isLoading);
   const latestAudit = scorable[0] ?? null;
-  /** The slip names whoever can be chased: the action's leader, else its Zone's typed leader. */
-  const overdueOwner = oldestOverdue
-    ? (oldestOverdue.assignedZoneLeaderName ??
-      board.find((zone) => zone.code === oldestOverdue.zoneCode)?.leader ??
-      null)
-    : null;
+  /** Whoever can be chased: the action's leader, else its Zone's leader (user or typed, D3). */
+  const ownerOf = (action: { assignedZoneLeaderName: string | null; zoneCode: string }) =>
+    action.assignedZoneLeaderName ?? board.find((zone) => zone.code === action.zoneCode)?.leader ?? null;
+  const overdueOwner = oldestOverdue ? ownerOf(oldestOverdue) : null;
 
   return (
     <>
@@ -781,7 +779,7 @@ export function DashboardPage() {
                             </Link>
                           </td>
                           <td>{action.zoneName}</td>
-                          <td>{action.assignedZoneLeaderName ?? '—'}</td>
+                          <td>{ownerOf(action) ?? '—'}</td>
                           <td className="gb-data">{formatDate(action.openedAt)}</td>
                           <td className="gb-data">{formatDate(action.dueAt)}</td>
                           <td className="gb-data">

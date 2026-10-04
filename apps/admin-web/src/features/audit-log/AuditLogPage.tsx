@@ -1,10 +1,11 @@
 import { Fragment, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { AUDIT_LOG_ACTIONS, type AuditLogAction, type AuditLogEntry, type Page } from '@audit5s/contracts';
+import { AUDIT_LOG_ACTIONS, type AuditLogAction, type AuditLogEntry, type Page, type ReportKind } from '@audit5s/contracts';
 import { formatDateTime, istDateKey } from '@audit5s/domain';
 import { api } from '@/lib/api';
-import { humanize, roleLabel } from '@/lib/labels';
+import { humanize, REPORT_EDITION_LABEL, roleLabel } from '@/lib/labels';
+import { useUnits } from '@/lib/scope';
 import {
   Button,
   Card,
@@ -103,7 +104,10 @@ function objectName(entry: AuditLogEntry): string | null {
     for (const key of ['name', 'fullName', 'sheetName', 'templateCode', 'code']) {
       if (typeof record[key] === 'string' && record[key]) return record[key];
     }
-    if (typeof record.version === 'number') return `version ${record.version}`;
+    if (typeof record.version === 'number') {
+      const edition = REPORT_EDITION_LABEL[record.kind as ReportKind] as string | undefined;
+      return `${edition ? `${edition} · ` : ''}version ${record.version}`;
+    }
   }
   return null;
 }
@@ -303,6 +307,10 @@ export function AuditLogPage() {
 function AuditLogRow({ entry, open, onToggle }: { entry: AuditLogEntry; open: boolean; onToggle: () => void }) {
   const name = objectName(entry);
   const link = objectLink(entry);
+  /** A report entry carries its Unit's id but no name; the Zone is not in the entry at all. */
+  const units = useUnits();
+  const unitName =
+    entry.resourceType === 'report' ? units.data?.data.find((unit) => unit.id === entry.unitId)?.name : undefined;
 
   return (
     <Fragment>
@@ -336,6 +344,7 @@ function AuditLogRow({ entry, open, onToggle }: { entry: AuditLogEntry; open: bo
                 </Link>
               </>
             ) : null}
+            {unitName ? ` · ${unitName}` : null}
           </div>
         </td>
       </tr>
