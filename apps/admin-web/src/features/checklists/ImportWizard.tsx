@@ -21,6 +21,9 @@ import {
   Td,
   Th,
 } from '@/components/ui';
+import { cn } from '@/lib/cn';
+import { downloadTemplate } from './template';
+import { isWorstCase, worstIndustries } from './worst-case';
 
 /**
  * The checklist import wizard: upload → validation report → side-by-side diff → commit.
@@ -38,12 +41,18 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
   const [preview, setPreview] = useState<ChecklistImportPreview | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<unknown>(null);
-  /** The industries this workbook is for (0042). None ticked means every industry. */
-  const [industryIds, setIndustryIds] = useState<string[]>([]);
+  /** The industries this workbook is for (0042). `null` is every industry. */
+  const [industryIds, setIndustryIds] = useState<string[] | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const noIndustryTicked = industryIds !== null && industryIds.length === 0;
+  const pick = (file: File | undefined) => {
+    if (file && !noIndustryTicked) upload.mutate({ file, industryIds: industryIds ?? [] });
+  };
 
   const industries = useQuery({
     queryKey: ['industries', false],
-    queryFn: () => api.get<Industry[]>('/industries'),
+    queryFn: () =>
+      isWorstCase() ? Promise.resolve(worstIndustries(false)) : api.get<Industry[]>('/industries'),
   });
 
   const upload = useMutation({
@@ -128,29 +137,52 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
       {step === 'upload' && (
         <div className="space-y-3 p-4">
           <p className="text-sm text-ink-2">
-            One sheet per department. A sheet is read as a checklist only when cell A1 reads
-            <span className="font-mono"> 5S AUDIT CHECK SHEET – …</span>; anything else is skipped.
-          </p>
-          <p className="text-sm text-ink-2">
-            Optional: add <span className="font-mono">Check Point (Hindi)</span> and{' '}
-            <span className="font-mono">Check Point (Marathi)</span> columns beside the header row.
-            Auditors who choose those languages see them above the English. A blank cell keeps the
-            translation already saved.
+            Start from the{' '}
+            <button type="button" className="text-ink underline" onClick={downloadTemplate}>
+              blank template
+            </button>
+            , or upload the department workbook you already have: one sheet per department, 50
+            Check Points each, with optional Hindi and Marathi columns. Auditors who choose those
+            languages see them above the English; a blank cell keeps the translation already
+            saved. Sheets that are not checklists are skipped.
           </p>
           <IndustryChoice
             industries={industries.data ?? []}
             chosen={industryIds}
             onChange={setIndustryIds}
           />
-          <input
-            type="file"
-            accept=".xlsx"
-            className="block text-sm"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) upload.mutate({ file, industryIds });
+          <label
+            className={cn(
+              'flex cursor-pointer flex-col items-start gap-1 border-[1.5px] border-dashed border-edge bg-tile-2 px-4 py-5',
+              'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-[var(--accent)]',
+              dragging && 'border-solid bg-tile',
+              (noIndustryTicked || upload.isPending) && 'cursor-not-allowed border-edge-soft',
+            )}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragging(true);
             }}
-          />
+            onDragLeave={() => setDragging(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              pick(event.dataTransfer.files[0]);
+            }}
+          >
+            <input
+              type="file"
+              accept=".xlsx"
+              className="sr-only"
+              disabled={noIndustryTicked || upload.isPending}
+              onChange={(event) => pick(event.target.files?.[0])}
+            />
+            <span className="font-semibold text-ink">Choose the workbook (.xlsx)</span>
+            <span className="text-xs text-ink-3">
+              {noIndustryTicked
+                ? 'Tick at least one industry above, or choose Every industry.'
+                : 'or drop it here. Nothing is saved until you commit.'}
+            </span>
+          </label>
           {upload.isPending && <Spinner label="Uploading…" />}
         </div>
       )}
@@ -236,35 +268,55 @@ function IndustryChoice({
   onChange,
 }: {
   industries: Industry[];
-  chosen: string[];
-  onChange: (next: string[]) => void;
+  chosen: string[] | null;
+  onChange: (next: string[] | null) => void;
 }) {
   if (industries.length === 0) return null;
   return (
-    <fieldset className="space-y-2 border border-edge-soft p-3">
-      <legend className="px-1 text-sm font-medium text-ink">Which industries is this workbook for?</legend>
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
-        {industries.map((industry) => (
-          <label key={industry.id} className="flex items-center gap-2 text-sm text-ink-2">
-            <input
-              type="checkbox"
-              checked={chosen.includes(industry.id)}
-              onChange={(event) =>
-                onChange(
-                  event.target.checked
-                    ? [...chosen, industry.id]
-                    : chosen.filter((id) => id !== industry.id),
-                )
-              }
-            />
-            {industry.name}
-          </label>
-        ))}
-      </div>
+    <fieldset className="space-y-2">
+      <legend className="gb-label mb-2">Which industries is this workbook for?</legend>
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input
+          type="radio"
+          name="import-industries"
+          checked={chosen === null}
+          onChange={() => onChange(null)}
+        />
+        Every industry
+      </label>
+      <label className="flex items-center gap-2 text-sm text-ink">
+        <input
+          type="radio"
+          name="import-industries"
+          checked={chosen !== null}
+          onChange={() => onChange(chosen ?? [])}
+        />
+        Only these industries
+      </label>
+      {chosen !== null && (
+        <div className="flex flex-wrap gap-x-5 gap-y-2 pl-6">
+          {industries.map((industry) => (
+            <label key={industry.id} className="flex items-center gap-2 text-sm text-ink-2">
+              <input
+                type="checkbox"
+                checked={chosen.includes(industry.id)}
+                onChange={(event) =>
+                  onChange(
+                    event.target.checked
+                      ? [...chosen, industry.id]
+                      : chosen.filter((id) => id !== industry.id),
+                  )
+                }
+              />
+              {industry.name}
+            </label>
+          ))}
+        </div>
+      )}
       <p className="text-xs text-ink-3">
-        Tick none to offer these checklists to every industry. A sheet updates an existing
-        checklist only if that checklist has the same name and exactly these industries;
-        otherwise it becomes a new checklist, so another industry&apos;s questions never change.
+        A sheet updates an existing checklist only if that checklist has the same name and
+        exactly these industries; otherwise it becomes a new checklist, so another
+        industry&apos;s questions never change.
       </p>
     </fieldset>
   );

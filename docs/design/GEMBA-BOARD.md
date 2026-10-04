@@ -28,6 +28,13 @@ An agent that breaks any of these has not built this design system.
 2. **No blurred shadows.** Elevation is `box-shadow: Npx Npx 0 var(--hard)` — hard, offset down-right, zero blur. 2px for buttons, 3px at rest, 5px on hover/selected, 0 on press (with `translate(3px,3px)`).
 3. **No rotation, no random offsets, no "organic" scatter.** Every object sits on the grid.
 4. **Two families only:** Archivo (display + UI) and DM Mono (data). Never introduce a third.
+   > **Extension (owner decision D14, 2026-10; proposed R-45(c)).** Neither family has
+   > Devanagari, so Hindi and Marathi fell back to whatever the OS had. **Noto Sans
+   > Devanagari** is added for Devanagari text **only**: it sits second in `--font-display`
+   > and `--font-data`, so only characters Archivo and DM Mono lack reach it, and the Google
+   > Fonts stylesheet serves it with a Devanagari `unicode-range`. Text in Hindi or Marathi
+   > carries `lang="hi"` / `lang="mr"`, which also sets `line-height: 1.6` for the matras.
+   > It is not a third voice: never set Latin text in it, never use it "for contrast".
 5. **Display numerals are Archivo 900**, `letter-spacing:-.04em`, tabular. Mono is for *small* data only — table cells, timestamps, axis ticks, deltas. Getting this backwards is the most common way this system is built wrong.
 6. **Colour is semantic, not decorative.** Green/amber/red mean score bands and nothing else. The teal accent (`--accent`) appears only in focus rings and selection — never as a fill, never in a chart.
 7. **One yellow slip per view**, and only when a human must do something. Two slips means nothing is urgent.
@@ -72,7 +79,7 @@ Rules that come from the product, not from taste:
 
 ```html
 <link rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+  href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=DM+Mono:wght@400;500&family=Noto+Sans+Devanagari:wght@400..700&display=swap">
 ```
 
 | Role | Family | Size | Weight | Other |
@@ -254,7 +261,7 @@ Paste this as the definition of done for any UI task:
 
 - [ ] Zero hex literals outside `gemba-tokens.css`
 - [ ] Zero `border-radius`, zero blurred `box-shadow`
-- [ ] Only Archivo + DM Mono; display figures are Archivo 900, mono only for small data
+- [ ] Only Archivo + DM Mono (Noto Sans Devanagari for Devanagari text only, §2.4); display figures are Archivo 900, mono only for small data
 - [ ] Headings carry `font-stretch: 110–112%` and uppercase
 - [ ] Renders correctly in both theme states (`data-theme="light"` and `data-theme="dark"`)
 - [ ] Status reads without colour (band, rail, chip, or hatch present)
