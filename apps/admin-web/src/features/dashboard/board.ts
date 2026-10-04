@@ -1,4 +1,10 @@
-import type { SectionScorePayload, SSection, Zone, ZoneRankingItem } from '@audit5s/contracts';
+import type {
+  CorrectiveAction,
+  SectionScorePayload,
+  SSection,
+  Zone,
+  ZoneRankingItem,
+} from '@audit5s/contracts';
 import { bandOf, type Band } from '@/lib/bands';
 
 export { bandLabel, bandOf, type Band } from '@/lib/bands';
@@ -33,6 +39,12 @@ export function score3(percentage: number | null): string {
   return percentage === null ? 'N/A' : percentage.toFixed(3);
 }
 
+/** A count as an Indian reader writes it: 1,284, not 1284. */
+const COUNT = new Intl.NumberFormat('en-IN');
+export function count(value: number): string {
+  return COUNT.format(value);
+}
+
 /** Always signed, with a real minus sign (U+2212). `null` has no delta to show. */
 export function delta1(value: number | null): string {
   if (value === null) return '—';
@@ -44,8 +56,16 @@ export interface BoardZone {
   code: string;
   name: string;
   leader: string | null;
-  /** The server's weighted score for the selected period. `null` = not audited in it. */
+  /** The server's weighted score for the selected period (`Σraw / Σmax`, R-15a). `null` = not audited in it. */
   score: number | null;
+  /**
+   * The Zone's score in its latest audit of the period — the audit the matrix cells come
+   * from (B1). Beside `score`, never instead of it: the two differ whenever the period
+   * holds more than one audit of the Zone.
+   */
+  lastScore: number | null;
+  /** How many audits of this Zone the weighted `score` is read across. */
+  auditCount: number;
   /** Improvement on the previous audit, from the server. */
   delta: number | null;
   openNonconformities: number;
@@ -96,6 +116,8 @@ export function mergeBoard(
       name: item.zoneName,
       leader: zone?.zoneLeaderName ?? null,
       score: item.score.scorePercentage,
+      lastScore: item.lastScore,
+      auditCount: item.auditCount,
       delta: item.improvement,
       openNonconformities: item.openNonconformities,
       lastAuditAt: item.lastAuditAt,
@@ -120,6 +142,8 @@ export function mergeBoard(
         name: zone.name,
         leader: zone.zoneLeaderName,
         score: null,
+        lastScore: null,
+        auditCount: 0,
         delta: null,
         openNonconformities: 0,
         lastAuditAt: detail?.completedAt ?? null,
@@ -174,10 +198,14 @@ export interface TrendGeometry {
   line: string;
   area: string;
   /** One marker per reading. A line alone hides how many audits produced it. */
-  points: Array<{ x: number; y: number; value: number; label: string }>;
+  points: Array<{ x: number; y: number; value: number; label: string; detail?: string }>;
   end: { x: number; y: number; value: number };
   yTicks: Array<{ y: number; label: string }>;
-  xTicks: Array<{ x: number; label: string }>;
+  /**
+   * `sub` is a second line, set only when two readings share a `label` — four audits on
+   * 23 Sept read "23 Sept" four times otherwise (B7), and the time is what tells them apart.
+   */
+  xTicks: Array<{ x: number; label: string; sub?: string }>;
   targetY: number;
   gridY: number[];
 }
@@ -188,10 +216,12 @@ export interface TrendGeometry {
  * (nothing applicable) are left out rather than plotted as zero.
  */
 export function trendGeometry(
-  points: Array<{ period: string; scorePercentage: number | null }>,
+  points: Array<{ period: string; detail?: string; scorePercentage: number | null }>,
 ): TrendGeometry | null {
   const scored = points.flatMap((point) =>
-    point.scorePercentage === null ? [] : [{ period: point.period, value: point.scorePercentage }],
+    point.scorePercentage === null
+      ? []
+      : [{ period: point.period, detail: point.detail, value: point.scorePercentage }],
   );
   if (scored.length === 0) return null;
 
@@ -223,13 +253,20 @@ export function trendGeometry(
       y: round(c.y),
       value: c.value,
       label: c.period,
+      detail: c.detail,
     })),
     end: { x: round(last.x), y: round(last.y), value: last.value },
     yTicks: ticks.map((value) => ({ y: round(y(value)), label: String(value) })),
     // Every other period when the series is long, so the axis never collides with itself.
     xTicks: coordinates
       .filter((_, index) => coordinates.length <= 7 || index % 2 === coordinates.length % 2)
-      .map((c) => ({ x: round(c.x), label: c.period })),
+      .map((c) => ({
+        x: round(c.x),
+        label: c.period,
+        ...(c.detail !== undefined && scored.filter((p) => p.period === c.period).length > 1
+          ? { sub: c.detail }
+          : {}),
+      })),
     targetY: round(y(TARGET)),
     gridY: ticks.map((value) => round(y(value))),
   };
@@ -237,4 +274,30 @@ export function trendGeometry(
 
 function round(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+/** One row of the zone panel's findings: a question, however many photos it was raised on. */
+export interface FindingGroup {
+  key: string;
+  /** The newest action of the group — its wording and audit stand for the rest. */
+  lead: CorrectiveAction;
+  actions: CorrectiveAction[];
+}
+
+/**
+ * One corrective action is raised per nonconformity photograph (R-13b), so a question
+ * photographed three times read as the same finding three times (B12). Grouped by the
+ * question within its audit; an overall suggestion or a walk-by item has no question and
+ * stays its own row. Order is kept: the first action seen leads.
+ */
+export function groupFindings(actions: CorrectiveAction[]): FindingGroup[] {
+  const groups = new Map<string, FindingGroup>();
+  for (const action of actions) {
+    const key =
+      action.checklistQuestionId === null ? action.id : `${action.auditId}:${action.checklistQuestionId}`;
+    const group = groups.get(key);
+    if (group) group.actions.push(action);
+    else groups.set(key, { key, lead: action, actions: [action] });
+  }
+  return [...groups.values()];
 }
