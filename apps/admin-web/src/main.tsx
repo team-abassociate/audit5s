@@ -18,7 +18,7 @@ import { Spinner } from '@/components/ui';
 import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { AnalyticsPage } from '@/features/analytics/AnalyticsPage';
-import { AuditsPage, type AuditsSearch } from '@/features/audits/AuditsPage';
+import { AuditsPage, isStatusFilter, type AuditsSearch } from '@/features/audits/AuditsPage';
 import {
   CorrectiveActionsPage,
   validateCorrectiveActionsSearch,
@@ -190,8 +190,19 @@ const auditsRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): AuditsSearch => ({
     audit: typeof search.audit === 'string' ? search.audit : undefined,
     assignment: typeof search.assignment === 'string' ? search.assignment : undefined,
+    status: isStatusFilter(search.status) ? search.status : undefined,
   }),
   component: AuditsPage,
+});
+
+/** AU1: an audit's own address opens it in the register's side panel. */
+const auditRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/audits/$auditId',
+  component: function AuditLink() {
+    const { auditId } = auditRoute.useParams();
+    return <Navigate to="/audits" search={{ audit: auditId }} replace />;
+  },
 });
 
 const correctiveActionsRoute = createRoute({
@@ -271,6 +282,7 @@ const routeTree = rootRoute.addChildren([
     industriesRoute,
     checklistsRoute,
     auditsRoute,
+    auditRoute,
     correctiveActionsRoute,
     correctiveActionDetailRoute,
     reportsRoute,
