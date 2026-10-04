@@ -55,7 +55,7 @@ function walkBy(overallActionSuggestions?: string[]) {
   });
 }
 
-async function generate(auditZoneId: string, kind: 'INITIAL_ZONE' = 'INITIAL_ZONE') {
+async function generate(auditZoneId: string, kind: 'INITIAL_ZONE' | 'AFTER_EVIDENCE_ZONE' = 'INITIAL_ZONE') {
   const snapshot = (
     await world.request('POST', `${base}/reports/generate`, {
       token: superAdmin,
@@ -195,7 +195,9 @@ describe('the report and the link', () => {
     expect(detail.status).toBe('VERIFIED');
     expect(detail.submissions.at(-1)?.afterEvidenceId).toBeNull();
 
-    const regenerated = await generate(auditZoneId);
+    // The edition is the requester's choice: an answered Zone still issues its initial report.
+    expect((await generate(auditZoneId)).payload.kind).toBe('INITIAL_ZONE');
+    const regenerated = await generate(auditZoneId, 'AFTER_EVIDENCE_ZONE');
     expect(regenerated.payload.kind).toBe('AFTER_EVIDENCE_ZONE');
     const answered = regenerated.payload.zones[0]!.overallActions.find(
       (action) => action.correctiveActionId === target.correctiveActionId,

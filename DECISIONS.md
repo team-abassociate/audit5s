@@ -31,7 +31,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-20 | Access to the Unit is enough for an external audit | Settled |
 | R-21 | A session has no time limit | Settled |
 | R-22 | Anyone holding a corrective-action link may answer it | Settled |
-| R-23 | An after-photo closes a finding; regenerating picks up the answers | Settled |
+| R-23 | An after-photo closes a finding; regenerating picks up the answers | Settled; (b) withdrawn 2026-10-04 |
 | R-24 | A Coordinator uses the field app too | Settled |
 | R-25 | Removing a user is archiving them | Settled |
 | R-26 | An audit may be assigned to anyone who can conduct one | Settled |
@@ -1345,6 +1345,11 @@ rolls on (`PARTIALLY_CLOSED`, `CLOSED`) in the same transaction, as a verificati
   and are reviewed as before.
 
 ### (b) A Zone report of an answered Zone is the after-evidence report
+
+> **Withdrawn 2026-10-04 by the product owner:** *"Every time, I should be able to choose
+> whether I want an initial audit report or an after-evidence report."* The server issues
+> the edition asked for and never rewrites it; the admin web and the field app offer both,
+> however many findings have been answered or closed. What follows is kept as history.
 
 `generate` and `regenerate` for `INITIAL_ZONE` produce `AFTER_EVIDENCE_ZONE` once any
 corrective action of that audit Zone has an answer, so Regenerate returns the version with

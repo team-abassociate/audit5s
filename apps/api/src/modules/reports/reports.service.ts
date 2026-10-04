@@ -91,7 +91,7 @@ export class ReportsService {
 
     const { row, joined } = await this.freezeAndQueue(
       scope,
-      await this.withAnswers(scope, request),
+      request,
       snapshotId,
       null,
     );
@@ -111,15 +111,13 @@ export class ReportsService {
   /**
    * `POST /reports/{snapshotId}/regenerate` — version + 1, the original untouched.
    *
-   * The target comes from the snapshot being regenerated rather than from the request. The
-   * kind does too, with one exception (R-23): a Zone report whose findings have since been
-   * answered comes back as the after-evidence report, so the new version shows the after
-   * photos. It is still the next version of the same Zone's chain (R-14(f)).
+   * The target and the kind come from the snapshot being regenerated rather than from the
+   * request. The kind is never rewritten: the initial and the after-evidence report are
+   * both always available, and which one is the requester's choice (R-23(b), withdrawn).
    */
   async regenerate(scope: ScopeContext, snapshotId: string): Promise<ReportSnapshot> {
     const previous = await this.mustFind(scope, snapshotId);
-    const request: GenerateReportRequest = await this.withAnswers(
-      scope,
+    const request: GenerateReportRequest =
       previous.kind === 'MULTI_ZONE_SUMMARY'
         ? {
             kind: 'MULTI_ZONE_SUMMARY',
@@ -130,8 +128,7 @@ export class ReportsService {
               : {}),
             ...(previous.assignmentGroupId ? { assignmentGroupId: previous.assignmentGroupId } : {}),
           }
-        : { kind: previous.kind, auditZoneId: previous.auditZoneId! },
-    );
+        : { kind: previous.kind, auditZoneId: previous.auditZoneId! };
 
     const newId = uuidv7();
     const { row, joined } = await this.freezeAndQueue(scope, request, newId, previous.id);
@@ -147,23 +144,6 @@ export class ReportsService {
     });
 
     return toContract(row);
-  }
-
-  /**
-   * R-23: a Zone report of a Zone whose findings have been answered is the after-evidence
-   * report. Anything else is returned as asked.
-   */
-  private async withAnswers(
-    scope: ScopeContext,
-    request: GenerateReportRequest,
-  ): Promise<GenerateReportRequest> {
-    if (request.kind !== 'INITIAL_ZONE') return request;
-    const actions = await this.repository.inTransaction(scope, (tx) =>
-      this.repository.readCorrectiveActions(tx, [request.auditZoneId]),
-    );
-    return actions.some((action) => action.submissionOption !== null)
-      ? { kind: 'AFTER_EVIDENCE_ZONE', auditZoneId: request.auditZoneId }
-      : request;
   }
 
   /**
