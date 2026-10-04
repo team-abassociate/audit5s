@@ -1,4 +1,4 @@
-import type { ProblemDetails } from '@audit5s/contracts';
+import { HEADER_IDEMPOTENCY_KEY, type ProblemDetails } from '@audit5s/contracts';
 
 /**
  * Where the API is.
@@ -97,6 +97,8 @@ interface RequestOptions {
   body?: unknown;
   /** Skips the refresh-and-retry dance; used by the refresh call itself. */
   raw?: boolean;
+  /** `Idempotency-Key` (§8.2b): a retry of a call whose answer was lost replays it. */
+  idempotencyKey?: string;
 }
 
 async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -104,6 +106,7 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['content-type'] = 'application/json';
   if (current) headers.authorization = `Bearer ${current.accessToken}`;
+  if (options.idempotencyKey) headers[HEADER_IDEMPOTENCY_KEY] = options.idempotencyKey;
 
   const response = await fetch(`${BASE_URL}${path}`, {
     method: options.method ?? 'GET',
@@ -269,7 +272,8 @@ interface Paged<T> {
 export const api = {
   get: <T>(path: string) => send<T>(path),
   postText: (path: string, body: unknown) => sendText(path, body),
-  post: <T>(path: string, body?: unknown) => send<T>(path, { method: 'POST', body }),
+  post: <T>(path: string, body?: unknown, idempotencyKey?: string) =>
+    send<T>(path, { method: 'POST', body, idempotencyKey }),
   patch: <T>(path: string, body: unknown) => send<T>(path, { method: 'PATCH', body }),
   put: <T>(path: string, body: unknown) => send<T>(path, { method: 'PUT', body }),
   delete: <T>(path: string) => send<T>(path, { method: 'DELETE' }),

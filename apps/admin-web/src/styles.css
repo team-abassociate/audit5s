@@ -1866,6 +1866,12 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* A choice that is not open right now: flat, and its own text says why. */
+.gb-choice label:has(input:disabled) {
+  cursor: not-allowed;
+  box-shadow: none;
+  border-style: dashed;
+}
 .gb-choice input {
   margin-right: 6px;
   accent-color: var(--ink);

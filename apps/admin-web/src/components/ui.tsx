@@ -52,7 +52,7 @@ export function Button({
   );
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input className={cn('gb-input', className)} {...props} />;
 }
 
@@ -378,7 +378,12 @@ export function ErrorNotice({ error }: { error: unknown }) {
 
   return (
     <div className="gb-notice" role="alert">
-      <p style={{ margin: 0 }}>{problem.message ?? 'Something went wrong'}</p>
+      <p style={{ margin: 0 }}>
+        {/* fetch rejects with a TypeError ("Failed to fetch") when no answer arrives at all. */}
+        {error instanceof TypeError
+          ? 'Could not reach the server. Check your connection and try again.'
+          : (problem.message ?? 'Something went wrong')}
+      </p>
       {fields.length > 0 && (
         <ul style={{ margin: '6px 0 0', paddingLeft: 16, fontSize: 12.5 }}>
           {fields.map((f) => (
