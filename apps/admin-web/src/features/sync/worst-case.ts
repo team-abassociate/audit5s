@@ -20,6 +20,10 @@ export function worstConflicts(resolved: boolean): Page<SyncConflict> {
     entityType: ENTITIES[i % ENTITIES.length]!,
     entityId: uuid(300 + i),
     reason: REASONS[i % REASONS.length]!,
+    unitId: i % 6 === 0 ? null : uuid(1),
+    unitName: i % 6 === 0 ? null : LONG_UNIT,
+    auditId: i % 6 === 0 ? null : uuid(600 + (i % 5)),
+    zoneLabel: i % 6 === 0 ? null : i % 2 ? `Zone 12 — ${HINDI_ZONE}` : 'Zone 1',
     detail:
       i % 3 === 0
         ? null

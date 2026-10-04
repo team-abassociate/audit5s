@@ -1,11 +1,21 @@
 import { Fragment, useState } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { AUDIT_LOG_ACTIONS, type AuditLogAction, type AuditLogEntry, type Page, type ReportKind } from '@audit5s/contracts';
-import { formatDateTime, istDateKey } from '@audit5s/domain';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import {
+  AUDIT_LOG_ACTIONS,
+  syncHeldLogSchema,
+  syncUploadLogSchema,
+  type AuditLogAction,
+  type AuditLogEntry,
+  type Page,
+  type ReportKind,
+  type User,
+} from '@audit5s/contracts';
+import { formatDateTime } from '@audit5s/domain';
 import { api } from '@/lib/api';
-import { humanize, REPORT_EDITION_LABEL, roleLabel } from '@/lib/labels';
-import { useUnits } from '@/lib/scope';
+import { humanize, REPORT_EDITION_LABEL, roleLabel, syncEntityLabel } from '@/lib/labels';
+import { useUnits, useUnitScope } from '@/lib/scope';
+import { StatusChip } from '@/components/Status';
 import {
   Button,
   Card,
@@ -55,6 +65,7 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'audit.changed_after_completion': 'Corrected a finished audit',
   'audit.cancelled': 'Cancelled an audit',
   'audit.device_released': 'Released an audit from its phone',
+  'audit.restarted': 'Restarted a finished audit',
   'report.generated': 'Generated a report',
   'report.token_revoked': 'Revoked a report link',
   'report.cancelled': 'Cancelled a report',
@@ -73,6 +84,8 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'device.transferred': 'Moved a phone to someone else',
   'device.user_added': 'Signed someone in on a shared phone',
   'sync_conflict.resolved': 'Decided on held field work',
+  'sync.batch_received': 'Uploaded from a phone',
+  'sync.item_held': 'Upload held for review',
   'audit_zone.withdrawn': 'Withdrew a Zone from an audit',
 };
 
@@ -84,6 +97,7 @@ const RESOURCE_LABEL: Record<string, string> = {
   checklist_version: 'Checklist',
   corrective_action: 'Corrective action',
   device: 'Phone',
+  device_sync_record: 'Phone upload',
   evidence: 'Photo',
   industry: 'Industry',
   report: 'Report',
@@ -96,6 +110,27 @@ const RESOURCE_LABEL: Record<string, string> = {
 };
 const resourceLabel = (type: string) => RESOURCE_LABEL[type] ?? humanize(type);
 
+/**
+ * "About": the kinds of record a reviewer asks after, one option each, in their words. A kind
+ * may span several tables (a checklist is a template, its versions and its translations).
+ */
+const ABOUT: Record<string, { label: string; types: string[] }> = {
+  audit: { label: 'Audit', types: ['audit', 'audit_zone'] },
+  assignment: { label: 'Assignment', types: ['audit_assignment'] },
+  checklist: { label: 'Checklist', types: ['checklist_template', 'checklist_version', 'checklist_question_translation'] },
+  action: { label: 'Corrective action', types: ['corrective_action'] },
+  held: { label: 'Held field work', types: ['sync_conflict'] },
+  industry: { label: 'Industry', types: ['industry'] },
+  person: { label: 'Person', types: ['user'] },
+  phone: { label: 'Phone', types: ['device'] },
+  upload: { label: 'Phone upload', types: ['device_sync_record'] },
+  photo: { label: 'Photo', types: ['evidence'] },
+  report: { label: 'Report', types: ['report', 'report_access_token'] },
+  unit: { label: 'Unit', types: ['unit'] },
+  access: { label: 'Unit access', types: ['unit_membership'] },
+  zone: { label: 'Zone', types: ['zone'] },
+};
+
 /** The record a row is about, by its own name where the entry carries one. */
 function objectName(entry: AuditLogEntry): string | null {
   for (const side of [entry.after, entry.before]) {
@@ -106,7 +141,13 @@ function objectName(entry: AuditLogEntry): string | null {
     }
     if (typeof record.version === 'number') {
       const edition = REPORT_EDITION_LABEL[record.kind as ReportKind] as string | undefined;
-      return `${edition ? `${edition} · ` : ''}version ${record.version}`;
+      // F6: entries since S15d also name the Zone; older ones carry only kind and version.
+      const zone = typeof record.zoneLabel === 'string' ? ` · ${record.zoneLabel}` : '';
+      return `${edition ? `${edition} · ` : ''}version ${record.version}${zone}`;
+    }
+    const held = syncHeldLogSchema.safeParse(record);
+    if (held.success) {
+      return [syncEntityLabel(held.data.entityType), held.data.zoneLabel].filter(Boolean).join(' · ');
     }
   }
   return null;
@@ -124,64 +165,96 @@ function objectLink(entry: AuditLogEntry) {
       return { to: '/users', search: { user: entry.resourceId } } as const;
     case 'corrective_action':
       return { to: '/corrective-actions', search: { action: entry.resourceId } } as const;
+    case 'sync_conflict':
+      return { to: '/sync', search: {} } as const;
     default:
       return null;
   }
 }
 
-interface Filters {
-  actor: string;
-  kind: string;
-  from: string;
-  to: string;
+/** The Activity log's filters, kept in the URL so a filtered view can be linked and reloaded (L1). */
+export interface AuditLogSearch {
+  action?: AuditLogAction;
+  who?: string;
+  about?: string;
+  from?: string;
+  to?: string;
 }
-const NO_FILTERS: Filters = { actor: '', kind: '', from: '', to: '' };
 
+const day = (value: unknown) => (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined);
+const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : undefined);
+
+export function validateAuditLogSearch(search: Record<string, unknown>): AuditLogSearch {
+  return {
+    action: AUDIT_LOG_ACTIONS.includes(search.action as AuditLogAction) ? (search.action as AuditLogAction) : undefined,
+    who: text(search.who),
+    about: typeof search.about === 'string' && search.about in ABOUT ? search.about : undefined,
+    from: day(search.from),
+    to: day(search.to),
+  };
+}
+
+/** An IST calendar day's first or last instant, as the API's `from` / `to` take it. */
+const istBound = (key: string, end: boolean) =>
+  new Date(`${key}T${end ? '23:59:59.999' : '00:00:00.000'}+05:30`).toISOString();
 
 /**
  * The Activity log. Super Admin only, and read-only by construction: the table is
  * append-only at the database level (AL-1), so there is nothing to edit here even in
  * principle.
  *
- * The action filter asks the server; who, what and when filter the entries already loaded
- * (UX audit L1 — server filters for those are S15d), and the count says so.
+ * Every filter asks the server (L1), so "no entries" means none exist, not "none loaded".
+ * The Unit is the portal's scope, picked in the shell.
  */
 export function AuditLogPage() {
-  const [action, setAction] = useState('');
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const search = useSearch({ strict: false }) as AuditLogSearch;
+  const navigate = useNavigate();
+  const set = (patch: Partial<AuditLogSearch>) =>
+    void navigate({
+      to: '.',
+      search: ((prev: AuditLogSearch) => ({ ...prev, ...patch })) as never,
+      replace: true,
+      resetScroll: false,
+    });
   const [openId, setOpenId] = useState<string | null>(null);
+  const scope = useUnitScope();
+  const unitId = scope.unitId;
+
+  const query = new URLSearchParams({ limit: '100' });
+  if (search.action) query.set('action', search.action);
+  if (search.who) query.set('actorUserId', search.who);
+  if (search.about) query.set('resourceType', ABOUT[search.about]!.types.join(','));
+  if (search.from) query.set('from', istBound(search.from, false));
+  if (search.to) query.set('to', istBound(search.to, true));
+  if (unitId) query.set('unitId', unitId);
 
   const entries = useInfiniteQuery({
-    queryKey: ['audit-log', action],
+    queryKey: ['audit-log', query.toString()],
+    // A filter change keeps the rows on screen until the new ones arrive, rather than
+    // flashing the skeleton on every pick.
+    placeholderData: keepPreviousData,
+    enabled: scope.ready || isWorstCase(),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => {
       if (isWorstCase()) return Promise.resolve(worstAuditLog());
-      const query = new URLSearchParams({ limit: '100' });
-      if (action) query.set('action', action);
-      if (pageParam) query.set('cursor', pageParam);
-      return api.get<Page<AuditLogEntry>>(`/audit-logs?${query}`);
+      const page = new URLSearchParams(query);
+      if (pageParam) page.set('cursor', pageParam);
+      return api.get<Page<AuditLogEntry>>(`/audit-logs?${page}`);
     },
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
-  const loaded = entries.data?.pages.flatMap((page) => page.data) ?? [];
+  const rows = entries.data?.pages.flatMap((page) => page.data) ?? [];
 
-  const actors = [...new Set(loaded.map((entry) => entry.actorLabel))].sort((a, b) => a.localeCompare(b));
-  const kinds = [...new Set(loaded.map((entry) => resourceLabel(entry.resourceType)))].sort();
-  const rows = loaded.filter((entry) => {
-    const day = istDateKey(entry.occurredAt) ?? '';
-    return (
-      (!filters.actor || entry.actorLabel === filters.actor) &&
-      (!filters.kind || resourceLabel(entry.resourceType) === filters.kind) &&
-      (!filters.from || day >= filters.from) &&
-      (!filters.to || day <= filters.to)
-    );
+  // Everyone who can act, archived people included: their past entries stay findable.
+  const people = useQuery({
+    queryKey: ['users', 'all'],
+    queryFn: () => api.get<Page<User>>('/users?limit=200'),
+    staleTime: 5 * 60_000,
+    enabled: !isWorstCase(),
   });
-  const filtered = action !== '' || Object.values(filters).some(Boolean);
-  const set = (patch: Partial<Filters>) => setFilters({ ...filters, ...patch });
-  const clear = () => {
-    setAction('');
-    setFilters(NO_FILTERS);
-  };
+  const actors = [...(people.data?.data ?? [])].sort((a, b) => a.fullName.localeCompare(b.fullName));
+  const filtered = Boolean(search.action || search.who || search.about || search.from || search.to);
+  const clear = () => set({ action: undefined, who: undefined, about: undefined, from: undefined, to: undefined });
 
   const actionOptions = [...AUDIT_LOG_ACTIONS].sort((a, b) => ACTION_LABEL[a].localeCompare(ACTION_LABEL[b]));
 
@@ -189,12 +262,12 @@ export function AuditLogPage() {
     <Card>
       <CardHeader
         title="Activity log"
-        description="Every change made in the portal: who made it, and when. Entries cannot be edited or removed."
+        description="Every change made in the portal, and every upload from a phone: who, and when. Entries cannot be edited or removed."
       />
 
       <div className="gb-filters" role="search" aria-label="Filter the Activity log">
         <Field label="Action">
-          <Select value={action} onChange={(event) => setAction(event.target.value)}>
+          <Select value={search.action ?? ''} onChange={(event) => set({ action: (event.target.value || undefined) as AuditLogAction | undefined })}>
             <option value="">All actions</option>
             {actionOptions.map((a) => (
               <option key={a} value={a}>
@@ -204,37 +277,36 @@ export function AuditLogPage() {
           </Select>
         </Field>
         <Field label="Who">
-          <Select className="max-w-64" value={filters.actor} onChange={(event) => set({ actor: event.target.value })}>
+          <Select className="max-w-64" value={search.who ?? ''} onChange={(event) => set({ who: event.target.value || undefined })}>
             <option value="">Anyone</option>
-            {actors.map((actor) => (
-              <option key={actor} value={actor}>
-                {actor}
+            {actors.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.fullName}
               </option>
             ))}
           </Select>
         </Field>
         <Field label="About">
-          <Select value={filters.kind} onChange={(event) => set({ kind: event.target.value })}>
+          <Select value={search.about ?? ''} onChange={(event) => set({ about: event.target.value || undefined })}>
             <option value="">Anything</option>
-            {kinds.map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
+            {Object.entries(ABOUT).map(([key, about]) => (
+              <option key={key} value={key}>
+                {about.label}
               </option>
             ))}
           </Select>
         </Field>
         <Field label="From">
-          <Input type="date" value={filters.from} max={filters.to || undefined} onChange={(event) => set({ from: event.target.value })} />
+          <Input type="date" value={search.from ?? ''} max={search.to} onChange={(event) => set({ from: event.target.value || undefined })} />
         </Field>
         <Field label="To">
-          <Input type="date" value={filters.to} min={filters.from || undefined} onChange={(event) => set({ to: event.target.value })} />
+          <Input type="date" value={search.to ?? ''} min={search.from} onChange={(event) => set({ to: event.target.value || undefined })} />
         </Field>
-        <span className="gb-filters-count" aria-live="polite">
-          {rows.length === loaded.length
-            ? `${loaded.length.toLocaleString('en-IN')} entr${loaded.length === 1 ? 'y' : 'ies'}`
-            : `${rows.length.toLocaleString('en-IN')} of ${loaded.length.toLocaleString('en-IN')} loaded entries`}
-          {entries.hasNextPage ? ' · older entries not loaded yet' : ''}
-        </span>
+        {entries.data ? (
+          <span className="gb-filters-count" aria-live="polite">
+            {`${rows.length.toLocaleString('en-IN')}${entries.hasNextPage ? '+' : ''} entr${rows.length === 1 ? 'y' : 'ies'}`}
+          </span>
+        ) : null}
         {filtered ? (
           <Button variant="secondary" onClick={clear}>
             Clear filters
@@ -258,9 +330,7 @@ export function AuditLogPage() {
                 Clear filters
               </Button>
             }
-          >
-            {entries.hasNextPage ? 'Only the loaded entries were searched. Load older entries to look further back.' : null}
-          </EmptyState>
+          />
         ) : (
           <EmptyState title="Nothing logged yet." />
         )
@@ -307,10 +377,10 @@ export function AuditLogPage() {
 function AuditLogRow({ entry, open, onToggle }: { entry: AuditLogEntry; open: boolean; onToggle: () => void }) {
   const name = objectName(entry);
   const link = objectLink(entry);
-  /** A report entry carries its Unit's id but no name; the Zone is not in the entry at all. */
+  /** An entry carries its Unit's id, not its name. */
   const units = useUnits();
-  const unitName =
-    entry.resourceType === 'report' ? units.data?.data.find((unit) => unit.id === entry.unitId)?.name : undefined;
+  const unitName = entry.unitId ? units.data?.data.find((unit) => unit.id === entry.unitId)?.name : undefined;
+  const upload = entry.action === 'sync.batch_received' ? syncUploadLogSchema.safeParse(entry.after).data : undefined;
 
   return (
     <Fragment>
@@ -344,8 +414,9 @@ function AuditLogRow({ entry, open, onToggle }: { entry: AuditLogEntry; open: bo
                 </Link>
               </>
             ) : null}
-            {unitName ? ` · ${unitName}` : null}
+            {unitName && unitName !== name ? ` · ${unitName}` : null}
           </div>
+          {upload ? <UploadCounts upload={upload} /> : null}
         </td>
       </tr>
       {open && (
@@ -386,5 +457,20 @@ function AuditLogRow({ entry, open, onToggle }: { entry: AuditLogEntry; open: bo
         </tr>
       )}
     </Fragment>
+  );
+}
+
+/** D11: what one upload did, in the S4 status shapes: saved, held, still to come. */
+function UploadCounts({ upload }: { upload: NonNullable<ReturnType<typeof syncUploadLogSchema.safeParse>['data']> }) {
+  const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      <StatusChip shape="done">
+        {count(upload.applied, 'item')} saved
+        {upload.photos > 0 ? `, ${count(upload.photos, 'photo')}` : ''}
+      </StatusChip>
+      {upload.held > 0 ? <StatusChip shape="attention">{count(upload.held, 'item')} held</StatusChip> : null}
+      {upload.waiting > 0 ? <StatusChip shape="open">{count(upload.waiting, 'item')} still to come</StatusChip> : null}
+    </div>
   );
 }

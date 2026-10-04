@@ -102,7 +102,13 @@ export class ReportsService {
       resourceType: 'report',
       resourceId: snapshotId,
       unitId: row.unitId,
-      after: { kind: row.kind, version: row.version },
+      // F6: the Zone and audit, so the Activity log names which Zone's report this was.
+      after: {
+        kind: row.kind,
+        version: row.version,
+        auditId: row.auditId,
+        zoneLabel: reportSubject(row.payload).zoneLabel,
+      },
     });
 
     return toContract(row);
@@ -140,7 +146,13 @@ export class ReportsService {
       resourceId: newId,
       unitId: row.unitId,
       before: { supersedes: previous.id, version: previous.version },
-      after: { kind: row.kind, version: row.version },
+      // F6: the Zone and audit, so the Activity log names which Zone's report this was.
+      after: {
+        kind: row.kind,
+        version: row.version,
+        auditId: row.auditId,
+        zoneLabel: reportSubject(row.payload).zoneLabel,
+      },
     });
 
     return toContract(row);

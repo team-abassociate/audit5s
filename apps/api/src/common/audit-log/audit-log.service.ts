@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AuditLogAction } from '@audit5s/contracts';
 import { getRequestContext } from '../observability/request-context';
-import { AuditLogRepository } from './audit-log.repository';
+import { AuditLogRepository, type AuditLogRow } from './audit-log.repository';
 
 export interface AuditLogInput {
   action: AuditLogAction;
@@ -26,24 +26,7 @@ export class AuditLogService {
   constructor(private readonly repository: AuditLogRepository) {}
 
   async record(input: AuditLogInput, actorLabel?: string): Promise<void> {
-    const context = getRequestContext();
-    const actor = context?.actor ?? null;
-
-    await this.repository.insert({
-      actorUserId: actor?.userId ?? null,
-      actorRole: actor?.role ?? null,
-      actorLabel: actorLabel ?? context?.actorLabel ?? 'system',
-      action: input.action,
-      resourceType: input.resourceType,
-      resourceId: input.resourceId ?? null,
-      unitId: input.unitId ?? null,
-      before: redactDiff(input.before),
-      after: redactDiff(input.after),
-      ipAddress: context?.ipAddress ?? null,
-      userAgent: context?.userAgent ?? null,
-      deviceId: actor?.deviceId ?? null,
-      requestId: context?.requestId ?? 'system',
-    });
+    await this.repository.insert(auditLogRow(input, actorLabel));
   }
 
   /** Never let an audit-log failure mask the operation's own outcome — but never lose it silently either. */
@@ -54,6 +37,30 @@ export class AuditLogService {
       this.logger.error({ err: error, action: input.action }, 'Failed to write audit log entry');
     }
   }
+}
+
+/**
+ * The row for an entry, from the request's actor. Exported for the few writes that must
+ * share their domain write's transaction (the sync path, D11): they insert this on `tx`.
+ */
+export function auditLogRow(input: AuditLogInput, actorLabel?: string): AuditLogRow {
+  const context = getRequestContext();
+  const actor = context?.actor ?? null;
+  return {
+    actorUserId: actor?.userId ?? null,
+    actorRole: actor?.role ?? null,
+    actorLabel: actorLabel ?? context?.actorLabel ?? 'system',
+    action: input.action,
+    resourceType: input.resourceType,
+    resourceId: input.resourceId ?? null,
+    unitId: input.unitId ?? null,
+    before: redactDiff(input.before),
+    after: redactDiff(input.after),
+    ipAddress: context?.ipAddress ?? null,
+    userAgent: context?.userAgent ?? null,
+    deviceId: actor?.deviceId ?? null,
+    requestId: context?.requestId ?? 'system',
+  };
 }
 
 /** Fields that must never reach the audit log, whatever a caller passes (§12.12). */

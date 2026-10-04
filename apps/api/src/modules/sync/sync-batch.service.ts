@@ -120,14 +120,44 @@ export class SyncBatchService {
     const conflicts = results.filter((r) => r.status === 'CONFLICT');
     const rejected = results.filter((r) => r.status === 'REJECTED');
 
-    await this.repository.finishBatch(scope, request.batchId, {
-      results,
-      acceptedCount: accepted.length,
-      rejectedCount: rejected.length,
-      conflictCount: conflicts.length,
-      status: rejected.length > 0 || conflicts.length > 0 ? 'PARTIAL' : 'COMPLETED',
-      error: null,
-    });
+    // D11: one Activity log entry per upload that saved or held something. A batch of only
+    // waiting items (a photo still on its way) or of items already on the server writes none,
+    // and a replayed batch id never reaches here — so retries add no rows.
+    const saved = results.filter((r) => r.status === 'ACCEPTED');
+    const held = conflicts.length + rejected.length;
+    const byOutbox = new Map(request.items.map((item) => [item.outboxId, item]));
+    const upload =
+      saved.length > 0 || held > 0
+        ? {
+            items: request.items,
+            log: {
+              batchId: request.batchId,
+              appVersion: request.appVersion ?? null,
+              items: results.length,
+              applied: accepted.length,
+              held,
+              waiting: results.filter((r) => r.status === 'RETRY_AFTER_PARENT').length,
+              photos: saved.filter((r) => {
+                const item = byOutbox.get(r.outboxId);
+                return item?.entityType === 'evidence' && item.operation === 'commit';
+              }).length,
+            },
+          }
+        : null;
+
+    await this.repository.finishBatch(
+      scope,
+      request.batchId,
+      {
+        results,
+        acceptedCount: accepted.length,
+        rejectedCount: rejected.length,
+        conflictCount: conflicts.length,
+        status: rejected.length > 0 || conflicts.length > 0 ? 'PARTIAL' : 'COMPLETED',
+        error: null,
+      },
+      upload,
+    );
 
     // The Devices table's "Last synced" and the integrity job's silent-device check both
     // read this stamp; nothing wrote it, so every phone read "never" and looked lost.

@@ -89,6 +89,18 @@ describe('POST /reports/generate', () => {
     // Never a PDF on the request path (STACK.md §5): the object arrives with the render.
     expect(snapshot.pdfObjectKey).toBeNull();
 
+    // F6: the Activity log names the Zone and the audit, not only "version 1".
+    const log = await world.request('GET', `${base}/audit-logs?action=report.generated&resourceId=${snapshot.id}`, {
+      token: superAdmin,
+    });
+    expect((log.body as { data: Array<{ after: unknown }> }).data[0]?.after).toEqual({
+      kind: 'INITIAL_ZONE',
+      version: 1,
+      auditId: snapshot.auditId,
+      zoneLabel: snapshot.subject.zoneLabel,
+    });
+    expect(snapshot.subject.zoneLabel).toBeTruthy();
+
     const tokens = await world.request('GET', `${base}/reports/${snapshot.id}/tokens`, {
       token: superAdmin,
     });
