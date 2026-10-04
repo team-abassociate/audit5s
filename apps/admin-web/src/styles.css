@@ -2501,3 +2501,59 @@ li:has(> .gb-menu-item--danger) {
     transition-duration: 150ms;
   }
 }
+
+/* --- Corrective actions (UX audit CA8): when the list is narrower than 760px — a phone, or
+   a laptop with the side panel open — a row is a card: the item on its own line, the rest
+   wrapped beneath it, instead of six columns squeezing the item to 100px. Group headings (a
+   single spanning cell) stay as they are. --- */
+.gb-ca-list {
+  container-type: inline-size;
+}
+@container (max-width: 760px) {
+  .gb-ca-list thead {
+    display: none;
+  }
+  .gb-ca-list table,
+  .gb-ca-list tbody,
+  .gb-ca-list tr,
+  .gb-ca-list td {
+    display: block;
+    min-width: 0;
+  }
+  .gb-ca-list tbody tr:not(:has(> td[colspan])) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--edge-soft);
+  }
+  .gb-ca-list tbody tr:not(:has(> td[colspan])) td {
+    padding: 0;
+    border: 0;
+  }
+  .gb-ca-list tbody tr:not(:has(> td[colspan])) td:first-child {
+    flex: 1 0 100%;
+  }
+  /* The header row is gone, so each value says what it is. */
+  .gb-ca-list tbody tr:not(:has(> td[colspan])) td:nth-child(n + 3)::before {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .gb-ca-list tbody tr td:nth-child(3)::before {
+    content: 'Zone Leader';
+  }
+  .gb-ca-list tbody tr td:nth-child(4)::before {
+    content: 'Due';
+  }
+  .gb-ca-list tbody tr td:nth-child(5)::before {
+    content: 'Opened';
+  }
+  .gb-ca-list tbody tr td:nth-child(6)::before {
+    content: 'Closed';
+  }
+}

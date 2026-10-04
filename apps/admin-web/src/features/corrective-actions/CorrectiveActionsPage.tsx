@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Fragment, useState } from 'react';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import {
   CORRECTIVE_ACTION_STATUSES,
   type CorrectiveAction,
@@ -11,6 +12,7 @@ import {
   type Page,
   type Unit,
   type User,
+  type Zone,
 } from '@audit5s/contracts';
 import {
   awaitsReview,
@@ -25,8 +27,72 @@ import { api } from '@/lib/api';
 import { ACTION_STATUS_LABEL, SECTION_LABEL, SUBMISSION_CHANNEL_LABEL, auditTypeLabel, roleLabel } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
-import { Badge, Button, Card, CardHeader, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorNotice,
+  Field,
+  Input,
+  Select,
+  SidePanel,
+  Skeleton,
+  Spinner,
+  StatusChip,
+  Table,
+  Td,
+  Th,
+  useRoutedPanel,
+} from '@/components/ui';
 import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
+import { groupActions, overdueByLeader, type GroupKey, type LeaderOf, type SortKey } from './queue';
+
+/** "Awaiting review": a "not possible" or a submission waiting for a decision (CA4). */
+const REVIEW = 'REVIEW';
+type StatusFilter = CorrectiveActionStatus | typeof REVIEW;
+
+/** The page's URL (CA1, CA5): the open item, the filters, the order. Defaults are left out. */
+export interface CorrectiveActionsSearch {
+  action?: string;
+  status?: StatusFilter;
+  overdue?: true;
+  audit?: string;
+  sort?: Exclude<SortKey, 'due'>;
+  group?: Exclude<GroupKey, 'audit'>;
+  /** Development only: `?data=worst` swaps the API for the worst-case fixture (break-ui). */
+  data?: 'worst';
+}
+
+const str = (value: unknown) => (typeof value === 'string' && value !== '' ? value : undefined);
+
+export function validateCorrectiveActionsSearch(search: Record<string, unknown>): CorrectiveActionsSearch {
+  const status = str(search.status);
+  return {
+    action: str(search.action),
+    status:
+      status === REVIEW || CORRECTIVE_ACTION_STATUSES.includes(status as CorrectiveActionStatus)
+        ? (status as StatusFilter)
+        : undefined,
+    overdue: search.overdue === true || search.overdue === 'true' ? true : undefined,
+    audit: str(search.audit),
+    sort: search.sort === 'age' || search.sort === 'leader' ? search.sort : undefined,
+    group: search.group === 'leader' ? 'leader' : undefined,
+    data: import.meta.env.DEV && search.data === 'worst' ? 'worst' : undefined,
+  };
+}
+
+/**
+ * Reads go through here: the API, or in development with `?data=worst` the worst-case
+ * fixture (long names, 1,000 rows), loaded only then so it never ships.
+ */
+function useLoad() {
+  const { data } = useSearch({ strict: false }) as CorrectiveActionsSearch;
+  const worst = import.meta.env.DEV && data === 'worst';
+  const load = <T,>(path: string): Promise<T> =>
+    worst ? import('./worst-case').then((fixture) => fixture.worstCase(path) as T) : api.get<T>(path);
+  return { worst, load };
+}
 
 /**
  * Corrective actions (PART 14, Phase 6's Web row): the review queue — approve, and
@@ -37,35 +103,31 @@ import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
  * render from `can()`, and the API refuses anything else regardless.
  */
 export function CorrectiveActionsPage() {
-  const [status, setStatus] = useState<CorrectiveActionStatus | ''>('');
-  const [overdue, setOverdue] = useState(false);
+  const search = useSearch({ strict: false }) as CorrectiveActionsSearch;
+  const navigate = useNavigate();
+  const setSearch = (patch: Partial<CorrectiveActionsSearch>) =>
+    void navigate({
+      to: '.',
+      search: ((prev: CorrectiveActionsSearch) => ({ ...prev, ...patch })) as never,
+      replace: true,
+      resetScroll: false,
+    });
+  const { worst, load } = useLoad();
+  const panel = useRoutedPanel('action');
+  const sort: SortKey = search.sort ?? 'due';
+  const group: GroupKey = search.group ?? 'audit';
+  const status = search.status ?? '';
+  const overdue = search.overdue === true;
+
   // The Unit is the portal's scope, chosen in the shell's topbar (lib/scope.ts); `null`
   // there is "All Units", which only an organization-wide role is offered.
   const scope = useUnitScope();
   const unitId = scope.unitId ?? '';
-  // An audit belongs to one Unit, so a Unit change can only invalidate the audit filter.
-  const [auditPick, setAuditPick] = useState({ unitId: '', auditId: '' });
-  const auditId = auditPick.unitId === unitId ? auditPick.auditId : '';
-  const setAuditId = (id: string) => setAuditPick({ unitId, auditId: id });
-  const [selected, setSelected] = useState<string | null>(null);
-  // CA1 (keyboard part): the item title is the row's button. Opening from it moves focus to
-  // the detail, wherever on the page it renders, and Close hands focus back to the title.
-  const [focusRequest, setFocusRequest] = useState(0);
-  const opener = useRef<HTMLButtonElement | null>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  const panelId = useId();
-  useEffect(() => {
-    if (focusRequest > 0) panel.current?.focus();
-  }, [focusRequest]);
-  const closePanel = () => {
-    setSelected(null);
-    opener.current?.focus();
-    opener.current = null;
-  };
 
   const units = useQuery({
-    queryKey: ['units'],
-    queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
+    queryKey: ['units', worst],
+    queryFn: () => load<Page<Unit>>('/units?limit=200'),
+    staleTime: 5 * 60_000,
   });
 
   /**
@@ -74,22 +136,24 @@ export function CorrectiveActionsPage() {
    * not become its fourth because a newer one arrived.
    */
   const audits = useQuery({
-    queryKey: ['corrective-actions', 'audits', unitId],
-    queryFn: () => api.get<Page<Audit>>(`/audits?unitId=${unitId}&limit=200`),
+    queryKey: ['corrective-actions', 'audits', unitId, worst],
+    queryFn: () => load<Page<Audit>>(`/audits?unitId=${unitId}&limit=200`),
     enabled: unitId !== '',
   });
-  const numbered = useMemo(() => {
-    const completed = (audits.data?.data ?? [])
-      .filter((audit) => audit.completedAt !== null)
-      .sort((a, b) => a.completedAt!.localeCompare(b.completedAt!));
-    return new Map(completed.map((audit, index) => [audit.id, { audit, number: index + 1 }]));
-  }, [audits.data]);
+  const completed = (audits.data?.data ?? [])
+    .filter((audit) => audit.completedAt !== null)
+    .sort((a, b) => a.completedAt!.localeCompare(b.completedAt!));
+  const numbered = new Map(completed.map((audit, index) => [audit.id, { audit, number: index + 1 }]));
+  // An audit belongs to one Unit: a Unit change makes a stale `?audit=` mean nothing.
+  const auditId =
+    unitId !== '' && search.audit && (!audits.data || numbered.has(search.audit)) ? search.audit : '';
 
+  const serverStatus = status === REVIEW ? '' : status;
   const actions = useQuery({
-    queryKey: ['corrective-actions', status, overdue, unitId, auditId],
+    queryKey: ['corrective-actions', serverStatus, overdue, unitId, auditId, worst],
     queryFn: () =>
-      api.get<Page<CorrectiveAction>>(
-        `/corrective-actions?limit=200${status ? `&status=${status}` : ''}` +
+      load<Page<CorrectiveAction>>(
+        `/corrective-actions?limit=200${serverStatus ? `&status=${serverStatus}` : ''}` +
           `${overdue ? '&overdue=true' : ''}${unitId ? `&unitId=${unitId}` : ''}` +
           `${auditId ? `&auditId=${auditId}` : ''}`,
       ),
@@ -97,110 +161,119 @@ export function CorrectiveActionsPage() {
     enabled: scope.ready,
   });
 
-  const rows = actions.data?.data ?? [];
-  const waiting = rows.filter((action) => awaitsReview(action.status)).length;
+  const fetched = actions.data?.data ?? [];
+  const rows = status === REVIEW ? fetched.filter((action) => awaitsReview(action.status)) : fetched;
+  const waiting = fetched.filter((action) => awaitsReview(action.status)).length;
 
-  /**
-   * Unit → audit → its actions.
-   *
-   * A flat list of every nonconformity in the organization is unusable at more than one
-   * Unit: the rows interleave, and nothing tells you which visit produced which finding.
-   * Grouping is what makes the page a work queue rather than a log.
-   */
+  // D3: who to chase is the Zone's leader — an account or the name the auditor typed — unless
+  // the item was reassigned to someone. The Zones are read per Unit on the list.
+  const unitIds = [...new Set(fetched.map((action) => action.unitId))];
+  const zoneLeader = useQueries({
+    queries: unitIds.map((id) => ({
+      queryKey: ['corrective-actions', 'zones', id, worst],
+      queryFn: () => load<Page<Zone>>(`/units/${id}/zones?active=false&limit=200`),
+      staleTime: 5 * 60_000,
+    })),
+    combine: (results) =>
+      new Map(results.flatMap((result) => result.data?.data ?? []).map((zone) => [zone.id, zone.zoneLeaderName])),
+  });
+  const leaderOf: LeaderOf = (action) => action.assignedZoneLeaderName ?? zoneLeader.get(action.zoneId) ?? null;
+
   const unitName = (id: string) =>
     units.data?.data.find((unit) => unit.id === id)?.name ?? 'Unknown unit';
-
-  const grouped = useMemo(() => {
-    const byUnit = new Map<string, Map<string, CorrectiveAction[]>>();
-    for (const action of rows) {
-      const byAudit = byUnit.get(action.unitId) ?? new Map<string, CorrectiveAction[]>();
-      byAudit.set(action.auditId, [...(byAudit.get(action.auditId) ?? []), action]);
-      byUnit.set(action.unitId, byAudit);
-    }
-    // Worst first at both levels: the Unit carrying the most overdue work comes first, and
-    // within it the audit that raised the most. The page opens on what needs attention.
-    const overdueCount = (list: CorrectiveAction[]) =>
-      list.filter((action) => isOverdue(action.status, action.dueAt, Date.now())).length;
-    return [...byUnit.entries()]
-      .map(([id, byAudit]) => ({
-        unitId: id,
-        name: unitName(id),
-        audits: [...byAudit.entries()]
-          .map(([aid, list]) => ({ auditId: aid, list, overdue: overdueCount(list) }))
-          .sort(
-            (a, b) =>
-              b.overdue - a.overdue ||
-              (b.list[0]!.auditCompletedAt ?? '').localeCompare(a.list[0]!.auditCompletedAt ?? ''),
-          ),
-        overdue: overdueCount([...byAudit.values()].flat()),
-        total: [...byAudit.values()].flat().length,
-      }))
-      .sort((a, b) => b.overdue - a.overdue || a.name.localeCompare(b.name));
-  }, [rows, units.data]);
-
-  const overdueTotal = grouped.reduce((sum, unit) => sum + unit.overdue, 0);
+  const now = Date.now();
+  const grouped = groupActions(rows, { group, sort, leaderOf, now });
+  const chase = overdueByLeader(rows, leaderOf, now);
+  const overdueTotal = chase.reduce((sum, entry) => sum + entry.count, 0);
+  const manyUnits = grouped.length > 1;
+  const filtered = status !== '' || overdue || auditId !== '';
 
   return (
-    <div className="space-y-4">
-      <Card>
+    <div className="gb-withpanel">
+      <Card className="min-w-0">
         <CardHeader
           title="Corrective actions"
           description={
-            'One action per nonconformity photograph. Each is answered, and reviewed, on its ' +
-            'own: nothing here acts on more than one at a time, and every attempt is kept.'
+            'Every finding from a completed audit, until it is closed. The Zone Leader answers ' +
+            'each one; you chase what is overdue and decide on what they could not fix.'
           }
-          action={waiting > 0 ? <Badge tone="warn">{waiting} awaiting review</Badge> : undefined}
+          action={
+            waiting > 0 && status !== REVIEW ? (
+              <Button variant="secondary" onClick={() => setSearch({ status: REVIEW, overdue: undefined })}>
+                {waiting} awaiting review
+              </Button>
+            ) : undefined
+          }
         />
-        <div className="flex flex-wrap items-end gap-3 border-b border-edge-soft px-4 py-3">
-          <div className="w-64">
-            <Field
-              label="Audit"
-              hint={unitId === '' ? 'Choose one Unit at the top of the page' : undefined}
+        <div className="gb-filters">
+          <Field label="Audit" hint={unitId === '' ? 'Choose one Unit at the top of the page' : undefined}>
+            <Select
+              value={auditId}
+              onChange={(event) => setSearch({ audit: event.target.value || undefined })}
+              disabled={unitId === '' || numbered.size === 0}
             >
-              <Select
-                value={auditId}
-                onChange={(event) => setAuditId(event.target.value)}
-                disabled={unitId === '' || numbered.size === 0}
-              >
-                <option value="">
-                  {unitId === ''
-                    ? 'Every audit'
-                    : numbered.size === 0
-                      ? 'No completed audits'
-                      : `Every audit · ${numbered.size}`}
+              <option value="">
+                {unitId === ''
+                  ? 'Every audit'
+                  : numbered.size === 0
+                    ? 'No completed audits'
+                    : `Every audit · ${numbered.size}`}
+              </option>
+              {[...numbered.values()].reverse().map(({ audit, number }) => (
+                <option key={audit.id} value={audit.id}>
+                  {`Audit ${number} · ${formatDate(audit.completedAt)} · ${audit.auditorName}`}
                 </option>
-                {[...numbered.values()]
-                  .reverse()
-                  .map(({ audit, number }) => (
-                    <option key={audit.id} value={audit.id}>
-                      {`Audit ${number} · ${formatDate(audit.completedAt)} · ${audit.auditorName}`}
-                    </option>
-                  ))}
-              </Select>
-            </Field>
-          </div>
-          <div className="w-48">
-            <Field label="Status">
-              <Select value={status} onChange={(event) => setStatus(event.target.value as CorrectiveActionStatus | '')}>
-                <option value="">Any</option>
-                {CORRECTIVE_ACTION_STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {ACTION_STATUS_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Status">
+            <Select
+              value={status}
+              onChange={(event) => setSearch({ status: (event.target.value || undefined) as StatusFilter | undefined })}
+            >
+              <option value="">Any</option>
+              <option value={REVIEW}>Awaiting review</option>
+              {CORRECTIVE_ACTION_STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {ACTION_STATUS_LABEL[value]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Sort">
+            <Select
+              value={sort}
+              onChange={(event) =>
+                setSearch({ sort: event.target.value === 'due' ? undefined : (event.target.value as 'age' | 'leader') })
+              }
+            >
+              <option value="due">Due date, soonest first</option>
+              <option value="age">Age, oldest first</option>
+              <option value="leader">Zone Leader, A to Z</option>
+            </Select>
+          </Field>
+          <Field label="Group">
+            <Select
+              value={group}
+              onChange={(event) => setSearch({ group: event.target.value === 'leader' ? 'leader' : undefined })}
+            >
+              <option value="audit">By audit</option>
+              <option value="leader">By Zone and leader</option>
+            </Select>
+          </Field>
           <label className="flex items-center gap-2 pb-2 text-sm text-ink-2">
-            <input type="checkbox" checked={overdue} onChange={(event) => setOverdue(event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={overdue}
+              onChange={(event) => setSearch({ overdue: event.target.checked ? true : undefined })}
+            />
             Overdue only
           </label>
         </div>
 
         {/*
-          The one thing on this page somebody must act on today. It names the Units rather
-          than only counting, because "9 overdue" tells a Super Admin nothing about who to
-          call — and calling someone is the entire response to an overdue action.
+          The one thing on this page somebody must act on today. It names who to call, by Zone
+          and leader (D3), because calling someone is the entire response to an overdue action.
         */}
         {overdueTotal > 0 && !overdue && (
           <div className="px-4 pt-3">
@@ -209,149 +282,169 @@ export function CorrectiveActionsPage() {
                 {overdueTotal} corrective {overdueTotal === 1 ? 'action is' : 'actions are'} overdue
               </b>
               <p>
-                {grouped
-                  .filter((unit) => unit.overdue > 0)
-                  .map((unit) => `${unit.name} (${unit.overdue})`)
-                  .join(', ')}
-                . Their Zone Leaders are named on each row below.{' '}
+                Who to chase:{' '}
+                {chase
+                  .slice(0, 3)
+                  .map(
+                    (entry, index, top) =>
+                      // A Unit is named once, before its first Zone: Zone numbers repeat across Units.
+                      `${manyUnits && top[index - 1]?.unitId !== entry.unitId ? `${unitName(entry.unitId)}: ` : ''}` +
+                      `${entry.zone} — ${entry.leader ?? 'no Zone Leader on record'} (${entry.count})`,
+                  )
+                  .join('; ')}
+                {chase.length > 3 ? `; and ${chase.length - 3} more` : ''}.{' '}
                 <button
                   type="button"
                   className="underline"
-                  onClick={() => setOverdue(true)}
+                  onClick={() => setSearch({ overdue: true, group: 'leader', status: undefined })}
                 >
-                  Show only these
+                  Show only these, by Zone and leader
                 </button>
               </p>
             </div>
           </div>
         )}
 
-        {actions.isLoading && <Spinner />}
+        {(actions.isLoading || !scope.ready) && (
+          <Skeleton variant="rows" columns={['Item', 'Status', 'Zone Leader', 'Due', 'Opened', 'Closed']} />
+        )}
         {actions.error && (
           <div className="p-4">
             <ErrorNotice error={actions.error} />
           </div>
         )}
         {actions.data && rows.length === 0 && (
-          <p className="px-4 py-4 text-sm text-ink-3">No corrective actions match.</p>
+          <EmptyState
+            title={filtered ? 'No corrective actions match these filters.' : 'No corrective actions.'}
+            action={
+              filtered ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => setSearch({ status: undefined, overdue: undefined, audit: undefined })}
+                >
+                  Clear filters
+                </Button>
+              ) : undefined
+            }
+          >
+            {filtered ? undefined : 'A completed audit raises one for every nonconformity photograph.'}
+          </EmptyState>
         )}
         {actions.data && rows.length > 0 && (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Item</Th>
-                <Th>Status</Th>
-                <Th>Zone Leader</Th>
-                <Th>Due</Th>
-                <Th>Opened</Th>
-                <Th>Closed</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {grouped.map((unit) => (
-                <Fragment key={unit.unitId}>
-                  <tr className="bg-tile-2">
-                    <Td colSpan={6}>
-                      <span className="gb-h2">{unit.name}</span>
-                      <span className="ml-2 text-xs text-ink-3">
-                        {unit.total} {unit.total === 1 ? 'action' : 'actions'}
-                        {unit.overdue > 0 ? ` · ${unit.overdue} overdue` : ''}
-                      </span>
-                    </Td>
-                  </tr>
-                  {unit.audits.map((group) => (
-                    <Fragment key={group.auditId}>
-                      <tr className="bg-board">
-                        <Td colSpan={6}>
-                          <span className="text-xs font-medium text-ink-2">
-                            {auditHeading(group.list[0]!, numbered.get(group.auditId)?.number)}
-                          </span>
-                          {group.overdue > 0 && (
-                            <span className="ml-2 text-xs text-crit">
-                              {group.overdue} overdue
+          <div className="gb-ca-list">
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Item</Th>
+                  <Th>Status</Th>
+                  <Th>Zone Leader</Th>
+                  <Th>Due</Th>
+                  <Th>Opened</Th>
+                  <Th>Closed</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {grouped.map((unit) => (
+                  <Fragment key={unit.unitId}>
+                    <tr className="gb-group">
+                      <Td colSpan={6}>
+                        <span className="gb-group-title">{unitName(unit.unitId)}</span>
+                        <span className="gb-group-meta">
+                          {unit.total} {unit.total === 1 ? 'action' : 'actions'}
+                          {unit.overdue > 0 ? ` · ${unit.overdue} overdue` : ''}
+                        </span>
+                      </Td>
+                    </tr>
+                    {unit.groups.map((entry) => (
+                      <Fragment key={entry.key}>
+                        <tr className="bg-board">
+                          <Td colSpan={6}>
+                            <span className="text-xs font-medium text-ink-2">
+                              {entry.auditId !== null
+                                ? auditHeading(entry.list[0]!, numbered.get(entry.auditId)?.number)
+                                : `${entry.zone} · ${entry.leader ?? 'No Zone Leader on record'}`}
                             </span>
-                          )}
-                        </Td>
-                      </tr>
-                      {group.list.map((action) => {
-                        const late = isOverdue(action.status, action.dueAt, Date.now());
-                        return (
-                          <tr
+                            {entry.overdue > 0 && (
+                              <span className="ml-2 text-xs font-semibold gb-text-crit">{entry.overdue} overdue</span>
+                            )}
+                          </Td>
+                        </tr>
+                        {entry.list.map((action) => (
+                          <ActionRow
                             key={action.id}
-                            className="cursor-pointer hover:bg-board"
-                            onClick={(event) => {
-                              // The title is a button with its own handler; the rest of
-                              // the row stays a mouse target.
-                              if ((event.target as Element).closest('button')) return;
-                              setSelected(action.id);
-                            }}
-                          >
-                            <Td>
-                              <button
-                                type="button"
-                                className="gb-rowtoggle"
-                                aria-expanded={selected === action.id}
-                                aria-controls={panelId}
-                                onClick={(event) => {
-                                  opener.current = event.currentTarget;
-                                  setSelected(action.id);
-                                  setFocusRequest((count) => count + 1);
-                                }}
-                              >
-                                {zoneDisplayLabel(action.zoneCode, action.zoneName)}
-                              </button>
-                              <div className="text-xs text-ink-3">{itemLabel(action)}</div>
-                            </Td>
-                            <Td>
-                              <StatusBadge status={action.status} />
-                              {action.reopenCount > 0 && (
-                                <span className="ml-1 text-xs text-ink-3">
-                                  reopened ×{action.reopenCount}
-                                </span>
-                              )}
-                            </Td>
-                            <Td>{action.assignedZoneLeaderName ?? '—'}</Td>
-                            <Td>
-                              {action.dueAt ? (
-                                // The word as well as the colour: an overdue row has to
-                                // survive a projector and a colour-blind reader.
-                                <span className={late ? 'text-crit' : ''}>
-                                  {formatDate(action.dueAt)}
-                                  {late && <b className="ml-1">Overdue</b>}
-                                </span>
-                              ) : (
-                                '—'
-                              )}
-                            </Td>
-                            <Td>{formatDate(action.openedAt)}</Td>
-                            <Td>
-                              <Closed action={action} />
-                            </Td>
-                          </tr>
-                        );
-                      })}
-                    </Fragment>
-                  ))}
-                </Fragment>
-              ))}
-            </tbody>
-          </Table>
+                            action={action}
+                            leader={leaderOf(action)}
+                            now={now}
+                            open={panel.id === action.id}
+                            onOpen={() => panel.open(action.id)}
+                          />
+                        ))}
+                      </Fragment>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </Table>
+          </div>
         )}
       </Card>
 
-      {selected && (
-        <div
-          ref={panel}
-          id={panelId}
-          tabIndex={-1}
-          role="region"
-          aria-label="Corrective action detail"
-          className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--accent)"
-        >
-          <ActionPanel actionId={selected} onClose={closePanel} />
-        </div>
-      )}
+      <ActionPanel actionId={panel.id} onClose={panel.close} zoneLeaderOf={(zoneId) => zoneLeader.get(zoneId) ?? null} />
     </div>
+  );
+}
+
+function ActionRow({
+  action,
+  leader,
+  now,
+  open,
+  onOpen,
+}: {
+  action: CorrectiveAction;
+  leader: string | null;
+  now: number;
+  open: boolean;
+  onOpen: () => void;
+}) {
+  const late = isOverdue(action.status, action.dueAt, now);
+  return (
+    <tr
+      className={open ? 'gb-row--open cursor-pointer' : 'cursor-pointer'}
+      onClick={(event) => {
+        // The title is the keyboard's way in (a button); the rest of the row is the mouse's.
+        if ((event.target as Element).closest('button, a')) return;
+        onOpen();
+      }}
+    >
+      <Td>
+        <button type="button" className="gb-rowtoggle" aria-current={open ? 'true' : undefined} onClick={onOpen}>
+          {zoneDisplayLabel(action.zoneCode, action.zoneName)}
+        </button>
+        <div className="text-xs text-ink-3">{itemLabel(action)}</div>
+      </Td>
+      <Td>
+        <StatusChip kind="action" status={action.status} />
+        {action.reopenCount > 0 && <span className="ml-1 text-xs text-ink-3">reopened ×{action.reopenCount}</span>}
+      </Td>
+      <Td>{leader ?? '—'}</Td>
+      <Td className="gb-data">
+        {action.dueAt ? (
+          // The word as well as the colour: an overdue row has to survive a projector and a
+          // colour-blind reader.
+          <span className={late ? 'gb-text-crit' : ''}>
+            {formatDate(action.dueAt)}
+            {late && <b className="ml-1">Overdue</b>}
+          </span>
+        ) : (
+          '—'
+        )}
+      </Td>
+      <Td className="gb-data">{formatDate(action.openedAt)}</Td>
+      <Td>
+        <Closed action={action} />
+      </Td>
+    </tr>
   );
 }
 
@@ -373,19 +466,51 @@ function auditHeading(sample: CorrectiveAction, number: number | undefined): str
     : `Audit ${number} · ${kind} · ${when}${who}`;
 }
 
-function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => void }) {
+function ActionPanel({
+  actionId,
+  onClose,
+  zoneLeaderOf,
+}: {
+  actionId: string | null;
+  onClose: () => void;
+  zoneLeaderOf: (zoneId: string) => string | null;
+}) {
+  const { worst, load } = useLoad();
+  const detail = useQuery({
+    queryKey: ['corrective-action', actionId, worst],
+    queryFn: () => load<CorrectiveActionDetail>(`/corrective-actions/${actionId}`),
+    enabled: actionId !== null,
+  });
+  const action = detail.data;
+
+  return (
+    <SidePanel
+      open={actionId !== null}
+      title={action ? zoneDisplayLabel(action.zoneCode, action.zoneName) : 'Corrective action'}
+      subtitle={action ? itemLabel(action) : undefined}
+      onClose={onClose}
+    >
+      {detail.isLoading && <Spinner />}
+      {detail.error && <ErrorNotice error={detail.error} />}
+      {action && (
+        <ActionDetail
+          key={action.id}
+          action={action}
+          leader={action.assignedZoneLeaderName ?? zoneLeaderOf(action.zoneId)}
+        />
+      )}
+    </SidePanel>
+  );
+}
+
+function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; leader: string | null }) {
   const { can } = useSession();
   const queryClient = useQueryClient();
   const [note, setNote] = useState('');
 
-  const detail = useQuery({
-    queryKey: ['corrective-action', actionId],
-    queryFn: () => api.get<CorrectiveActionDetail>(`/corrective-actions/${actionId}`),
-  });
-
   const refresh = async () => {
     setNote('');
-    await queryClient.invalidateQueries({ queryKey: ['corrective-action', actionId] });
+    await queryClient.invalidateQueries({ queryKey: ['corrective-action', action.id] });
     await queryClient.invalidateQueries({ queryKey: ['corrective-actions'] });
     await queryClient.invalidateQueries({ queryKey: ['audits'] });
   };
@@ -393,128 +518,125 @@ function ActionPanel({ actionId, onClose }: { actionId: string; onClose: () => v
   const review = useMutation({
     mutationFn: (outcome: 'verify' | 'reopen') =>
       api.post<CorrectiveActionDetail>(
-        `/corrective-actions/${actionId}/${outcome}`,
+        `/corrective-actions/${action.id}/${outcome}`,
         outcome === 'verify'
-          ? { version: detail.data!.version, ...(note.trim() ? { comment: note.trim() } : {}) }
-          : { version: detail.data!.version, reason: note.trim() },
+          ? { version: action.version, ...(note.trim() ? { comment: note.trim() } : {}) }
+          : { version: action.version, reason: note.trim() },
       ),
     onSuccess: refresh,
   });
-
-  if (detail.isLoading) return <Spinner />;
-  if (detail.error) return <ErrorNotice error={detail.error} />;
-  const action = detail.data!;
 
   // R-43: a "not possible" waits for a decision; a Zone Leader's closure may be approved, and
   // need not be. Either may be disapproved, which is the reopen edge (R-40).
   const reviewable = can('corrective_action', 'verify') && isReviewable(action.status, action.verifiedByUserId);
   const closure = isUnapprovedClosure(action.status, action.verifiedByUserId);
   const reopenable = can('corrective_action', 'reopen') && (reviewable || action.status === 'VERIFIED');
+  // CA7: the button names what approving does to *this* item.
+  const approveLabel =
+    action.status === 'NOT_POSSIBLE' ? 'Accept as not possible' : closure ? 'Approve closure' : 'Approve';
 
   return (
-    <Card>
-      <CardHeader
-        title={zoneDisplayLabel(action.zoneCode, action.zoneName)}
-        description={itemLabel(action)}
-        action={
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-        }
-      />
-      <div className="grid gap-4 p-4 md:grid-cols-[16rem_1fr]">
+    <div className="space-y-4">
+      {action.evidenceId ? (
         <div className="space-y-2">
-          {action.evidenceId ? (
-            <>
-              <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">The finding</p>
-              <Photo evidenceId={action.evidenceId} remark={action.findingRemark} alt="Nonconformity photograph" />
-              {action.findingRemark && <p className="text-sm text-ink-2">{action.findingRemark}</p>}
-            </>
-          ) : (
-            <>
-              {/* R-38: an overall suggestion has no photograph — the words are the finding. */}
-              <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">
-                Overall suggestion
+          <p className="gb-label">The finding</p>
+          <div className="max-w-sm">
+            <Photo evidenceId={action.evidenceId} remark={action.findingRemark} alt="Nonconformity photograph" />
+          </div>
+          {action.findingRemark && <p className="text-sm text-ink-2">{action.findingRemark}</p>}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {/* R-38: an overall suggestion has no photograph — the words are the finding. */}
+          <p className="gb-label">Overall suggestion</p>
+          <p className="text-sm whitespace-pre-wrap text-ink">{action.suggestion}</p>
+        </div>
+      )}
+      <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm text-ink-2">
+        <dt>Status</dt>
+        <dd>
+          <StatusChip kind="action" status={action.status} />
+        </dd>
+        <dt>Auditor</dt>
+        <dd>{action.auditorName ?? '—'}</dd>
+        <dt>Zone Leader</dt>
+        <dd>{leader ?? '—'}</dd>
+        <dt>Due</dt>
+        <dd>{formatDate(action.dueAt)}</dd>
+        {action.status === 'VERIFIED' && (
+          <>
+            <dt>Closed by</dt>
+            <dd>{action.closedByName ?? '—'}</dd>
+            <dt>Closed at</dt>
+            <dd>{action.resolvedAt ? formatDateTime(action.resolvedAt) : '—'}</dd>
+            <dt>Reviewed</dt>
+            <dd>{closure ? 'Not reviewed' : `Approved by ${action.verifiedByName ?? '—'}`}</dd>
+          </>
+        )}
+      </dl>
+      {can('corrective_action', 'reassign') && action.status !== 'VERIFIED' && action.status !== 'WITHDRAWN' && (
+        <Reassign action={action} onDone={refresh} />
+      )}
+
+      <div className="space-y-3">
+        <p className="gb-label">Answers ({action.submissions.length})</p>
+        {action.submissions.length === 0 && <p className="text-sm text-ink-2">Nothing submitted yet.</p>}
+        {action.submissions.map((attempt) => (
+          <Attempt key={attempt.id} attempt={attempt} />
+        ))}
+
+        {(reviewable || reopenable) && (
+          <div className="space-y-2 border border-edge-soft p-3">
+            {/* R-40, R-43: disapproving is the reopen edge. Nothing is erased — the attempt
+                stays above, marked Disapproved — but the item waits for a new answer, the
+                same link in the PDF takes it, and a regenerated report prints the
+                disapproval in place of the rejected answer. */}
+            {closure && (
+              <p className="text-sm text-ink-2">
+                Closed by the Zone Leader. It already counts as closed and is in the after-evidence report;
+                reviewing it is optional.
               </p>
-              <p className="text-sm whitespace-pre-wrap text-ink">{action.suggestion}</p>
-            </>
-          )}
-          <dl className="grid grid-cols-2 gap-1 text-xs text-ink-2">
-            <dt>Status</dt>
-            <dd>
-              <StatusBadge status={action.status} />
-            </dd>
-            <dt>Auditor</dt>
-            <dd>{action.auditorName ?? '—'}</dd>
-            <dt>Assigned</dt>
-            <dd>{action.assignedZoneLeaderName ?? '—'}</dd>
-            <dt>Due</dt>
-            <dd>{formatDate(action.dueAt)}</dd>
-            {action.status === 'VERIFIED' && (
-              <>
-                <dt>Closed by</dt>
-                <dd>{action.closedByName ?? '—'}</dd>
-                <dt>Closed at</dt>
-                <dd>{action.resolvedAt ? formatDateTime(action.resolvedAt) : '—'}</dd>
-                <dt>Reviewed</dt>
-                <dd>{closure ? 'Not reviewed' : `Approved by ${action.verifiedByName ?? '—'}`}</dd>
-              </>
             )}
-          </dl>
-          {can('corrective_action', 'reassign') && action.status !== 'VERIFIED' && (
-            <Reassign action={action} onDone={refresh} />
-          )}
-        </div>
-
-        <div className="space-y-3">
-          <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">
-            Submissions ({action.submissions.length})
-          </p>
-          {action.submissions.length === 0 && (
-            <p className="text-sm text-ink-3">Nothing submitted yet.</p>
-          )}
-          {action.submissions.map((attempt) => (
-            <Attempt key={attempt.id} attempt={attempt} />
-          ))}
-
-          {(reviewable || reopenable) && (
-            <div className="space-y-2 border border-edge-soft p-3">
-              {/* R-40, R-43: disapproving is the reopen edge. Nothing is erased — the attempt
-                  stays below, marked Disapproved — but the item waits for a new answer, the
-                  same link in the PDF takes it, and a regenerated report prints the
-                  disapproval in place of the rejected answer. */}
-              {closure && (
-                <p className="text-xs text-ink-2">
-                  Closed by the Zone Leader. It already counts as closed and is in the
-                  after-evidence report; reviewing it is optional.
-                </p>
-              )}
-              <Field
-                label={reviewable ? 'Comment, or the reason for disapproving' : 'Reason for disapproving'}
-                hint="Disapproving needs a reason; the Zone Leader sees it. They can then answer again from the same link in the PDF, or from the field app."
-              >
-                <Input value={note} onChange={(event) => setNote(event.target.value)} />
-              </Field>
-              {review.error && <ErrorNotice error={review.error} />}
-              <div className="flex gap-2">
-                {reviewable && (
-                  <Button disabled={review.isPending} onClick={() => review.mutate('verify')}>
-                    Approve
-                  </Button>
-                )}
-                <Button
-                  variant="secondary"
-                  disabled={review.isPending || note.trim().length === 0}
-                  onClick={() => review.mutate('reopen')}
-                >
-                  Disapprove
+            {action.status === 'NOT_POSSIBLE' && (
+              <p className="text-sm text-ink-2">
+                The Zone Leader says this cannot be fixed. Accepting closes it; disapproving sends it back
+                for a new answer.
+              </p>
+            )}
+            <Field
+              label={reviewable ? 'Note' : 'Reason for disapproving'}
+              hint={
+                reviewable
+                  ? 'Optional when you approve. Needed to disapprove: the Zone Leader sees it, then answers again from the same link in the PDF or from the field app.'
+                  : 'The Zone Leader sees it, then answers again from the same link in the PDF or from the field app.'
+              }
+            >
+              <Input value={note} onChange={(event) => setNote(event.target.value)} />
+            </Field>
+            {review.error && <ErrorNotice error={review.error} />}
+            <div className="flex flex-wrap items-center gap-2">
+              {reviewable && (
+                <Button disabled={review.isPending} onClick={() => review.mutate('verify')}>
+                  {approveLabel}
                 </Button>
-              </div>
+              )}
+              <Button
+                variant="secondary"
+                disabled={review.isPending || note.trim().length === 0}
+                onClick={() => review.mutate('reopen')}
+              >
+                Disapprove
+              </Button>
+              {note.trim().length === 0 && (
+                <span className="text-xs text-ink-2" role="status">
+                  Write a note to disapprove.
+                </span>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -523,15 +645,15 @@ function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
     <div className="border border-edge-soft p-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium">Attempt {attempt.attemptNo}</span>
-        <Badge tone={attempt.option === 'COMPLETED' ? 'good' : 'warn'}>
+        <StatusChip shape={attempt.option === 'COMPLETED' ? 'done' : 'attention'}>
           {attempt.option === 'COMPLETED' ? 'Completed' : 'Not possible'}
-        </Badge>
+        </StatusChip>
         <span className="text-xs text-ink-3">
           {attempt.submittedByName} · {formatDateTime(attempt.createdAt)} · via{' '}
           {SUBMISSION_CHANNEL_LABEL[attempt.submittedVia]}
         </span>
       </div>
-      <div className="mt-2 grid gap-3 md:grid-cols-[10rem_1fr]">
+      <div className={attempt.afterEvidenceId ? 'mt-2 grid gap-3 sm:grid-cols-[10rem_1fr]' : 'mt-2'}>
         {attempt.afterEvidenceId && <Photo evidenceId={attempt.afterEvidenceId} alt="After photograph" />}
         <p className="text-sm whitespace-pre-line text-ink-2">
           {attempt.option === 'COMPLETED' ? attempt.description : attempt.explanation}
@@ -539,9 +661,9 @@ function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
       </div>
       {attempt.reviewOutcome && (
         <p className="mt-2 text-xs text-ink-2">
-          <Badge tone={attempt.reviewOutcome === 'VERIFIED' ? 'good' : 'bad'}>
+          <StatusChip shape={attempt.reviewOutcome === 'VERIFIED' ? 'done' : 'ended'}>
             {attempt.reviewOutcome === 'VERIFIED' ? 'Approved' : 'Disapproved'}
-          </Badge>{' '}
+          </StatusChip>{' '}
           {attempt.reviewedByName &&
             `${attempt.reviewedByName}${attempt.reviewedByRole ? ` (${roleLabel(attempt.reviewedByRole)})` : ''} · `}
           {attempt.reviewedAt && formatDateTime(attempt.reviewedAt)}
@@ -553,44 +675,54 @@ function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
 }
 
 function Reassign({ action, onDone }: { action: CorrectiveActionDetail; onDone: () => Promise<void> }) {
+  const { worst, load } = useLoad();
   const [userId, setUserId] = useState('');
   const leaders = useQuery({
-    queryKey: ['zone-leaders', action.unitId],
-    queryFn: () =>
-      api.get<Page<User>>(`/users?limit=200&role=ZONE_LEADER&status=ACTIVE&unitId=${action.unitId}`),
+    queryKey: ['zone-leaders', action.unitId, worst],
+    queryFn: () => load<Page<User>>(`/users?limit=200&role=ZONE_LEADER&status=ACTIVE&unitId=${action.unitId}`),
   });
   const reassign = useMutation({
     mutationFn: () => api.post(`/corrective-actions/${action.id}/reassign`, { zoneLeaderUserId: userId }),
     onSuccess: onDone,
   });
+  const options = (leaders.data?.data ?? []).filter((leader) => leader.id !== action.assignedZoneLeaderUserId);
 
+  // CA2: a leader typed on the Zone has no account, so there may be nobody to pick. Say so
+  // rather than offer an empty list.
+  if (leaders.data && options.length === 0) {
+    return (
+      <p className="text-sm text-ink-2">
+        Nobody else to reassign to: this Unit has no other Zone Leader accounts. Any Zone Leader of the
+        Unit may still answer it.
+      </p>
+    );
+  }
   return (
-    <div className="space-y-2 pt-2">
+    <div className="flex flex-wrap items-end gap-2">
       <Field label="Reassign to">
         <Select value={userId} onChange={(event) => setUserId(event.target.value)}>
           <option value="">Choose a Zone Leader</option>
-          {leaders.data?.data
-            .filter((leader) => leader.id !== action.assignedZoneLeaderUserId)
-            .map((leader) => (
-              <option key={leader.id} value={leader.id}>
-                {leader.fullName}
-              </option>
-            ))}
+          {options.map((leader) => (
+            <option key={leader.id} value={leader.id}>
+              {leader.fullName}
+            </option>
+          ))}
         </Select>
       </Field>
-      {reassign.error && <ErrorNotice error={reassign.error} />}
       <Button variant="secondary" disabled={!userId || reassign.isPending} onClick={() => reassign.mutate()}>
         Reassign
       </Button>
+      {reassign.error && <ErrorNotice error={reassign.error} />}
     </div>
   );
 }
 
 function Photo({ evidenceId, remark = null, alt }: { evidenceId: string; remark?: string | null; alt: string }) {
   const [open, setOpen] = useState(false);
+  const { worst, load } = useLoad();
   const thumbnail = useQuery({
-    queryKey: ['evidence-view-url', evidenceId, 'thumbnail'],
-    queryFn: () => api.get<EvidenceViewUrl>(`/evidence/${evidenceId}/view-url?variant=thumbnail`),
+    queryKey: ['evidence-view-url', evidenceId, 'thumbnail', worst],
+    queryFn: () => load<EvidenceViewUrl>(`/evidence/${evidenceId}/view-url?variant=thumbnail`),
     staleTime: 240_000,
   });
 
@@ -633,11 +765,6 @@ function Closed({ action }: { action: CorrectiveAction }) {
       </div>
     </span>
   );
-}
-
-function StatusBadge({ status }: { status: CorrectiveActionStatus }) {
-  const tone = status === 'VERIFIED' ? 'good' : status === 'REOPENED' ? 'bad' : awaitsReview(status) ? 'warn' : 'neutral';
-  return <Badge tone={tone}>{ACTION_STATUS_LABEL[status]}</Badge>;
 }
 
 function itemLabel(action: CorrectiveAction): string {

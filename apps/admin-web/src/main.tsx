@@ -19,7 +19,10 @@ import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { AnalyticsPage } from '@/features/analytics/AnalyticsPage';
 import { AuditsPage, type AuditsSearch } from '@/features/audits/AuditsPage';
-import { CorrectiveActionsPage } from '@/features/corrective-actions/CorrectiveActionsPage';
+import {
+  CorrectiveActionsPage,
+  validateCorrectiveActionsSearch,
+} from '@/features/corrective-actions/CorrectiveActionsPage';
 import { PublicCorrectiveActionPage } from '@/features/corrective-actions/PublicCorrectiveActionPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
@@ -195,7 +198,19 @@ const correctiveActionsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/corrective-actions',
   staticData: { unitScope: 'any' },
+  // CA1, CA5: the open item (`?action=`), the filters, the sort and the grouping live in the URL.
+  validateSearch: validateCorrectiveActionsSearch,
   component: CorrectiveActionsPage,
+});
+
+/** CA1: an action's own address opens it in the list's side panel. */
+const correctiveActionDetailRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/corrective-actions/$actionId',
+  component: function CorrectiveActionLink() {
+    const { actionId } = correctiveActionDetailRoute.useParams();
+    return <Navigate to="/corrective-actions" search={{ action: actionId }} replace />;
+  },
 });
 
 /**
@@ -253,6 +268,7 @@ const routeTree = rootRoute.addChildren([
     checklistsRoute,
     auditsRoute,
     correctiveActionsRoute,
+    correctiveActionDetailRoute,
     reportsRoute,
     notificationsRoute,
     syncRoute,
