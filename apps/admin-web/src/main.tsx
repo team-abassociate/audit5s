@@ -33,6 +33,7 @@ import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { UnitsPage } from '@/features/units/UnitsPage';
+import { UnitDetail } from '@/features/units/UnitDetail';
 import { UsersPage, type UsersSearch } from '@/features/users/UsersPage';
 import { SessionProvider, useSession } from '@/lib/session';
 import { validateScopeSearch, type ScopeSearch } from '@/lib/scope';
@@ -264,6 +265,7 @@ const routeTree = rootRoute.addChildren([
     dashboardRoute,
     analyticsRoute,
     unitsRoute,
+    createRoute({ getParentRoute: () => gatedRoute, path: '/units/$unitId', component: UnitDetail }), // U3
     industriesRoute,
     checklistsRoute,
     auditsRoute,

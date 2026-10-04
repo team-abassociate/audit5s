@@ -11,7 +11,9 @@ import {
   type User,
 } from '@audit5s/contracts';
 import { ApiError, api } from '@/lib/api';
-import { Badge, Button, Card, CardHeader, ErrorNotice, Field, Input, Select, Spinner, Table, Td, Th } from '@/components/ui';
+import { devGet } from '@/features/units/worst-case';
+import { Link, useParams } from '@tanstack/react-router';
+import { Button, Card, CardHeader, EmptyState, ErrorNotice, Field, Input, RowActions, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { roleLabel } from '@/lib/labels';
 import { formatDate } from '@audit5s/domain';
@@ -23,14 +25,16 @@ import { formatDate } from '@audit5s/domain';
  * courtesy half. The API enforces it at the field level and answers 403 FIELD_NOT_EDITABLE
  * naming the field, which this form renders inline if it ever arrives.
  */
-export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => void }) {
+export function UnitDetail() {
+  // `/units/$unitId` (U3): the Unit has its own address, and Back returns to the list.
+  const { unitId } = useParams({ strict: false }) as { unitId: string };
   const { scope, can } = useSession();
   const queryClient = useQueryClient();
   const isCoordinator = scope?.role === 'COORDINATOR';
 
   const unit = useQuery({
     queryKey: ['unit', unitId],
-    queryFn: () => api.get<Unit>(`/units/${unitId}`),
+    queryFn: () => devGet<Unit>(`/units/${unitId}`),
   });
 
   const industries = useQuery({
@@ -64,9 +68,9 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Button variant="secondary" onClick={onBack}>
+        <Link to="/units" className="gb-btn">
           ← Units & zones
-        </Button>
+        </Link>
         <h1 className="gb-h1">{unit.data.name}</h1>
       </div>
 
@@ -75,7 +79,7 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
           title="Unit details"
           description={
             isCoordinator
-              ? 'You may edit address, contact and timezone. Name and code are set by a Super Admin .'
+              ? 'You may edit address, contact and timezone. Name and industry are set by a Super Admin.'
               : undefined
           }
         />
@@ -112,8 +116,15 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
           <Field label="Contact phone" hint="With the country code, e.g. +919876543210" error={fieldErrors.contactPhone}>
             <Input {...register('contactPhone')} />
           </Field>
-          <Field label="Timezone" error={fieldErrors.timezone}>
-            <Input {...register('timezone')} />
+          {/* U4: a choice, not free text. India is the only zone in use; any other the Unit
+              already holds stays selectable so saving never changes it silently. */}
+          <Field label="Time zone" error={fieldErrors.timezone}>
+            <Select {...register('timezone')}>
+              <option value="Asia/Kolkata">India (IST)</option>
+              {unit.data.timezone !== 'Asia/Kolkata' && (
+                <option value={unit.data.timezone}>{unit.data.timezone}</option>
+              )}
+            </Select>
           </Field>
           {/*
             The sector decides which checklists this plant's audits offer, so it is a Super
@@ -125,13 +136,13 @@ export function UnitDetail({ unitId, onBack }: { unitId: string; onBack: () => v
             label="Industry"
             hint={
               isCoordinator
-                ? 'Super Admin only — it decides which checklists this Unit is offered'
-                : 'Blank offers every checklist'
+                ? 'Decides which checklists this Unit is offered. Only a Super Admin can change it.'
+                : 'Decides which checklists this Unit is offered. “Not set” offers every checklist.'
             }
             error={fieldErrors.industryId}
           >
             <Select disabled={!editable('industryId')} {...register('industryId')}>
-              <option value="">Not set — every checklist</option>
+              <option value="">Not set</option>
               {(industries.data ?? []).map((industry) => (
                 <option key={industry.id} value={industry.id}>
                   {industry.name}
@@ -165,12 +176,12 @@ function UnitMemberships({ unitId }: { unitId: string }) {
 
   const memberships = useQuery({
     queryKey: ['memberships', unitId],
-    queryFn: () => api.get<Page<MembershipDetail>>(`/memberships?unitId=${unitId}&status=ACTIVE`),
+    queryFn: () => devGet<Page<MembershipDetail>>(`/memberships?unitId=${unitId}&status=ACTIVE`),
   });
 
   const assignable = useQuery({
     queryKey: ['assignable-users'],
-    queryFn: () => api.get<Page<User>>('/users?limit=200'),
+    queryFn: () => devGet<Page<User>>('/users?limit=200'),
     enabled: can('unit_membership', 'create'),
   });
 
@@ -178,7 +189,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
     mutationFn: (id: string) => api.post<MembershipDetail>(`/units/${unitId}/memberships`, { userId: id }),
     onSuccess: async () => {
       setUserId('');
-      await queryClient.invalidateQueries({ queryKey: ['memberships', unitId] });
+      await queryClient.invalidateQueries({ queryKey: ['memberships'] });
     },
   });
 
@@ -186,15 +197,15 @@ function UnitMemberships({ unitId }: { unitId: string }) {
     mutationFn: (membershipId: string) =>
       api.delete<void>(`/units/${unitId}/memberships/${membershipId}`),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['memberships', unitId] });
+      await queryClient.invalidateQueries({ queryKey: ['memberships'] });
     },
   });
 
   return (
     <Card>
       <CardHeader
-        title="Assignments"
-        description="Removing someone from this Unit takes effect straight away."
+        title="People in this Unit"
+        description="Its Coordinator and Zone Leaders, and any Consultant given standing access. A Consultant sent here on an audit assignment reaches it through that and is not listed."
       />
 
       {can('unit_membership', 'create') && (
@@ -222,23 +233,29 @@ function UnitMemberships({ unitId }: { unitId: string }) {
         </div>
       )}
 
-      {(assign.error || revoke.error) && (
+      {assign.error && (
         <div className="p-4">
-          <ErrorNotice error={assign.error ?? revoke.error} />
+          <ErrorNotice error={assign.error} />
         </div>
       )}
 
       {memberships.isLoading && <Spinner />}
 
-      {memberships.data && (
-        <Table>
+      {memberships.data && memberships.data.data.length === 0 && (
+        <EmptyState title="No Coordinator or Zone Leader belongs to this Unit yet.">
+          Consultants on an audit assignment still reach it through the assignment.
+        </EmptyState>
+      )}
+
+      {memberships.data && memberships.data.data.length > 0 && (
+        <Table variant="register" label="People in this Unit">
           <thead>
             <tr>
-              <Th>User</Th>
-              <Th>Login ID</Th>
-              <Th>Role</Th>
-              <Th>Since</Th>
-              <Th>{can('unit_membership', 'revoke') ? 'Actions' : ''}</Th>
+              <Th width="36%">User</Th>
+              <Th width="16%">Login ID</Th>
+              <Th width="18%">Role</Th>
+              <Th width="18%">Since</Th>
+              <Th width="12%">{can('unit_membership', 'revoke') ? <span className="sr-only">Actions</span> : null}</Th>
             </tr>
           </thead>
           <tbody>
@@ -246,28 +263,32 @@ function UnitMemberships({ unitId }: { unitId: string }) {
               <tr key={m.id}>
                 <Td className="font-medium">{m.userFullName}</Td>
                 <Td className="font-mono text-xs">{m.userLoginId}</Td>
-                <Td>
-                  <Badge tone={m.role === 'CONSULTANT' ? 'good' : 'neutral'}>
-                    {roleLabel(m.role)}
-                  </Badge>
-                </Td>
+                <Td>{roleLabel(m.role)}</Td>
                 <Td className="text-xs text-ink-3">
                   {formatDate(m.validFrom)}
                 </Td>
                 <Td>
                   {can('unit_membership', 'revoke') && (
-                    <Button variant="danger" onClick={() => revoke.mutate(m.id)}>
-                      Revoke
-                    </Button>
+                    <RowActions
+                      subject={m.userFullName}
+                      items={[
+                        {
+                          label: 'Remove from this Unit',
+                          danger: true,
+                          confirm: {
+                            title: `Remove ${m.userFullName} from this Unit?`,
+                            body: `They lose access to it straight away${m.role === 'CONSULTANT' ? '' : ', and their open audit assignments here are cancelled'}. What they recorded stays.`,
+                            confirmLabel: 'Remove',
+                            pendingLabel: 'Removing…',
+                            run: () => revoke.mutateAsync(m.id),
+                          },
+                        },
+                      ]}
+                    />
                   )}
                 </Td>
               </tr>
             ))}
-            {memberships.data.data.length === 0 && (
-              <tr>
-                <Td className="text-ink-3">Nobody is assigned to this Unit.</Td>
-              </tr>
-            )}
           </tbody>
         </Table>
       )}
