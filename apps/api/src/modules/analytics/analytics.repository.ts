@@ -177,6 +177,36 @@ export class AnalyticsRepository extends BaseRepository {
     });
   }
 
+  /**
+   * Every scored, completed audit in scope and range, oldest first, for the cross-Unit
+   * trend (D12). An audit is the point because an audit is what a Unit repeats; a walk-by
+   * has no `total_score`, so it drops out here rather than plotting as 0.
+   */
+  async unitAuditScores(scope: ScopeContext, range: AnalyticsRange) {
+    return this.inScope(scope, (tx) =>
+      tx
+        .select({
+          auditId: audits.id,
+          unitId: audits.unitId,
+          completedAt: audits.completedAt,
+          scorePercentage: audits.totalScore,
+        })
+        .from(audits)
+        .where(
+          this.scoped(
+            scope,
+            { unitId: audits.unitId },
+            completed(),
+            isNotNull(audits.completedAt),
+            isNotNull(audits.totalScore),
+            gte(audits.completedAt, range.from),
+            lt(audits.completedAt, range.to),
+          ),
+        )
+        .orderBy(asc(audits.completedAt)),
+    );
+  }
+
   async zoneScoreHistory(scope: ScopeContext, range: AnalyticsRange, unitId: string) {
     return this.inScope(scope, (tx) =>
       tx

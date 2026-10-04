@@ -1,21 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  AnalyticsActivityQuery,
-  AnalyticsRangeQuery,
-  AnalyticsRankingQuery,
-  AnalyticsTrendQuery,
-  ClosureAnalytics,
-  ClosureBreakdown,
-  ConsultantActivity,
-  OrganizationOverview,
-  RecurrentNonconformity,
-  ScoreMetric,
-  SSection,
-  UnitOverview,
-  UnitSections,
-  UnitTrend,
-  ZoneLeaderActivity,
-  ZoneRankingItem,
+import {
+  UNIT_CHANGE_SPAN,
+  type AnalyticsActivityQuery,
+  type AnalyticsRangeQuery,
+  type AnalyticsRankingQuery,
+  type AnalyticsTrendQuery,
+  type ClosureAnalytics,
+  type ClosureBreakdown,
+  type ConsultantActivity,
+  type OrganizationOverview,
+  type RecurrentNonconformity,
+  type ScoreMetric,
+  type SSection,
+  type UnitOverview,
+  type UnitSections,
+  type UnitScoreTrend,
+  type UnitTrend,
+  type ZoneLeaderActivity,
+  type ZoneRankingItem,
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER, sumTotals, type ScopeContext, type ScoreTotals } from '@audit5s/domain';
 import { QueueService } from '../../infrastructure/queue/queue.service';
@@ -77,6 +79,30 @@ export class AnalyticsService {
         oldestPendingAt: iso(sync.oldest),
       },
     };
+  }
+
+  /** The cross-Unit trend (D12): one line per Unit in scope, most improved first. */
+  async unitTrends(scope: ScopeContext, query: AnalyticsRangeQuery): Promise<UnitScoreTrend[]> {
+    const range = toRange(query);
+    const [units, scores] = await Promise.all([
+      this.repository.unitRows(scope),
+      this.repository.unitAuditScores(scope, range),
+    ]);
+    const byUnit = group(scores, (row) => row.unitId);
+    return units
+      .map((unit) => {
+        const points = (byUnit.get(unit.id) ?? []).map((row) => ({
+          auditId: row.auditId,
+          completedAt: row.completedAt!.toISOString(),
+          scorePercentage: Number(row.scorePercentage),
+        }));
+        return { unitId: unit.id, unitName: unit.name, points, ...unitChange(points) };
+      })
+      .sort((a, b) =>
+        a.change === b.change
+          ? a.unitName.localeCompare(b.unitName)
+          : (b.change ?? -Infinity) - (a.change ?? -Infinity),
+      );
   }
 
   async unitOverview(
@@ -310,6 +336,19 @@ export function toRange(
   const to = query.to ? new Date(query.to) : new Date();
   const from = query.from ? new Date(query.from) : new Date(Date.UTC(to.getUTCFullYear() - 1, to.getUTCMonth(), to.getUTCDate()));
   return { from, to, fromDay: localDay(from, timeZone), toDay: localDay(to, timeZone) };
+}
+
+/**
+ * The latest score minus the earliest of the last `UNIT_CHANGE_SPAN` audits. One audit
+ * has nothing to change from, so it is `null`, never `0`.
+ */
+export function unitChange(points: Array<{ completedAt: string; scorePercentage: number }>) {
+  const window = points.slice(-UNIT_CHANGE_SPAN);
+  const first = window[0];
+  const last = window.at(-1);
+  return first && last && window.length > 1
+    ? { change: last.scorePercentage - first.scorePercentage, changeFrom: first.completedAt }
+    : { change: null, changeFrom: null };
 }
 
 function scoreOf(rows: Array<{ rawScore: number; maxScore: number; scoreSampleCount?: number; sampleCount?: number }>): ScoreMetric {

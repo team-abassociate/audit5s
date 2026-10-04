@@ -87,6 +87,24 @@ const AUDITS = Array.from({ length: 30 }, (_, n) => {
   };
 });
 
+/**
+ * One line per Unit: none, one, two and thirty audits; 0 and 100; a flat line; rises and
+ * falls. Sorted as the API sorts — most improved first, no change last by name.
+ */
+const unitTrends = units
+  .map((unit, n) => {
+    const count = [30, 0, 1, 2, 3, 12][n] ?? 2 + (n % 6);
+    const points = Array.from({ length: count }, (_, k) => ({
+      auditId: id(60000 + n * 100 + k),
+      completedAt: ago((count - k) * 11 + (n % 9)),
+      scorePercentage: n === 2 ? 100 : n === 3 ? 0 : n === 6 ? 74.999 : Math.min(100, Math.max(0, 40 + ((n * 13 + k * (n % 7 - 2) * 9) % 61) + 0.37)),
+    }));
+    const window = points.slice(-3);
+    const change = window.length > 1 ? window.at(-1)!.scorePercentage - window[0]!.scorePercentage : null;
+    return { unitId: unit.id, unitName: unit.name, points, change, changeFrom: change === null ? null : window[0]!.completedAt };
+  })
+  .sort((a, b) => (a.change === b.change ? a.unitName.localeCompare(b.unitName) : (b.change ?? -Infinity) - (a.change ?? -Infinity)));
+
 function summary(auditId: string) {
   const audit = AUDITS.find((candidate) => candidate.id === auditId) ?? AUDITS[0]!;
   const zones = ZONES.map(([name, allNaS3], index) => {
@@ -162,6 +180,7 @@ export function worstCase(path: string): unknown {
       syncHealth: { devicesWithUnsyncedData: 0, deadLetterCount: 0, oldestPendingAt: null },
     };
   }
+  if (route === '/analytics/organization/unit-trends') return unitTrends;
   const audit = /^\/audits\/([^/]+)\/summary$/.exec(route);
   if (audit) return summary(audit[1]!);
   if (route === '/corrective-actions') return actions(params.get('auditId') ?? '');

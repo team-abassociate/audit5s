@@ -200,3 +200,31 @@ export const zoneLeaderActivitySchema = z.object({
   lastActiveAt: isoDateTimeSchema.nullable(),
 });
 export type ZoneLeaderActivity = z.infer<typeof zoneLeaderActivitySchema>;
+
+/** How many of a Unit's latest scored audits its `change` spans (D12, AN1). */
+export const UNIT_CHANGE_SPAN = 3;
+
+/**
+ * One Unit's line on the cross-Unit trend (D12): a point per scored audit, oldest first,
+ * and its change across its last `UNIT_CHANGE_SPAN` audits — the latest score minus the
+ * score of the earliest of them. A Unit with fewer audits spans what it has; one with a
+ * single audit, or none, has no change (`null`), never `0`.
+ */
+export const unitScoreTrendSchema = z.object({
+  unitId: uuidSchema,
+  unitName: z.string(),
+  points: z.array(
+    z.object({
+      auditId: uuidSchema,
+      completedAt: isoDateTimeSchema,
+      scorePercentage: z.number().min(0).max(100),
+    }),
+  ),
+  change: z.number().min(-100).max(100).nullable(),
+  /** When the audit `change` is measured from was completed; `null` with `change`. */
+  changeFrom: isoDateTimeSchema.nullable(),
+});
+export type UnitScoreTrend = z.infer<typeof unitScoreTrendSchema>;
+
+/** Every Unit in scope, most improved first; Units with no change last, by name. */
+export const unitScoreTrendsSchema = z.array(unitScoreTrendSchema);

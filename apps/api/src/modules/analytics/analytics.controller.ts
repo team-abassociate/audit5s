@@ -29,6 +29,17 @@ export class AnalyticsController {
     return this.analytics.organizationOverview(scope, query);
   }
 
+  /** Cross-Unit trend (D12): comparing Units is an organization view, Super Admin only. */
+  @RequirePermission('analytics', 'organization_dashboard')
+  @Scope({ intent: 'read' })
+  @Get('organization/unit-trends')
+  unitTrends(
+    @CurrentScope() scope: ScopeContext,
+    @Query(new ZodValidationPipe(analyticsRangeQuerySchema)) query: AnalyticsRangeQuery,
+  ) {
+    return this.analytics.unitTrends(scope, query);
+  }
+
   @RequirePermission('analytics', 'unit_dashboard')
   @Scope({ param: 'unitId', intent: 'read' })
   @Get('units/:unitId/overview')

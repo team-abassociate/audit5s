@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type {
-  OrganizationOverview,
-  UnitSections,
-  UnitTrend,
-  ZoneRankingItem,
+import {
+  unitScoreTrendsSchema,
+  type OrganizationOverview,
+  type UnitScoreTrend,
+  type UnitSections,
+  type UnitTrend,
+  type ZoneRankingItem,
 } from '@audit5s/contracts';
 import { AnalyticsRollupWorker, scheduleKey } from '../src/modules/analytics/analytics-rollup.worker';
 import { QueueService } from '../src/infrastructure/queue/queue.service';
@@ -160,6 +162,43 @@ describe('Phase 8 analytics', () => {
     expect((await world.request('GET', `${base}/organization/overview`, { token: coordinator })).status).toBe(403);
     expect((await world.request('GET', `${base}/units/${world.unitB}/overview`, { token: coordinator })).status).toBe(404);
     expect((await world.request('GET', `${base}/activity/me`, { token: world.actors.CONSULTANT.accessToken })).status).toBe(200);
+  });
+
+  /**
+   * D12: one line per Unit, a point per scored audit, and the change across its last three
+   * audits — most improved first. Walk-bys are not points; a Unit with one audit has no
+   * change rather than a change of 0.
+   */
+  it('ranks Units by their change across the last three audits', async () => {
+    // Unit B: 40 → 70 → 60 → 75. The last three are 70, 60, 75, so the change is +5.
+    const dates = ['2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01'].map((day) => `${day}T06:00:00.000Z`);
+    for (const [index, score] of ['40.000', '70.000', '60.000', '75.000'].entries()) {
+      await world.owner.query(
+        `INSERT INTO audit (id, unit_id, audit_type, status, auditor_user_id, started_at, completed_at, total_score)
+         VALUES (gen_random_uuid(), $1, 'EXTERNAL_5S', 'CLOSED', $2, $3::timestamptz - interval '30 minutes', $3, $4)`,
+        [world.unitB, world.actors.CONSULTANT.userId, dates[index], score],
+      );
+    }
+    const query = '?from=2026-01-01T00:00:00.000Z&to=2026-07-01T00:00:00.000Z';
+
+    const response = await world.request('GET', `${base}/organization/unit-trends${query}`, { token: superAdmin });
+    expect(response.status).toBe(200);
+    const trends = unitScoreTrendsSchema.parse(response.body);
+    const [b, a] = [trends.find((row) => row.unitId === world.unitB)!, trends.find((row) => row.unitId === world.unitA)!];
+    expect(trends.indexOf(b)).toBeLessThan(trends.indexOf(a));
+    expect(b).toMatchObject({ change: 5, changeFrom: dates[1] });
+    expect(b.points.map((point) => point.scorePercentage)).toEqual([40, 70, 60, 75]);
+    // Unit A: two scored audits (66.667 then 50) and a walk-by, which is not a point.
+    expect(a.points).toHaveLength(2);
+    expect(a.change).toBeCloseTo(-16.667, 3);
+    expect(a.changeFrom).toBe('2026-01-31T20:00:00.000Z');
+
+    const one = await world.request('GET', `${base}/organization/unit-trends?from=2026-05-15T00:00:00.000Z&to=2026-07-01T00:00:00.000Z`, { token: superAdmin });
+    expect((one.body as UnitScoreTrend[]).find((row) => row.unitId === world.unitB)).toMatchObject({ change: null, changeFrom: null });
+
+    for (const role of ['COORDINATOR', 'CONSULTANT', 'ZONE_LEADER'] as const) {
+      expect((await world.request('GET', `${base}/organization/unit-trends`, { token: world.actors[role].accessToken })).status).toBe(403);
+    }
   });
 
   /**
