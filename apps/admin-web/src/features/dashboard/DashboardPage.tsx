@@ -1097,7 +1097,7 @@ function DetailPanel({
 }
 
 /** §6 "Trend chart": hand-authored SVG, all strokes and fills from tokens. */
-function Trend({
+export function Trend({
   points,
 }: {
   points: Array<{ period: string; detail?: string; scorePercentage: number | null }>;
