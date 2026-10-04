@@ -20,7 +20,13 @@ export interface DomainEvent {
   resourceId: string | null;
   /** People the source already knows are concerned: an assignee, a submitter. */
   userIds?: string[];
-  data: Record<string, string | number | boolean | null>;
+  /** JSON, stored as the notification's `data`. Flat facts, or a bundle's items (D10). */
+  data: Record<string, unknown>;
+  /**
+   * A dedupe key the source can name itself, for a nightly job that may run twice: the same
+   * key reaches each recipient once (`UNIQUE(event_id, recipient_user_id)`). Otherwise minted.
+   */
+  eventId?: string;
 }
 
 export interface DomainEventJob extends DomainEvent {
@@ -57,5 +63,5 @@ export class DomainEvents {
 const RETRIES = { retryLimit: 3, retryDelay: 30, retryBackoff: true };
 
 function toJob(event: DomainEvent): DomainEventJob {
-  return { ...event, eventId: uuidv7(), occurredAt: new Date().toISOString() };
+  return { ...event, eventId: event.eventId ?? uuidv7(), occurredAt: new Date().toISOString() };
 }

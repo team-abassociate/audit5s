@@ -56,15 +56,18 @@ async function bootstrap(): Promise<void> {
     for (const job of jobs) {
       if (!job.data.unitId || !job.data.timezone) continue;
       await analytics.handle(job.data);
-      // §16.4's checks ride the same per-Unit tick (R-17). They run after the rollup, and
-      // deliberately in the same handler: a sweep that raised its own job would be a
-      // second schedule to keep in step with this one for no gain.
-      await integrity.sweep(SYSTEM_SCOPE, job.data.unitId);
       // §7.3's due dates, on the same tick and for the same reason: it already exists,
       // the sweep is idempotent, and a second schedule would only be a second thing to
       // keep in step with this one.
       await overdue.sweep(SYSTEM_SCOPE, job.data.unitId);
     }
+  });
+
+  // §16.4's checks over every Unit, as one summary a night (D10). Its own schedule because a
+  // per-Unit job cannot see the other Units.
+  await integrity.schedule(queue);
+  await queue.work(QUEUES.integrityDigest, async () => {
+    await integrity.digest(SYSTEM_SCOPE);
   });
 
   // The day an audit completed on, rebuilt as soon as it completes, so the board shows it.

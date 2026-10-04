@@ -12,6 +12,8 @@ export const QUEUES = {
   reportRender: 'report.render',
   notificationSend: 'notification.send',
   maintenanceSweep: 'maintenance.sweep',
+  /** §16.4's checks over every Unit, told to the Super Admins as one summary a night (D10). */
+  integrityDigest: 'integrity.digest',
   /** §9.5 Layer 1: releases the device lock on a PAUSED audit past its grace period. */
   deviceRelease: 'device.release',
   /**

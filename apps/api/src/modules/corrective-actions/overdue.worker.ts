@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { OverdueBundleData } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { CorrectiveActionsRepository } from './corrective-actions.repository';
@@ -13,12 +14,12 @@ const DAY = 86_400_000;
  * phone user, and often the last to hear that something of theirs is late.
  *
  * It rides the nightly per-Unit maintenance tick rather than carrying a schedule of its
- * own, exactly as the §16.4 integrity checks do: the tick already exists, and a second
- * schedule would be a second thing to keep in step with it for no gain.
+ * own: the tick already exists, and a second schedule would be a second thing to keep in
+ * step with it for no gain.
  *
- * Announced once, not nightly. `overdue_notified_at` (0016) is the marker, and a reopen
- * clears it so a reopened action can fall overdue again. A reminder that repeats every
- * night is a reminder people filter.
+ * Bundled per Zone and leader (D10), and announced once, not nightly. `overdue_notified_at`
+ * (0016) is the marker, and a reopen clears it so a reopened action can fall overdue again.
+ * A reminder that repeats every night is a reminder people filter.
  */
 @Injectable()
 export class OverdueActionsWorker {
@@ -33,15 +34,40 @@ export class OverdueActionsWorker {
     const overdue = await this.repository.claimOverdue(scope, unitId, now);
     if (overdue.length === 0) return 0;
 
+    /*
+     * D10: one notification per Zone and leader, not one per item — sixty-one "Overdue: …"
+     * rows drowned the alerts that matter. Per leader as well as per Zone because a Zone
+     * Leader may read only the actions assigned to them (`assigned_actions`), so a bundle
+     * never shows anyone an item that is not theirs. The Coordinator and the Super Admin
+     * get every bundle of the Units they hold, as they got every item before.
+     */
+    const bundles = new Map<string, typeof overdue>();
     for (const action of overdue) {
-      const daysOverdue = action.dueAt
-        ? Math.floor((now.getTime() - new Date(action.dueAt).getTime()) / DAY)
-        : 0;
+      const key = [action.zoneId, action.assignedZoneLeaderUserId, action.assignedZoneLeaderName].join('|');
+      bundles.set(key, [...(bundles.get(key) ?? []), action]);
+    }
+
+    for (const actions of bundles.values()) {
+      const first = actions[0]!;
+      const data: OverdueBundleData = {
+        zoneId: first.zoneId,
+        zoneCode: first.zoneCode,
+        zoneName: first.zoneName,
+        assigneeName: first.assignedZoneLeaderName,
+        items: actions.map((action) => ({
+          actionId: action.id,
+          questionNo: action.questionGlobalOrder,
+          suggestionNo: action.suggestionNo,
+          daysOverdue: action.dueAt
+            ? Math.max(0, Math.floor((now.getTime() - new Date(action.dueAt).getTime()) / DAY))
+            : 0,
+        })),
+      };
 
       /*
        * No transaction to join: the claim is already committed, so R-2's hazard — a job
-       * for a write that rolled back — cannot arise here. This is `SYNC_FAILURE`'s case,
-       * and `DATA_INTEGRITY_ALERT`'s.
+       * for a write that rolled back — cannot arise here. A rerun of the night finds
+       * nothing left to claim, so nothing is sent twice.
        *
        * The actor is the system rather than a person. `emitCommitted` skips the actor as
        * "their own act", and a due date passing is nobody's act — least of all the Zone
@@ -51,22 +77,17 @@ export class OverdueActionsWorker {
         type: 'CORRECTIVE_ACTION_OVERDUE',
         actorUserId: null,
         unitId,
-        resourceType: 'corrective_action',
-        resourceId: action.id,
-        userIds: action.assignedZoneLeaderUserId ? [action.assignedZoneLeaderUserId] : [],
-        data: {
-          zoneCode: action.zoneCode,
-          zoneName: action.zoneName,
-          questionNo: action.questionGlobalOrder,
-          suggestionNo: action.suggestionNo,
-          assigneeName: action.assignedZoneLeaderName,
-          dueAt: action.dueAt ? new Date(action.dueAt).toISOString() : null,
-          daysOverdue,
-        },
+        // One item still opens that item; a bundle opens the overdue list.
+        resourceType: actions.length === 1 ? 'corrective_action' : 'zone',
+        resourceId: actions.length === 1 ? first.id : first.zoneId,
+        userIds: first.assignedZoneLeaderUserId ? [first.assignedZoneLeaderUserId] : [],
+        data,
       });
     }
 
-    this.logger.log(`overdue sweep: announced ${overdue.length} action(s) in unit ${unitId}`);
+    this.logger.log(
+      `overdue sweep: announced ${overdue.length} action(s) in ${bundles.size} bundle(s) in unit ${unitId}`,
+    );
     return overdue.length;
   }
 }

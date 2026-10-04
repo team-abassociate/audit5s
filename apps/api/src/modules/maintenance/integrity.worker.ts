@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { v5 as uuidv5 } from 'uuid';
+import type { IntegrityDigestData } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
+import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
+import { localDay } from '../analytics/analytics-rollup.worker';
 import { ScoringService } from '../audits/scoring.service';
 import {
   IntegrityRepository,
@@ -23,6 +27,17 @@ const SCORE_SAMPLE_SIZE = 20;
 
 const HOUR_MS = 60 * 60 * 1000;
 
+/**
+ * Whose night the summary runs in. One organisation, in India (STACK.md); a Unit's own
+ * timezone still decides its rollup day.
+ * ponytail: one zone for the whole organisation; read it from the organisation when a Unit
+ * outside IST is signed.
+ */
+const NIGHT_TIMEZONE = 'Asia/Kolkata';
+
+/** Fixed, so `integrity.digest.<night>` always maps to the same event id. */
+const DIGEST_NAMESPACE = '6f2c1d4e-8a3b-5c7d-9e0f-1a2b3c4d5e6f';
+
 /** One Unit's findings. Every field is a count, so "nothing wrong" is four zeroes. */
 export interface IntegrityFindings {
   orphanEvidence: number;
@@ -43,11 +58,11 @@ export function hasFindings(findings: IntegrityFindings): boolean {
 }
 
 /**
- * §16.4's data-integrity jobs, riding the per-Unit `maintenance.sweep` tick.
+ * §16.4's data-integrity jobs, on one nightly `integrity.digest` schedule.
  *
- * They share the tick rather than carrying schedules of their own for the reason the D7
- * grace sweep does: the schedule already exists, the checks are idempotent, and they are
- * cheap — four reads and a bounded recomputation per Unit per night.
+ * They rode the per-Unit `maintenance.sweep` tick until D10 asked for one summary a night:
+ * a per-Unit job cannot see the other Units, so the summary needs one run over all of them.
+ * Still cheap — four reads and a bounded recomputation per Unit per night.
  *
  * Nothing here writes to a domain table and nothing here repairs anything. A sweep that
  * silently fixed an orphan would be a delete by another name, and an audit whose score the
@@ -86,13 +101,51 @@ export class IntegrityWorker {
       );
     }
 
-    // Only when there is something to say. A nightly "all clear" is a nightly notification,
-    // and the sweep's own health is already covered by §16.1's per-job log line and by the
-    // dead-letter queue if it stops running at all (R-16a).
-    if (hasFindings(findings)) {
-      await this.notify(unitId, findings);
-    }
     return findings;
+  }
+
+  /** Registers the nightly summary: one schedule for the organisation, not one per Unit. */
+  async schedule(queue: QueueService): Promise<void> {
+    await queue.schedule(QUEUES.integrityDigest, '0 2 * * *', {}, {
+      key: QUEUES.integrityDigest,
+      tz: NIGHT_TIMEZONE,
+      singletonKey: QUEUES.integrityDigest,
+    });
+  }
+
+  /**
+   * D10: every Unit's checks, then **one** summary to each Super Admin for the night.
+   *
+   * It used to be one alert per Unit, four of them inside six seconds at 02:00. The checks
+   * still run Unit by Unit, each behind its own Unit predicate; only the telling is joined.
+   *
+   * Idempotent per night: the event id is derived from the date, so a retried or doubled
+   * run reaches each Super Admin once (`UNIQUE(event_id, recipient_user_id)`). Only when
+   * there is something to say — a nightly "all clear" is a nightly notification, and the
+   * sweep's own health is covered by §16.1's per-job log line and the dead-letter queue
+   * (R-16a, R-17b).
+   */
+  async digest(scope: ScopeContext, now = new Date()): Promise<IntegrityDigestData | null> {
+    const found: IntegrityDigestData['units'] = [];
+    for (const unit of await this.repository.units(scope)) {
+      const findings = await this.sweep(scope, unit.id, now);
+      if (hasFindings(findings)) found.push({ unitId: unit.id, unitName: unit.name, ...findings });
+    }
+    if (found.length === 0) return null;
+
+    const data: IntegrityDigestData = { night: localDay(now, NIGHT_TIMEZONE), units: found };
+    // No transaction to join: the sweep wrote nothing, so R-2's hazard cannot arise.
+    await this.events.emitCommitted({
+      type: 'DATA_INTEGRITY_ALERT',
+      eventId: uuidv5(`integrity.digest.${data.night}`, DIGEST_NAMESPACE),
+      // The system, not a person. Nobody is skipped as "their own act".
+      actorUserId: null,
+      unitId: null,
+      resourceType: 'organization',
+      resourceId: null,
+      data,
+    });
+    return data;
   }
 
   private async check(
@@ -153,19 +206,4 @@ export class IntegrityWorker {
     return drifted;
   }
 
-  /**
-   * No transaction to join: the sweep read and wrote nothing, so R-2's hazard — a job for a
-   * write that rolled back — cannot arise. This is `SYNC_FAILURE`'s case exactly.
-   */
-  private async notify(unitId: string, findings: IntegrityFindings): Promise<void> {
-    await this.events.emitCommitted({
-      type: 'DATA_INTEGRITY_ALERT',
-      // The system, not a person. Nobody is skipped as "their own act".
-      actorUserId: null,
-      unitId,
-      resourceType: 'unit',
-      resourceId: unitId,
-      data: { ...findings },
-    });
-  }
 }

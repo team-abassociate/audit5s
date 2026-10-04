@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { NOTIFICATION_EVENT_TYPES, type Notification, type NotificationPage } from '@audit5s/contracts';
+import {
+  NOTIFICATION_EVENT_TYPES,
+  overdueBundleDataSchema,
+  type Notification,
+  type NotificationPage,
+} from '@audit5s/contracts';
 import { Link } from '@tanstack/react-router';
 import { formatDateTime } from '@audit5s/domain';
 import { api } from '@/lib/api';
@@ -40,14 +45,25 @@ function notificationLink(n: Notification) {
     case 'checklist_template':
     case 'checklist_version':
       return { to: '/checklists' } as const;
+    case 'zone':
+      // D10: a Zone's overdue bundle opens that Unit's overdue list, by leader.
+      if (n.eventType === 'CORRECTIVE_ACTION_OVERDUE') {
+        return {
+          to: '/corrective-actions',
+          search: { overdue: true, group: 'leader', ...(n.unitId ? { unit: n.unitId } : {}) },
+        } as const;
+      }
+      return { to: '/units' } as const;
     case 'unit':
     case 'unit_membership':
-    case 'zone':
       return { to: '/units' } as const;
     default:
       // No resource, or one this build does not know: the event's own page, and failing
       // that the dashboard, which is never a wrong place to arrive.
-      return { to: n.eventType === 'SYNC_FAILURE' ? '/sync' : '/dashboard' } as const;
+      // The nightly data check is about uploads and phones that went quiet: Sync health.
+      return {
+        to: n.eventType === 'SYNC_FAILURE' || n.eventType === 'DATA_INTEGRITY_ALERT' ? '/sync' : '/dashboard',
+      } as const;
   }
 }
 
@@ -153,7 +169,14 @@ export function NotificationsPage() {
                       {formatDateTime(notification.createdAt)}
                     </span>
                   </div>
-                  <p className="m-0 text-sm text-ink-2 [overflow-wrap:anywhere]">{notification.body}</p>
+                  {/* pre-line: the nightly summary is a line per Unit (D10). */}
+                  <p className="m-0 whitespace-pre-line text-sm text-ink-2 [overflow-wrap:anywhere]">
+                    {notification.body}
+                  </p>
+                  <BundleItems
+                    notification={notification}
+                    onOpen={() => unread && markRead.mutate(notification.id)}
+                  />
                   <span className="gb-chip gb-chip--muted mt-1">
                     {NOTIFICATION_CATEGORY_LABEL[notification.eventType]}
                   </span>
@@ -166,6 +189,42 @@ export function NotificationsPage() {
 
       <Preferences />
     </div>
+  );
+}
+
+/**
+ * A Zone's overdue bundle (D10), one link per item, each opening that action (CA1's
+ * `?action=`). A one-item notice already links its item from the title; a row written
+ * before D10 has no items and shows nothing here.
+ */
+function BundleItems({ notification, onOpen }: { notification: Notification; onOpen: () => void }) {
+  if (notification.eventType !== 'CORRECTIVE_ACTION_OVERDUE') return null;
+  const bundle = overdueBundleDataSchema.safeParse(notification.data);
+  if (!bundle.success || bundle.data.items.length < 2) return null;
+  return (
+    <ul aria-label="Overdue items" className="m-0 mt-1 flex list-none flex-wrap gap-x-3 gap-y-1 p-0 text-sm">
+      {bundle.data.items.map((item, index) => (
+        <li key={item.actionId}>
+          <Link
+            to="/corrective-actions"
+            search={{ action: item.actionId, ...(notification.unitId ? { unit: notification.unitId } : {}) }}
+            className="font-mono"
+            onClick={onOpen}
+          >
+            {/* As the Corrective actions list names an item; a walk-by has no number of its own. */}
+            {item.questionNo
+              ? `Q${item.questionNo}`
+              : item.suggestionNo
+                ? `Overall action ${item.suggestionNo}`
+                : `Walk-by observation ${index + 1}`}
+          </Link>
+          <span className="font-mono text-xs text-ink-3">
+            {' '}
+            · {item.daysOverdue} day{item.daysOverdue === 1 ? '' : 's'}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
