@@ -2633,29 +2633,34 @@ li:has(> .gb-menu-item--danger) {
     display: block;
     min-width: 0;
   }
+  /* A fixed grid, not a wrapping row: every card puts each field in the same place (F7). */
   .gb-ca-list tbody tr:not(:has(> td[colspan])) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 6px 14px;
+    display: grid;
+    grid-template-columns: minmax(max-content, 8.5rem) minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 8px 14px;
     padding: 10px 12px;
     border-bottom: 1px solid var(--edge-soft);
   }
   .gb-ca-list tbody tr:not(:has(> td[colspan])) td {
     padding: 0;
     border: 0;
+    white-space: normal;
   }
   .gb-ca-list tbody tr:not(:has(> td[colspan])) td:first-child {
-    flex: 1 0 100%;
+    grid-column: 1 / -1;
   }
   /* The header row is gone, so each value says what it is. */
-  .gb-ca-list tbody tr:not(:has(> td[colspan])) td:nth-child(n + 3)::before {
+  .gb-ca-list tbody tr:not(:has(> td[colspan])) td:nth-child(n + 2)::before {
     display: block;
     font-size: 10.5px;
     font-weight: 600;
     letter-spacing: 0.13em;
     text-transform: uppercase;
     color: var(--ink-3);
+  }
+  .gb-ca-list tbody tr td:nth-child(2)::before {
+    content: 'Status';
   }
   .gb-ca-list tbody tr td:nth-child(3)::before {
     content: 'Zone Leader';
