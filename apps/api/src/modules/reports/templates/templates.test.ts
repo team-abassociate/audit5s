@@ -160,6 +160,13 @@ describe('§4.1 — the initial Zone report', () => {
     expect(html).toContain('&lt; 60% Needs Support');
   });
 
+  it('draws the rating key as square outlined chips with a shape per band (template 1.8.0)', () => {
+    const key = html.slice(html.indexOf('<div class="pills">'));
+    expect(key.match(/class="glyph"/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(html).not.toMatch(/\.pill-[\w-]+ \{ background/);
+    expect(/\.pill \{[^}]*\}/.exec(html)?.[0]).not.toContain('radius');
+  });
+
   it('opens each checklist section with an ink header row carrying its subtotal', () => {
     const table = sectionOf(html, 'Checklist — responses and marks');
     expect(table).toContain('class="section-row"');

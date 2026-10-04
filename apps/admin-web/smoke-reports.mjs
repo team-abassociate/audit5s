@@ -275,11 +275,16 @@ try {
   // The library names a report by what it covers, filed under the audit it came from.
   await page.getByText('Zone 1 — Press shop').waitFor();
   await page.getByText(/Audit finished .* · Priya Nair/).waitFor();
-  // Download, Regenerate and Delete are on the row itself; there is no row menu.
-  for (const name of ['Download', 'Regenerate', 'Delete']) {
-    await page.getByRole('button', { name, exact: true }).waitFor();
-  }
-  assert.equal(await page.getByRole('button', { name: /More actions/ }).count(), 0);
+  // R4: Download is the row's one visible action; Regenerate and Delete wait behind "⋯".
+  await page.getByRole('button', { name: 'Download', exact: true }).waitFor();
+  const more = page.getByRole('button', { name: /^More actions for Zone 1 — Press shop.* v1$/ });
+  await more.click();
+  await page.getByRole('menuitem', { name: /Regenerate/ }).waitFor();
+  await page.getByRole('menuitem', { name: /Delete v1/ }).click();
+  // Delete asks first, naming the version, with Cancel holding focus.
+  await page.getByRole('alertdialog', { name: /^Delete v1 of Zone 1 — Press shop.*\?$/ }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('alertdialog').waitFor({ state: 'hidden' });
 
   // A click on the report opens its PDF beside the list, drawn by PDF.js from the built worker.
   await page.getByText('Zone 1 — Press shop').click();
@@ -287,8 +292,10 @@ try {
   await panel.waitFor();
   await panel.locator('.gb-pdf-page[data-drawn]').first().waitFor();
   await panel.getByText('1 / 2').waitFor();
-  // Beside the open preview the row's actions are icons, still named for what they do.
-  assert.equal(await page.locator('tr[data-snapshot] .gb-btn--act-icon').count(), 3);
+  // R3: beside the open preview the list drops Edition, Version and Generated, and Download
+  // is an icon still named for what it does.
+  assert.equal(await page.locator('tr[data-snapshot] .gb-btn--act-icon').count(), 1);
+  assert.equal(await page.locator('thead th').count(), 3);
   // Expand lays the report over the page at 100% — the page's own view, not full screen.
   await panel.getByRole('button', { name: 'Expand, at 100%' }).click();
   assert.equal(await panel.getByRole('combobox', { name: 'Zoom' }).inputValue(), '1');
@@ -302,8 +309,10 @@ try {
   await page.getByRole('button', { name: 'New report' }).first().click();
   await page.getByRole('heading', { name: 'New report' }).waitFor();
   await page.getByRole('radio', { name: /Unit summary/ }).check();
-  await page.getByRole('combobox', { name: 'Unit' }).click();
-  await page.getByRole('option', { name: 'Nashik Plant' }).click();
+  // The shell's Unit scope is a combobox too; this is the dialog's own.
+  const dialog = page.getByRole('dialog', { name: 'New report' });
+  await dialog.getByRole('combobox', { name: /^Unit/ }).click();
+  await dialog.getByRole('option', { name: 'Nashik Plant' }).click();
 
   // The unit summary is chosen audited Zone by audited Zone, not handed every Zone.
   await page.getByText('Priya Nair · 2 Zones').waitFor();

@@ -31,7 +31,7 @@ export function reportStyles(payload: ReportPayload): string {
       (band) => `
 .band-${band.token} { color: ${band.color}; }
 .tint-${band.token} { background: ${band.tint}; color: ${band.color}; }
-.pill-${band.token} { background: ${band.color}; color: white; border-color: ${band.color}; }
+.pill-${band.token} { color: ${band.color}; border-color: ${band.color}; }
 .band-fill-${band.token} { background: ${band.color}; }`,
     )
     .join('\n');
@@ -258,25 +258,25 @@ tbody tr.total-row, tbody tr.total-row td {
 }
 .caption { font-size: 7pt; color: ${brand.inkSoft}; margin-top: 3px; }
 
-/* ------------------------------------------------------------- rating-scale pills
-   Outlined chips, not filled capsules: colour still marks the band, carried once more by
-   a small filled swatch so it reads even where a reader's printer renders text in black. */
+/* ------------------------------------------------------------- rating-scale key
+   Square outlined chips, as the admin app draws a band (GEMBA-BOARD.md §2.6): the band word
+   in its colour, and the same shape glyph, so the key reads on a black-only printer too. */
 .pills { display: flex; gap: 6px; margin-top: 8px; margin-bottom: 4px; }
 .pill {
   flex: 1 1 0;
   border: 1.25px solid;
+  background: white;
   padding: 3px 8px;
   font-size: 7.5pt;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-align: center;
-  border-radius: var(--report-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
 }
-.pill .swatch { display: none; }
+.pill .glyph { flex: none; width: 7pt; height: 7pt; fill: currentColor; }
 
 /* --------------------------------------------------------------- score index bars (§2)
    The same S-wise numbers as the ledger table below, read at a glance: one bar per S,

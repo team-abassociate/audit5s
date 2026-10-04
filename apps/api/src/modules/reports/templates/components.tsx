@@ -98,7 +98,13 @@ export function RatingPills({ bands }: { bands: readonly ReportBand[] }) {
               : `${band.minPercentage}–${upper}%`;
         return (
           <div key={band.token} className={`pill pill-${band.token}`}>
-            <span className="swatch" />
+            {/* The admin app's BandLabel shapes, so the key reads without colour. */}
+            <svg className="glyph" viewBox="0 0 10 10" aria-hidden="true">
+              {band.token === 'band-outstanding' ? <path d="M5 1 L9.4 9 L0.6 9 Z" /> : null}
+              {band.token === 'band-on-track' ? <circle cx="5" cy="5" r="4.2" /> : null}
+              {band.token === 'band-improving' ? <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" /> : null}
+              {band.token === 'band-needs-support' ? <path d="M0.6 1 L9.4 1 L5 9 Z" /> : null}
+            </svg>
             {range} {band.label}
           </div>
         );
