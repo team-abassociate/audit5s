@@ -271,6 +271,16 @@ export const syncConflictSchema = z.object({
    * them an unregistered device from a duplicated id. Null for rows held before 0020.
    */
   detail: z.string().nullable(),
+  /**
+   * Where the item belongs, so a reviewer can tell "Answer to a question" rows apart (F4).
+   * Read from the item's audit and audited Zone at list time; null where the server holds
+   * neither (an audit that never arrived, a payload that names nothing).
+   */
+  unitId: uuidSchema.nullable(),
+  unitName: z.string().nullable(),
+  auditId: uuidSchema.nullable(),
+  /** The audited Zone as every screen names it (`zoneDisplayLabel`). */
+  zoneLabel: z.string().nullable(),
   incomingPayload: z.record(z.string(), z.unknown()),
   existingPayload: z.record(z.string(), z.unknown()).nullable(),
   resolvedAt: isoDateTimeSchema.nullable(),
@@ -284,6 +294,11 @@ export const listSyncConflictsQuerySchema = paginationQuerySchema.extend({
   resolved: booleanQuery(false),
   entityType: z.string().trim().max(60).optional(),
   deviceId: uuidSchema.optional(),
+  /** Who pushed it (S3x). */
+  userId: uuidSchema.optional(),
+  /** The Unit of the audit it belongs to (S3x). Items with no known audit never match. */
+  unitId: uuidSchema.optional(),
+  reason: syncConflictReasonSchema.optional(),
 });
 export type ListSyncConflictsQuery = z.infer<typeof listSyncConflictsQuerySchema>;
 
@@ -322,3 +337,35 @@ export const deviceSyncRecordSchema = z.object({
   networkType: z.string().nullable(),
 });
 export type DeviceSyncRecord = z.infer<typeof deviceSyncRecordSchema>;
+
+// ------------------------------------------------- uploads in the Activity log (D11)
+
+/** `after` of a `sync.batch_received` entry: one phone upload, counted. */
+export const syncUploadLogSchema = z.object({
+  batchId: uuidSchema,
+  appVersion: z.string().nullable(),
+  /** Items in the batch. */
+  items: z.number().int().nonnegative(),
+  /** Saved, or already on the server. */
+  applied: z.number().int().nonnegative(),
+  /** Held for review — each also has a `sync.item_held` entry. */
+  held: z.number().int().nonnegative(),
+  /** Waiting on something not uploaded yet; the phone sends them again. */
+  waiting: z.number().int().nonnegative(),
+  /** Photographs whose upload was confirmed in this batch. */
+  photos: z.number().int().nonnegative(),
+  /** The audits the batch touched, as far as the server knows them. */
+  auditIds: z.array(uuidSchema),
+});
+export type SyncUploadLog = z.infer<typeof syncUploadLogSchema>;
+
+/** `after` of a `sync.item_held` entry: what was held and where it belongs. */
+export const syncHeldLogSchema = z.object({
+  batchId: uuidSchema,
+  entityType: z.string(),
+  reason: syncConflictReasonSchema,
+  detail: z.string().nullable(),
+  auditId: uuidSchema.nullable(),
+  zoneLabel: z.string().nullable(),
+});
+export type SyncHeldLog = z.infer<typeof syncHeldLogSchema>;

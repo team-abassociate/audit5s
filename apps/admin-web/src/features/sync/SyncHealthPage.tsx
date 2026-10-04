@@ -1,7 +1,7 @@
 import { Fragment, useId, useState } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocation } from '@tanstack/react-router';
-import type { Device, Page, SyncConflict } from '@audit5s/contracts';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { SYNC_CONFLICT_REASONS, type Device, type Page, type SyncConflict, type SyncConflictReason, type User } from '@audit5s/contracts';
 import { formatAge, formatDateTime, formatWeekdayDate } from '@audit5s/domain';
 import { api } from '@/lib/api';
 import {
@@ -25,6 +25,7 @@ import { Changes, readable } from '@/features/audit-log/Changes';
 import { isWorstCase } from '@/features/audit-log/worst-case';
 import { humanize, syncEntityLabel } from '@/lib/labels';
 import { useSession } from '@/lib/session';
+import { useUnitScope } from '@/lib/scope';
 import { cn } from '@/lib/cn';
 import { worstConflicts, worstDevices } from './worst-case';
 
@@ -38,32 +39,69 @@ import { worstConflicts, worstDevices } from './worst-case';
  * data. So every field the phone sent is shown, in words (UX audit S4x); the verbatim JSON
  * stays one click away under "Technical details" for a Super Admin.
  *
- * The person and phone filters work over the items already loaded (S3x); server filters
- * are UX audit S15d. `?device=` arrives from a "field work held" notification (N3).
+ * Person, phone, reason and the portal's Unit filter on the server (S3x, S15d), and live in
+ * the URL. `?device=` arrives from a "field work held" notification (N3).
  */
+export interface SyncSearch {
+  device?: string;
+  person?: string;
+  reason?: SyncConflictReason;
+  resolved?: true;
+}
+
+const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : undefined);
+
+export function validateSyncSearch(search: Record<string, unknown>): SyncSearch {
+  return {
+    device: text(search.device),
+    person: text(search.person),
+    reason: SYNC_CONFLICT_REASONS.includes(search.reason as SyncConflictReason)
+      ? (search.reason as SyncConflictReason)
+      : undefined,
+    resolved: search.resolved === true || search.resolved === 'true' ? true : undefined,
+  };
+}
+
 export function SyncHealthPage() {
-  const deviceParam = useLocation({ select: (location) => (location.search as Record<string, unknown>).device });
-  const [showResolved, setShowResolved] = useState(false);
+  const search = useSearch({ strict: false }) as SyncSearch;
+  const navigate = useNavigate();
+  const set = (patch: Partial<SyncSearch>) =>
+    void navigate({
+      to: '.',
+      search: ((prev: SyncSearch) => ({ ...prev, ...patch })) as never,
+      replace: true,
+      resetScroll: false,
+    });
+  const showResolved = search.resolved === true;
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [person, setPerson] = useState('');
-  const [phone, setPhone] = useState(typeof deviceParam === 'string' ? deviceParam : '');
+  const scope = useUnitScope();
+
+  const query = new URLSearchParams({ limit: '100', resolved: String(showResolved) });
+  if (search.person) query.set('userId', search.person);
+  if (search.device) query.set('deviceId', search.device);
+  if (search.reason) query.set('reason', search.reason);
+  if (scope.unitId) query.set('unitId', scope.unitId);
 
   // Newest first, a page at a time: the queue can outgrow any single page, and a count
   // taken from one page would under-report what is waiting.
   const conflicts = useInfiniteQuery({
-    queryKey: ['sync-conflicts', showResolved],
+    queryKey: ['sync-conflicts', query.toString()],
+    // A filter change keeps the rows on screen until the new ones arrive, rather than
+    // flashing the skeleton on every pick.
+    placeholderData: keepPreviousData,
+    enabled: scope.ready || isWorstCase(),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => {
       if (isWorstCase()) return Promise.resolve(worstConflicts(showResolved));
-      const query = new URLSearchParams({ limit: '100', resolved: String(showResolved) });
-      if (pageParam) query.set('cursor', pageParam);
-      return api.get<Page<SyncConflict>>(`/sync-conflicts?${query}`);
+      const page = new URLSearchParams(query);
+      if (pageParam) page.set('cursor', pageParam);
+      return api.get<Page<SyncConflict>>(`/sync-conflicts?${page}`);
     },
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     // Field devices push continuously; an unresolved queue is a live view.
     refetchInterval: showResolved ? false : 30_000,
   });
-  const loaded = conflicts.data?.pages.flatMap((page) => page.data) ?? [];
+  const rows = conflicts.data?.pages.flatMap((page) => page.data) ?? [];
 
   const devices = useQuery({
     queryKey: ['devices'],
@@ -76,21 +114,28 @@ export function SyncHealthPage() {
     return device ? (device.model ?? humanize(device.platform)) : 'Unknown phone';
   };
 
-  const people = [...new Map(loaded.map((c) => [c.userId, c.userName ?? 'Unknown person'])).entries()].sort((a, b) =>
-    a[1].localeCompare(b[1]),
-  );
-  const phones = [...new Set(loaded.map((c) => c.deviceId).filter((id): id is string => id !== null))];
-  if (phone && !phones.includes(phone)) phones.push(phone);
-  const rows = loaded.filter((c) => (!person || c.userId === person) && (!phone || c.deviceId === phone));
-  const filtered = person !== '' || phone !== '';
-  const clear = () => {
-    setPerson('');
-    setPhone('');
-  };
+  const users = useQuery({
+    queryKey: ['users', 'all'],
+    queryFn: () => api.get<Page<User>>('/users?limit=200'),
+    staleTime: 5 * 60_000,
+    enabled: !isWorstCase(),
+  });
+  const people = [...(users.data?.data ?? [])].sort((a, b) => a.fullName.localeCompare(b.fullName));
+  const phones = [...deviceById.keys()];
+  if (search.device && !deviceById.has(search.device)) phones.push(search.device);
+  // Four phones of one model read alike; the id's tail tells them apart (Technical details show it whole).
+  const phoneOption = (id: string) =>
+    phones.filter((other) => phoneName(other) === phoneName(id)).length > 1
+      ? `${phoneName(id)} · …${id.slice(-4)}`
+      : phoneName(id);
 
+  const filtered = Boolean(search.person || search.device || search.reason);
+  const clear = () => set({ person: undefined, device: undefined, reason: undefined });
+
+  // Per phone, only when the queue is unfiltered: a filtered page would under-count.
   const heldByDevice = new Map<string, number>();
-  if (!showResolved) {
-    for (const c of loaded) if (c.deviceId) heldByDevice.set(c.deviceId, (heldByDevice.get(c.deviceId) ?? 0) + 1);
+  if (!showResolved && !filtered && scope.unitId === null) {
+    for (const c of rows) if (c.deviceId) heldByDevice.set(c.deviceId, (heldByDevice.get(c.deviceId) ?? 0) + 1);
   }
 
   // "30 held · oldest 12 days": the two numbers someone chasing the queue needs (S3x).
@@ -113,7 +158,7 @@ export function SyncHealthPage() {
             'a correction does, so it is recorded in the Activity log.'
           }
           action={
-            <Button variant="secondary" onClick={() => setShowResolved((value) => !value)}>
+            <Button variant="secondary" onClick={() => set({ resolved: showResolved ? undefined : true })}>
               {showResolved ? 'Show unresolved' : 'Show resolved'}
             </Button>
           }
@@ -121,21 +166,31 @@ export function SyncHealthPage() {
 
         <div className="gb-filters" role="search" aria-label="Filter held field work">
           <Field label="Person">
-            <Select className="max-w-64" value={person} onChange={(event) => setPerson(event.target.value)}>
+            <Select className="max-w-64" value={search.person ?? ''} onChange={(event) => set({ person: event.target.value || undefined })}>
               <option value="">Everyone</option>
-              {people.map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
+              {people.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.fullName}
                 </option>
               ))}
             </Select>
           </Field>
           <Field label="Phone">
-            <Select className="max-w-64" value={phone} onChange={(event) => setPhone(event.target.value)}>
+            <Select className="max-w-64" value={search.device ?? ''} onChange={(event) => set({ device: event.target.value || undefined })}>
               <option value="">Every phone</option>
               {phones.map((id) => (
                 <option key={id} value={id}>
-                  {phoneName(id)}
+                  {phoneOption(id)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Why">
+            <Select value={search.reason ?? ''} onChange={(event) => set({ reason: (event.target.value || undefined) as SyncConflictReason | undefined })}>
+              <option value="">Any reason</option>
+              {SYNC_CONFLICT_REASONS.map((reason) => (
+                <option key={reason} value={reason}>
+                  {REASON_LABEL[reason]}
                 </option>
               ))}
             </Select>
@@ -299,6 +354,21 @@ function ConflictRow({
         </td>
         <td>
           <span className="font-medium">{syncEntityLabel(conflict.entityType)}</span>
+          {/* F4: which Zone, which Unit, and the audit itself, so rows can be told apart. */}
+          {conflict.zoneLabel || conflict.unitName ? (
+            <div className="text-xs text-ink-2">
+              {[conflict.zoneLabel, conflict.unitName].filter(Boolean).join(' · ')}
+            </div>
+          ) : null}
+          {conflict.auditId ? (
+            <Link
+              to="/audits"
+              search={{ audit: conflict.auditId }}
+              className="text-xs"
+            >
+              Open audit
+            </Link>
+          ) : null}
         </td>
         <td>
           {/* The chip wraps here: the Why column is narrow at phone width, and a nowrap chip

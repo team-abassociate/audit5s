@@ -11,8 +11,17 @@ import {
   users,
   type Database,
 } from '@audit5s/db';
-import type { ScopeContext } from '@audit5s/domain';
-import type { ListSyncConflictsQuery, SyncBatchResult } from '@audit5s/contracts';
+import { zoneDisplayLabel, type ScopeContext } from '@audit5s/domain';
+import type {
+  ListSyncConflictsQuery,
+  SyncBatchItem,
+  SyncBatchResult,
+  SyncConflictReason,
+  SyncHeldLog,
+  SyncUploadLog,
+} from '@audit5s/contracts';
+import { auditLogRow } from '../../common/audit-log/audit-log.service';
+import { insertAuditLog } from '../../common/audit-log/audit-log.repository';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
@@ -28,6 +37,60 @@ import { setActorContext } from '../users/users.repository';
 
 /** A conflict is scoped through the user who pushed it; PART 6.3 grants reads to SA only. */
 const conflictScopeColumns = { recordUserId: syncConflicts.userId };
+
+const UUID_PATTERN = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+
+/**
+ * Where a sync item belongs — its audit, audited Zone and Unit — as one JSON object (F4, D11).
+ *
+ * Read from the server's own rows wherever the item points at one, else from the ids the
+ * payload names; a held payload may be malformed, so a payload id is cast only when it is
+ * a UUID. Every key is null when the server holds none of it. Runs as the caller, so RLS
+ * still decides what may be read.
+ */
+function itemContext(entityType: SQL, entityId: SQL, payload: SQL): SQL {
+  const payloadId = (key: string) =>
+    sql`(CASE WHEN ${payload}->>${key} ~* ${UUID_PATTERN} THEN (${payload}->>${key})::uuid END)`;
+  return sql`(SELECT json_build_object(
+      'auditId', a.id, 'unitId', u.id, 'unitName', u.name,
+      'zoneCode', az.zone_code_snapshot, 'zoneName', az.zone_name_snapshot)
+    FROM (SELECT
+      COALESCE(
+        CASE WHEN ${entityType} = 'audit_zone' THEN ${entityId} END,
+        ${payloadId('auditZoneId')},
+        (SELECT e.audit_zone_id FROM evidence e WHERE ${entityType} = 'evidence' AND e.id = ${entityId}),
+        (SELECT q.audit_zone_id FROM question_response q
+          WHERE ${entityType} = 'question_response' AND q.id = ${entityId}),
+        (SELECT c.audit_zone_id FROM corrective_action c WHERE c.id = ${payloadId('correctiveActionId')})
+      ) AS audit_zone_id,
+      COALESCE(
+        CASE WHEN ${entityType} = 'audit' THEN ${entityId} END,
+        ${payloadId('auditId')},
+        (SELECT e.audit_id FROM evidence e WHERE ${entityType} = 'evidence' AND e.id = ${entityId})
+      ) AS audit_id) k
+    LEFT JOIN audit_zone az ON az.id = k.audit_zone_id
+    LEFT JOIN audit a ON a.id = COALESCE(k.audit_id, az.audit_id)
+    LEFT JOIN unit u ON u.id = a.unit_id)`;
+}
+
+/** The held-row context, read straight off `sync_conflict`. */
+const conflictContext = itemContext(
+  sql`${syncConflicts.entityType}`,
+  sql`${syncConflicts.entityId}`,
+  sql`${syncConflicts.incomingPayload}`,
+);
+
+export interface ItemContext {
+  auditId: string | null;
+  unitId: string | null;
+  unitName: string | null;
+  zoneCode: string | null;
+  zoneName: string | null;
+}
+
+export function zoneLabelOf(context: ItemContext | null): string | null {
+  return context?.zoneCode ? zoneDisplayLabel(context.zoneCode, context.zoneName ?? '') : null;
+}
 
 @Injectable()
 export class SyncRepository extends BaseRepository {
@@ -110,9 +173,33 @@ export class SyncRepository extends BaseRepository {
       status: string;
       error: string | null;
     },
+    /** D11: the Activity log entry for this upload, or null when it changed nothing. */
+    upload: { items: SyncBatchItem[]; log: Omit<SyncUploadLog, 'auditIds'> } | null = null,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      if (upload) {
+        const result = await tx.execute<{ audit_id: string; unit_id: string | null }>(sql`
+          SELECT DISTINCT (x.ctx->>'auditId')::uuid AS audit_id, (x.ctx->>'unitId')::uuid AS unit_id
+          FROM unnest(${sql.param(upload.items.map((i) => i.entityType))}::text[],
+                      ${sql.param(upload.items.map((i) => i.entityId))}::uuid[],
+                      ${sql.param(upload.items.map((i) => JSON.stringify(i.payload)))}::jsonb[]) AS i(t, id, p),
+               LATERAL (SELECT ${itemContext(sql`i.t`, sql`i.id`, sql`i.p`)}::jsonb AS ctx) x
+          WHERE x.ctx->>'auditId' IS NOT NULL`);
+        const units = new Set(result.rows.map((row) => row.unit_id));
+        const after: SyncUploadLog = { ...upload.log, auditIds: result.rows.map((row) => row.audit_id) };
+        await insertAuditLog(
+          tx,
+          auditLogRow({
+            action: 'sync.batch_received',
+            resourceType: 'device_sync_record',
+            resourceId: batchId,
+            // One Unit when the upload touched one; a phone covering two Units logs none.
+            unitId: units.size === 1 ? [...units][0] : null,
+            after,
+          }),
+        );
+      }
       await tx
         .update(deviceSyncRecords)
         .set({
@@ -174,9 +261,43 @@ export class SyncRepository extends BaseRepository {
         existingPayload: input.existingPayload,
         batchId: input.batchId,
       });
+
+      const context = await this.contextIn(tx, input);
+      const after: SyncHeldLog = {
+        batchId: input.batchId,
+        entityType: input.entityType,
+        reason: input.reason as SyncConflictReason,
+        detail: input.detail,
+        auditId: context?.auditId ?? null,
+        zoneLabel: zoneLabelOf(context),
+      };
+      await insertAuditLog(
+        tx,
+        auditLogRow({
+          action: 'sync.item_held',
+          resourceType: 'sync_conflict',
+          resourceId: id,
+          unitId: context?.unitId ?? null,
+          after,
+        }),
+      );
     });
 
     return id;
+  }
+
+  private async contextIn(
+    tx: Pick<Database, 'execute'>,
+    item: { entityType: string; entityId: string; incomingPayload: unknown },
+  ): Promise<ItemContext | null> {
+    const result = await tx.execute<{ ctx: ItemContext }>(
+      sql`SELECT ${itemContext(
+        sql`${item.entityType}::text`,
+        sql`${item.entityId}::uuid`,
+        sql`${JSON.stringify(item.incomingPayload ?? {})}::jsonb`,
+      )} AS ctx`,
+    );
+    return result.rows[0]?.ctx ?? null;
   }
 
   async listConflicts(scope: ScopeContext, query: ListSyncConflictsQuery) {
@@ -187,6 +308,9 @@ export class SyncRepository extends BaseRepository {
         query.resolved ? isNotNull(syncConflicts.resolvedAt) : isNull(syncConflicts.resolvedAt),
         query.entityType ? eq(syncConflicts.entityType, query.entityType) : undefined,
         query.deviceId ? eq(syncConflicts.deviceId, query.deviceId) : undefined,
+        query.userId ? eq(syncConflicts.userId, query.userId) : undefined,
+        query.reason ? eq(syncConflicts.reason, query.reason) : undefined,
+        query.unitId ? sql`(${conflictContext}->>'unitId')::uuid = ${query.unitId}::uuid` : undefined,
         // Newest first, as a reviewer reads them. The id is a random UUID and says nothing
         // about time, so the cursor is the row's position in (created_at, id).
         query.cursor
@@ -207,6 +331,7 @@ export class SyncRepository extends BaseRepository {
           detail: syncConflicts.detail,
           incomingPayload: syncConflicts.incomingPayload,
           existingPayload: syncConflicts.existingPayload,
+          context: sql<ItemContext | null>`${conflictContext}`,
           resolvedAt: syncConflicts.resolvedAt,
           resolvedByUserId: syncConflicts.resolvedByUserId,
           resolution: syncConflicts.resolution,
@@ -235,6 +360,7 @@ export class SyncRepository extends BaseRepository {
           detail: syncConflicts.detail,
           incomingPayload: syncConflicts.incomingPayload,
           existingPayload: syncConflicts.existingPayload,
+          context: sql<ItemContext | null>`${conflictContext}`,
           resolvedAt: syncConflicts.resolvedAt,
           resolvedByUserId: syncConflicts.resolvedByUserId,
           resolution: syncConflicts.resolution,

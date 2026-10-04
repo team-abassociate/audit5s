@@ -40,21 +40,19 @@ export class AuditLogRepository {
         await tx.execute(sql`SELECT set_config('app.auth_phase', 'on', true)`);
       }
 
-      await tx.insert(auditLogs).values({
-        actorUserId: row.actorUserId,
-        actorRole: row.actorRole,
-        actorLabel: row.actorLabel,
-        action: row.action,
-        resourceType: row.resourceType,
-        resourceId: row.resourceId,
-        unitId: row.unitId,
-        before: row.before as never,
-        after: row.after as never,
-        ipAddress: row.ipAddress,
-        userAgent: row.userAgent,
-        deviceId: row.deviceId,
-        requestId: row.requestId,
-      });
+      await insertAuditLog(tx, row);
     });
   }
+}
+
+/** The insert itself, on the caller's transaction (whose actor context is already set). */
+export async function insertAuditLog(
+  tx: Pick<Database, 'insert'>,
+  row: AuditLogRow,
+): Promise<void> {
+  await tx.insert(auditLogs).values({
+    ...row,
+    before: row.before as never,
+    after: row.after as never,
+  });
 }

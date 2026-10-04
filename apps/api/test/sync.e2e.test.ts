@@ -1232,3 +1232,147 @@ describe('withdrawing an unfinished Zone', () => {
     expect(rows[0].n).toBe(1);
   });
 });
+
+describe('D11 — uploads in the Activity log, and the held queue filtered (S15d)', () => {
+  type Entry = { action: string; resourceId: string | null; unitId: string | null; after: Record<string, unknown> | null };
+  const sa = () => world.actors.SUPER_ADMIN.accessToken;
+
+  async function logFor(action: string, resourceId: string): Promise<Entry[]> {
+    const response = await world.request('GET', `${base}/audit-logs?action=${action}&limit=200`, { token: sa() });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    return (response.body as Page<Entry>).data.filter((entry) => entry.resourceId === resourceId);
+  }
+
+  it('writes one entry per upload that saved something, none for a replay or a batch still waiting', async () => {
+    await assign();
+    const zoneId = await makeZone();
+    const auditId = randomUUID();
+    const batchId = randomUUID();
+    const items = auditBatch({ auditId, auditZoneId: randomUUID(), zoneId, answers: 3 });
+
+    await push(items, { batchId });
+    await push(items, { batchId }); // an HTTP retry of the same batch
+
+    const entries = await logFor('sync.batch_received', batchId);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.unitId).toBe(world.unitA);
+    expect(entries[0]!.after).toMatchObject({
+      batchId,
+      appVersion: '1.4.2',
+      items: 5,
+      applied: 5,
+      held: 0,
+      waiting: 0,
+      photos: 0,
+      auditIds: [auditId],
+    });
+
+    // Every item waiting on a parent: nothing arrived that a reviewer could act on.
+    const waitingBatch = randomUUID();
+    await push(
+      [
+        {
+          outboxId: randomUUID(),
+          entityType: 'question_response',
+          entityId: randomUUID(),
+          operation: 'upsert',
+          payload: {
+            auditZoneId: randomUUID(),
+            checklistQuestionId: questionIds[0],
+            value: 'SCORE_2',
+            answeredAt: new Date().toISOString(),
+          },
+        },
+      ],
+      { batchId: waitingBatch },
+    );
+    expect(await logFor('sync.batch_received', waitingBatch)).toHaveLength(0);
+  });
+
+  it('logs a held item with its Zone and audit, and the queue names the Unit, audit and Zone (F4)', async () => {
+    const { auditId, auditZoneId, zoneId } = await startedAudit();
+    const { rows } = await world.owner.query(`SELECT code, name FROM zone WHERE id = $1`, [zoneId]);
+    const zoneLabel = `Zone ${Number(String(rows[0].code).slice(2))} — ${rows[0].name}`;
+
+    const response = await push(
+      [
+        {
+          outboxId: randomUUID(),
+          entityType: 'question_response',
+          entityId: randomUUID(),
+          operation: 'upsert',
+          payload: {
+            auditZoneId,
+            checklistQuestionId: questionIds[0],
+            value: 'SCORE_1',
+            answeredAt: new Date().toISOString(),
+          },
+        },
+      ],
+      { token: secondDeviceToken, deviceId: SECOND_DEVICE },
+    );
+    const conflictId = response.results[0]!.conflictId!;
+
+    const held = await logFor('sync.item_held', conflictId);
+    expect(held).toHaveLength(1);
+    expect(held[0]!.unitId).toBe(world.unitA);
+    expect(held[0]!.after).toMatchObject({
+      entityType: 'question_response',
+      reason: 'DEVICE_NOT_OWNER',
+      auditId,
+      zoneLabel,
+    });
+
+    const conflict = (await world.request('GET', `${base}/sync-conflicts/${conflictId}`, { token: sa() }))
+      .body as SyncConflict;
+    expect(conflict).toMatchObject({ unitId: world.unitA, unitName: 'Unit A', auditId, zoneLabel });
+
+    // Server filters (S3x): person, Unit and reason each narrow; a non-match finds nothing.
+    const ids = async (query: string) =>
+      (
+        (await world.request('GET', `${base}/sync-conflicts?limit=200&${query}`, { token: sa() }))
+          .body as Page<SyncConflict>
+      ).data.map((c) => c.id);
+    expect(
+      await ids(`userId=${world.actors.CONSULTANT.userId}&unitId=${world.unitA}&reason=DEVICE_NOT_OWNER`),
+    ).toContain(conflictId);
+    expect(await ids(`unitId=${world.unitB}`)).not.toContain(conflictId);
+    expect(await ids(`userId=${world.actors.ZONE_LEADER.userId}`)).not.toContain(conflictId);
+    expect(await ids('reason=SCOPE_REVOKED')).not.toContain(conflictId);
+
+    const bad = await world.request('GET', `${base}/sync-conflicts?unitId=pune`, { token: sa() });
+    expect(bad.status).toBe(422);
+
+    // The batch that held it is logged too, counted as held.
+    const batch = (await logFor('sync.batch_received', response.batchId))[0];
+    expect(batch?.after).toMatchObject({ applied: 0, held: 1, auditIds: [auditId] });
+
+    // The Activity log's own filters narrow on the server.
+    const byUnit = await world.request(
+      'GET',
+      `${base}/audit-logs?resourceType=sync_conflict&unitId=${world.unitB}&limit=200`,
+      { token: sa() },
+    );
+    expect((byUnit.body as Page<Entry>).data.map((e) => e.resourceId)).not.toContain(conflictId);
+    const byActor = await world.request(
+      'GET',
+      `${base}/audit-logs?actorUserId=${world.actors.CONSULTANT.userId}&resourceType=device_sync_record,sync_conflict&limit=200`,
+      { token: sa() },
+    );
+    const actorIds = (byActor.body as Page<Entry>).data.map((e) => e.resourceId);
+    expect(actorIds).toContain(conflictId);
+    expect(actorIds).toContain(response.batchId);
+  });
+
+  it('refuses the filtered log and queue to every role but a Super Admin', async () => {
+    const queue = `${base}/sync-conflicts?unitId=${world.unitA}&userId=${world.actors.CONSULTANT.userId}`;
+    const log = `${base}/audit-logs?action=sync.item_held&unitId=${world.unitA}`;
+    for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const) {
+      const token = world.actors[role].accessToken;
+      expect((await world.request('GET', queue, { token })).status, role).toBe(403);
+      expect((await world.request('GET', log, { token })).status, role).toBe(403);
+    }
+    expect((await world.request('GET', queue, { token: sa() })).status).toBe(200);
+    expect((await world.request('GET', log, { token: sa() })).status).toBe(200);
+  });
+});

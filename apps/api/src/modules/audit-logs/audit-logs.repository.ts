@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 import { auditLogs, type Database } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { ListAuditLogQuery } from '@audit5s/contracts';
@@ -21,7 +21,7 @@ export class AuditLogsRepository extends BaseRepository {
       const filters: Array<SQL | undefined> = [
         query.action ? eq(auditLogs.action, query.action) : undefined,
         query.actorUserId ? eq(auditLogs.actorUserId, query.actorUserId) : undefined,
-        query.resourceType ? eq(auditLogs.resourceType, query.resourceType) : undefined,
+        query.resourceType ? inArray(auditLogs.resourceType, query.resourceType.split(',')) : undefined,
         query.resourceId ? eq(auditLogs.resourceId, query.resourceId) : undefined,
         query.unitId ? eq(auditLogs.unitId, query.unitId) : undefined,
         query.from ? gte(auditLogs.occurredAt, new Date(query.from)) : undefined,

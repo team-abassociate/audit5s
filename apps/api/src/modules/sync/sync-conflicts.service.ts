@@ -11,7 +11,7 @@ import { AppError } from '../../common/errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { AuditsService } from '../audits/audits.service';
 import { presentHeldDetail } from './held-item-detail';
-import { SyncRepository, type SyncConflictRow } from './sync.repository';
+import { SyncRepository, zoneLabelOf, type SyncConflictRow } from './sync.repository';
 
 /**
  * The quarantine, read and resolved (§8.10, §9.5 Layer 3).
@@ -73,6 +73,8 @@ export class SyncConflictsService {
       action: 'sync_conflict.resolved',
       resourceType: 'sync_conflict',
       resourceId: conflictId,
+      // So the Activity log's Unit filter finds the decision beside the item it closes.
+      unitId: conflict.context?.unitId ?? null,
       before: { reason: conflict.reason, resolvedAt: null },
       // The resolution is in the payload rather than in the action name: the vocabulary
       // of §5.9 has one `sync_conflict.resolved`, and a reader filtering the log for it
@@ -155,6 +157,10 @@ export function toSyncConflict(row: SyncConflictRow): SyncConflict {
     userName: row.userName,
     entityType: row.entityType,
     entityId: row.entityId,
+    unitId: row.context?.unitId ?? null,
+    unitName: row.context?.unitName ?? null,
+    auditId: row.context?.auditId ?? null,
+    zoneLabel: zoneLabelOf(row.context),
     reason: row.reason as SyncConflictReason,
     // Rows held before UX audit S1x stored the raw error; it is replaced on the way out.
     detail: presentHeldDetail(row.reason, row.detail),

@@ -15,7 +15,7 @@ import './styles.css';
 import { AppShell, NotFoundPage, useDocumentTitle } from '@/components/AppShell';
 import { componentsRoute } from '@/components/dev/route';
 import { Spinner } from '@/components/ui';
-import { AuditLogPage } from '@/features/audit-log/AuditLogPage';
+import { AuditLogPage, validateAuditLogSearch } from '@/features/audit-log/AuditLogPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { AnalyticsPage } from '@/features/analytics/AnalyticsPage';
 import { AuditsPage, isStatusFilter, type AuditsSearch } from '@/features/audits/AuditsPage';
@@ -26,7 +26,7 @@ import {
 import { PublicCorrectiveActionPage } from '@/features/corrective-actions/PublicCorrectiveActionPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
-import { SyncHealthPage } from '@/features/sync/SyncHealthPage';
+import { SyncHealthPage, validateSyncSearch } from '@/features/sync/SyncHealthPage';
 import { IndustriesPage } from '@/features/industries/IndustriesPage';
 import { ChecklistsPage } from '@/features/checklists/ChecklistsPage';
 import { ForcedResetPage } from '@/features/auth/ForcedResetPage';
@@ -249,10 +249,10 @@ const notificationsRoute = createRoute({
 const syncRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/sync',
-  // A "field work held" notification opens the queue filtered to the phone it came from (N3).
-  validateSearch: (search: Record<string, unknown>): { device?: string } => ({
-    device: typeof search.device === 'string' ? search.device : undefined,
-  }),
+  staticData: { unitScope: 'any' },
+  // The held queue's filters live in the URL; a "field work held" notification opens it
+  // filtered to the phone it came from (N3).
+  validateSearch: validateSyncSearch,
   component: SyncHealthPage,
 });
 
@@ -268,6 +268,8 @@ const usersRoute = createRoute({
 const auditLogRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/audit-log',
+  staticData: { unitScope: 'any' },
+  validateSearch: validateAuditLogSearch,
   component: AuditLogPage,
 });
 

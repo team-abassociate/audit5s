@@ -43,6 +43,8 @@ export const AUDIT_LOG_ACTIONS = [
   'audit.cancelled',
   /** §9.5 Layer 1's force-release: a Super Admin breaks a device's single-writer lock. */
   'audit.device_released',
+  /** R-33: the auditor restarted their own finished audit. Written since R-33; listed 2026-10-05. */
+  'audit.restarted',
   'report.generated',
   'report.token_revoked',
   'report.cancelled',
@@ -75,6 +77,14 @@ export const AUDIT_LOG_ACTIONS = [
    */
   'device.user_added',
   'sync_conflict.resolved',
+  /**
+   * D11 (2026-10-05): a phone's upload, one entry per batch that changed or held something.
+   * A replayed batch id and a batch where every item is still waiting write nothing, so an
+   * HTTP retry or a photo still uploading never adds a row. `after` is `syncUploadLogSchema`.
+   */
+  'sync.batch_received',
+  /** D11: one item of an upload was held for review (§9.5). `after` is `syncHeldLogSchema`. */
+  'sync.item_held',
   /** The auditor withdrew an unfinished Zone from their audit ("abort this Zone", 0031). */
   'audit_zone.withdrawn',
 ] as const;
@@ -104,7 +114,13 @@ export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>;
 export const listAuditLogQuerySchema = paginationQuerySchema.extend({
   action: auditLogActionSchema.optional(),
   actorUserId: uuidSchema.optional(),
-  resourceType: z.string().trim().max(60).optional(),
+  /** One record kind, or several comma-separated ("About: Checklist" spans three tables). */
+  resourceType: z
+    .string()
+    .trim()
+    .max(200)
+    .regex(/^[a-z_]+(,[a-z_]+)*$/)
+    .optional(),
   resourceId: uuidSchema.optional(),
   unitId: uuidSchema.optional(),
   from: isoDateTimeSchema.optional(),
