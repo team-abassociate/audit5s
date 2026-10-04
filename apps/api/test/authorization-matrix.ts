@@ -1317,6 +1317,12 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description: 'analytics:organization_dashboard — SUPER_ADMIN only',
     expected: { SUPER_ADMIN: { inScope: OK } },
   },
+  {
+    method: 'GET',
+    path: '/api/v1/analytics/organization/unit-trends',
+    description: 'analytics:organization_dashboard — SUPER_ADMIN only (cross-Unit trend, D12)',
+    expected: { SUPER_ADMIN: { inScope: OK } },
+  },
   ...[
     '/api/v1/analytics/units/:unitId/overview',
     '/api/v1/analytics/units/:unitId/trend',

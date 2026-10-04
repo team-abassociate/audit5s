@@ -539,6 +539,75 @@ body {
   color: var(--ink-3);
   font-size: 11px;
 }
+/* Cross-Unit trend (AN1): Unit | line | latest | change, one row per Unit. */
+.gb-utrend ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.gb-urow {
+  display: grid;
+  grid-template-columns: minmax(8rem, 15rem) minmax(0, 1fr) 7.5rem 8rem;
+  gap: 4px 14px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--edge-soft);
+  font-size: 12.5px;
+}
+.gb-urow--head {
+  padding-top: 0;
+  border-bottom: 1.5px solid var(--edge);
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.gb-urow-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.gb-urow-spark {
+  width: 100%;
+  display: block;
+  overflow: visible;
+}
+/* The board's target line, quieter: forty rows of it should not shout over the data. */
+.gb-urow-spark .gb-target-line {
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.gb-urow-latest,
+.gb-urow-change {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gb-urow-latest > b,
+.gb-urow-change > b {
+  font-family: var(--font-data);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.gb-urow-change > small {
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+@media (max-width: 640px) {
+  .gb-urow {
+    /* "NEEDS SUPPORT" does not wrap, so Latest is sized to it. */
+    grid-template-columns: minmax(0, 1fr) 7.5rem 6.5rem;
+    column-gap: 10px;
+  }
+  .gb-urow--head span:nth-child(2) {
+    display: none;
+  }
+  .gb-urow-spark {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
 .gb-ticks {
   display: grid;
   grid-template-columns: 74px 1fr 46px;

@@ -18,9 +18,11 @@ import type {
   CorrectiveAction,
   OrganizationOverview,
   Unit,
+  UnitScoreTrend,
   UnitSections,
   User,
 } from '@audit5s/contracts';
+import { UNIT_CHANGE_SPAN } from '@audit5s/contracts';
 import { bandLabel, bandOf } from '@/lib/bands';
 import { useToken } from '@/lib/tokens';
 import { Button, Card, CardHeader, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
@@ -167,8 +169,125 @@ function OrganizationSection({ units, loading }: { units: Unit[]; loading: boole
           <ScoreBars rows={bars} />
         </DatasetCard>
       ) : null}
+      <UnitTrendCard />
     </section>
   );
+}
+
+/**
+ * Who improved most (D12, AN1): one line per Unit on one shared scale and time axis, so
+ * the lines compare, sorted by the server — most improved first. The change is the latest
+ * score against the earliest of the last few audits, and its start is ringed on the line.
+ */
+function UnitTrendCard() {
+  const fixture = worst();
+  const trends = useQuery({
+    queryKey: ['analytics', 'organization', 'unit-trends', fixture],
+    queryFn: () => get<UnitScoreTrend[]>('/analytics/organization/unit-trends'),
+  });
+  if (trends.isLoading) return <Spinner label="Loading Unit trends…" />;
+  if (trends.error) return <ErrorNotice error={trends.error} />;
+  const units = trends.data ?? [];
+  const scale = sparkScale(units);
+  const rows = units.map((unit) => ({
+    unit: unit.unitName,
+    latestScore: pct(unit.points.at(-1)?.scorePercentage ?? null, ''),
+    band: bandLabel(unit.points.at(-1)?.scorePercentage ?? null),
+    change: unit.change === null ? null : signed(unit.change),
+    since: unit.changeFrom ? formatDate(unit.changeFrom) : null,
+    scoredAudits: unit.points.length,
+  }));
+
+  return (
+    <DatasetCard
+      title="Unit trend · most improved first"
+      note={`One line per Unit, a point per scored audit in the ${WINDOW}, all on one scale; the dashed line is Outstanding ${TARGET}. Change is the latest score against the earliest of the last ${UNIT_CHANGE_SPAN} audits (both ringed).`}
+      rows={rows}
+      filename="unit-trend.csv"
+    >
+      <div className="gb-utrend">
+        <div className="gb-urow gb-urow--head" aria-hidden="true">
+          <span>Unit</span><span>Score trend</span><span>Latest</span><span>Change</span>
+        </div>
+        <ol>
+          {units.map((unit) => <UnitTrendRow key={unit.unitId} unit={unit} scale={scale} />)}
+        </ol>
+      </div>
+    </DatasetCard>
+  );
+}
+
+function UnitTrendRow({ unit, scale }: { unit: UnitScoreTrend; scale: SparkScale }) {
+  const latest = unit.points.at(-1)?.scorePercentage ?? null;
+  const since = unit.changeFrom ? formatDate(unit.changeFrom) : null;
+  const words = unit.change === null
+    ? unit.points.length === 0 ? 'no scored audit' : 'no change yet'
+    : unit.change === 0
+      ? `no change since ${since}`
+      : `${unit.change > 0 ? 'up' : 'down'} ${formatScore(Math.abs(unit.change))} points since ${since}`;
+  return (
+    <li className="gb-urow">
+      <b className="gb-urow-name">{unit.unitName}</b>
+      <Spark unit={unit} scale={scale} label={`${unit.unitName}: ${COUNT.format(unit.points.length)} scored audit${unit.points.length === 1 ? '' : 's'}, latest ${pct(latest)}, ${words}.`} />
+      <span className="gb-urow-latest"><b>{pct(latest, '')}</b><BandLabel score={latest} /></span>
+      <span className="gb-urow-change">
+        {unit.change === null ? (
+          <small>{unit.points.length === 0 ? 'No audits' : 'Needs 2 audits'}</small>
+        ) : (
+          <>
+            <b><span aria-hidden="true">{unit.change > 0 ? '▲ ' : unit.change < 0 ? '▼ ' : '■ '}</span>{signed(unit.change)}</b>
+            <small>since {since}</small>
+          </>
+        )}
+      </span>
+    </li>
+  );
+}
+
+interface SparkScale { low: number; from: number; to: number }
+/** Fixed height in px; x is a percentage of the column, so the line fills it undistorted. */
+const SPARK = { height: 44, pad: 7, inset: 2 } as const;
+
+/** One y-scale and one time axis for every line, or the small multiples don't compare. */
+function sparkScale(units: UnitScoreTrend[]): SparkScale {
+  const points = units.flatMap((unit) => unit.points);
+  const times = points.map((point) => Date.parse(point.completedAt));
+  const min = Math.min(100, ...points.map((point) => point.scorePercentage));
+  // The board's rule (trendGeometry): the floor drops in steps of 20 below the lowest score.
+  return { low: Math.max(0, Math.floor((min - 5) / 20) * 20), from: Math.min(...times), to: Math.max(...times) };
+}
+
+function Spark({ unit, scale, label }: { unit: UnitScoreTrend; scale: SparkScale; label: string }) {
+  if (unit.points.length === 0) return <span className="gb-urow-spark text-sm text-ink-3">No scored audit in the {WINDOW}.</span>;
+  const { height, pad, inset } = SPARK;
+  const x = (at: string) =>
+    `${scale.to === scale.from ? 50 : inset + ((Date.parse(at) - scale.from) / (scale.to - scale.from)) * (100 - 2 * inset)}%`;
+  const y = (value: number) => pad + ((100 - value) / (100 - scale.low)) * (height - 2 * pad);
+  const coords = unit.points.map((point) => ({ ...point, x: x(point.completedAt), y: y(point.scorePercentage) }));
+  const last = coords.at(-1)!;
+  return (
+    <svg className="gb-urow-spark" height={height} role="img" aria-label={label}>
+      <line className="gb-target-line" x1="0" x2="100%" y1={y(TARGET)} y2={y(TARGET)} />
+      {coords.slice(1).map((c, index) => (
+        <line key={c.auditId} className="gb-line" x1={coords[index]!.x} y1={coords[index]!.y} x2={c.x} y2={c.y} />
+      ))}
+      {coords.map((c) => {
+        const ringed = c === last || c.completedAt === unit.changeFrom;
+        return (
+          <g key={c.auditId}>
+            <title>{`${formatDate(c.completedAt)}: ${pct(c.scorePercentage)}`}</title>
+            <circle className="gb-hit" cx={c.x} cy={c.y} r={9} />
+            <circle className={ringed ? 'gb-dot' : 'gb-mark'} cx={c.x} cy={c.y} r={ringed ? 4.5 : 3} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/** A change as a reader writes it: +5.0, −16.6, 0.0 — truncated like every score (D15). */
+function signed(change: number): string {
+  return `${change > 0 ? '+' : change < 0 ? '−' : ''}${formatScore(Math.abs(change))}`;
 }
 
 // -------------------------------------------------------------------------------- unit
