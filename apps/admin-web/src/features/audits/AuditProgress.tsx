@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, type CSSProperties } from 'react';
 import type { Audit, AuditDetail, AuditZoneStatus } from '@audit5s/contracts';
-import { formatDateTime } from '@audit5s/domain';
+import { formatDateTime, formatScore } from '@audit5s/domain';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { api } from '@/lib/api';
@@ -80,7 +80,7 @@ export function AuditProgress({ auditId, compact = false }: { auditId: string; c
                     ? '—'
                     : zone.totals.scorePercentage === null
                       ? 'N/A'
-                      : `${zone.totals.scorePercentage.toFixed(1)}%`}
+                      : `${formatScore(zone.totals.scorePercentage)}%`}
                 </span>
               </li>
             ))}

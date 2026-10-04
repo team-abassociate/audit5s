@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatDateTime, formatWeekdayDate, isAuditCompleted, istDateKey, reportZoneLabel } from '@audit5s/domain';
+import { formatDateTime, formatWeekdayDate, isAuditCompleted, istDateKey, reportZoneLabel, formatScore } from '@audit5s/domain';
 import type { Audit, AuditScoreSummary, ReportSnapshot } from '@audit5s/contracts';
 import { api, fetchAll } from '@/lib/api';
 import { Badge, Button, ErrorNotice, Field, Select, Spinner } from '@/components/ui';
@@ -174,7 +174,7 @@ export function SummaryZonePicker({
                   {audit.auditorName} · {zones.length} Zone{zones.length === 1 ? '' : 's'}
                 </span>
                 {audit.scored && audit.totals.scorePercentage !== null ? (
-                  <Badge>{audit.totals.scorePercentage.toFixed(1)}%</Badge>
+                  <Badge>{formatScore(audit.totals.scorePercentage)}%</Badge>
                 ) : null}
               </label>
               {summaries[index]?.isLoading ? (
@@ -202,7 +202,7 @@ export function SummaryZonePicker({
                   ) : null}
                   {zone.totals.scorePercentage !== null ? (
                     <span className="ml-auto gb-data text-xs text-ink-2">
-                      {zone.totals.scorePercentage.toFixed(1)}%
+                      {formatScore(zone.totals.scorePercentage)}%
                     </span>
                   ) : null}
                 </label>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ResponseValue, SSection } from '@audit5s/contracts';
 import { S_SECTION_ORDER, QUESTIONS_PER_SECTION, TOTAL_QUESTIONS } from './sections';
 import {
+  formatScore,
   numericScoreFor,
   percentageOf,
   rollUpBreakdowns,
@@ -218,5 +219,19 @@ describe('numericScoreFor is the writer half of QR-1', () => {
     expect(numericScoreFor('SCORE_0')).toBe(0);
     expect(numericScoreFor('SCORE_1')).toBe(1);
     expect(numericScoreFor('SCORE_2')).toBe(2);
+  });
+});
+
+describe('formatScore (D15)', () => {
+  it('truncates so the number never rises into the next band', () => {
+    expect(formatScore(59.994)).toBe('59.9');
+    expect(formatScore(89.999)).toBe('89.9');
+  });
+  it('keeps exact values and survives binary error', () => {
+    expect(formatScore(70)).toBe('70.0');
+    expect(formatScore(0.7 * 100)).toBe('70.0');
+    expect(formatScore(100)).toBe('100.0');
+    expect(formatScore(0)).toBe('0.0');
+    expect(formatScore(66.667)).toBe('66.6');
   });
 });

@@ -13,7 +13,7 @@ import type {
   User,
   Zone,
 } from '@audit5s/contracts';
-import { formatDate, formatDateTime, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDate, formatDateTime, zoneDisplayLabel, formatScore } from '@audit5s/domain';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { ApiError, api } from '@/lib/api';
@@ -508,7 +508,7 @@ function ScoreCell({ audit }: { audit: Audit }) {
   const percentage = audit.totals.scorePercentage;
   return (
     <span className={cn('gb-data font-semibold', bandTextClass(percentage))}>
-      {percentage === null ? 'N/A' : `${percentage.toFixed(1)}%`}
+      {percentage === null ? 'N/A' : `${formatScore(percentage)}%`}
     </span>
   );
 }

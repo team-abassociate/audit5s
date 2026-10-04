@@ -12,7 +12,7 @@ import type {
   QuestionResponse,
   SectionScorePayload,
 } from '@audit5s/contracts';
-import { RESPONSE_TOKENS, formatDateTime, zoneDisplayLabel } from '@audit5s/domain';
+import { RESPONSE_TOKENS, formatDateTime, zoneDisplayLabel, formatScore } from '@audit5s/domain';
 import { bandTextClass, responseTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { api } from '@/lib/api';
@@ -135,7 +135,7 @@ export function AuditDetailPanel({
           <Metric label="Marks" value={`${totals.rawScore} / ${totals.maxScore}`} />
           <Metric
             label="Percentage"
-            value={percentage === null ? 'N/A' : `${percentage.toFixed(1)}%`}
+            value={percentage === null ? 'N/A' : `${formatScore(percentage)}%`}
             tone={bandTextClass(percentage)}
           />
           <div>
@@ -165,7 +165,7 @@ export function AuditDetailPanel({
                 <StatusChip kind="zone" status={zone.status} />
                 {audit.scored && audit.status !== 'CANCELLED' && zone.status === 'COMPLETED' ? (
                   <span className={cn('gb-data w-14 text-right font-semibold', bandTextClass(pct))}>
-                    {pct === null ? 'N/A' : `${pct.toFixed(1)}%`}
+                    {pct === null ? 'N/A' : `${formatScore(pct)}%`}
                   </span>
                 ) : null}
               </summary>
@@ -557,7 +557,7 @@ function SectionTable({ sections }: { sections: SectionScorePayload[] }) {
               <Td>{section.max}</Td>
               <Td className={section.pct === null ? 'gb-na' : undefined}>
                 <span className={cn('font-semibold', bandTextClass(section.pct))}>
-                  {section.pct === null ? 'N/A' : `${section.pct.toFixed(1)}%`}
+                  {section.pct === null ? 'N/A' : `${formatScore(section.pct)}%`}
                 </span>
               </Td>
             </tr>

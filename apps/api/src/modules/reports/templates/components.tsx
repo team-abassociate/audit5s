@@ -4,7 +4,7 @@ import type {
   ReportPhoto,
   SectionScorePayload,
 } from './payload-types';
-import { S_SECTION_SHORT_LABELS, S_SECTION_LABELS, formatDate as formatDomainDate } from '@audit5s/domain';
+import { S_SECTION_SHORT_LABELS, S_SECTION_LABELS, formatDate as formatDomainDate, formatScore } from '@audit5s/domain';
 import { encodeQr } from './qr';
 import { REPORT_LOGO } from './logo';
 
@@ -23,7 +23,7 @@ export type ImageResolver = (objectKey: string) => string | null;
 export function formatPercentage(pct: number | null): string {
   // A6: one decimal. The stored value carries three (§5.5); this is display, not a second
   // rounding of the stored number.
-  return pct === null ? 'N/A' : `${pct.toFixed(1)}%`;
+  return pct === null ? 'N/A' : `${formatScore(pct)}%`;
 }
 
 export function formatMarks(raw: number, max: number): string {

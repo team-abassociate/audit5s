@@ -21,7 +21,7 @@ import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL } from '@/lib/labels';
-import { daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime } from '@audit5s/domain';
+import { daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime, formatScore } from '@audit5s/domain';
 import {
   TARGET,
   awaitingRollup,
@@ -1002,7 +1002,7 @@ function DetailPanel({
                     <i style={{ width: `${row.pct}%` }} />
                   ) : null}
                 </div>
-                <b>{row ? (row.pct === null ? 'N/A' : row.pct.toFixed(1)) : '—'}</b>
+                <b>{row ? (row.pct === null ? 'N/A' : formatScore(row.pct)) : '—'}</b>
               </div>
             );
           })}
@@ -1195,7 +1195,7 @@ function MatrixCell({ section }: { section?: SectionScorePayload }) {
     );
   }
   return (
-    <td className={`gb-c gb-${bandOf(section.pct)} gb-data`}>{section.pct.toFixed(1)}</td>
+    <td className={`gb-c gb-${bandOf(section.pct)} gb-data`}>{formatScore(section.pct)}</td>
   );
 }
 
