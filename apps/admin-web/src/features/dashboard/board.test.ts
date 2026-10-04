@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { Zone, ZoneRankingItem } from '@audit5s/contracts';
+import type { CorrectiveAction, Zone, ZoneRankingItem } from '@audit5s/contracts';
 import {
   TARGET,
   awaitingRollup,
   bandLabel,
   bandOf,
+  count,
   delta1,
+  groupFindings,
   mergeBoard,
   score1,
   score2,
@@ -201,5 +203,50 @@ describe('trendGeometry', () => {
     expect(geometry.targetY).toBeGreaterThan(16);
     expect(geometry.targetY).toBeLessThan(geometry.end.y);
     expect(TARGET).toBe(90);
+  });
+});
+
+describe('B1, B7, B12', () => {
+  it('carries the latest-audit score beside the weighted one, never in its place', () => {
+    const item = { ...ranked('z1', 'Z-01', 65.1), lastScore: 71.4, auditCount: 4 };
+    const [row] = mergeBoard([zone('z1', 'Z-01')], [item], new Map());
+    expect(row).toMatchObject({ score: 65.1, lastScore: 71.4, auditCount: 4 });
+  });
+
+  it('gives a repeated date its time, and leaves a unique date alone', () => {
+    const geometry = trendGeometry([
+      { period: '23 Sept', detail: '9:10 AM', scorePercentage: 60 },
+      { period: '23 Sept', detail: '6:42 PM', scorePercentage: 70 },
+      { period: '30 Sept', detail: '2:05 PM', scorePercentage: 80 },
+    ])!;
+    expect(geometry.xTicks.map((tick) => [tick.label, tick.sub])).toEqual([
+      ['23 Sept', '9:10 AM'],
+      ['23 Sept', '6:42 PM'],
+      ['30 Sept', undefined],
+    ]);
+  });
+
+  it('groups one finding photographed three times, and keeps question-less items apart', () => {
+    const action = (id: string, auditId: string, question: string | null) =>
+      ({ id, auditId, checklistQuestionId: question }) as CorrectiveAction;
+    const groups = groupFindings([
+      action('a', 'A1', 'q1'),
+      action('b', 'A1', 'q1'),
+      action('c', 'A1', 'q1'),
+      action('d', 'A2', 'q1'),
+      action('e', 'A1', null),
+      action('f', 'A1', null),
+    ]);
+    expect(groups.map((group) => [group.lead.id, group.actions.length])).toEqual([
+      ['a', 3],
+      ['d', 1],
+      ['e', 1],
+      ['f', 1],
+    ]);
+  });
+
+  it('writes counts the Indian way', () => {
+    expect(count(1284)).toBe('1,284');
+    expect(count(0)).toBe('0');
   });
 });
