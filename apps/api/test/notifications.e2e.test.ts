@@ -5,7 +5,10 @@ import {
   type Audit,
   type NotificationPage,
   type NotificationPreferences,
+  overdueBundleDataSchema,
 } from '@audit5s/contracts';
+import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
+import { OverdueActionsWorker } from '../src/modules/corrective-actions/overdue.worker';
 import { PushChannel } from '../src/infrastructure/push/push-channel';
 import {
   MessageChannel,
@@ -280,5 +283,108 @@ describe('preferences (§5.9, §8.10)', () => {
       'IN_APP:DELIVERED',
       'SMS:SENT',
     ]);
+  });
+});
+
+/**
+ * D10: overdue items reach people bundled per Zone and leader, once. The bundle is also an
+ * authorization boundary — a Zone Leader reads only the actions assigned to them, so a
+ * bundle must never carry another leader's items, and nobody outside the Unit hears of it.
+ */
+describe('overdue bundles (D10)', () => {
+  it('sends one notice per Zone and leader, only to people in scope, and never twice', async () => {
+    const insertUser = async (loginId: string, name: string, phone: string, role: string, unitId: string) => {
+      const { rows } = await world.owner.query(
+        `INSERT INTO "user" (login_id, full_name, phone_e164, role, password_hash, must_reset_password, status)
+         VALUES ($1, $2, $3, $4, 'x', false, 'ACTIVE') RETURNING id`,
+        [loginId, name, phone, role],
+      );
+      const id = rows[0].id as string;
+      await world.owner.query(
+        `INSERT INTO unit_membership (user_id, unit_id, role, assigned_by_user_id) VALUES ($1, $2, $3, $1)`,
+        [id, unitId, role],
+      );
+      return id;
+    };
+    const zed = await insertUser('ZS0201', 'Zed Second', '+919000000201', 'ZONE_LEADER', world.unitA);
+    const coordinatorB = await insertUser('CB0202', 'Bea Coord', '+919000000202', 'COORDINATOR', world.unitB);
+
+    const zoeWalk = await completedWalkBy(world, {
+      token: consultantToken,
+      deviceId: DEVICE,
+      unitId: world.unitA,
+      zoneLeaderUserId: world.actors.ZONE_LEADER.userId,
+      nonconformities: 3,
+    });
+    const zedWalk = await completedWalkBy(world, {
+      token: consultantToken,
+      deviceId: DEVICE,
+      unitId: world.unitA,
+      zoneLeaderUserId: zed,
+      nonconformities: 2,
+    });
+    await drainNotifications(world, worker, seen);
+    await world.owner.query(
+      `UPDATE corrective_action SET due_at = now() - interval '3 days' WHERE id = ANY($1::uuid[])`,
+      [[...zoeWalk.actions, ...zedWalk.actions].map((action) => action.id)],
+    );
+
+    const overdue = world.app.get(OverdueActionsWorker);
+    expect(await overdue.sweep(SYSTEM_SCOPE, world.unitA)).toBe(5);
+    const bundles = (await drainNotifications(world, worker, seen)).filter(
+      (event) => event.type === 'CORRECTIVE_ACTION_OVERDUE',
+    );
+    expect(bundles).toHaveLength(2);
+
+    const received = async (userId: string) =>
+      (await notificationsFor(userId)).filter((row) => row.event_type === 'CORRECTIVE_ACTION_OVERDUE');
+
+    // Each leader: their own Zone's bundle, carrying their items and nobody else's.
+    const zoe = await received(world.actors.ZONE_LEADER.userId);
+    expect(zoe).toHaveLength(1);
+    expect(zoe[0]!.title).toMatch(/^Overdue: 3 corrective actions in Zone \d+ — Line \d+ \(Zoe Leader\)$/);
+    const zoeBundle = bundles.find((event) => event.userIds?.includes(world.actors.ZONE_LEADER.userId))!;
+    expect(zoeBundle).toMatchObject({ resourceType: 'zone', resourceId: zoeWalk.zoneId });
+    expect(overdueBundleDataSchema.parse(zoeBundle.data).items.map((item) => item.actionId).sort()).toEqual(
+      zoeWalk.actions.map((action) => action.id).sort(),
+    );
+    expect(await received(zed)).toHaveLength(1);
+
+    // The Unit's Coordinator and the Super Admin: both bundles. Outside the Unit: nothing.
+    expect(await received(world.actors.COORDINATOR.userId)).toHaveLength(2);
+    expect(await received(world.actors.SUPER_ADMIN.userId)).toHaveLength(2);
+    expect(await received(coordinatorB)).toHaveLength(0);
+    expect(await received(world.outOfScopeUserId)).toHaveLength(0);
+    expect(await received(world.actors.CONSULTANT.userId)).toHaveLength(0);
+
+    // A rerun of the night claims nothing, and a redelivered job writes nothing new.
+    expect(await overdue.sweep(SYSTEM_SCOPE, world.unitA)).toBe(0);
+    for (const bundle of bundles) await worker.handle(bundle);
+    expect(await received(world.actors.COORDINATOR.userId)).toHaveLength(2);
+    expect(await received(world.actors.ZONE_LEADER.userId)).toHaveLength(1);
+  });
+});
+
+/** F1, R-33: a restart withdraws the open actions, and the people chasing them are told. */
+describe('restart (R-33)', () => {
+  it('tells the Zone Leader and the Super Admin which item was withdrawn, and why', async () => {
+    const { auditId, actions } = await walkBy(1);
+    await drainNotifications(world, worker, seen);
+
+    const restarted = await world.request('POST', `${base}/audits/${auditId}/restart`, {
+      token: consultantToken,
+      headers: { 'x-device-id': DEVICE },
+      body: { justification: 'Tapped finish too early' },
+    });
+    expect(restarted.status, JSON.stringify(restarted.body)).toBe(200);
+
+    const events = await drainNotifications(world, worker, seen);
+    const withdrawn = events.find((event) => event.type === 'CORRECTIVE_ACTION_WITHDRAWN')!;
+    expect(withdrawn).toMatchObject({ resourceId: actions[0]!.id });
+    const [leader] = await notificationsFor(world.actors.ZONE_LEADER.userId, withdrawn.eventId);
+    expect(leader!.body).toMatch(/^Zone \d+ — Line \d+ is withdrawn while .+ re-checks the audit\./);
+    expect(await notificationsFor(world.actors.SUPER_ADMIN.userId, withdrawn.eventId)).toHaveLength(1);
+    // The auditor restarted it; nobody is told of their own act.
+    expect(await notificationsFor(world.actors.CONSULTANT.userId, withdrawn.eventId)).toHaveLength(0);
   });
 });

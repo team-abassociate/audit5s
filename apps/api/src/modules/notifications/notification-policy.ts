@@ -1,5 +1,5 @@
 import type { NotificationEventType, Role } from '@audit5s/contracts';
-import { formatDate, NO_DATE, RESPONSE_TOKENS } from '@audit5s/domain';
+import { formatDate, NO_DATE, RESPONSE_TOKENS, zoneDisplayLabel } from '@audit5s/domain';
 import type { DomainEventJob } from '../../infrastructure/queue/domain-events';
 
 /**
@@ -109,12 +109,12 @@ function formatDay(iso: string): string {
 export function renderNotification(event: DomainEventJob): { title: string; body: string } {
   const data = event.data;
   const auditType = AUDIT_TYPE_LABEL[String(data.auditType)] ?? 'Audit';
-  const item = [
-    data.zoneCode ? `Zone ${String(data.zoneCode)}` : null,
-    data.zoneName ? String(data.zoneName) : null,
-  ]
-    .filter(Boolean)
-    .join(' — ');
+  // "Zone 2 — Press", written as everywhere else in the app — never the stored "Z-02".
+  const item = data.zoneCode
+    ? zoneDisplayLabel(String(data.zoneCode), String(data.zoneName ?? '')).replace(/ — $/, '')
+    : data.zoneName
+      ? String(data.zoneName)
+      : '';
   const question = data.questionNo
     ? `, Q${String(data.questionNo)}`
     : data.suggestionNo
@@ -199,15 +199,19 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       // identical down to the Zone number, and the first thing they need is whose finding
       // this answers. Both parts are optional: an event emitted before this renders the
       // same sentence without them.
-      const from = data.auditorName ? ` — from ${auditType.toLowerCase()} by ${String(data.auditorName)}` : '';
+      // F2: the person who answered leads the title, and the audit is named as where the
+      // finding came from — "submitted — from … by <auditor>" read as if the auditor had.
+      const by = data.submittedByName ? String(data.submittedByName) : null;
+      const from = data.auditorName ? ` From the ${auditType} by ${String(data.auditorName)}.` : '';
       return {
-        title: `Corrective action submitted${from}`,
+        title: by ? `${by} submitted a corrective action` : 'Corrective action submitted',
         // R-23: an after-photo closes the item at once; "not possible" still needs a decision.
         body:
           `${item}${question}: ` +
           (data.option === 'NOT_POSSIBLE'
             ? `marked not possible (attempt ${String(data.attemptNo ?? 1)}). Accept or reopen it.`
-            : `completed with an after photo (attempt ${String(data.attemptNo ?? 1)}) and closed. Regenerate the report to include it.`),
+            : `completed with an after photo (attempt ${String(data.attemptNo ?? 1)}) and closed. Regenerate the report to include it.`) +
+          from,
       };
     }
     case 'CORRECTIVE_ACTION_VERIFIED':
@@ -229,30 +233,63 @@ export function renderNotification(event: DomainEventJob): { title: string; body
     }
     case 'CORRECTIVE_ACTION_WITHDRAWN': {
       const who = data.auditorName ? String(data.auditorName) : null;
+      const what = `${item || 'A corrective action'}${question}`;
+      // R-33: a restart withdraws everything still open, and raises again on the next
+      // completion whatever is still a finding then.
+      if (data.cause === 'restart') {
+        return {
+          title: 'Corrective action withdrawn',
+          body:
+            `${what} is withdrawn while ${who ?? 'the auditor'} re-checks the audit. ` +
+            'Nothing is owed on it now; if it is still a finding when the audit is finished again, it comes back.',
+        };
+      }
       return {
         title: 'Corrective action withdrawn',
         // Says the thing the recipient most needs: stop. A Zone Leader with this item on
         // their list has been planning a walk to the Zone.
         body:
-          `${item}${question} is no longer a nonconformity` +
+          `${what} is no longer a nonconformity` +
           (who ? ` — ${who} corrected the mark it rested on` : '') +
           '. Nothing is owed on it, and the audit’s score has been recomputed.',
       };
     }
     case 'CORRECTIVE_ACTION_OVERDUE': {
-      const days = Number(data.daysOverdue ?? 0);
-      const late =
-        days <= 0 ? 'is past its due date' : `is ${days} day${days === 1 ? '' : 's'} past its due date`;
-      const owner = data.assigneeName ? String(data.assigneeName) : null;
+      // D10: one notice per Zone and leader. A job queued before D10 carries one item flat.
+      const items = (Array.isArray(data.items) ? data.items : [data]) as Array<Record<string, unknown>>;
+      const days = Math.max(0, ...items.map((one) => Number(one.daysOverdue ?? 0)));
+      const owner = data.assigneeName ? ` (${String(data.assigneeName)})` : '';
+      const where = item || 'a Zone';
+      // Says what to do, not only what is wrong. A notice that reports a fact and proposes
+      // nothing is one more thing to feel bad about.
+      if (items.length === 1) {
+        const late =
+          days <= 0 ? 'is past its due date' : `is ${days} day${days === 1 ? '' : 's'} past its due date`;
+        const one = itemName(items[0]!);
+        return {
+          title: `Overdue: ${where}${one ? `, ${one}` : ''}${owner}`,
+          body:
+            `${where}${one ? `, ${one}` : ''} ${late}. ` +
+            'Answer it with an after photo, or mark it not possible so it can be reviewed.',
+        };
+      }
+      // Questions and overall actions by name; a walk-by observation has neither, so those
+      // are counted instead.
+      const named = items.map(itemName).filter(Boolean);
+      const shown = named.slice(0, OVERDUE_ITEMS_NAMED);
+      const observations = items.length - named.length;
+      const parts = [
+        ...shown,
+        ...(named.length > shown.length ? [`${named.length - shown.length} more`] : []),
+        ...(observations > 0 ? [`${observations} walk-by observation${observations === 1 ? '' : 's'}`] : []),
+      ];
+      const subject = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)!}` : parts[0]!;
       return {
-        title: owner
-          ? `Overdue: ${item || 'a corrective action'} — ${owner}`
-          : `Overdue: ${item || 'a corrective action'}`,
-        // Says what to do, not only what is wrong. A notice that reports a fact and
-        // proposes nothing is one more thing to feel bad about.
+        title: `Overdue: ${items.length} corrective actions in ${where}${owner}`,
         body:
-          `${item}${question} ${late}. ` +
-          'Answer it with an after photo, or mark it not possible so it can be reviewed.',
+          `${subject.charAt(0).toUpperCase()}${subject.slice(1)} ` +
+          `${days <= 0 ? 'are past their due date' : `are past their due date, the oldest by ${days} day${days === 1 ? '' : 's'}`}. ` +
+          'Answer each with an after photo, or mark it not possible so it can be reviewed.',
       };
     }
     case 'CORRECTIVE_ACTION_REOPENED':
@@ -275,23 +312,27 @@ export function renderNotification(event: DomainEventJob): { title: string; body
         body: `${String(data.templateName ?? 'A checklist')} v${String(data.versionNumber ?? '?')} is now live.`,
       };
     case 'DATA_INTEGRITY_ALERT': {
-      // Only the non-zero findings are named. A body that lists four checks and four
-      // zeroes every time teaches the reader to skip the line that matters.
-      const parts = [
-        count(data.orphanEvidence, 'photo', 'recorded but never uploaded'),
-        count(data.staleAudits, 'audit', 'open for more than a week'),
-        count(data.unsyncedDevices, 'device', 'holding an audit and not syncing'),
-        count(data.scoreDrift, 'audit score', `that does not match a recomputation (of ${String(data.auditsSampled ?? 0)} checked)`),
-      ].filter((part): part is string => part !== null);
+      const tail = ' The check only reports these; it did not change anything.';
+      // D10: one summary a night, a line per Unit with a finding — real line breaks, which
+      // both the portal and the phone render as lines.
+      if (Array.isArray(data.units)) {
+        const units = data.units as Array<Record<string, unknown>>;
+        return {
+          title:
+            units.length === 1
+              ? `Nightly data check: findings in ${String(units[0]!.unitName)}`
+              : `Nightly data check: findings in ${units.length} Units`,
+          body: [...units.map((unit) => `${String(unit.unitName)}: ${integrityFindings(unit)}.`), tail.trim()].join('\n'),
+        };
+      }
+      // A per-Unit alert queued before D10.
+      const parts = integrityFindings(data);
       return {
         title: 'Data integrity check',
         // The worker only emits when something was found, so the empty case is unreachable
         // from the sweep. It is still written out, because a renderer whose fallback is a
         // bare full stop is one refactor away from sending one.
-        body:
-          parts.length === 0
-            ? 'No findings.'
-            : `${parts.join('; ')}. The check only reports these; it did not change anything.`,
+        body: parts === '' ? 'No findings.' : `${parts}.${tail}`,
       };
     }
     case 'REPORT_GENERATED': {
@@ -313,6 +354,30 @@ export function renderNotification(event: DomainEventJob): { title: string; body
 function markInWords(value: unknown): string {
   const token = typeof value === 'string' ? RESPONSE_TOKENS[value] : undefined;
   return token ? `“${token.label}”` : 'a lower score';
+}
+
+/** A bundle names this many items and counts the rest, so a body stays a sentence. */
+const OVERDUE_ITEMS_NAMED = 8;
+
+/** "Q12", "overall action 2", or '' for an item stored with neither. */
+function itemName(one: Record<string, unknown>): string {
+  if (one.questionNo) return `Q${String(one.questionNo)}`;
+  return one.suggestionNo ? `overall action ${String(one.suggestionNo)}` : '';
+}
+
+/**
+ * Only the non-zero findings, joined. A line that lists four checks and four zeroes every
+ * time teaches the reader to skip the one that matters.
+ */
+function integrityFindings(data: Record<string, unknown>): string {
+  return [
+    count(data.orphanEvidence, 'photo', 'recorded but never uploaded'),
+    count(data.staleAudits, 'audit', 'open for more than a week'),
+    count(data.unsyncedDevices, 'device', 'holding an audit and not syncing'),
+    count(data.scoreDrift, 'audit score', `that does not match a recomputation (of ${String(data.auditsSampled ?? 0)} checked)`),
+  ]
+    .filter((part): part is string => part !== null)
+    .join('; ');
 }
 
 /** `"3 photos recorded but never uploaded"`, or null when there are none. */

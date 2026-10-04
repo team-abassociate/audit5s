@@ -7,6 +7,7 @@ import type {
   AuditZone,
   CancelAuditRequest,
   CompleteAuditRequest,
+  CorrectiveAction,
   CreateAuditRequest,
   ListAuditsQuery,
   Page,
@@ -688,7 +689,7 @@ export class AuditsService {
     }
 
     const restartCount = audit.restartCount + 1;
-    let withdrawn: Array<{ id: string; assignedZoneLeaderUserId: string | null }> = [];
+    let withdrawn: CorrectiveAction[] = [];
 
     await this.repository.restart(
       scope,
@@ -707,8 +708,11 @@ export class AuditsService {
       },
       // Same transaction as the status change: an audit whose corrective actions could not
       // be stopped must not end up restarted with people still being chased.
+      // F1: and the people chasing them are told, through the cascade's own announcement
+      // (R-33: "R-31's cascade, run on a different trigger").
       async (tx) => {
         withdrawn = await this.correctiveActions.withdrawForRestart(tx, scope, auditId);
+        await this.announceCascade(tx, scope, audit, { opened: [], withdrawn, auditStatus: 'IN_PROGRESS' }, 'restart');
       },
     );
 
@@ -857,6 +861,7 @@ export class AuditsService {
     scope: ScopeContext,
     audit: AuditRow,
     cascaded: Awaited<ReturnType<CorrectiveActionsService['cascadeAfterCorrection']>>,
+    cause: 'correction' | 'restart' = 'correction',
   ): Promise<void> {
     for (const action of cascaded.opened) {
       await this.events.emit(tx, {
@@ -887,11 +892,20 @@ export class AuditsService {
         resourceType: 'corrective_action',
         resourceId: action.id,
         userIds: action.assignedZoneLeaderUserId ? [action.assignedZoneLeaderUserId] : [],
-        data: { auditId: audit.id, auditType: audit.auditType, auditorName: audit.auditorName },
+        data: {
+          auditId: audit.id,
+          auditType: audit.auditType,
+          auditorName: audit.auditorName,
+          zoneCode: action.zoneCode,
+          zoneName: action.zoneName,
+          questionNo: action.questionGlobalOrder,
+          suggestionNo: action.suggestionNo,
+          cause,
+        },
       });
     }
 
-    if (cascaded.opened.length > 0 || cascaded.withdrawn.length > 0) {
+    if (cause === 'correction' && (cascaded.opened.length > 0 || cascaded.withdrawn.length > 0)) {
       this.logger.log(
         `override on audit ${audit.id}: ${cascaded.opened.length} corrective action(s) opened, ` +
           `${cascaded.withdrawn.length} withdrawn; audit is ${cascaded.auditStatus} (R-31)`,

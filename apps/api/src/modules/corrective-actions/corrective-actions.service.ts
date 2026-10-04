@@ -219,7 +219,7 @@ export class CorrectiveActionsService {
     reopenAs: Role | null = null,
   ): Promise<{
     opened: CorrectiveAction[];
-    withdrawn: Array<{ id: string; assignedZoneLeaderUserId: string | null }>;
+    withdrawn: CorrectiveAction[];
     auditStatus: AuditStatus;
   }> {
     const unit = this.repository.within(tx, scope);
@@ -265,14 +265,13 @@ export class CorrectiveActionsService {
       );
 
       const opened = await unit.describeActions(created.map((action) => action.id));
+      // Described like the opened ones, so the notice can say which item stopped.
+      const withdrawn = await unit.describeActions(withdrawable.map((action) => action.id));
       const auditStatus = await this.rollup(unit, auditId, reopenAs);
 
       return {
         opened: opened.map(toCorrectiveAction),
-        withdrawn: withdrawable.map((action) => ({
-          id: action.id,
-          assignedZoneLeaderUserId: action.assignedZoneLeaderUserId,
-        })),
+        withdrawn: withdrawn.map(toCorrectiveAction),
         auditStatus,
       };
     });
@@ -358,7 +357,7 @@ export class CorrectiveActionsService {
     tx: Transaction,
     scope: ScopeContext,
     auditId: string,
-  ): Promise<Array<{ id: string; assignedZoneLeaderUserId: string | null }>> {
+  ): Promise<CorrectiveAction[]> {
     const unit = this.repository.within(tx, scope);
     const at = new Date();
 
@@ -379,10 +378,7 @@ export class CorrectiveActionsService {
         stopping.map((action) => action.id),
         at,
       );
-      return stopping.map((action) => ({
-        id: action.id,
-        assignedZoneLeaderUserId: action.assignedZoneLeaderUserId,
-      }));
+      return (await unit.describeActions(stopping.map((action) => action.id))).map(toCorrectiveAction);
     });
   }
 
@@ -492,6 +488,9 @@ export class CorrectiveActionsService {
           await unit.asSystem(() => this.rollup(unit, current.auditId, null));
         }
 
+        // Read back for the name the row settled on: the typed one, or the account's own.
+        const saved = (await unit.findSubmission(submissionId))!;
+
         await this.events.emit(unit.tx, {
           type: 'CORRECTIVE_ACTION_SUBMITTED',
           // Through a link the actor may be the Super Admin who issued the report (R-22),
@@ -501,7 +500,7 @@ export class CorrectiveActionsService {
           unitId: current.unitId,
           resourceType: 'corrective_action',
           resourceId: actionId,
-          data: { ...describe(current), option: request.option, attemptNo },
+          data: { ...describe(current), option: request.option, attemptNo, submittedByName: saved.submittedByName },
         });
 
         if (closes) {
@@ -517,7 +516,7 @@ export class CorrectiveActionsService {
           });
         }
 
-        return toSubmission((await unit.findSubmission(submissionId))!);
+        return toSubmission(saved);
       });
     } catch (error) {
       if (isUniqueViolation(error, 'corrective_action_submission_attempt_key')) {

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import { audits, devices, evidence, type Database, type Transaction } from '@audit5s/db';
+import { asc, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import { audits, devices, evidence, units, type Database, type Transaction } from '@audit5s/db';
 import { COMPLETED_AUDIT_STATUSES, SCORED_AUDIT_TYPES, type ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
@@ -50,6 +50,17 @@ export class IntegrityRepository extends BaseRepository {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       return work(tx);
     });
+  }
+
+  /** The Units the nightly summary covers: every live one in scope, by name. */
+  async units(scope: ScopeContext): Promise<Array<{ id: string; name: string }>> {
+    return this.inScope(scope, (tx) =>
+      tx
+        .select({ id: units.id, name: units.name })
+        .from(units)
+        .where(this.scoped(scope, { unitId: units.id }, isNull(units.archivedAt)))
+        .orderBy(asc(units.name)),
+    );
   }
 
   /**

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { integrityDigestDataSchema } from '@audit5s/contracts';
 import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
+import { QueueService } from '../src/infrastructure/queue/queue.service';
 import { IntegrityWorker } from '../src/modules/maintenance/integrity.worker';
 import { NotificationWorker } from '../src/modules/notifications/notification.worker';
 import { startWorld, stopWorld, type TestWorld } from './harness';
@@ -74,7 +76,9 @@ describe('nightly data-integrity checks (§16.4)', () => {
     expect(rows[0]).toMatchObject({ raw_score: 4, max_score: 4 });
   });
 
-  it('reaches every Super Admin through the notification centre, and nobody else', async () => {
+  it('sends every Super Admin one summary for the night, a line per Unit, and nobody else (D10)', async () => {
+    const sweepSays = await integrity.sweep(SYSTEM_SCOPE, world.unitA);
+    const digest = await integrity.digest(SYSTEM_SCOPE);
     await drainNotifications(world, notifications);
 
     const alerts = await notificationRows('DATA_INTEGRITY_ALERT');
@@ -82,23 +86,45 @@ describe('nightly data-integrity checks (§16.4)', () => {
     const [alert] = alerts;
     expect(alert).toMatchObject({
       recipient_user_id: world.actors.SUPER_ADMIN.userId,
-      unit_id: world.unitA,
-      title: 'Data integrity check',
+      unit_id: null,
+      title: 'Nightly data check: findings in 2 Units',
     });
-    expect(alert!.body).toBe(
+    const line =
       '1 photo recorded but never uploaded; ' +
-        '1 audit open for more than a week; ' +
-        '1 device holding an audit and not syncing; ' +
-        '1 audit score that does not match a recomputation (of 2 checked). The check only reports these; it did not change anything.',
+      '1 audit open for more than a week; ' +
+      '1 device holding an audit and not syncing; ' +
+      '1 audit score that does not match a recomputation (of 2 checked)';
+    expect(alert!.body).toBe(
+      `Unit A: ${line}.\nUnit B: ${line}.\nThe check only reports these; it did not change anything.`,
     );
 
-    // The counts survive as data, so a later reader can act on them without re-parsing prose.
-    expect(alert!.data).toMatchObject({ orphanEvidence: 1, scoreDrift: 1, auditsSampled: 2 });
+    // The counts survive as data, per Unit, so a reader can act without re-parsing prose.
+    const data = integrityDigestDataSchema.parse(alert!.data);
+    expect(data).toEqual(digest);
+    expect(data.units.find((unit) => unit.unitId === world.unitA)).toEqual({
+      unitId: world.unitA,
+      unitName: 'Unit A',
+      ...sweepSays,
+    });
     // In-app only: no WhatsApp or SMS row for an alert raised at 02:00.
     expect(alert!.channels).toEqual(['IN_APP']);
   });
 
-  it('says nothing on a clean Unit', async () => {
+  it('sends nothing twice when the night’s job runs again', async () => {
+    await integrity.digest(SYSTEM_SCOPE);
+    await drainNotifications(world, notifications);
+    expect(await notificationRows('DATA_INTEGRITY_ALERT')).toHaveLength(1);
+  });
+
+  it('registers one nightly schedule for the organisation that pg-boss accepts', async () => {
+    await expect(integrity.schedule(world.app.get(QueueService))).resolves.toBeUndefined();
+    const { rows } = await world.owner.query(
+      `SELECT name, cron, timezone FROM pgboss.schedule WHERE name = 'integrity.digest'`,
+    );
+    expect(rows).toEqual([{ name: 'integrity.digest', cron: '0 2 * * *', timezone: 'Asia/Kolkata' }]);
+  });
+
+  it('leaves a clean Unit out of the summary', async () => {
     const unitId = randomUUID();
     await world.owner.query(
       `INSERT INTO unit (id, name, timezone) VALUES ($1, 'Clean Unit', 'Asia/Kolkata')`,
@@ -114,9 +140,9 @@ describe('nightly data-integrity checks (§16.4)', () => {
       scoreDrift: 0,
       auditsSampled: 0,
     });
-    // A nightly "all clear" is a nightly notification (R-17b).
-    await drainNotifications(world, notifications);
-    expect(await notificationRows('DATA_INTEGRITY_ALERT')).toHaveLength(1);
+    // A nightly "all clear" is a nightly notification (R-17b): the Unit is not named.
+    const digest = await integrity.digest(SYSTEM_SCOPE);
+    expect(digest!.units.map((unit) => unit.unitId)).not.toContain(unitId);
   });
 });
 

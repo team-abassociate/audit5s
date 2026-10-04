@@ -73,21 +73,95 @@ describe('notification policy (§5.9)', () => {
     expect(firstExternalChannel('CORRECTIVE_ACTION_SUBMITTED', { whatsappEnabled: true, smsEnabled: true })).toBeNull();
   });
 
-  it('names the audit and the auditor a submitted corrective action answers', () => {
-    const { title } = renderNotification(
+  it('says who submitted a corrective action, and which audit it answers (F2)', () => {
+    const { title, body } = renderNotification(
       job('CORRECTIVE_ACTION_SUBMITTED', {
-        zoneCode: '3',
+        zoneCode: 'Z-03',
         zoneName: 'Press',
         questionNo: 12,
         option: 'COMPLETED',
         attemptNo: 1,
         auditType: 'EXTERNAL_5S',
         auditorName: 'Priya Nair',
+        submittedByName: 'Sunita Rao',
       }),
     );
-    // Four Consultants in three plants produce a run of otherwise identical notices.
-    expect(title).toContain('Priya Nair');
-    expect(title).toContain('external 5s audit');
+    // The person who answered leads; the auditor is where the finding came from, not who
+    // fixed it. Four Consultants in three plants still tell their notices apart.
+    expect(title).toBe('Sunita Rao submitted a corrective action');
+    expect(body).toBe(
+      'Zone 3 — Press, Q12: completed with an after photo (attempt 1) and closed. ' +
+        'Regenerate the report to include it. From the External 5S audit by Priya Nair.',
+    );
+  });
+
+  it('writes a Zone as the app does — "Zone 2", never the stored "Z-02"', () => {
+    const { body } = renderNotification(job('CORRECTIVE_ACTION_VERIFIED', { zoneCode: 'Z-02', zoneName: 'Zone 2', questionNo: 4 }));
+    expect(body).toBe('Zone 2, Q4 was verified.');
+  });
+
+  it('bundles a Zone’s overdue items into one notice for its leader (D10)', () => {
+    const items = Array.from({ length: 10 }, (_, index) => ({
+      actionId: `01930000-0000-7000-8000-0000000000${10 + index}`,
+      questionNo: index + 1,
+      suggestionNo: null,
+      daysOverdue: index,
+    }));
+    const { title, body } = renderNotification(
+      job('CORRECTIVE_ACTION_OVERDUE', { zoneCode: 'Z-17', zoneName: 'Dispatch', assigneeName: 'Ravi Patil', items }),
+    );
+    expect(title).toBe('Overdue: 10 corrective actions in Zone 17 — Dispatch (Ravi Patil)');
+    expect(body).toBe(
+      'Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8 and 2 more are past their due date, the oldest by 9 days. ' +
+        'Answer each with an after photo, or mark it not possible so it can be reviewed.',
+    );
+  });
+
+  it('counts walk-by observations, which have no question to name', () => {
+    const item = (questionNo: number | null) => ({ actionId: 'x', questionNo, suggestionNo: null, daysOverdue: 3 });
+    const walkBy = renderNotification(job('CORRECTIVE_ACTION_OVERDUE', { zoneCode: 'Z-03', zoneName: 'Press', items: [item(null), item(null)] }));
+    expect(walkBy.body).toMatch(/^2 walk-by observations are past their due date, the oldest by 3 days\./);
+    const mixed = renderNotification(job('CORRECTIVE_ACTION_OVERDUE', { zoneCode: 'Z-03', zoneName: 'Press', items: [item(4), item(null)] }));
+    expect(mixed.body).toMatch(/^Q4 and 1 walk-by observation are past/);
+  });
+
+  it('renders a one-item bundle, and a single item queued before D10, as one item', () => {
+    const one = { actionId: '01930000-0000-7000-8000-000000000010', questionNo: null, suggestionNo: 2, daysOverdue: 1 };
+    const bundled = renderNotification(job('CORRECTIVE_ACTION_OVERDUE', { zoneCode: 'Z-03', zoneName: 'Press', items: [one] }));
+    expect(bundled.title).toBe('Overdue: Zone 3 — Press, overall action 2');
+    expect(bundled.body).toContain('is 1 day past its due date');
+
+    const legacy = renderNotification(job('CORRECTIVE_ACTION_OVERDUE', { zoneCode: 'Z-03', zoneName: 'Press', questionNo: 12, daysOverdue: 0 }));
+    expect(legacy.title).toBe('Overdue: Zone 3 — Press, Q12');
+    expect(legacy.body).toContain('is past its due date');
+  });
+
+  it('tells the Zone Leader why a restart withdrew their item (F1, R-33)', () => {
+    const { body } = renderNotification(
+      job('CORRECTIVE_ACTION_WITHDRAWN', { zoneCode: 'Z-03', zoneName: 'Press', questionNo: 12, auditorName: 'Priya Nair', cause: 'restart' }),
+    );
+    expect(body).toBe(
+      'Zone 3 — Press, Q12 is withdrawn while Priya Nair re-checks the audit. ' +
+        'Nothing is owed on it now; if it is still a finding when the audit is finished again, it comes back.',
+    );
+  });
+
+  it('sums up the night’s data checks in one notice, a line per Unit (D10)', () => {
+    const unit = { orphanEvidence: 0, staleAudits: 0, unsyncedDevices: 0, scoreDrift: 0, auditsSampled: 20 };
+    const { title, body } = renderNotification(
+      job('DATA_INTEGRITY_ALERT', {
+        night: '2026-10-05',
+        units: [
+          { ...unit, unitId: 'a', unitName: 'Pune', orphanEvidence: 2 },
+          { ...unit, unitId: 'b', unitName: 'Nashik', staleAudits: 1 },
+        ],
+      }),
+    );
+    expect(title).toBe('Nightly data check: findings in 2 Units');
+    expect(body).toBe(
+      'Pune: 2 photos recorded but never uploaded.\nNashik: 1 audit open for more than a week.\n' +
+        'The check only reports these; it did not change anything.',
+    );
   });
 
   it('says who started an audit and in which Unit', () => {
@@ -111,7 +185,7 @@ describe('notification policy (§5.9)', () => {
 
   it('renders a submitted corrective action stored before the auditor was on the event', () => {
     const { title } = renderNotification(
-      job('CORRECTIVE_ACTION_SUBMITTED', { zoneCode: '3', zoneName: 'Press', option: 'COMPLETED' }),
+      job('CORRECTIVE_ACTION_SUBMITTED', { zoneCode: 'Z-03', zoneName: 'Press', option: 'COMPLETED' }),
     );
     expect(title).toBe('Corrective action submitted');
     expect(title).not.toMatch(/undefined|null/);
@@ -120,7 +194,7 @@ describe('notification policy (§5.9)', () => {
   it('tells the Zone Leader to stop when a finding is withdrawn (R-31)', () => {
     const { title, body } = renderNotification(
       job('CORRECTIVE_ACTION_WITHDRAWN', {
-        zoneCode: '3',
+        zoneCode: 'Z-03',
         zoneName: 'Press',
         questionNo: 12,
         auditType: 'EXTERNAL_5S',
@@ -138,7 +212,7 @@ describe('notification policy (§5.9)', () => {
   it('names a finding raised after the audit was already finished (R-31)', () => {
     const { title, body } = renderNotification(
       job('CORRECTIVE_ACTION_OPENED', {
-        zoneCode: '4',
+        zoneCode: 'Z-04',
         zoneName: 'Assembly',
         questionNo: 7,
         auditType: 'EXTERNAL_5S',
@@ -155,7 +229,7 @@ describe('notification policy (§5.9)', () => {
 
   it('renders both R-31 events without the auditor, for an older stored row', () => {
     for (const type of ['CORRECTIVE_ACTION_OPENED', 'CORRECTIVE_ACTION_WITHDRAWN'] as const) {
-      const { title, body } = renderNotification(job(type, { zoneCode: '1', zoneName: 'Press' }));
+      const { title, body } = renderNotification(job(type, { zoneCode: 'Z-01', zoneName: 'Press' }));
       expect(title).not.toMatch(/undefined|null/);
       expect(body).not.toMatch(/undefined|null/);
     }
@@ -163,7 +237,7 @@ describe('notification policy (§5.9)', () => {
 
   it('says which item a corrective-action message is about', () => {
     const { body } = renderNotification(
-      job('CORRECTIVE_ACTION_SUBMITTED', { zoneCode: '3', zoneName: 'Press', questionNo: 12, option: 'COMPLETED', attemptNo: 2 }),
+      job('CORRECTIVE_ACTION_SUBMITTED', { zoneCode: 'Z-03', zoneName: 'Press', questionNo: 12, option: 'COMPLETED', attemptNo: 2 }),
     );
     expect(body).toBe(
       'Zone 3 — Press, Q12: completed with an after photo (attempt 2) and closed. Regenerate the report to include it.',

@@ -52,6 +52,58 @@ export const notificationSchema = z.object({
 });
 export type Notification = z.infer<typeof notificationSchema>;
 
+const countSchema = z.number().int().nonnegative();
+
+/**
+ * `CORRECTIVE_ACTION_OVERDUE`'s `data` since D10: one notification per Zone and leader for
+ * everything of theirs that fell overdue that night, instead of one per item. Per leader as
+ * well as per Zone because a Zone Leader may read only the actions assigned to them, so a
+ * bundle never carries somebody else's. Rows written before D10 carry one item's fields
+ * flat and fail this parse; a reader then shows the title and body alone.
+ */
+export const overdueBundleDataSchema = z.object({
+  zoneId: uuidSchema,
+  zoneCode: z.string(),
+  zoneName: z.string(),
+  /** The Zone's leader as the actions record them — an account's name or a typed one. */
+  assigneeName: z.string().nullable(),
+  items: z
+    .array(
+      z.object({
+        actionId: uuidSchema,
+        questionNo: z.number().int().nullable(),
+        /** R-38: an overall action has no question; its place in the auditor's list names it. */
+        suggestionNo: z.number().int().nullable(),
+        daysOverdue: countSchema,
+      }),
+    )
+    .min(1),
+});
+export type OverdueBundleData = z.infer<typeof overdueBundleDataSchema>;
+
+/**
+ * `DATA_INTEGRITY_ALERT`'s `data` since D10: one nightly summary across every Unit, naming
+ * only the Units with a finding (R-17b — an all-clear night sends nothing).
+ */
+export const integrityDigestDataSchema = z.object({
+  /** The night the checks ran, as the organisation's calendar date (`YYYY-MM-DD`). */
+  night: z.iso.date(),
+  units: z
+    .array(
+      z.object({
+        unitId: uuidSchema,
+        unitName: z.string(),
+        orphanEvidence: countSchema,
+        staleAudits: countSchema,
+        unsyncedDevices: countSchema,
+        scoreDrift: countSchema,
+        auditsSampled: countSchema,
+      }),
+    )
+    .min(1),
+});
+export type IntegrityDigestData = z.infer<typeof integrityDigestDataSchema>;
+
 export const listNotificationsQuerySchema = paginationQuerySchema.extend({
   unread: booleanQuery(false),
 });
