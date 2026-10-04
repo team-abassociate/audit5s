@@ -28,7 +28,9 @@
 // 1.7.0 — proposed R-45(b): dates print in India Standard Time with the domain formatter
 // ("30 Sept 2026"), where they printed the UTC day as "30 Sep 2026". A report rendered
 // between 18:30 and 24:00 UTC now names the IST day.
-export const TEMPLATE_VERSION = '1.7.0';
+// 1.8.0 — UX audit R2: the rating key is square outlined chips with the admin app's band
+// shapes (▲ ● ◆ ▼), where it was filled, rounded capsules. Issued PDFs keep their bytes (R-35).
+export const TEMPLATE_VERSION = '1.8.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

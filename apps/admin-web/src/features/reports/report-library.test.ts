@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReportSnapshot } from '@audit5s/contracts';
-import { buildLibrary, documentTitle, filterLibrary, NO_FILTERS, unitsOf } from './report-library';
+import { buildLibrary, documentTitle, filterLibrary, NO_FILTERS } from './report-library';
 
 let sequence = 0;
 
@@ -140,12 +140,6 @@ describe('filterLibrary', () => {
 });
 
 describe('labels', () => {
-  it('lists each Unit once, by name', () => {
-    expect(unitsOf([zone('a', 'Z'), zone('b', 'Z')])).toEqual([
-      { id: 'unit-abc', name: 'ABC' },
-    ]);
-  });
-
   it('titles a summary by its Zones and the days they were audited', () => {
     const summary = snapshot({
       kind: 'MULTI_ZONE_SUMMARY',

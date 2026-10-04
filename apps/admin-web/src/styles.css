@@ -644,6 +644,9 @@ body {
   box-shadow: 3px 3px 0 var(--hard);
   background: var(--tile);
   overflow-x: auto;
+  /* Contains absolutely placed children (an `sr-only` column head), which otherwise escape
+     the scroll box and widen the page (G14). */
+  position: relative;
 }
 .gb-tablewrap table,
 .gb-matrix table {
@@ -1411,6 +1414,10 @@ body {
 .gb-split--preview {
   grid-template-columns: minmax(0, 1fr) minmax(440px, 46%);
 }
+/* R3: three columns beside the preview fit the list's half, so its actions stay in sight. */
+.gb-library--compact .gb-tablewrap table {
+  min-width: 0;
+}
 .gb-pdfpanel {
   container: pdfpanel / inline-size;
   position: sticky;
@@ -1943,14 +1950,7 @@ li:has(> .gb-menu-item--danger) {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.gb-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  justify-content: flex-end;
-}
-/* A row's actions: smaller than a page's buttons, so Download, Regenerate and Delete all
-   stay in sight beside the preview rather than folding into a menu. */
+/* A report row's Download: smaller than a page's button, beside its "⋯" (R4). */
 .gb-btn--sm {
   padding: 4px 8px;
   font-size: 11.5px;
@@ -1963,21 +1963,6 @@ li:has(> .gb-menu-item--danger) {
 /* Icon alone, square, beside the open preview. */
 .gb-btn--act-icon {
   padding: 5px;
-}
-.gb-tablewrap tr.gb-row-confirm td {
-  background: var(--tile-2);
-  border-bottom: 2px solid var(--edge);
-}
-.gb-confirm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px 10px;
-  font-size: 13px;
-}
-.gb-confirm p {
-  margin: 0 auto 0 0;
 }
 .gb-empty {
   padding: 28px 14px;

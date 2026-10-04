@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, RefreshCw, Trash2, X, type LucideIcon } from 'lucide-react';
+import { Download } from 'lucide-react';
 import type { ReportSnapshot } from '@audit5s/contracts';
 import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -8,6 +8,9 @@ import { cn } from '@/lib/cn';
 import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
 import { REPORT_EDITION_LABEL } from '@/lib/labels';
 import { formatDateTime } from '@audit5s/domain';
+import { useUnitScope } from '@/lib/scope';
+import { isWorstCase } from '@/features/audit-log/worst-case';
+import { worstReports } from './worst-case';
 import { ReportPreviewPanel } from './ReportPreviewPanel';
 import { NewReportDialog, type NewReportPreset } from './NewReportDialog';
 import { loadReportPdf, savePdf } from './report-pdf';
@@ -19,7 +22,6 @@ import {
   isFiltered,
   isInFlight,
   reportName,
-  unitsOf,
   type LibraryFilters,
   type ReportDocument,
   type ReportGroup,
@@ -31,9 +33,11 @@ import {
   Button,
   Card,
   CardHeader,
+  ConfirmDialog,
   ErrorNotice,
   Field,
   Input,
+  RowActions,
   Select,
   Spinner,
   Table,
@@ -66,17 +70,22 @@ export function ReportsPage() {
   const [slip, setSlip] = useState<{ title: string; text: string } | null>(null);
   const [arrivedId, setArrivedId] = useState<string | null>(null);
 
+  // R5: the Unit is the portal's scope, picked in the shell's topbar from every Unit;
+  // `null` is "All Units" (organization-wide roles only).
+  const scope = useUnitScope();
+  const unitId = scope.unitId ?? '';
+
   const reports = useQuery({
-    queryKey: ['reports', 'all'],
-    queryFn: () => fetchAll<ReportSnapshot>('/reports?limit=200'),
+    queryKey: ['reports', 'all', isWorstCase()],
+    queryFn: () => (isWorstCase() ? Promise.resolve(worstReports()) : fetchAll<ReportSnapshot>('/reports?limit=200')),
     // A queued report becomes ready in the background; the page notices without a reload.
     refetchInterval: (query) => ((query.state.data ?? []).some(isInFlight) ? 4_000 : 60_000),
   });
 
   const snapshots = useMemo(() => reports.data ?? [], [reports.data]);
   const library = useMemo(() => buildLibrary(snapshots), [snapshots]);
-  const shown = useMemo(() => filterLibrary(library, filters), [library, filters]);
-  const units = useMemo(() => unitsOf(snapshots), [snapshots]);
+  const inUnit = useMemo(() => filterLibrary(library, { ...NO_FILTERS, unitId }), [library, unitId]);
+  const shown = useMemo(() => filterLibrary(inUnit, filters), [inUnit, filters]);
   const documentCount = shown.reduce((sum, group) => sum + group.documents.length, 0);
 
   // The rows in the order they are on screen, for ↑ / ↓ in the preview.
@@ -93,6 +102,8 @@ export function ReportsPage() {
   /** A report was queued — by the dialog or by Regenerate. Say so, and show where it is. */
   const announce = (snapshot: ReportSnapshot, how: 'queued' | 'regenerated') => {
     setNewReport(null);
+    // A Unit scope or a filter that would hide the new report is changed rather than leaving it invisible.
+    if (unitId && snapshot.unitId !== unitId) scope.setUnit(snapshot.unitId);
     // A filter that would hide the new report is cleared rather than leaving it invisible.
     setFilters((current) =>
       filterLibrary(buildLibrary([snapshot]), current).length > 0 ? current : NO_FILTERS,
@@ -132,28 +143,21 @@ export function ReportsPage() {
             }
           />
 
-          {snapshots.length > 0 ? (
-            <FilterBar
-              filters={filters}
-              onChange={setFilters}
-              units={units}
-              count={documentCount}
-            />
-          ) : null}
+          {inUnit.length > 0 ? <FilterBar filters={filters} onChange={setFilters} count={documentCount} /> : null}
 
           {reports.isLoading ? <Spinner /> : null}
           {reports.error ? <ErrorNotice error={reports.error} /> : null}
 
-          {reports.data && snapshots.length === 0 ? (
+          {reports.data && inUnit.length === 0 ? (
             <div className="gb-empty">
-              <span>No reports issued yet.</span>
+              <span>{scope.unit ? `No reports issued for ${scope.unit.name} yet.` : 'No reports issued yet.'}</span>
               {mayGenerate ? (
                 <Button onClick={() => setNewReport({ mode: 'ZONE' })}>New report</Button>
               ) : null}
             </div>
           ) : null}
 
-          {reports.data && snapshots.length > 0 && shown.length === 0 ? (
+          {reports.data && inUnit.length > 0 && shown.length === 0 ? (
             <div className="gb-empty">
               <span>No report matches these filters.</span>
               <Button variant="secondary" onClick={() => setFilters(NO_FILTERS)}>
@@ -215,31 +219,16 @@ export function ReportsPage() {
 function FilterBar({
   filters,
   onChange,
-  units,
   count,
 }: {
   filters: LibraryFilters;
   onChange: (filters: LibraryFilters) => void;
-  units: Array<{ id: string; name: string }>;
   count: number;
 }) {
   const set = (patch: Partial<LibraryFilters>) => onChange({ ...filters, ...patch });
 
   return (
     <div className="gb-filters" role="search" aria-label="Filter reports">
-      {/* One Unit in scope — a Zone Leader's — has nothing to choose between. */}
-      {units.length > 1 ? (
-        <Field label="Unit">
-          <Select value={filters.unitId} onChange={(event) => set({ unitId: event.target.value })}>
-            <option value="">All Units</option>
-            {units.map((unit) => (
-              <option key={unit.id} value={unit.id}>
-                {unit.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
       <Field label="Type">
         <Select value={filters.type} onChange={(event) => set({ type: event.target.value as TypeFilter })}>
           <option value="ALL">All reports</option>
@@ -282,8 +271,6 @@ function FilterBar({
 
 // ------------------------------------------------------------------------------ library
 
-type Pending = { snapshotId: string; action: 'regenerate' | 'delete' } | null;
-
 function Library({
   groups,
   compact,
@@ -310,31 +297,30 @@ function Library({
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<unknown>(null);
-  const [pending, setPending] = useState<Pending>(null);
+  // The question stays drawn while its dialog fades out, so `open` is separate.
+  const [regen, setRegen] = useState<{ snapshot: ReportSnapshot; open: boolean } | null>(null);
 
   const regenerate = useMutation({
     mutationFn: (snapshotId: string) => api.post<ReportSnapshot>(`/reports/${snapshotId}/regenerate`),
-    onMutate: () => setError(null),
     onSuccess: async (snapshot) => {
-      setPending(null);
+      setRegen((current) => current && { ...current, open: false });
       await queryClient.invalidateQueries({ queryKey: ['reports'] });
       onRegenerated(snapshot);
     },
-    onError: setError,
   });
 
   // Cancel is one press: nothing was issued, and the worker simply skips it. Delete asks
-  // first, in place, because it removes the PDF.
-  const withdraw = useMutation({
-    mutationFn: (snapshot: ReportSnapshot) =>
-      api.post<ReportSnapshot>(`/reports/${snapshot.id}/${isInFlight(snapshot) ? 'cancel' : 'remove'}`),
+  // first, in a dialog naming the version, because it removes the PDF.
+  const cancel = useMutation({
+    mutationFn: (snapshot: ReportSnapshot) => api.post<ReportSnapshot>(`/reports/${snapshot.id}/cancel`),
     onMutate: () => setError(null),
-    onSuccess: async () => {
-      setPending(null);
-      await queryClient.invalidateQueries({ queryKey: ['reports'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports'] }),
     onError: setError,
   });
+  const remove = async (snapshot: ReportSnapshot) => {
+    await api.post<ReportSnapshot>(`/reports/${snapshot.id}/remove`);
+    await queryClient.invalidateQueries({ queryKey: ['reports'] });
+  };
 
   // ↑ / ↓ in the preview walk the list; the row being previewed stays in sight.
   useEffect(() => {
@@ -353,151 +339,132 @@ function Library({
   });
 
 
+  // R3: beside the open preview the list keeps only what tells the rows apart, so the
+  // group's button and every row's actions stay inside the column.
+  const columns = compact ? 3 : 6;
+
   const row = (doc: ReportDocument, snapshot: ReportSnapshot, isLatest: boolean, replacedBy?: number) => {
     const open = snapshot.id === previewId;
-    const confirming = pending?.snapshotId === snapshot.id ? pending.action : null;
+    const inFlight = isInFlight(snapshot);
+    const v = `v${snapshot.version}`;
     return (
-      <Fragment key={snapshot.id}>
-        <tr
-          data-snapshot={snapshot.id}
-          onClick={rowToggleProps(() => onPreview(snapshot.id)).onClick}
-          className={cn(
-            'cursor-pointer',
-            !isLatest && 'gb-row--earlier',
-            open && 'gb-row--open',
-            snapshot.id === arrivedId && 'gb-row--target',
-          )}
-        >
-          <Td>
-            {isLatest ? (
-              <>
-                <RowToggle open={open} onClick={() => onPreview(snapshot.id)}>
-                  <span className="gb-doc-title">{documentTitle(snapshot)}</span>
-                </RowToggle>
-                {doc.earlier.length > 0 ? (
-                  <div>
-                    <button
-                      type="button"
-                      className="gb-earlier-toggle"
-                      aria-expanded={openEarlier.has(doc.key)}
-                      onClick={() => onToggleEarlier(doc.key)}
-                    >
-                      {openEarlier.has(doc.key)
-                        ? 'Hide earlier versions'
-                        : `${doc.earlier.length} earlier version${doc.earlier.length === 1 ? '' : 's'}`}
-                    </button>
-                  </div>
-                ) : null}
-              </>
-            ) : (
+      <tr
+        key={snapshot.id}
+        data-snapshot={snapshot.id}
+        onClick={rowToggleProps(() => onPreview(snapshot.id)).onClick}
+        className={cn(
+          'cursor-pointer',
+          !isLatest && 'gb-row--earlier',
+          open && 'gb-row--open',
+          snapshot.id === arrivedId && 'gb-row--target',
+        )}
+      >
+        <Td>
+          {isLatest ? (
+            <>
               <RowToggle open={open} onClick={() => onPreview(snapshot.id)}>
-                Replaced by v{replacedBy}
+                <span className="gb-doc-title">{documentTitle(snapshot)}</span>
               </RowToggle>
-            )}
-          </Td>
-          <Td>
-            <Badge>{REPORT_EDITION_LABEL[snapshot.kind]}</Badge>
-          </Td>
-          <Td className="gb-data">v{snapshot.version}</Td>
-          <Td>
-            <StatusBadge snapshot={snapshot} />
-          </Td>
+              {doc.earlier.length > 0 ? (
+                <div>
+                  <button
+                    type="button"
+                    className="gb-earlier-toggle"
+                    aria-expanded={openEarlier.has(doc.key)}
+                    onClick={() => onToggleEarlier(doc.key)}
+                  >
+                    {openEarlier.has(doc.key)
+                      ? 'Hide earlier versions'
+                      : `${doc.earlier.length} earlier version${doc.earlier.length === 1 ? '' : 's'}`}
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <RowToggle open={open} onClick={() => onPreview(snapshot.id)}>
+              Replaced by v{replacedBy}
+            </RowToggle>
+          )}
+        </Td>
+        {compact ? null : (
+          <>
+            <Td>
+              <Badge>{REPORT_EDITION_LABEL[snapshot.kind]}</Badge>
+            </Td>
+            <Td className="gb-data">{v}</Td>
+          </>
+        )}
+        <Td>
+          <StatusBadge snapshot={snapshot} />
+        </Td>
+        {compact ? null : (
           <Td className="gb-data">
             <span title={`Generated by ${snapshot.generatedByName}`}>{formatDateTime(snapshot.generatedAt)}</span>
           </Td>
-          <Td>
-            <div className="gb-row-actions">
-              <DownloadButton snapshot={snapshot} primary={isLatest} compact={compact} onError={setError} />
-              {mayGenerate && isLatest ? (
-                <RowAction
-                  icon={RefreshCw}
-                  label="Regenerate"
-                  compact={compact}
-                  disabled={isInFlight(snapshot)}
-                  hint={
-                    isInFlight(snapshot)
-                      ? 'This version is still rendering.'
-                      : 'Issue a new version from the current data.'
-                  }
-                  onClick={() => setPending({ snapshotId: snapshot.id, action: 'regenerate' })}
-                />
-              ) : null}
-              {mayGenerate && isInFlight(snapshot) ? (
-                <RowAction
-                  icon={X}
-                  label={withdraw.isPending ? 'Cancelling…' : 'Cancel'}
-                  danger
-                  compact={compact}
-                  disabled={withdraw.isPending}
-                  hint="Stop it before it renders. Nothing was issued."
-                  onClick={() => withdraw.mutate(snapshot)}
-                />
-              ) : null}
-              {mayGenerate && !isInFlight(snapshot) ? (
-                <RowAction
-                  icon={Trash2}
-                  label="Delete"
-                  danger
-                  compact={compact}
-                  hint={`Delete v${snapshot.version} and its PDF. The record that it was issued is kept.`}
-                  onClick={() => setPending({ snapshotId: snapshot.id, action: 'delete' })}
-                />
-              ) : null}
-            </div>
-          </Td>
-        </tr>
-        {confirming ? (
-          <tr className="gb-row-confirm">
-            <Td colSpan={COLUMNS}>
-              {confirming === 'regenerate' ? (
-                <div className="gb-confirm">
-                  <p>
-                    Regenerate from the current data? It is issued as a new version; v{snapshot.version}{' '}
-                    stays in the history.
-                  </p>
-                  <Button variant="secondary" onClick={() => setPending(null)}>
-                    Keep v{snapshot.version}
-                  </Button>
-                  <Button onClick={() => regenerate.mutate(snapshot.id)} disabled={regenerate.isPending}>
-                    {regenerate.isPending ? 'Queuing…' : 'Regenerate'}
-                  </Button>
-                </div>
-              ) : (
-                <div className="gb-confirm">
-                  <p>
-                    Delete v{snapshot.version}? Its PDF is deleted for good and it leaves this list;
-                    the record that it was issued is kept.
-                  </p>
-                  <Button variant="secondary" onClick={() => setPending(null)}>
-                    Keep
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={() => withdraw.mutate(snapshot)}
-                    disabled={withdraw.isPending}
-                  >
-                    {withdraw.isPending ? 'Deleting…' : `Delete v${snapshot.version}`}
-                  </Button>
-                </div>
-              )}
-            </Td>
-          </tr>
-        ) : null}
-      </Fragment>
+        )}
+        <Td>
+          {/* R4: Download is the row's one visible action; the rest wait behind "⋯". */}
+          <RowActions
+            subject={`${documentTitle(snapshot)} ${v}`}
+            primary={<DownloadButton snapshot={snapshot} compact={compact} onError={setError} />}
+            items={
+              mayGenerate
+                ? [
+                    ...(isLatest
+                      ? [
+                          {
+                            label: 'Regenerate',
+                            disabled: inFlight,
+                            hint: inFlight ? 'This version is still rendering.' : 'Issue a new version from the current data.',
+                            onSelect: () => {
+                              regenerate.reset();
+                              setRegen({ snapshot, open: true });
+                            },
+                          },
+                        ]
+                      : []),
+                    inFlight
+                      ? {
+                          label: cancel.isPending ? 'Cancelling…' : 'Cancel rendering',
+                          disabled: cancel.isPending,
+                          hint: 'Stop it before it renders. Nothing was issued.',
+                          onSelect: () => cancel.mutate(snapshot),
+                        }
+                      : {
+                          label: `Delete ${v}`,
+                          danger: true as const,
+                          confirm: {
+                            title: `Delete ${v} of ${documentTitle(snapshot)}?`,
+                            body: 'Its PDF is deleted for good and it leaves this list; the record that it was issued is kept.',
+                            confirmLabel: `Delete ${v}`,
+                            pendingLabel: 'Deleting…',
+                            run: () => remove(snapshot),
+                          },
+                        },
+                  ]
+                : []
+            }
+          />
+        </Td>
+      </tr>
     );
   };
 
   return (
-    <>
+    <div className={cn(compact && 'gb-library--compact')}>
       {error ? <ErrorNotice error={error} /> : null}
       <Table>
         <thead>
           <tr>
             <Th>Report</Th>
-            <Th>Edition</Th>
-            <Th>Version</Th>
+            {compact ? null : (
+              <>
+                <Th>Edition</Th>
+                <Th>Version</Th>
+              </>
+            )}
             <Th>Status</Th>
-            <Th>Generated</Th>
+            {compact ? null : <Th>Generated</Th>}
             <Th>
               <span className="sr-only">Actions</span>
             </Th>
@@ -507,7 +474,7 @@ function Library({
           {groups.map((group) => (
             <Fragment key={group.key}>
               <tr className="gb-group">
-                <Td colSpan={COLUMNS}>
+                <Td colSpan={columns}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
                       <span className="gb-group-title">{group.unitName}</span>
@@ -544,11 +511,25 @@ function Library({
           ))}
         </tbody>
       </Table>
-    </>
+      {regen ? (
+        <ConfirmDialog
+          open={regen.open}
+          tone="primary"
+          title={`Regenerate ${documentTitle(regen.snapshot)}?`}
+          confirmLabel="Regenerate"
+          pendingLabel="Queuing…"
+          cancelLabel={`Keep v${regen.snapshot.version}`}
+          pending={regenerate.isPending}
+          error={regenerate.error}
+          onCancel={() => setRegen({ ...regen, open: false })}
+          onConfirm={() => regenerate.mutate(regen.snapshot.id)}
+        >
+          It is issued from the current data as a new version; v{regen.snapshot.version} stays in the history.
+        </ConfirmDialog>
+      ) : null}
+    </div>
   );
 }
-
-const COLUMNS = 6;
 
 function groupMeta(group: ReportGroup): string {
   if (group.kind === 'SUMMARIES') {
@@ -592,53 +573,12 @@ const ROW_ICON = {
   focusable: false,
 } as const;
 
-/**
- * One of a row's actions: icon and word while the list has the page to itself, the icon
- * alone while the preview shares it. The word is never lost — it stays the button's
- * accessible name and its tooltip.
- */
-function RowAction({
-  icon: Icon,
-  label,
-  hint,
-  compact,
-  danger = false,
-  primary = false,
-  disabled,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  hint?: string;
-  compact: boolean;
-  danger?: boolean;
-  primary?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      variant={danger ? 'danger' : primary ? 'primary' : 'secondary'}
-      className={cn('gb-btn--sm gb-btn--act', compact && 'gb-btn--act-icon')}
-      disabled={disabled}
-      aria-label={compact ? label : undefined}
-      title={hint ? `${label} — ${hint}` : label}
-      onClick={onClick}
-    >
-      <Icon {...ROW_ICON} />
-      {compact ? null : <span>{label}</span>}
-    </Button>
-  );
-}
-
 function DownloadButton({
   snapshot,
-  primary,
   compact,
   onError,
 }: {
   snapshot: ReportSnapshot;
-  primary: boolean;
   compact: boolean;
   onError: (error: unknown) => void;
 }) {
@@ -657,15 +597,21 @@ function DownloadButton({
     }
   }
 
+  const label = busy ? 'Preparing…' : 'Download';
+  const hint = snapshot.status === 'READY' ? 'Save the PDF under its report name.' : 'Available once the report is ready.';
+  // Icon and word while the list has the page; the icon alone beside the preview, the word
+  // kept as its accessible name and tooltip.
   return (
-    <RowAction
-      icon={Download}
-      label={busy ? 'Preparing…' : 'Download'}
-      primary={primary}
-      compact={compact}
-      onClick={() => void download()}
+    <Button
+      variant="secondary"
+      className={cn('gb-btn--sm gb-btn--act', compact && 'gb-btn--act-icon')}
       disabled={snapshot.status !== 'READY' || busy}
-      hint={snapshot.status === 'READY' ? 'Save the PDF under its report name.' : 'Available once the report is ready.'}
-    />
+      aria-label={compact ? label : undefined}
+      title={`${label} — ${hint}`}
+      onClick={() => void download()}
+    >
+      <Download {...ROW_ICON} />
+      {compact ? null : <span>{label}</span>}
+    </Button>
   );
 }

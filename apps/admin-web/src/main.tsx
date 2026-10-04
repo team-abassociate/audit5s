@@ -233,6 +233,7 @@ const correctiveActionDetailRoute = createRoute({
 const reportsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/reports',
+  staticData: { unitScope: 'any' },
   component: function Reports() {
     const { can } = useSession();
     return can('report', 'read_snapshot') ? <ReportsPage /> : <Navigate to="/" replace />;

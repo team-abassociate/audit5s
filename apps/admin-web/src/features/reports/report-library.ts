@@ -165,17 +165,6 @@ export function filterLibrary(groups: readonly ReportGroup[], filters: LibraryFi
     .filter((group) => group.documents.length > 0);
 }
 
-/** The Units that have reports, for the Unit filter — named as their reports name them. */
-export function unitsOf(snapshots: readonly ReportSnapshot[]): Array<{ id: string; name: string }> {
-  const names = new Map<string, string>();
-  for (const snapshot of snapshots) {
-    if (!names.has(snapshot.unitId)) names.set(snapshot.unitId, snapshot.subject.unitName);
-  }
-  return [...names]
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 /** What a document is called in its row: its Zone, or the Zones a summary covers. */
 export function documentTitle(snapshot: ReportSnapshot): string {
   const { subject } = snapshot;
