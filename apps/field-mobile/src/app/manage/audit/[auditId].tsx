@@ -27,7 +27,7 @@ import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, humanize, is
 import { bandOf, createThemedStyles, useTheme } from '../../../lib/theme';
 
 const REPORT_KIND: Record<ReportKind, string> = {
-  INITIAL_ZONE: 'Zone report',
+  INITIAL_ZONE: 'Initial report',
   AFTER_EVIDENCE_ZONE: 'After-evidence report',
   MULTI_ZONE_SUMMARY: 'Unit summary report',
 };
@@ -62,7 +62,8 @@ export default function ManageAuditScreen() {
       (query.state.data?.data ?? []).some((row) => row.status === 'QUEUED' || row.status === 'RENDERING') ? 4_000 : false,
   });
   const generate = useMutation({
-    mutationFn: (auditZoneId: string) => api.post<ReportSnapshot>('/reports/generate', { kind: 'INITIAL_ZONE', auditZoneId }),
+    mutationFn: (body: { kind: 'INITIAL_ZONE' | 'AFTER_EVIDENCE_ZONE'; auditZoneId: string }) =>
+      api.post<ReportSnapshot>('/reports/generate', body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports', 'audit', auditId] }),
   });
   // Cancel a report still in the queue; delete (remove) one rendered or failed. Both take it
@@ -172,16 +173,24 @@ export default function ManageAuditScreen() {
                 </View>
                 {zone.zoneLeaderNameSnapshot ? <Data>Leader {zone.zoneLeaderNameSnapshot}</Data> : null}
                 {reportable && mayGenerate ? (
-                  <View style={styles.itemAction}>
-                    <Button
-                      title="Generate report"
-                      variant="secondary"
-                      busy={generate.isPending && generate.variables === zone.id}
-                      // One request at a time: a second tap while the first is in flight
-                      // is how a report came to be queued twice.
-                      disabled={generate.isPending}
-                      onPress={() => generate.mutate(zone.id)}
-                    />
+                  <View style={styles.actions}>
+                    {/* Both editions, always: which one is the Super Admin's choice. */}
+                    {(['INITIAL_ZONE', 'AFTER_EVIDENCE_ZONE'] as const).map((kind) => (
+                      <Button
+                        key={kind}
+                        title={`Generate ${REPORT_KIND[kind].toLowerCase()}`}
+                        variant="secondary"
+                        busy={
+                          generate.isPending &&
+                          generate.variables.auditZoneId === zone.id &&
+                          generate.variables.kind === kind
+                        }
+                        // One request at a time: a second tap while the first is in flight
+                        // is how a report came to be queued twice.
+                        disabled={generate.isPending}
+                        onPress={() => generate.mutate({ kind, auditZoneId: zone.id })}
+                      />
+                    ))}
                   </View>
                 ) : null}
               </View>

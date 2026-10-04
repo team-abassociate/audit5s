@@ -16,11 +16,8 @@ export type NewReportPreset =
 /**
  * One way to issue a report (§8.9): say what kind, say what it covers, preview, generate.
  *
- * There are two kinds, not three. Whether a Zone report is the initial or the
- * after-evidence report is the server's to decide (R-23): once a Zone's findings have been
- * answered, asking for its report issues the after-evidence report. A picker offering
- * "Initial" for such a Zone offered a choice that did not exist, so the dialog says what
- * will happen instead.
+ * A Zone report is issued as whichever edition is chosen here — initial or after-evidence —
+ * however many times the Zone's findings have been answered or closed.
  *
  * The scope is chosen inside the dialog, never read from the history's Unit filter: a
  * filter that also steered generation was the page's most confusing control.
@@ -126,6 +123,7 @@ function ZoneReportForm({
   const queryClient = useQueryClient();
   const [auditId, setAuditId] = useState(initialAuditId);
   const [auditZoneId, setAuditZoneId] = useState('');
+  const [edition, setEdition] = useState<'INITIAL_ZONE' | 'AFTER_EVIDENCE_ZONE'>('INITIAL_ZONE');
 
   const audits = useQuery({
     queryKey: ['audits', 'completed', 'all-units'],
@@ -155,7 +153,7 @@ function ZoneReportForm({
   });
   const zones = (detail.data?.zones ?? []).filter((zone) => zone.status !== 'WITHDRAWN');
 
-  const body = { kind: 'INITIAL_ZONE' as const, auditZoneId };
+  const body = { kind: edition, auditZoneId };
 
   // What this Zone already has, so a second issue is a decision rather than an accident.
   const existing = useMemo(() => {
@@ -217,11 +215,31 @@ function ZoneReportForm({
         </Field>
         {detail.error ? <ErrorNotice error={detail.error} /> : null}
 
-        <p className="m-0 text-[12.5px] leading-snug text-ink-2">
-          Issued as the <b className="text-ink">initial</b> report. Once the Zone&rsquo;s findings
-          have been answered, it is issued as the <b className="text-ink">after-evidence</b> report
-          instead — you do not choose which.
-        </p>
+        <fieldset>
+          <legend className="gb-label mb-2">Edition</legend>
+          <div className="gb-choice">
+            <label>
+              <input
+                type="radio"
+                name="report-edition"
+                checked={edition === 'INITIAL_ZONE'}
+                onChange={() => setEdition('INITIAL_ZONE')}
+              />
+              <b>Initial</b>
+              <span>The findings as audited, with space for the after-evidence.</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="report-edition"
+                checked={edition === 'AFTER_EVIDENCE_ZONE'}
+                onChange={() => setEdition('AFTER_EVIDENCE_ZONE')}
+              />
+              <b>After-evidence</b>
+              <span>The findings with the answers and after-photos received so far.</span>
+            </label>
+          </div>
+        </fieldset>
         {existing ? (
           <p className="gb-notice m-0">
             This Zone already has v{existing.version} ({REPORT_EDITION_LABEL[existing.kind]}, generated{' '}
