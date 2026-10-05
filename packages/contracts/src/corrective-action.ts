@@ -50,6 +50,11 @@ export const correctiveActionSchema = z.object({
   status: correctiveActionStatusSchema,
   assignedZoneLeaderUserId: uuidSchema.nullable(),
   assignedZoneLeaderName: z.string().nullable(),
+  /**
+   * D3: the Zone's leader now — an account or the name the auditor typed — which is who to
+   * chase when the item was not reassigned. Optional so a response from an older API parses.
+   */
+  zoneLeaderName: z.string().nullable().optional(),
   dueAt: isoDateTimeSchema.nullable(),
   openedAt: isoDateTimeSchema,
   lastSubmittedAt: isoDateTimeSchema.nullable(),
@@ -136,6 +141,11 @@ export const correctiveActionDetailSchema = correctiveActionSchema.extend({
 });
 export type CorrectiveActionDetail = z.infer<typeof correctiveActionDetailSchema>;
 
+export const CORRECTIVE_ACTION_SORTS = ['due', 'age', 'leader'] as const;
+export type CorrectiveActionSort = (typeof CORRECTIVE_ACTION_SORTS)[number];
+export const CORRECTIVE_ACTION_GROUPS = ['audit', 'leader'] as const;
+export type CorrectiveActionGroup = (typeof CORRECTIVE_ACTION_GROUPS)[number];
+
 export const listCorrectiveActionsQuerySchema = paginationQuerySchema.extend({
   unitId: uuidSchema.optional(),
   zoneId: uuidSchema.optional(),
@@ -144,8 +154,76 @@ export const listCorrectiveActionsQuerySchema = paginationQuerySchema.extend({
   status: correctiveActionStatusSchema.optional(),
   /** OPEN or REOPENED with `due_at` in the past. */
   overdue: booleanQuery(false),
+  /** ACTION_SUBMITTED or NOT_POSSIBLE: waiting on a reviewer's decision (CA4). */
+  awaitingReview: booleanQuery(false),
+  /**
+   * CA10: the order, server-side so a cursor walks it. `due` puts what still awaits an
+   * answer first, soonest due first; `age` oldest first; `leader` by who to chase (D3).
+   * Absent — and no `group` — the order is the id's, as before (the field app relies on it).
+   */
+  sort: z.enum(CORRECTIVE_ACTION_SORTS).optional(),
+  /**
+   * CA10: Unit, then audit (newest first) or Zone and leader, ahead of `sort`, so a group's
+   * rows are contiguous and one that runs onto the next page continues there.
+   */
+  group: z.enum(CORRECTIVE_ACTION_GROUPS).optional(),
 });
 export type ListCorrectiveActionsQuery = z.infer<typeof listCorrectiveActionsQuerySchema>;
+
+/** `GET /corrective-actions/summary` — the list's filters, without paging or order. */
+export const correctiveActionSummaryQuerySchema = listCorrectiveActionsQuerySchema.omit({
+  limit: true,
+  cursor: true,
+  sort: true,
+  group: true,
+});
+export type CorrectiveActionSummaryQuery = z.infer<typeof correctiveActionSummaryQuerySchema>;
+
+const count = z.number().int().nonnegative();
+
+/**
+ * CA10: the counts a screen used to take from the rows it had loaded, from the server over
+ * every matching row. `overdue` follows the list's `overdue` filter; the groups carry the
+ * list's group keys, so a header counts its whole group, not the part on screen.
+ */
+export const correctiveActionSummarySchema = z.object({
+  total: count,
+  byStatus: z.record(correctiveActionStatusSchema, count),
+  overdue: count,
+  /** OPEN or REOPENED, due from now to seven days on. */
+  dueWithinWeek: count,
+  /** OPEN or REOPENED, raised on a question marked 0 ("Needs improvement"). */
+  openNeedsImprovement: count,
+  byAudit: z.array(z.object({ unitId: uuidSchema, auditId: uuidSchema, total: count, overdue: count })),
+  /** By Zone and who to chase (D3) — the reassigned leader, else the Zone's. */
+  byZoneLeader: z.array(
+    z.object({
+      unitId: uuidSchema,
+      zoneId: uuidSchema,
+      zoneCode: z.string(),
+      zoneName: z.string(),
+      leader: z.string().nullable(),
+      total: count,
+      overdue: count,
+    }),
+  ),
+});
+export type CorrectiveActionSummary = z.infer<typeof correctiveActionSummarySchema>;
+
+/**
+ * `POST /corrective-actions/{id}/link` (CA9): one more signed link to the action, beside
+ * the one printed in its report, which keeps working. Attached to that report, so it is
+ * listed and revoked on the Reports page like the printed one.
+ *
+ * `url` is null on an idempotent replay: the secret is never stored (§10.4), so a retry
+ * that the server already answered cannot be shown the link again.
+ */
+export const correctiveActionLinkSchema = z.object({
+  tokenId: uuidSchema,
+  snapshotId: uuidSchema,
+  url: z.string().nullable(),
+});
+export type CorrectiveActionLink = z.infer<typeof correctiveActionLinkSchema>;
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 

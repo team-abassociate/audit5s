@@ -5,6 +5,8 @@ import type {
   ResolveSyncConflictRequest,
   SyncConflict,
   SyncConflictReason,
+  SyncConflictSummary,
+  SyncConflictSummaryQuery,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
@@ -40,6 +42,11 @@ export class SyncConflictsService {
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;
     return { data: page.map(toSyncConflict), nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };
+  }
+
+  async summary(scope: ScopeContext, query: SyncConflictSummaryQuery): Promise<SyncConflictSummary> {
+    const { count, oldestAt, byDevice } = await this.repository.summarizeConflicts(scope, query);
+    return { count, oldestAt: oldestAt ? new Date(oldestAt).toISOString() : null, byDevice };
   }
 
   async get(scope: ScopeContext, conflictId: string): Promise<SyncConflict> {

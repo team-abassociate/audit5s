@@ -1,10 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import {
   correctiveActions,
   auditZones,
   checklistQuestions,
   reportAccessTokens,
+  reportSnapshots,
   users,
   withAuthPhase,
   type Database,
@@ -141,6 +142,51 @@ export class ReportTokensRepository extends BaseRepository {
         )
         .where(eq(reportAccessTokens.snapshotId, snapshotId))
         .orderBy(asc(reportAccessTokens.createdAt), asc(reportAccessTokens.id));
+    });
+  }
+
+  /**
+   * CA9: the action, and the newest report still listed that printed a link to it — the
+   * report a further link is attached to, so the Reports page lists and revokes it too.
+   * `snapshotId` is null when no listed report has printed one.
+   */
+  async linkTarget(scope: ScopeContext, actionId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [action] = await tx
+        .select({
+          id: correctiveActions.id,
+          unitId: correctiveActions.unitId,
+          status: correctiveActions.status,
+          assignedZoneLeaderUserId: correctiveActions.assignedZoneLeaderUserId,
+        })
+        .from(correctiveActions)
+        .where(this.scoped(scope, { unitId: correctiveActions.unitId }, eq(correctiveActions.id, actionId)))
+        .limit(1);
+      if (!action) return null;
+      const [printed] = await tx
+        .select({ snapshotId: reportAccessTokens.snapshotId })
+        .from(reportAccessTokens)
+        .innerJoin(reportSnapshots, eq(reportSnapshots.id, reportAccessTokens.snapshotId))
+        .where(
+          and(
+            eq(reportAccessTokens.correctiveActionId, actionId),
+            eq(reportAccessTokens.purpose, 'CORRECTIVE_ACTION'),
+            ne(reportSnapshots.status, 'REMOVED'),
+            this.scoped(scope, { unitId: reportAccessTokens.unitId }),
+          ),
+        )
+        .orderBy(desc(reportAccessTokens.createdAt), desc(reportAccessTokens.id))
+        .limit(1);
+      return { ...action, snapshotId: printed?.snapshotId ?? null };
+    });
+  }
+
+  /** CA9: one link, on its own transaction. */
+  async mintOne(scope: ScopeContext, row: ReportAccessTokenInsert): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      await this.mint(tx, [row]);
     });
   }
 

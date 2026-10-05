@@ -12,10 +12,13 @@ import {
 import {
   listSyncConflictsQuerySchema,
   resolveSyncConflictRequestSchema,
+  syncConflictSummaryQuerySchema,
   type ListSyncConflictsQuery,
   type Page,
   type ResolveSyncConflictRequest,
   type SyncConflict,
+  type SyncConflictSummary,
+  type SyncConflictSummaryQuery,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { RequirePermission, Scope } from '../../common/auth/decorators';
@@ -40,6 +43,17 @@ export class SyncConflictsController {
     @Query(new ZodValidationPipe(listSyncConflictsQuerySchema)) query: ListSyncConflictsQuery,
   ): Promise<Page<SyncConflict>> {
     return this.conflicts.list(scope, query);
+  }
+
+  /** CA10: the queue's totals, so the page never counts the rows it has loaded. */
+  @RequirePermission('sync_conflict', 'read')
+  @Scope({ intent: 'read' })
+  @Get('summary')
+  summary(
+    @CurrentScope() scope: ScopeContext,
+    @Query(new ZodValidationPipe(syncConflictSummaryQuerySchema)) query: SyncConflictSummaryQuery,
+  ): Promise<SyncConflictSummary> {
+    return this.conflicts.summary(scope, query);
   }
 
   @RequirePermission('sync_conflict', 'read')

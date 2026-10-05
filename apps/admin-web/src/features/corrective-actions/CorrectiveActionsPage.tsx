@@ -1,21 +1,21 @@
 import { Fragment, useState } from 'react';
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import {
   CORRECTIVE_ACTION_STATUSES,
   type CorrectiveAction,
   type CorrectiveActionDetail,
+  type CorrectiveActionLink,
   type CorrectiveActionStatus,
+  type CorrectiveActionSummary,
   type CorrectiveActionSubmission,
   type EvidenceViewUrl,
   type Audit,
   type Page,
   type Unit,
   type User,
-  type Zone,
 } from '@audit5s/contracts';
 import {
-  awaitsReview,
   formatDate,
   formatDateTime,
   isOverdue,
@@ -46,7 +46,10 @@ import {
   useRoutedPanel,
 } from '@/components/ui';
 import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
-import { groupActions, overdueByLeader, type GroupKey, type LeaderOf, type SortKey } from './queue';
+import { groupActions, leaderOf, overdueByLeader, type GroupKey, type SortKey } from './queue';
+
+/** Rows per request; "Load more" asks for the next page (CA10). */
+const PAGE = 100;
 
 /** "Awaiting review": a "not possible" or a submission waiting for a decision (CA4). */
 const REVIEW = 'REVIEW';
@@ -148,43 +151,50 @@ export function CorrectiveActionsPage() {
   const auditId =
     unitId !== '' && search.audit && (!audits.data || numbered.has(search.audit)) ? search.audit : '';
 
-  const serverStatus = status === REVIEW ? '' : status;
-  const actions = useQuery({
-    queryKey: ['corrective-actions', serverStatus, overdue, unitId, auditId, worst],
-    queryFn: () =>
-      load<Page<CorrectiveAction>>(
-        `/corrective-actions?limit=200${serverStatus ? `&status=${serverStatus}` : ''}` +
-          `${overdue ? '&overdue=true' : ''}${unitId ? `&unitId=${unitId}` : ''}` +
-          `${auditId ? `&auditId=${auditId}` : ''}`,
-      ),
+  // CA10: filtered, sorted, grouped and counted on the server; this page only lays it out.
+  const filters = new URLSearchParams();
+  if (status === REVIEW) filters.set('awaitingReview', 'true');
+  else if (status) filters.set('status', status);
+  if (overdue) filters.set('overdue', 'true');
+  if (unitId) filters.set('unitId', unitId);
+  if (auditId) filters.set('auditId', auditId);
+  const listQuery = new URLSearchParams(filters);
+  listQuery.set('sort', sort);
+  listQuery.set('group', group);
+  listQuery.set('limit', String(PAGE));
+
+  const actions = useInfiniteQuery({
+    queryKey: ['corrective-actions', listQuery.toString(), worst],
+    // A filter change keeps the rows on screen until the new ones arrive.
+    placeholderData: keepPreviousData,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => {
+      const query = new URLSearchParams(listQuery);
+      if (pageParam) query.set('cursor', pageParam);
+      return load<Page<CorrectiveAction>>(`/corrective-actions?${query}`);
+    },
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    refetchInterval: 60_000,
+    enabled: scope.ready,
+  });
+  const summary = useQuery({
+    queryKey: ['corrective-actions', 'summary', filters.toString(), worst],
+    queryFn: () => load<CorrectiveActionSummary>(`/corrective-actions/summary?${filters}`),
+    placeholderData: keepPreviousData,
     refetchInterval: 60_000,
     enabled: scope.ready,
   });
 
-  const fetched = actions.data?.data ?? [];
-  const rows = status === REVIEW ? fetched.filter((action) => awaitsReview(action.status)) : fetched;
-  const waiting = fetched.filter((action) => awaitsReview(action.status)).length;
-
-  // D3: who to chase is the Zone's leader — an account or the name the auditor typed — unless
-  // the item was reassigned to someone. The Zones are read per Unit on the list.
-  const unitIds = [...new Set(fetched.map((action) => action.unitId))];
-  const zoneLeader = useQueries({
-    queries: unitIds.map((id) => ({
-      queryKey: ['corrective-actions', 'zones', id, worst],
-      queryFn: () => load<Page<Zone>>(`/units/${id}/zones?active=false&limit=200`),
-      staleTime: 5 * 60_000,
-    })),
-    combine: (results) =>
-      new Map(results.flatMap((result) => result.data?.data ?? []).map((zone) => [zone.id, zone.zoneLeaderName])),
-  });
-  const leaderOf: LeaderOf = (action) => action.assignedZoneLeaderName ?? zoneLeader.get(action.zoneId) ?? null;
+  const rows = actions.data?.pages.flatMap((page) => page.data) ?? [];
+  const totals = summary.data;
+  const waiting = totals ? totals.byStatus.ACTION_SUBMITTED + totals.byStatus.NOT_POSSIBLE : 0;
 
   const unitName = (id: string) =>
     units.data?.data.find((unit) => unit.id === id)?.name ?? 'Unknown unit';
   const now = Date.now();
-  const grouped = groupActions(rows, { group, sort, leaderOf, now });
-  const chase = overdueByLeader(rows, leaderOf, now);
-  const overdueTotal = chase.reduce((sum, entry) => sum + entry.count, 0);
+  const grouped = groupActions(rows, group, totals);
+  const chase = overdueByLeader(totals);
+  const overdueTotal = totals?.overdue ?? 0;
   const manyUnits = grouped.length > 1;
   const filtered = status !== '' || overdue || auditId !== '';
 
@@ -367,6 +377,12 @@ export function CorrectiveActionsPage() {
                             {entry.overdue > 0 && (
                               <span className="ml-2 text-xs font-semibold gb-text-crit">{entry.overdue} overdue</span>
                             )}
+                            {/* The rest of a group is on the next page; it continues under this header. */}
+                            {entry.list.length < entry.total && (
+                              <span className="ml-2 text-xs text-ink-3">
+                                {entry.list.length} of {entry.total} shown
+                              </span>
+                            )}
                           </Td>
                         </tr>
                         {entry.list.map((action) => (
@@ -387,9 +403,25 @@ export function CorrectiveActionsPage() {
             </Table>
           </div>
         )}
+        {actions.hasNextPage && (
+          <div className="flex flex-wrap items-center gap-3 p-4">
+            <Button
+              variant="secondary"
+              disabled={actions.isFetchingNextPage}
+              onClick={() => void actions.fetchNextPage()}
+            >
+              {actions.isFetchingNextPage ? 'Loading…' : 'Load more'}
+            </Button>
+            {totals && (
+              <span className="text-sm text-ink-2" aria-live="polite">
+                {rows.length.toLocaleString('en-IN')} of {totals.total.toLocaleString('en-IN')} shown
+              </span>
+            )}
+          </div>
+        )}
       </Card>
 
-      <ActionPanel actionId={panel.id} onClose={panel.close} zoneLeaderOf={(zoneId) => zoneLeader.get(zoneId) ?? null} />
+      <ActionPanel actionId={panel.id} onClose={panel.close} />
     </div>
   );
 }
@@ -466,15 +498,7 @@ function auditHeading(sample: CorrectiveAction, number: number | undefined): str
     : `Audit ${number} · ${kind} · ${when}${who}`;
 }
 
-function ActionPanel({
-  actionId,
-  onClose,
-  zoneLeaderOf,
-}: {
-  actionId: string | null;
-  onClose: () => void;
-  zoneLeaderOf: (zoneId: string) => string | null;
-}) {
+function ActionPanel({ actionId, onClose }: { actionId: string | null; onClose: () => void }) {
   const { worst, load } = useLoad();
   const detail = useQuery({
     queryKey: ['corrective-action', actionId, worst],
@@ -496,7 +520,7 @@ function ActionPanel({
         <ActionDetail
           key={action.id}
           action={action}
-          leader={action.assignedZoneLeaderName ?? zoneLeaderOf(action.zoneId)}
+          leader={leaderOf(action)}
         />
       )}
     </SidePanel>
@@ -577,6 +601,9 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
       {can('corrective_action', 'reassign') && action.status !== 'VERIFIED' && action.status !== 'WITHDRAWN' && (
         <Reassign action={action} onDone={refresh} />
       )}
+      {can('report_access_token', 'mint') && action.status !== 'VERIFIED' && action.status !== 'WITHDRAWN' && (
+        <CopyLink actionId={action.id} />
+      )}
 
       <div className="space-y-3">
         <p className="gb-label">Answers ({action.submissions.length})</p>
@@ -636,6 +663,53 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * CA9: the link in the PDF is stored only as a hash, so it cannot be shown again. This makes
+ * one more link to the same item and copies it; the printed one keeps working, and both are
+ * listed with the report's links on Reports, where either can be revoked.
+ */
+function CopyLink({ actionId }: { actionId: string }) {
+  const [copied, setCopied] = useState(false);
+  const make = useMutation({
+    // One key per press: a retried request mints nothing twice.
+    mutationFn: () => api.post<CorrectiveActionLink>(`/corrective-actions/${actionId}/link`, undefined, crypto.randomUUID()),
+    onSuccess: async (link) => {
+      if (!link.url) return;
+      try {
+        await navigator.clipboard.writeText(link.url);
+        setCopied(true);
+      } catch {
+        setCopied(false); // No clipboard here: the link is shown below to copy by hand.
+      }
+    },
+  });
+  const url = make.data?.url;
+  return (
+    <div className="space-y-2">
+      <p className="gb-label">Zone Leader link</p>
+      {url ? (
+        <>
+          <Input readOnly value={url} aria-label="Zone Leader link" onFocus={(event) => event.currentTarget.select()} />
+          <p className="text-sm text-ink-2" role="status">
+            {copied ? 'Copied. ' : 'Select the link to copy it. '}
+            This is a new link; the one in the PDF still works. Both are listed with the report on Reports.
+          </p>
+        </>
+      ) : (
+        <>
+          <Button variant="secondary" disabled={make.isPending} onClick={() => make.mutate()}>
+            {make.isPending ? 'Making a link…' : 'Copy Zone Leader link'}
+          </Button>
+          <p className="text-xs text-ink-2">
+            Makes a new link to this item for you to send. The link in the PDF keeps working.
+          </p>
+        </>
+      )}
+      {make.error && <ErrorNotice error={make.error} />}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   type SyncBatchRequest,
   type SyncBatchResponse,
   type SyncConflict,
+  type SyncConflictSummary,
   type SyncStatus,
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER } from '@audit5s/domain';
@@ -1364,15 +1365,42 @@ describe('D11 — uploads in the Activity log, and the held queue filtered (S15d
     expect(actorIds).toContain(response.batchId);
   });
 
+  it('summarises the whole queue on the server, under the same filters as the list (CA10)', async () => {
+    const list = async (query: string) =>
+      (
+        (await world.request('GET', `${base}/sync-conflicts?limit=200&${query}`, { token: sa() }))
+          .body as Page<SyncConflict>
+      ).data;
+    const summary = async (query: string) => {
+      const response = await world.request('GET', `${base}/sync-conflicts/summary?${query}`, { token: sa() });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      return response.body as SyncConflictSummary;
+    };
+    for (const query of ['resolved=false', 'resolved=true', `unitId=${world.unitA}`, `unitId=${world.unitB}`, 'reason=DEVICE_NOT_OWNER']) {
+      const rows = await list(query);
+      const totals = await summary(query);
+      expect(totals.count, query).toBe(rows.length);
+      expect(totals.oldestAt, query).toBe(rows.length ? rows.map((r) => r.createdAt).sort()[0] : null);
+      const perDevice = new Map<string, number>();
+      for (const row of rows) if (row.deviceId) perDevice.set(row.deviceId, (perDevice.get(row.deviceId) ?? 0) + 1);
+      expect(new Map(totals.byDevice.map((d) => [d.deviceId, d.count])), query).toEqual(perDevice);
+    }
+    expect((await summary('resolved=false')).count).toBeGreaterThan(0);
+    expect((await world.request('GET', `${base}/sync-conflicts/summary?unitId=pune`, { token: sa() })).status).toBe(422);
+  });
+
   it('refuses the filtered log and queue to every role but a Super Admin', async () => {
     const queue = `${base}/sync-conflicts?unitId=${world.unitA}&userId=${world.actors.CONSULTANT.userId}`;
+    const summary = `${base}/sync-conflicts/summary?unitId=${world.unitA}`;
     const log = `${base}/audit-logs?action=sync.item_held&unitId=${world.unitA}`;
     for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const) {
       const token = world.actors[role].accessToken;
       expect((await world.request('GET', queue, { token })).status, role).toBe(403);
+      expect((await world.request('GET', summary, { token })).status, role).toBe(403);
       expect((await world.request('GET', log, { token })).status, role).toBe(403);
     }
     expect((await world.request('GET', queue, { token: sa() })).status).toBe(200);
+    expect((await world.request('GET', summary, { token: sa() })).status).toBe(200);
     expect((await world.request('GET', log, { token: sa() })).status).toBe(200);
   });
 });

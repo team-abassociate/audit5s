@@ -1,4 +1,8 @@
 import { S_SECTIONS } from '@audit5s/contracts';
+import {
+  CORRECTIVE_ACTION_STATUSES,
+  type CorrectiveActionSummary,
+} from '@audit5s/contracts';
 import type {
   Audit,
   CorrectiveAction,
@@ -92,6 +96,7 @@ const actions: CorrectiveAction[] = Array.from({ length: 1000 }, (_, n) => {
     assignedZoneLeaderUserId: null,
     // One reassigned to a named account; the rest fall back to the Zone's leader.
     assignedZoneLeaderName: n === 3 ? 'Reassigned Leader' : null,
+    zoneLeaderName: zone.zoneLeaderName,
     dueAt: n % 17 === 0 ? null : at((n % 9) * 3 - 14),
     openedAt: at(-((n * 7) % 120)),
     lastSubmittedAt: null,
@@ -149,23 +154,77 @@ export function worstCase(path: string): unknown {
   if (route === '/audits') return page(audits.filter((audit) => audit.unitId === params.get('unitId')));
   const zonesOf = /^\/units\/([^/]+)\/zones$/.exec(route);
   if (zonesOf) return page(zones.filter((zone) => zone.unitId === zonesOf[1]));
-  if (route === '/corrective-actions') {
+  if (route === '/corrective-actions' || route === '/corrective-actions/summary') {
     const now = Date.now();
-    return page(
-      actions.filter(
-        (action) =>
-          (!params.get('status') || action.status === params.get('status')) &&
-          (!params.get('unitId') || action.unitId === params.get('unitId')) &&
-          (!params.get('auditId') || action.auditId === params.get('auditId')) &&
-          (params.get('overdue') !== 'true' ||
-            ((action.status === 'OPEN' || action.status === 'REOPENED') &&
-              action.dueAt !== null &&
-              Date.parse(action.dueAt) < now)),
-      ),
+    const matching = actions.filter(
+      (action) =>
+        (!params.get('status') || action.status === params.get('status')) &&
+        (params.get('awaitingReview') !== 'true' || action.status === 'ACTION_SUBMITTED' || action.status === 'NOT_POSSIBLE') &&
+        (!params.get('unitId') || action.unitId === params.get('unitId')) &&
+        (!params.get('auditId') || action.auditId === params.get('auditId')) &&
+        (params.get('overdue') !== 'true' || late(action, now)),
     );
+    if (route === '/corrective-actions/summary') return summarize(matching, now);
+    // The server's order (CA10) and its cursor: the id of the last row handed out.
+    const sorted = matching.sort((a, b) => compare(orderKeys(a, params), orderKeys(b, params)));
+    const start = params.get('cursor') ? sorted.findIndex((a) => a.id === params.get('cursor')) + 1 : 0;
+    const limit = Number(params.get('limit') ?? 50);
+    const data = sorted.slice(start, start + limit);
+    return { data, nextCursor: start + limit < sorted.length ? data.at(-1)!.id : null };
   }
   const one = /^\/corrective-actions\/([^/]+)$/.exec(route);
   const found = one && actions.find((action) => action.id === one[1]);
   if (found) return detail(found);
   throw new Error(`No worst-case fixture for ${path}`);
+}
+
+const live = (a: CorrectiveAction) => a.status === 'OPEN' || a.status === 'REOPENED';
+const late = (a: CorrectiveAction, now: number) => live(a) && a.dueAt !== null && Date.parse(a.dueAt) < now;
+const chase = (a: CorrectiveAction) => a.assignedZoneLeaderName ?? a.zoneLeaderName ?? null;
+
+/** The server's order keys (`orderKeys` in the API's repository), for the fixture to page. */
+function orderKeys(a: CorrectiveAction, params: URLSearchParams): Array<string | number> {
+  const leader = [chase(a) === null ? 1 : 0, chase(a) ?? ''];
+  const due = a.dueAt ?? '9999';
+  const group = params.get('group');
+  const groupKeys =
+    group === 'audit'
+      ? [a.unitId, -Date.parse(a.auditCompletedAt ?? '1970-01-01'), a.auditId]
+      : group === 'leader'
+        ? [a.unitId, a.zoneCode, a.zoneId, ...leader]
+        : [];
+  const sort = params.get('sort');
+  const sortKeys = sort === 'age' ? [a.openedAt] : sort === 'leader' ? [...leader, live(a) ? 0 : 1, due] : [live(a) ? 0 : 1, due];
+  return [...groupKeys, ...sortKeys, a.id];
+}
+
+function compare(a: Array<string | number>, b: Array<string | number>): number {
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return a[i]! < b[i]! ? -1 : 1;
+  return 0;
+}
+
+export function summarize(rows: CorrectiveAction[], now: number): CorrectiveActionSummary {
+  const count = (keep: (a: CorrectiveAction) => boolean) => rows.filter(keep).length;
+  const grouped = <K extends string>(key: (a: CorrectiveAction) => K) => {
+    const groups = new Map<K, CorrectiveAction[]>();
+    for (const a of rows) groups.set(key(a), [...(groups.get(key(a)) ?? []), a]);
+    return [...groups.values()];
+  };
+  const counts = (list: CorrectiveAction[]) => ({ total: list.length, overdue: list.filter((a) => late(a, now)).length });
+  return {
+    total: rows.length,
+    byStatus: Object.fromEntries(CORRECTIVE_ACTION_STATUSES.map((s) => [s, count((a) => a.status === s)])) as CorrectiveActionSummary['byStatus'],
+    overdue: count((a) => late(a, now)),
+    dueWithinWeek: count((a) => live(a) && a.dueAt !== null && Date.parse(a.dueAt) >= now && Date.parse(a.dueAt) < now + 7 * DAY),
+    openNeedsImprovement: count((a) => live(a) && a.scoreAtCapture === 'SCORE_0'),
+    byAudit: grouped((a) => a.auditId).map((list) => ({ unitId: list[0]!.unitId, auditId: list[0]!.auditId, ...counts(list) })),
+    byZoneLeader: grouped((a) => `${a.zoneId}|${chase(a) ?? ''}`).map((list) => ({
+      unitId: list[0]!.unitId,
+      zoneId: list[0]!.zoneId,
+      zoneCode: list[0]!.zoneCode,
+      zoneName: list[0]!.zoneName,
+      leader: chase(list[0]!),
+      ...counts(list),
+    })),
+  };
 }

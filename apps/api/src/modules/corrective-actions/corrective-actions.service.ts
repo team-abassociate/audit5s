@@ -1,18 +1,22 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import type {
-  AuditStatus,
-  CorrectiveAction,
-  CorrectiveActionDetail,
-  CorrectiveActionSubmission,
-  ListCorrectiveActionsQuery,
-  Page,
-  ReassignCorrectiveActionRequest,
-  ReopenCorrectiveActionRequest,
-  Role,
-  SubmissionChannel,
-  SubmitCorrectiveActionRequest,
-  VerifyCorrectiveActionRequest,
+import {
+  CORRECTIVE_ACTION_STATUSES,
+  uuidSchema,
+  type AuditStatus,
+  type CorrectiveAction,
+  type CorrectiveActionDetail,
+  type CorrectiveActionSubmission,
+  type CorrectiveActionSummary,
+  type CorrectiveActionSummaryQuery,
+  type ListCorrectiveActionsQuery,
+  type Page,
+  type ReassignCorrectiveActionRequest,
+  type ReopenCorrectiveActionRequest,
+  type Role,
+  type SubmissionChannel,
+  type SubmitCorrectiveActionRequest,
+  type VerifyCorrectiveActionRequest,
 } from '@audit5s/contracts';
 import {
   assertTransition,
@@ -62,10 +66,28 @@ export class CorrectiveActionsService {
   // -------------------------------------------------------------------------- reads
 
   async list(scope: ScopeContext, query: ListCorrectiveActionsQuery): Promise<Page<CorrectiveAction>> {
+    // The cursor is a row id the server handed out; anything else is the client's mistake.
+    if (query.cursor && !uuidSchema.safeParse(query.cursor).success) {
+      throw AppError.validation('Invalid cursor', [{ field: 'cursor', message: 'Not a cursor from this list' }]);
+    }
     const rows = await this.repository.list(scope, query);
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;
     return { data: page.map(toCorrectiveAction), nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null };
+  }
+
+  /** CA10: the list's counts over every matching row (`GET /corrective-actions/summary`). */
+  async summary(scope: ScopeContext, query: CorrectiveActionSummaryQuery): Promise<CorrectiveActionSummary> {
+    const { totals, byStatus, byAudit, byZoneLeader } = await this.repository.summary(scope, query);
+    const counted = new Map(byStatus.map((row) => [row.status, row.total]));
+    return {
+      ...totals,
+      byStatus: Object.fromEntries(
+        CORRECTIVE_ACTION_STATUSES.map((status) => [status, counted.get(status) ?? 0]),
+      ) as CorrectiveActionSummary['byStatus'],
+      byAudit,
+      byZoneLeader,
+    };
   }
 
   /** "Includes the full submission history" (§8.8), read under its own PART 6 cell. */
@@ -843,6 +865,7 @@ export function toCorrectiveAction(row: CorrectiveActionRow): CorrectiveAction {
     status: row.status,
     assignedZoneLeaderUserId: row.assignedZoneLeaderUserId,
     assignedZoneLeaderName: row.assignedZoneLeaderName,
+    zoneLeaderName: row.zoneLeaderName,
     dueAt: row.dueAt?.toISOString() ?? null,
     openedAt: row.openedAt.toISOString(),
     lastSubmittedAt: row.lastSubmittedAt?.toISOString() ?? null,

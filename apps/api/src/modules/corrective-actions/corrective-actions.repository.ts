@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNull, notInArray, sql, type SQL, ne } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';
 import {
   audits,
@@ -16,6 +17,7 @@ import {
 import type {
   AuditStatus,
   CorrectiveActionStatus,
+  CorrectiveActionSummaryQuery,
   CorrectiveOption,
   ListCorrectiveActionsQuery,
   Role,
@@ -60,6 +62,10 @@ const actionColumns = {
   // The name alone, through 0008's narrow definer function — a Consultant may not read
   // the leader's user record, and does not need to.
   assignedZoneLeaderName: sql<string | null>`app_zone_leader_name(${correctiveActions.unitId}, ${correctiveActions.assignedZoneLeaderUserId})`,
+  // D3: the Zone's leader now, account or typed name, as `zones.repository` reads it. A
+  // correlated read rather than a join, so every query built on `selectActions` keeps its rows.
+  zoneLeaderName: sql<string | null>`(SELECT COALESCE(app_zone_leader_name(z.unit_id, z.zone_leader_id), z.zone_leader_name)
+    FROM zone z WHERE z.id = ${correctiveActions.zoneId})`,
   dueAt: correctiveActions.dueAt,
   openedAt: correctiveActions.openedAt,
   lastSubmittedAt: correctiveActions.lastSubmittedAt,
@@ -93,6 +99,47 @@ const actionColumns = {
   scoreAtCapture: evidence.scoreAtCapture,
   findingRemark: evidence.remark,
 };
+
+/** Who to chase (D3): the leader it was reassigned to, else the Zone's. */
+const chaseLeader = sql<string | null>`COALESCE(${actionColumns.assignedZoneLeaderName}, ${actionColumns.zoneLeaderName})`;
+const awaitingAnswer = sql`${correctiveActions.status} IN ('OPEN','REOPENED')`;
+const overdueNow = sql`${awaitingAnswer} AND ${correctiveActions.dueAt} < now()`;
+const countWhere = (condition?: SQL) =>
+  condition ? sql<number>`(count(*) FILTER (WHERE ${condition}))::int` : sql<number>`count(*)::int`;
+
+/**
+ * CA10: the list's order, as keys that are all ascending and never null, so one row
+ * comparison against the cursor row's keys walks it — no page skips or repeats a row.
+ * Groups come first, so a group's rows are contiguous; the id breaks every tie. Null
+ * without a sort or group: the id order the field app has always had.
+ */
+function orderKeys(query: ListCorrectiveActionsQuery): SQL[] | null {
+  if (!query.sort && !query.group) return null;
+  const settled = sql`(${correctiveActions.status} NOT IN ('OPEN','REOPENED'))`;
+  const due = sql`COALESCE(${correctiveActions.dueAt}, 'infinity'::timestamptz)`;
+  const noLeader = sql`(${chaseLeader} IS NULL)`;
+  const leader = sql`COALESCE(${chaseLeader}, '')`;
+  const groupKeys =
+    query.group === 'audit'
+      ? // Newest audit first, as a negated epoch: every key ascends.
+        [sql`${correctiveActions.unitId}`, sql`(-COALESCE(extract(epoch FROM ${audits.completedAt}), 0))`, sql`${correctiveActions.auditId}`]
+      : query.group === 'leader'
+        ? [
+            sql`${correctiveActions.unitId}`,
+            sql`COALESCE((SELECT z.code FROM zone z WHERE z.id = ${correctiveActions.zoneId}), '')`,
+            sql`${correctiveActions.zoneId}`,
+            noLeader,
+            leader,
+          ]
+        : [];
+  const sortKeys =
+    query.sort === 'age'
+      ? [sql`${correctiveActions.openedAt}`]
+      : query.sort === 'leader'
+        ? [noLeader, leader, settled, due]
+        : [settled, due];
+  return [...groupKeys, ...sortKeys, sql`${correctiveActions.id}`];
+}
 
 export type CorrectiveActionRow = NonNullable<
   Awaited<ReturnType<CorrectiveActionsRepository['findById'] >>
@@ -183,26 +230,93 @@ export class CorrectiveActionsRepository extends BaseRepository {
     });
   }
 
-  /** Ordered by id, which is a UUIDv7 minted at materialisation: id order is open order. */
+  /**
+   * Ordered by id — a UUIDv7 minted at materialisation, so open order — unless the query
+   * names a sort or a group (CA10). Then the cursor is still a row's id, as everywhere
+   * (§8.1), and the page starts after that row's position in the order.
+   */
   async list(scope: ScopeContext, query: ListCorrectiveActionsQuery) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const filters: Array<SQL | undefined> = [
-        query.unitId ? eq(correctiveActions.unitId, query.unitId) : undefined,
-        query.zoneId ? eq(correctiveActions.zoneId, query.zoneId) : undefined,
-        query.auditId ? eq(correctiveActions.auditId, query.auditId) : undefined,
-        query.assignedTo ? eq(correctiveActions.assignedZoneLeaderUserId, query.assignedTo) : undefined,
-        query.status ? eq(correctiveActions.status, query.status) : undefined,
-        query.overdue
-          ? sql`${correctiveActions.status} IN ('OPEN','REOPENED') AND ${correctiveActions.dueAt} < now()`
-          : undefined,
-        query.cursor ? sql`${correctiveActions.id} > ${query.cursor}` : undefined,
-      ];
+      const keys = orderKeys(query);
+      if (!keys) {
+        return this.selectActions(tx)
+          .where(
+            this.scoped(
+              scope,
+              scopeColumns,
+              ...this.filters(query),
+              query.cursor ? sql`${correctiveActions.id} > ${query.cursor}` : undefined,
+            ),
+          )
+          .orderBy(asc(correctiveActions.id))
+          .limit(query.limit + 1);
+      }
+      const row = sql.join(keys, sql`, `);
+      const after = query.cursor
+        ? sql`(${row}) > (${this.selectFrom(tx, Object.fromEntries(keys.map((key, i) => [`k${i}`, key])))
+            .where(and(eq(correctiveActions.id, query.cursor), this.predicate(scope)))})`
+        : undefined;
       return this.selectActions(tx)
-        .where(this.scoped(scope, scopeColumns, ...filters))
-        .orderBy(asc(correctiveActions.id))
+        .where(this.scoped(scope, scopeColumns, ...this.filters(query), after))
+        .orderBy(...keys)
         .limit(query.limit + 1);
     });
+  }
+
+  /** CA10: the counts over every row the list's filters match, not one page of them. */
+  async summary(scope: ScopeContext, query: CorrectiveActionSummaryQuery) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const where = this.scoped(scope, scopeColumns, ...this.filters(query));
+      type Counts = { total: number; overdue: number };
+      const [totals] = (await this.selectFrom(tx, {
+        total: countWhere(),
+        overdue: countWhere(overdueNow),
+        dueWithinWeek: countWhere(
+          sql`${awaitingAnswer} AND ${correctiveActions.dueAt} >= now() AND ${correctiveActions.dueAt} < now() + interval '7 days'`,
+        ),
+        openNeedsImprovement: countWhere(sql`${awaitingAnswer} AND ${evidence.scoreAtCapture} = 'SCORE_0'`),
+      }).where(where)) as Array<Counts & { dueWithinWeek: number; openNeedsImprovement: number }>;
+      const byStatus = (await this.selectFrom(tx, { status: correctiveActions.status, total: countWhere() })
+        .where(where)
+        .groupBy(correctiveActions.status)) as Array<{ status: CorrectiveActionStatus; total: number }>;
+      const byAudit = (await this.selectFrom(tx, {
+        unitId: correctiveActions.unitId,
+        auditId: correctiveActions.auditId,
+        total: countWhere(),
+        overdue: countWhere(overdueNow),
+      })
+        .where(where)
+        .groupBy(correctiveActions.unitId, correctiveActions.auditId)) as Array<Counts & { unitId: string; auditId: string }>;
+      const byZoneLeader = (await this.selectFrom(tx, {
+        unitId: correctiveActions.unitId,
+        zoneId: correctiveActions.zoneId,
+        zoneCode: sql`max(${auditZones.zoneCodeSnapshot})`,
+        zoneName: sql`max(${auditZones.zoneNameSnapshot})`,
+        leader: chaseLeader,
+        total: countWhere(),
+        overdue: countWhere(overdueNow),
+      })
+        .where(where)
+        .groupBy(correctiveActions.unitId, correctiveActions.zoneId, chaseLeader)) as Array<
+        Counts & { unitId: string; zoneId: string; zoneCode: string; zoneName: string; leader: string | null }
+      >;
+      return { totals: totals!, byStatus, byAudit, byZoneLeader };
+    });
+  }
+
+  /** The list's filters, shared with its summary so the two always count the same rows. */
+  private filters(query: CorrectiveActionSummaryQuery): Array<SQL | undefined> {
+    return [
+      query.unitId ? eq(correctiveActions.unitId, query.unitId) : undefined,
+      query.zoneId ? eq(correctiveActions.zoneId, query.zoneId) : undefined,
+      query.auditId ? eq(correctiveActions.auditId, query.auditId) : undefined,
+      query.assignedTo ? eq(correctiveActions.assignedZoneLeaderUserId, query.assignedTo) : undefined,
+      query.status ? eq(correctiveActions.status, query.status) : undefined,
+      query.overdue ? overdueNow : undefined,
+      query.awaitingReview ? inArray(correctiveActions.status, ['ACTION_SUBMITTED', 'NOT_POSSIBLE']) : undefined,
+    ];
   }
 
   /**
@@ -396,6 +510,20 @@ export class CorrectiveActionsRepository extends BaseRepository {
       .innerJoin(audits, eq(audits.id, correctiveActions.auditId))
       .innerJoin(auditZones, eq(auditZones.id, correctiveActions.auditZoneId))
       // Left, not inner: an overall action (R-38) answers a suggestion and has no photo.
+      .leftJoin(evidence, eq(evidence.id, correctiveActions.evidenceId))
+      .leftJoin(checklistQuestions, eq(checklistQuestions.id, correctiveActions.checklistQuestionId));
+  }
+
+  /**
+   * @internal — the same joins with other columns: an order's keys, a summary's counts.
+   * Untyped rows (drizzle loses the join types over a generic selection); callers name theirs.
+   */
+  private selectFrom(tx: Transaction | Database, columns: Record<string, SQL | AnyPgColumn>) {
+    return tx
+      .select(columns)
+      .from(correctiveActions)
+      .innerJoin(audits, eq(audits.id, correctiveActions.auditId))
+      .innerJoin(auditZones, eq(auditZones.id, correctiveActions.auditZoneId))
       .leftJoin(evidence, eq(evidence.id, correctiveActions.evidenceId))
       .leftJoin(checklistQuestions, eq(checklistQuestions.id, correctiveActions.checklistQuestionId));
   }

@@ -14,6 +14,7 @@ import {
 import { zoneDisplayLabel, type ScopeContext } from '@audit5s/domain';
 import type {
   ListSyncConflictsQuery,
+  SyncConflictSummaryQuery,
   SyncBatchItem,
   SyncBatchResult,
   SyncConflictReason,
@@ -79,6 +80,18 @@ const conflictContext = itemContext(
   sql`${syncConflicts.entityId}`,
   sql`${syncConflicts.incomingPayload}`,
 );
+
+/** The queue's filters, shared by the list and its summary so both count the same rows. */
+function conflictFilters(query: SyncConflictSummaryQuery): Array<SQL | undefined> {
+  return [
+    query.resolved ? isNotNull(syncConflicts.resolvedAt) : isNull(syncConflicts.resolvedAt),
+    query.entityType ? eq(syncConflicts.entityType, query.entityType) : undefined,
+    query.deviceId ? eq(syncConflicts.deviceId, query.deviceId) : undefined,
+    query.userId ? eq(syncConflicts.userId, query.userId) : undefined,
+    query.reason ? eq(syncConflicts.reason, query.reason) : undefined,
+    query.unitId ? sql`(${conflictContext}->>'unitId')::uuid = ${query.unitId}::uuid` : undefined,
+  ];
+}
 
 export interface ItemContext {
   auditId: string | null;
@@ -300,17 +313,30 @@ export class SyncRepository extends BaseRepository {
     return result.rows[0]?.ctx ?? null;
   }
 
+  /** CA10: the queue's count, oldest item and per-phone counts, under the list's filters. */
+  async summarizeConflicts(scope: ScopeContext, query: SyncConflictSummaryQuery) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const where = this.scoped(scope, conflictScopeColumns, ...conflictFilters(query));
+      const [totals] = await tx
+        .select({ count: sql<number>`count(*)::int`, oldestAt: sql<Date | null>`min(${syncConflicts.createdAt})` })
+        .from(syncConflicts)
+        .where(where);
+      const byDevice = await tx
+        .select({ deviceId: sql<string>`${syncConflicts.deviceId}`, count: sql<number>`count(*)::int` })
+        .from(syncConflicts)
+        .where(and(where, isNotNull(syncConflicts.deviceId)))
+        .groupBy(syncConflicts.deviceId);
+      return { count: totals?.count ?? 0, oldestAt: totals?.oldestAt ?? null, byDevice };
+    });
+  }
+
   async listConflicts(scope: ScopeContext, query: ListSyncConflictsQuery) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
 
       const filters: Array<SQL | undefined> = [
-        query.resolved ? isNotNull(syncConflicts.resolvedAt) : isNull(syncConflicts.resolvedAt),
-        query.entityType ? eq(syncConflicts.entityType, query.entityType) : undefined,
-        query.deviceId ? eq(syncConflicts.deviceId, query.deviceId) : undefined,
-        query.userId ? eq(syncConflicts.userId, query.userId) : undefined,
-        query.reason ? eq(syncConflicts.reason, query.reason) : undefined,
-        query.unitId ? sql`(${conflictContext}->>'unitId')::uuid = ${query.unitId}::uuid` : undefined,
+        ...conflictFilters(query),
         // Newest first, as a reviewer reads them. The id is a random UUID and says nothing
         // about time, so the cursor is the row's position in (created_at, id).
         query.cursor

@@ -4,6 +4,7 @@ import type {
   Audit,
   AuditScoreSummary,
   CorrectiveAction,
+  CorrectiveActionSummary,
   Page,
   SectionScorePayload,
   Unit,
@@ -17,7 +18,7 @@ import { TopbarTools } from '@/components/AppShell';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
 import { BandLabel } from '@/components/Status';
-import { api } from '@/lib/api';
+import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL } from '@/lib/labels';
@@ -148,9 +149,16 @@ export function DashboardPage() {
       get<Page<Audit>>(`/audits?unitId=${unit}&from=${encodeURIComponent(from)}&limit=200`),
     enabled,
   });
+  // CA10: the counts are the server's over every action, not a count of a capped page.
+  const actionTotals = useQuery({
+    queryKey: ['dashboard', unit, 'corrective-actions', 'summary'],
+    queryFn: () => get<CorrectiveActionSummary>(`/corrective-actions/summary?unitId=${unit}`),
+    enabled,
+  });
+  /** The register: overdue first, then soonest due, then everything answered — the server's `due` order. */
   const actions = useQuery({
-    queryKey: ['dashboard', unit, 'corrective-actions'],
-    queryFn: () => get<Page<CorrectiveAction>>(`/corrective-actions?unitId=${unit}&limit=200`),
+    queryKey: ['dashboard', unit, 'corrective-actions', 'register'],
+    queryFn: () => get<Page<CorrectiveAction>>(`/corrective-actions?unitId=${unit}&sort=due&limit=${SHOWN}`),
     enabled,
   });
 
@@ -204,30 +212,30 @@ export function DashboardPage() {
   };
 
   const now = Date.now();
-  const raised = actions.data?.data ?? [];
+  const register = actions.data?.data ?? [];
+  const totals = actionTotals.data;
+  const raised = totals?.total ?? 0;
   /**
    * Closed means `VERIFIED`. An accepted `NOT_POSSIBLE` also ends at `VERIFIED` (§7.3), so
-   * this one test covers both ways a finding can be finished, and `ACTION_SUBMITTED` is
+   * this one count covers both ways a finding can be finished, and `ACTION_SUBMITTED` is
    * correctly not counted — it is waiting on a reviewer, not closed.
    */
-  const closed = raised.filter((action) => action.status === 'VERIFIED');
-  const open = raised.filter(
-    (action) => action.status === 'OPEN' || action.status === 'REOPENED',
-  );
-  const overdue = open.filter(
-    (action) => action.dueAt !== null && Date.parse(action.dueAt) < now,
-  );
-  const dueThisWeek = open.filter(
-    (action) =>
-      action.dueAt !== null &&
-      Date.parse(action.dueAt) >= now &&
-      Date.parse(action.dueAt) < now + 7 * DAY,
-  );
-  const zeroScored = open.filter((action) => action.scoreAtCapture === 'SCORE_0');
-  const oldestOverdue = overdue
-    .slice()
-    .sort((a, b) => a.dueAt!.localeCompare(b.dueAt!))
-    .at(0);
+  const closed = totals?.byStatus.VERIFIED ?? 0;
+  const open = totals ? totals.byStatus.OPEN + totals.byStatus.REOPENED : 0;
+  const overdue = totals?.overdue ?? 0;
+  const dueThisWeek = totals?.dueWithinWeek ?? 0;
+  const zeroScored = totals?.openNeedsImprovement ?? 0;
+  // The register is in due order with the overdue first, so its first row is the oldest overdue.
+  const oldestOverdue = register[0] && actionState(register[0], now).band === 'crit' ? register[0] : undefined;
+  /** The chosen Zone's findings, all of them, for its panel. */
+  const zoneActions = useQuery({
+    queryKey: ['dashboard', unit, 'corrective-actions', 'zone', selected?.zoneId],
+    queryFn: () =>
+      worst()
+        ? get<Page<CorrectiveAction>>(`/corrective-actions?zoneId=${selected!.zoneId}`).then((page) => page.data)
+        : fetchAll<CorrectiveAction>(`/corrective-actions?unitId=${unit}&zoneId=${selected!.zoneId}&limit=200`),
+    enabled: enabled && selected !== undefined,
+  });
   const closureHours = overview.data?.averageClosureHours ?? null;
   /** Completed audits the nightly rollup has not folded into the analytics yet. */
   const lagging = board.filter((zone) => awaitingRollup(zone)).length;
@@ -301,11 +309,11 @@ export function DashboardPage() {
       ? chosenAudit.totals.scorePercentage
       : (overview.data?.score.scorePercentage ?? null);
 
-  const error = [units, overview, ranking, zones, audits, actions].find((query) => query.error)
+  const error = [units, overview, ranking, zones, audits, actions, actionTotals].find((query) => query.error)
     ?.error;
   /** Nothing renders as data until it is data: "0/0 zones" for a second is a false report (B8). */
   const loading =
-    units.isLoading || [overview, ranking, zones, audits, actions].some((query) => query.isLoading);
+    units.isLoading || [overview, ranking, zones, audits, actions, actionTotals].some((query) => query.isLoading);
   const latestAudit = scorable[0] ?? null;
   /** Whoever can be chased: the action's leader, else its Zone's leader (user or typed, D3). */
   const ownerOf = (action: { assignedZoneLeaderName: string | null; zoneCode: string }) =>
@@ -419,10 +427,10 @@ export function DashboardPage() {
       ) : null}
 
       {/* The one slip: only ever rendered for something a human must act on (§2.7). */}
-      {loading ? null : overdue.length > 0 ? (
+      {loading ? null : overdue > 0 && oldestOverdue ? (
         <div className="gb-slip">
           <b>
-            {count(overdue.length)} corrective {overdue.length === 1 ? 'action' : 'actions'} overdue
+            {count(overdue)} corrective {overdue === 1 ? 'action' : 'actions'} overdue
           </b>
           <p>
             Oldest is “{findingTitle(oldestOverdue!)}” in {oldestOverdue!.zoneName}, due{' '}
@@ -528,19 +536,19 @@ export function DashboardPage() {
                   source as the rows below, and not waiting on the nightly rollup. */}
               <Kpi
                 label="Open actions"
-                value={count(open.length)}
-                context={`${count(zeroScored.length)} marked “Needs improvement”`}
-                band={open.length === 0 ? 'ok' : 'warn'}
+                value={count(open)}
+                context={`${count(zeroScored)} marked “Needs improvement”`}
+                band={open === 0 ? 'ok' : 'warn'}
               />
               <Kpi
                 label="Overdue actions"
-                value={count(overdue.length)}
+                value={count(overdue)}
                 context={
                   oldestOverdue
                     ? `oldest: ${daysBetween(oldestOverdue.openedAt, now)} d open · ${daysBetween(oldestOverdue.dueAt, now)} d overdue`
                     : 'nothing past its due date'
                 }
-                band={overdue.length === 0 ? 'ok' : 'crit'}
+                band={overdue === 0 ? 'ok' : 'crit'}
               />
               {/* Closed out of raised, not a percentage: "2/5" is the sentence a Coordinator
                   actually says, and at this Unit's volume a percentage turns five findings into
@@ -548,9 +556,9 @@ export function DashboardPage() {
                   from the server's rate, so the colour is unchanged. */}
               <Kpi
                 label="Closure"
-                value={raised.length === 0 ? '—' : `${closed.length}/${raised.length}`}
+                value={raised === 0 ? '—' : `${closed}/${raised}`}
                 context={
-                  raised.length === 0
+                  raised === 0
                     ? 'nothing raised in this period'
                     : closureHours === null
                       ? 'nothing closed yet'
@@ -587,7 +595,7 @@ export function DashboardPage() {
               {selected ? (
                 <DetailPanel
                   zone={selected}
-                  actions={raised.filter((a) => a.zoneCode === selected.code)}
+                  actions={zoneActions.data ?? []}
                   headingRef={panelHeading}
                 />
               ) : null}
@@ -682,24 +690,24 @@ export function DashboardPage() {
                 <h2 className="gb-h1">Action pressure</h2>
                 <p>Where the open findings sit, and how much of the period is still outstanding.</p>
               </div>
-              <span className="gb-label">{count(open.length)} open</span>
+              <span className="gb-label">{count(open)} open</span>
             </div>
             {/* One card, counts over the bars (B13): two side by side left a void beside the
                 longer one. The bars are ink — a count of findings, not a score band (B14). */}
             <div className="gb-card" style={{ marginTop: 14 }}>
-              <h3 className="gb-h2">Open corrective actions · {count(open.length)}</h3>
+              <h3 className="gb-h2">Open corrective actions · {count(open)}</h3>
               <p>One per nonconformity photograph, raised automatically when an audit completes.</p>
               <div className="gb-stats3">
                 <div className="gb-crit">
-                  <b className="gb-figure">{count(overdue.length)}</b>
+                  <b className="gb-figure">{count(overdue)}</b>
                   <span className="gb-label">Overdue</span>
                 </div>
                 <div className="gb-warn">
-                  <b className="gb-figure">{count(zeroScored.length)}</b>
+                  <b className="gb-figure">{count(zeroScored)}</b>
                   <span className="gb-label">Needs improvement</span>
                 </div>
                 <div>
-                  <b className="gb-figure">{count(dueThisWeek.length)}</b>
+                  <b className="gb-figure">{count(dueThisWeek)}</b>
                   <span className="gb-label">Due this week</span>
                 </div>
               </div>
@@ -715,7 +723,7 @@ export function DashboardPage() {
                       <span>{count(row.count)}</span>
                     </div>
                   ))}
-                  {open.length === 0 ? (
+                  {open === 0 ? (
                     <p className="gb-label">No open findings in this Unit.</p>
                   ) : null}
                 </div>
@@ -742,15 +750,15 @@ export function DashboardPage() {
                 <h2 className="gb-h1">Corrective actions</h2>
                 <p>
                   Overdue first.{' '}
-                  {raised.length > SHOWN
-                    ? `The first ${SHOWN} of ${count(raised.length)}${actions.data?.nextCursor ? '+' : ''}; the rest are on Corrective actions.`
+                  {raised > SHOWN
+                    ? `The first ${SHOWN} of ${count(raised)}; the rest are on Corrective actions.`
                     : 'Raised automatically from every nonconformity on completion.'}{' '}
                   A finding opens its corrective action.
                 </p>
               </div>
               {/* B9: never a dead end — the whole list is one step away. */}
               <Link className="gb-btn" to="/corrective-actions">
-                {raised.length > SHOWN ? `View all ${count(raised.length)}${actions.data?.nextCursor ? '+' : ''} →` : 'Corrective actions →'}
+                {raised > SHOWN ? `View all ${count(raised)} →` : 'Corrective actions →'}
               </Link>
             </div>
             <div className="gb-tablewrap" style={{ marginTop: 14 }}>
@@ -767,9 +775,7 @@ export function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortActions(raised, now)
-                    .slice(0, SHOWN)
-                    .map((action) => {
+                  {register.map((action) => {
                       const state = actionState(action, now);
                       return (
                         <tr key={action.id}>
@@ -793,7 +799,7 @@ export function DashboardPage() {
                         </tr>
                       );
                     })}
-                  {raised.length === 0 ? (
+                  {raised === 0 ? (
                     <tr>
                       <td className={rail('none')} colSpan={7}>
                         No corrective actions in this Unit.
@@ -1217,22 +1223,6 @@ function shareRows(board: BoardZone[]) {
     count: zone.openNonconformities,
     width: Math.round((zone.openNonconformities / top) * 100),
   }));
-}
-
-/** Overdue first, then due soonest, then everything already answered. */
-function sortActions(actions: CorrectiveAction[], now: number): CorrectiveAction[] {
-  const weight = (action: CorrectiveAction) => {
-    const state = actionState(action, now);
-    return state.band === 'crit' ? 0 : state.band === 'warn' ? 1 : 2;
-  };
-  return actions
-    .slice()
-    .sort(
-      (a, b) =>
-        weight(a) - weight(b) ||
-        (a.dueAt ?? '9999').localeCompare(b.dueAt ?? '9999') ||
-        a.openedAt.localeCompare(b.openedAt),
-    );
 }
 
 function actionState(action: CorrectiveAction, now: number): { band: Band; label: string } {

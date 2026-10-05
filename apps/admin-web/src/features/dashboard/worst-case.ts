@@ -5,7 +5,8 @@
  * four audits on one day, one question photographed three times, and an action list that
  * fills the API's 200-row page.
  */
-import type { SSection } from '@audit5s/contracts';
+import type { CorrectiveAction, SSection } from '@audit5s/contracts';
+import { summarize } from '@/features/corrective-actions/worst-case';
 
 const UNIT_ID = '00000000-0000-4000-8000-00000000b0a2';
 const UNIT = 'Shree Venkateshwara Precision Forgings & Auto Components Pvt Ltd';
@@ -185,6 +186,12 @@ export function worstCase(path: string): unknown {
   }
   if (path.endsWith('/summary')) return summary(path.split('/')[2]!);
   if (path.startsWith('/audits?')) return { data: AUDITS, nextCursor: null };
-  if (path.startsWith('/corrective-actions?')) return { data: ACTIONS, nextCursor: 'more' };
+  if (path.startsWith('/corrective-actions/summary')) return summarize(ACTIONS as unknown as CorrectiveAction[], Date.now());
+  if (path.startsWith('/corrective-actions?')) {
+    const params = new URLSearchParams(path.split('?')[1]);
+    const zoneId = params.get('zoneId');
+    const rows = zoneId ? ACTIONS.filter((action) => action.zoneId === zoneId) : ACTIONS;
+    return { data: rows.slice(0, Number(params.get('limit') ?? rows.length)), nextCursor: null };
+  }
   return undefined;
 }

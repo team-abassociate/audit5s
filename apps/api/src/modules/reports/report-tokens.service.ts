@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import type {
+  CorrectiveActionLink,
   ReportAccessToken,
   ReportTokenPurpose,
   RevokeTokenRequest,
@@ -95,6 +96,40 @@ export class ReportTokensService {
     }
 
     return { urls, rows };
+  }
+
+  /**
+   * CA9: one more link to a corrective action, attached to the newest report that printed
+   * one. Nothing about the printed link changes — several live links to one action is what
+   * regenerating a report has always produced — so the PDF already sent keeps working.
+   * Refused for a settled action (R-14(a): no live door on a closed item) and for one no
+   * listed report has printed, where there is no link to "resend".
+   */
+  async mintForAction(scope: ScopeContext, actionId: string): Promise<CorrectiveActionLink> {
+    const target = await this.repository.linkTarget(scope, actionId);
+    if (!target) throw AppError.notFound('No such corrective action');
+    if (target.status === 'VERIFIED' || target.status === 'WITHDRAWN') {
+      throw AppError.conflict('CONFLICT', 'This item is closed, so it takes no new link');
+    }
+    if (!target.snapshotId) {
+      throw AppError.conflict('CONFLICT', 'No report has printed a link to this item yet. Generate its Zone report first.');
+    }
+    const minted = this.prepareForSnapshot({
+      snapshotId: target.snapshotId,
+      unitId: target.unitId,
+      createdByUserId: scope.actor.userId,
+      actions: [{ id: target.id, assignedZoneLeaderUserId: target.assignedZoneLeaderUserId }],
+    });
+    const row = minted.rows[0]!;
+    await this.repository.mintOne(scope, row);
+    await this.auditLog.record({
+      action: 'report.token_minted',
+      resourceType: 'report_access_token',
+      resourceId: row.id,
+      unitId: target.unitId,
+      after: { correctiveActionId: target.id, snapshotId: target.snapshotId },
+    });
+    return { tokenId: row.id!, snapshotId: target.snapshotId, url: minted.urls.get(target.id)! };
   }
 
   /** The second half: the rows, once the snapshot they reference exists. */

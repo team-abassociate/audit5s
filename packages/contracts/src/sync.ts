@@ -302,6 +302,18 @@ export const listSyncConflictsQuerySchema = paginationQuerySchema.extend({
 });
 export type ListSyncConflictsQuery = z.infer<typeof listSyncConflictsQuerySchema>;
 
+/** `GET /sync-conflicts/summary` — the queue's filters, without paging. */
+export const syncConflictSummaryQuerySchema = listSyncConflictsQuerySchema.omit({ limit: true, cursor: true });
+export type SyncConflictSummaryQuery = z.infer<typeof syncConflictSummaryQuerySchema>;
+
+/** CA10: "30 held · oldest 12 days" over the whole queue, not the rows loaded so far. */
+export const syncConflictSummarySchema = z.object({
+  count: z.number().int().nonnegative(),
+  oldestAt: isoDateTimeSchema.nullable(),
+  byDevice: z.array(z.object({ deviceId: uuidSchema, count: z.number().int().nonnegative() })),
+});
+export type SyncConflictSummary = z.infer<typeof syncConflictSummarySchema>;
+
 /**
  * `POST /sync-conflicts/{id}/resolve` (§8.10).
  *

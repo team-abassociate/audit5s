@@ -1,14 +1,24 @@
 import {
   Injectable,
+  SetMetadata,
   type CallHandler,
   type ExecutionContext,
   type NestInterceptor,
 } from '@nestjs/common';
 import { HEADER_IDEMPOTENCY_KEY } from '@audit5s/contracts';
+import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { from, switchMap, tap, catchError, throwError, type Observable } from 'rxjs';
 import { getRequestContext } from '../observability/request-context';
 import { IdempotencyService } from './idempotency.service';
+
+const OMIT_ON_REPLAY = 'audit5s:idempotency-omit';
+
+/**
+ * Response fields kept out of the stored replay, for a secret that must never be at rest
+ * (a signed link, §10.4). A replay carries them as `null`; the operation still ran once.
+ */
+export const OmitOnReplay = (...fields: string[]) => SetMetadata(OMIT_ON_REPLAY, fields);
 
 /**
  * Applies `Idempotency-Key` to every mutating request that supplies one.
@@ -19,7 +29,10 @@ import { IdempotencyService } from './idempotency.service';
  */
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
-  constructor(private readonly idempotency: IdempotencyService) {}
+  constructor(
+    private readonly idempotency: IdempotencyService,
+    private readonly reflector: Reflector,
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') {
@@ -52,11 +65,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
         }
         return next.handle().pipe(
           tap((body) => {
+            const omit = this.reflector.get<string[] | undefined>(OMIT_ON_REPLAY, context.getHandler());
             void this.idempotency.complete({
               key,
               userId: actor.userId,
               status: 200,
-              body,
+              body: omit && body && typeof body === 'object'
+                ? { ...body, ...Object.fromEntries(omit.map((field) => [field, null])) }
+                : body,
             });
           }),
           catchError((error: unknown) => {
