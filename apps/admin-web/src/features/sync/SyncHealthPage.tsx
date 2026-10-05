@@ -1,7 +1,7 @@
 import { Fragment, useId, useState } from 'react';
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { SYNC_CONFLICT_REASONS, type Device, type Page, type SyncConflict, type SyncConflictReason, type User } from '@audit5s/contracts';
+import { SYNC_CONFLICT_REASONS, type Device, type Page, type SyncConflict, type SyncConflictReason, type SyncConflictSummary, type User } from '@audit5s/contracts';
 import { formatAge, formatDateTime, formatWeekdayDate } from '@audit5s/domain';
 import { api } from '@/lib/api';
 import {
@@ -103,6 +103,21 @@ export function SyncHealthPage() {
   });
   const rows = conflicts.data?.pages.flatMap((page) => page.data) ?? [];
 
+  // CA10: the queue's count, oldest item and per-phone counts over every matching item,
+  // from the server — never counted from the pages loaded so far.
+  const filters = new URLSearchParams(query);
+  filters.delete('limit');
+  const totals = useQuery({
+    queryKey: ['sync-conflicts', 'summary', filters.toString()],
+    placeholderData: keepPreviousData,
+    enabled: scope.ready || isWorstCase(),
+    queryFn: () =>
+      isWorstCase()
+        ? Promise.resolve(summarize(worstConflicts(showResolved).data))
+        : api.get<SyncConflictSummary>(`/sync-conflicts/summary?${filters}`),
+    refetchInterval: showResolved ? false : 30_000,
+  });
+
   const devices = useQuery({
     queryKey: ['devices'],
     queryFn: () =>
@@ -132,20 +147,19 @@ export function SyncHealthPage() {
   const filtered = Boolean(search.person || search.device || search.reason);
   const clear = () => set({ person: undefined, device: undefined, reason: undefined });
 
-  // Per phone, only when the queue is unfiltered: a filtered page would under-count.
-  const heldByDevice = new Map<string, number>();
-  if (!showResolved && !filtered && scope.unitId === null) {
-    for (const c of rows) if (c.deviceId) heldByDevice.set(c.deviceId, (heldByDevice.get(c.deviceId) ?? 0) + 1);
-  }
+  // Per phone, only when the queue is unfiltered: a filtered count is not the phone's whole queue.
+  const heldByDevice = new Map<string, number>(
+    !showResolved && !filtered && scope.unitId === null
+      ? (totals.data?.byDevice ?? []).map((d) => [d.deviceId, d.count])
+      : [],
+  );
 
   // "30 held · oldest 12 days": the two numbers someone chasing the queue needs (S3x).
-  const more = conflicts.hasNextPage ? '+' : '';
-  const oldest = rows.at(-1)?.createdAt;
-  const age = oldest ? formatAge(oldest) : null;
-  const count = rows.length.toLocaleString('en-IN');
+  const age = totals.data?.oldestAt ? formatAge(totals.data.oldestAt) : null;
+  const count = (totals.data?.count ?? rows.length).toLocaleString('en-IN');
   const summary = showResolved
-    ? `${count}${more} resolved`
-    : `${count}${more} held${age ? ` · oldest ${age === 'today' ? 'from today' : `${age} old`}` : ''}`;
+    ? `${count} resolved`
+    : `${count} held${age ? ` · oldest ${age === 'today' ? 'from today' : `${age} old`}` : ''}`;
 
   return (
     <div className="space-y-4">
@@ -656,3 +670,14 @@ const REASON_LABEL: Record<string, string> = {
   // (UX audit S1x). The row's sentence says which it was.
   VALIDATION_FAILED: 'Could not be applied',
 };
+
+/** `?data=worst`: the summary the server would send for the fixture's rows. */
+function summarize(rows: SyncConflict[]): SyncConflictSummary {
+  const byDevice = new Map<string, number>();
+  for (const row of rows) if (row.deviceId) byDevice.set(row.deviceId, (byDevice.get(row.deviceId) ?? 0) + 1);
+  return {
+    count: rows.length,
+    oldestAt: rows.map((row) => row.createdAt).sort()[0] ?? null,
+    byDevice: [...byDevice].map(([deviceId, count]) => ({ deviceId, count })),
+  };
+}

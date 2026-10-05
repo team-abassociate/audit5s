@@ -907,6 +907,28 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'GET',
+    path: '/api/v1/corrective-actions/summary',
+    description:
+      'corrective_action:read — the queue’s counts (CA10), over exactly the rows the list ' +
+      'would show this actor',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/corrective-actions/:correctiveActionId/link',
+    description:
+      'report_access_token:mint — one more link to the action (CA9), beside the printed one; ' +
+      'Idempotency-Key required; AuditLog: report.token_minted',
+    expected: { SUPER_ADMIN: { inScope: CREATED, outOfScope: CREATED } },
+    coveredBy: 'report-tokens.e2e.test.ts',
+  },
+  {
+    method: 'GET',
     path: '/api/v1/corrective-actions/:correctiveActionId',
     description: 'corrective_action:read — one action with its whole submission history (§8.8)',
     expected: {
@@ -1222,6 +1244,12 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     method: 'GET',
     path: '/api/v1/sync-conflicts',
     description: 'sync_conflict:read — the quarantine queue (§9.5 Layer 3); SUPER_ADMIN only',
+    expected: { SUPER_ADMIN: { inScope: OK } },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/sync-conflicts/summary',
+    description: 'sync_conflict:read — the queue’s count, oldest item and per-phone counts (CA10)',
     expected: { SUPER_ADMIN: { inScope: OK } },
   },
   {

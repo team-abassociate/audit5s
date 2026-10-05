@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   HEADER_IDEMPOTENCY_KEY,
+  correctiveActionSummaryQuerySchema,
   listCorrectiveActionsQuerySchema,
   reassignCorrectiveActionRequestSchema,
   reopenCorrectiveActionRequestSchema,
@@ -19,7 +20,10 @@ import {
   verifyCorrectiveActionRequestSchema,
   type CorrectiveAction,
   type CorrectiveActionDetail,
+  type CorrectiveActionLink,
   type CorrectiveActionSubmission,
+  type CorrectiveActionSummary,
+  type CorrectiveActionSummaryQuery,
   type ListCorrectiveActionsQuery,
   type Page,
   type ReassignCorrectiveActionRequest,
@@ -30,6 +34,8 @@ import {
 import type { ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { RequirePermission, Scope } from '../../common/auth/decorators';
+import { OmitOnReplay } from '../../common/idempotency/idempotency.interceptor';
+import { ReportTokensService } from '../reports/report-tokens.service';
 import { CurrentScope } from '../../common/auth/current-scope.decorator';
 import { ZodValidationPipe } from '../auth/zod.pipe';
 import { CorrectiveActionsService } from './corrective-actions.service';
@@ -40,7 +46,10 @@ import { CorrectiveActionsService } from './corrective-actions.service';
  */
 @Controller('corrective-actions')
 export class CorrectiveActionsController {
-  constructor(private readonly actions: CorrectiveActionsService) {}
+  constructor(
+    private readonly actions: CorrectiveActionsService,
+    private readonly tokens: ReportTokensService,
+  ) {}
 
   @RequirePermission('corrective_action', 'read')
   @Scope({ intent: 'read' })
@@ -50,6 +59,40 @@ export class CorrectiveActionsController {
     @Query(new ZodValidationPipe(listCorrectiveActionsQuerySchema)) query: ListCorrectiveActionsQuery,
   ): Promise<Page<CorrectiveAction>> {
     return this.actions.list(scope, query);
+  }
+
+  /** CA10: the list's counts, so a screen never counts the rows it happens to have loaded. */
+  @RequirePermission('corrective_action', 'read')
+  @Scope({ intent: 'read' })
+  @Get('summary')
+  summary(
+    @CurrentScope() scope: ScopeContext,
+    @Query(new ZodValidationPipe(correctiveActionSummaryQuerySchema)) query: CorrectiveActionSummaryQuery,
+  ): Promise<CorrectiveActionSummary> {
+    return this.actions.summary(scope, query);
+  }
+
+  /**
+   * CA9: one more link to this action, for a Super Admin to copy or resend. The link the
+   * PDF printed keeps working — a link is only ever ended by revoking it (R-41). The raw
+   * secret is in this response once and never stored, not even for a replay.
+   */
+  @RequirePermission('report_access_token', 'mint')
+  @Scope({ param: 'correctiveActionId', intent: 'write' })
+  @Post(':correctiveActionId/link')
+  @HttpCode(HttpStatus.CREATED)
+  @OmitOnReplay('url')
+  link(
+    @CurrentScope() scope: ScopeContext,
+    @Param('correctiveActionId', ParseUUIDPipe) actionId: string,
+    @Headers(HEADER_IDEMPOTENCY_KEY) idempotencyKey: string | undefined,
+  ): Promise<CorrectiveActionLink> {
+    if (!idempotencyKey) {
+      throw AppError.validation('This request needs an Idempotency-Key header', [
+        { field: HEADER_IDEMPOTENCY_KEY, message: 'Required' },
+      ]);
+    }
+    return this.tokens.mintForAction(scope, actionId);
   }
 
   @RequirePermission('corrective_action', 'read')

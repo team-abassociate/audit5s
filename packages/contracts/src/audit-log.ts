@@ -47,6 +47,8 @@ export const AUDIT_LOG_ACTIONS = [
   'audit.restarted',
   'report.generated',
   'report.token_revoked',
+  /** CA9: a Super Admin made one more link to a corrective action; the printed one still works. */
+  'report.token_minted',
   'report.cancelled',
   'report.removed',
   'corrective_action.verified',

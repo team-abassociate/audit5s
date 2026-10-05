@@ -4,6 +4,7 @@ import {
   API_BASE_PATH,
   HEADER_IDEMPOTENCY_KEY,
   type CorrectiveActionDetail,
+  type CorrectiveActionLink,
   type PublicCorrectiveAction,
   type ReportAccessToken,
   type ReportPayload,
@@ -405,3 +406,86 @@ function withoutRequestId(body: unknown): unknown {
   void requestId;
   return rest;
 }
+
+describe('POST /corrective-actions/{id}/link — one more link, the printed one kept (CA9)', () => {
+  const mint = (actionId: string, key: string | null = randomUUID(), token = superAdmin) =>
+    world.request('POST', `${base}/corrective-actions/${actionId}/link`, {
+      token,
+      headers: key ? { [HEADER_IDEMPOTENCY_KEY]: key } : {},
+    });
+  const open = (secret: string) => world.request('GET', `${base}/public/corrective-actions/${secret}`);
+  const linksOf = async (snapshotId: string, actionId: string) =>
+    (
+      (await world.request('GET', `${base}/reports/${snapshotId}/tokens`, { token: superAdmin }))
+        .body as ReportAccessToken[]
+    ).filter((link) => link.correctiveActionId === actionId);
+
+  it('mints a working link on the report, keeps the printed one working, and logs it', async () => {
+    const { links, snapshot } = await reportWithLinks({ nonconformities: 1 });
+    const printed = links[0]!;
+    const key = randomUUID();
+
+    const response = await mint(printed.correctiveActionId, key);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const made = response.body as CorrectiveActionLink;
+    expect(made.snapshotId).toBe(snapshot.id);
+    const secret = made.url!.split('/ca/')[1]!;
+    expect(secret).not.toBe(printed.secret);
+
+    expect(((await open(secret)).body as PublicCorrectiveAction).correctiveActionId).toBe(printed.correctiveActionId);
+    expect((await open(printed.secret)).status).toBe(200);
+    expect((await linksOf(snapshot.id, printed.correctiveActionId)).map((l) => l.active)).toEqual([true, true]);
+
+    // A retry under the same key mints nothing, and the secret was never stored for it.
+    const replay = await mint(printed.correctiveActionId, key);
+    expect(replay.body).toEqual({ ...made, url: null });
+    expect(await linksOf(snapshot.id, printed.correctiveActionId)).toHaveLength(2);
+    const { rows } = await world.owner.query(`SELECT response_body::text AS body FROM idempotency_key WHERE key = $1`, [key]);
+    expect(rows[0].body).not.toContain(secret);
+
+    const log = await world.request('GET', `${base}/audit-logs?action=report.token_minted&limit=200`, { token: superAdmin });
+    const entry = (log.body as { data: Array<{ resourceId: string; after: Record<string, unknown> }> }).data.find(
+      (e) => e.resourceId === made.tokenId,
+    );
+    expect(entry?.after).toEqual({ correctiveActionId: printed.correctiveActionId, snapshotId: snapshot.id });
+
+    // Revoked on the Reports page like any link; the printed one is untouched by that.
+    const revoke = await world.request('POST', `${base}/reports/${snapshot.id}/tokens/${made.tokenId}/revoke`, {
+      token: superAdmin,
+      body: { reason: 'Sent to the wrong person' },
+    });
+    expect(revoke.status).toBe(200);
+    expect((await open(secret)).status).toBe(410);
+    expect((await open(printed.secret)).status).toBe(200);
+  }, 120_000);
+
+  it('needs an Idempotency-Key, and a Super Admin', async () => {
+    const { links } = await reportWithLinks({ nonconformities: 1 });
+    const actionId = links[0]!.correctiveActionId;
+    expect((await mint(actionId, null)).status).toBe(422);
+    for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const) {
+      const token = role === 'CONSULTANT' ? consultantToken : world.actors[role].accessToken;
+      expect((await mint(actionId, randomUUID(), token)).status, role).toBe(403);
+    }
+  }, 120_000);
+
+  it('refuses a closed item, and one no report has printed a link to', async () => {
+    const { links } = await reportWithLinks({ nonconformities: 1 });
+    await world.owner.query(`UPDATE corrective_action SET status = 'VERIFIED', resolved_at = now() WHERE id = $1`, [
+      links[0]!.correctiveActionId,
+    ]);
+    expect((await mint(links[0]!.correctiveActionId)).status).toBe(409);
+
+    const unprinted = await completedWalkBy(world, {
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      unitId: world.unitA,
+      zoneLeaderUserId: world.actors.ZONE_LEADER.userId,
+      nonconformities: 1,
+    });
+    const refused = await mint(unprinted.actions[0]!.id);
+    expect(refused.status).toBe(409);
+    expect((refused.body as { detail: string }).detail).toMatch(/Generate its Zone report/);
+    expect((await mint(randomUUID())).status).toBe(404);
+  }, 120_000);
+});

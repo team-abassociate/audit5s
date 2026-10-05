@@ -68,6 +68,7 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'audit.restarted': 'Restarted a finished audit',
   'report.generated': 'Generated a report',
   'report.token_revoked': 'Revoked a report link',
+  'report.token_minted': 'Made another corrective-action link',
   'report.cancelled': 'Cancelled a report',
   'report.removed': 'Removed a report',
   'corrective_action.verified': 'Approved a corrective action',
