@@ -27,6 +27,7 @@ import {
   Th,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { ChecklistEditor } from './ChecklistEditor';
 import { ImportWizard } from './ImportWizard';
 import { downloadTemplate } from './template';
 import {
@@ -48,6 +49,8 @@ import {
 export function ChecklistsPage() {
   const { can } = useSession();
   const [importing, setImporting] = useState(false);
+  /** The checklist being edited, or `'new'` for the editor's start step. */
+  const [editing, setEditing] = useState<ChecklistTemplate | 'new' | null>(null);
   const [openTemplate, setOpenTemplate] = useState<string | null>(null);
 
   /** `''` is every sector. A template with no industry appears under any of them (0018). */
@@ -72,6 +75,14 @@ export function ChecklistsPage() {
   if (importing) {
     return <ImportWizard onFinished={() => setImporting(false)} />;
   }
+  if (editing) {
+    return (
+      <ChecklistEditor
+        startFrom={editing === 'new' ? undefined : editing}
+        onClose={() => setEditing(null)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -85,7 +96,10 @@ export function ChecklistsPage() {
                 <Button variant="secondary" onClick={downloadTemplate}>
                   Download template
                 </Button>
-                <Button onClick={() => setImporting(true)}>Import workbook</Button>
+                <Button variant="secondary" onClick={() => setImporting(true)}>
+                  Import workbook
+                </Button>
+                <Button onClick={() => setEditing('new')}>New checklist</Button>
               </div>
             ) : null
           }
@@ -123,7 +137,7 @@ export function ChecklistsPage() {
           <p className="px-4 py-6 text-sm text-ink-3">
             No checklists yet.
             {can('checklist_import', 'upload')
-              ? ' Import the department workbook to create them.'
+              ? ' Write one with New checklist, or import the department workbook.'
               : ''}
           </p>
         )}
@@ -182,7 +196,14 @@ export function ChecklistsPage() {
                   {openTemplate === template.id && (
                     <tr>
                       <td colSpan={6} className="bg-board p-0">
-                        <TemplateDetail template={template} />
+                        <TemplateDetail
+                          template={template}
+                          onEdit={
+                            can('checklist_import', 'upload')
+                              ? () => setEditing(template)
+                              : undefined
+                          }
+                        />
                       </td>
                     </tr>
                   )}
@@ -196,7 +217,13 @@ export function ChecklistsPage() {
   );
 }
 
-function TemplateDetail({ template }: { template: ChecklistTemplate }) {
+function TemplateDetail({
+  template,
+  onEdit,
+}: {
+  template: ChecklistTemplate;
+  onEdit?: () => void;
+}) {
   const { can } = useSession();
   const queryClient = useQueryClient();
 
@@ -229,7 +256,14 @@ function TemplateDetail({ template }: { template: ChecklistTemplate }) {
   return (
     <div className="space-y-4 p-4">
       <div>
-        <h3 className="gb-h2">Versions</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="gb-h2">Versions</h3>
+          {onEdit && (
+            <Button variant="secondary" onClick={onEdit}>
+              Edit questions
+            </Button>
+          )}
+        </div>
         {versions.isLoading && <Spinner />}
         {versions.data && (
           <Table>
