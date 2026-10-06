@@ -20,7 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SSection } from '@audit5s/contracts';
 import logo from '../../assets/audit5s-logo.png';
-import { S_SECTION_LABELS, S_SECTION_SHORT_LABELS } from '@audit5s/domain';
+import { S_SECTION_LABELS, S_SECTION_SHORT_LABELS, formatScore } from '@audit5s/domain';
 import {
   bandFill,
   bandInk,
@@ -337,7 +337,7 @@ export function SectionRows({ rows, marks }: { rows: readonly SectionRow[]; mark
             key={row.section}
             accessible
             accessibilityLabel={`${S_SECTION_LABELS[row.section]}: ${
-              row.pct === null ? 'not applicable' : `${row.pct.toFixed(1)} percent`
+              row.pct === null ? 'not applicable' : `${formatScore(row.pct)} percent`
             }`}
             style={styles.srow}
           >
@@ -357,7 +357,7 @@ export function SectionRows({ rows, marks }: { rows: readonly SectionRow[]; mark
               )}
             </View>
             <Text style={[styles.srowValue, row.pct === null && styles.srowNa]}>
-              {row.pct === null ? 'N/A' : row.pct.toFixed(1)}
+              {row.pct === null ? 'N/A' : formatScore(row.pct)}
             </Text>
             {marks ? (
               <Text style={styles.srowMarks}>
