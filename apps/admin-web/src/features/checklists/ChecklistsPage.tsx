@@ -27,6 +27,8 @@ import {
 } from '@/components/ui';
 import { StatusChip } from '@/components/Status';
 import { useSession } from '@/lib/session';
+import { cn } from '@/lib/cn';
+import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
 import { ChecklistEditor } from './ChecklistEditor';
 import { ImportWizard } from './ImportWizard';
 import { downloadTemplate } from './template';
@@ -155,60 +157,59 @@ export function ChecklistsPage() {
               </tr>
             </thead>
             <tbody>
-              {templates.data.data.map((template) => (
-                <Fragment key={template.id}>
-                  <tr>
-                    <Td>
-                      <button
-                        type="button"
-                        className="text-left font-medium text-ink underline"
-                        onClick={() =>
-                          setOpenTemplate(openTemplate === template.id ? null : template.id)
-                        }
-                      >
-                        {template.name}
-                      </button>
-                    </Td>
-                    <Td>
-                      {/* "Every industry" rather than a dash: an unlabelled template is
-                          offered everywhere, which is a fact about it, not a gap. */}
-                      {template.industries.length > 0 ? (
-                        template.industries.map((industry) => industry.name).join(', ')
-                      ) : (
-                        <span className="text-xs text-ink-3">Every industry</span>
-                      )}
-                    </Td>
-                    <Td className="font-mono text-xs [overflow-wrap:anywhere]">{template.code}</Td>
-                    <Td>
-                      {template.publishedVersionNumber
-                        ? `v${template.publishedVersionNumber}`
-                        : '—'}
-                    </Td>
-                    <Td>
-                      {template.publishedVersionId ? (
-                        <StatusChip kind="checklist" status="PUBLISHED" />
-                      ) : (
-                        <StatusChip shape="open">No published version</StatusChip>
-                      )}
-                    </Td>
-                    <Td>50</Td>
-                  </tr>
-                  {openTemplate === template.id && (
-                    <tr>
-                      <td colSpan={6} className="bg-board p-0">
-                        <TemplateDetail
-                          template={template}
-                          onEdit={
-                            can('checklist_import', 'upload')
-                              ? () => setEditing(template)
-                              : undefined
-                          }
-                        />
-                      </td>
+              {templates.data.data.map((template) => {
+                const open = openTemplate === template.id;
+                const toggle = () => setOpenTemplate(open ? null : template.id);
+                const toggleRow = rowToggleProps(toggle);
+                return (
+                  <Fragment key={template.id}>
+                    <tr {...toggleRow} className={cn(toggleRow.className, open && 'gb-row--open')}>
+                      <Td className="font-medium">
+                        <RowToggle open={open} onClick={toggle}>
+                          {template.name}
+                        </RowToggle>
+                      </Td>
+                      <Td>
+                        {/* "Every industry" rather than a dash: an unlabelled template is
+                            offered everywhere, which is a fact about it, not a gap. */}
+                        {template.industries.length > 0 ? (
+                          template.industries.map((industry) => industry.name).join(', ')
+                        ) : (
+                          <span className="text-xs text-ink-3">Every industry</span>
+                        )}
+                      </Td>
+                      <Td className="font-mono text-xs [overflow-wrap:anywhere]">{template.code}</Td>
+                      <Td>
+                        {template.publishedVersionNumber
+                          ? `v${template.publishedVersionNumber}`
+                          : '—'}
+                      </Td>
+                      <Td>
+                        {template.publishedVersionId ? (
+                          <StatusChip kind="checklist" status="PUBLISHED" />
+                        ) : (
+                          <StatusChip shape="open">No published version</StatusChip>
+                        )}
+                      </Td>
+                      <Td>50</Td>
                     </tr>
-                  )}
-                </Fragment>
-              ))}
+                    {open && (
+                      <tr className="gb-row-expand">
+                        <td colSpan={6}>
+                          <TemplateDetail
+                            template={template}
+                            onEdit={
+                              can('checklist_import', 'upload')
+                                ? () => setEditing(template)
+                                : undefined
+                            }
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </Table>
         )}
@@ -254,7 +255,7 @@ function TemplateDetail({
   });
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-4">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="gb-h2">Versions</h3>
