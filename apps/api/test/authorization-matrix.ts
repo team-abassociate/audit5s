@@ -922,9 +922,12 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     method: 'POST',
     path: '/api/v1/corrective-actions/:correctiveActionId/link',
     description:
-      'report_access_token:mint — one more link to the action (CA9), beside the printed one; ' +
+      'corrective_action:link — one more link to the action (CA9, R-47), beside the printed one; ' +
       'Idempotency-Key required; AuditLog: report.token_minted',
-    expected: { SUPER_ADMIN: { inScope: CREATED, outOfScope: CREATED } },
+    expected: {
+      SUPER_ADMIN: { inScope: CREATED, outOfScope: CREATED },
+      COORDINATOR: { inScope: CREATED, outOfScope: NOT_FOUND },
+    },
     coveredBy: 'report-tokens.e2e.test.ts',
   },
   {

@@ -273,7 +273,7 @@ function UnitScopePicker({ scope }: { scope: UnitScope }) {
   }
 
   const options = [
-    ...(scope.allowAll ? [{ id: ALL_UNITS, label: 'All Units' }] : []),
+    ...(scope.allowAll ? [{ id: ALL_UNITS, label: scope.allLabel }] : []),
     ...scope.units
       .map((unit) => ({ id: unit.id, label: unit.name }))
       .sort((a, b) => a.label.localeCompare(b.label)),

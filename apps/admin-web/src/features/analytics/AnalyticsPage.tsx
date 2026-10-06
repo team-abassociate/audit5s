@@ -385,7 +385,11 @@ function UnitDashboard({ unitId }: { unitId: string }) {
 
       <ScoreTrendCard audits={scored} />
 
-      <UnitContext unitId={unitId} />
+      {/* NEW-3: with one audit, the latest-audit chart would repeat the panel's Score by S. */}
+      <UnitContext
+        unitId={unitId}
+        latestShown={zoneCode === '' && chosen !== null && chosen.audit.id === scored[scored.length - 1]?.audit.id}
+      />
     </section>
   );
 }
@@ -549,7 +553,7 @@ function ScoreTrendCard({ audits }: { audits: NumberedAudit[] }) {
 }
 
 /** The Unit's longer view: where it stands against its last audit, and how findings close. */
-function UnitContext({ unitId }: { unitId: string }) {
+function UnitContext({ unitId, latestShown }: { unitId: string; latestShown: boolean }) {
   const token = useToken();
   const sections = useQuery({ queryKey: ['analytics', unitId, 'sections'], queryFn: () => get<UnitSections>(`/analytics/units/${unitId}/sections`) });
   const closure = useQuery({ queryKey: ['analytics', unitId, 'closure'], queryFn: () => get<ClosureAnalytics>(`/analytics/corrective-actions/closure?unitId=${unitId}`) });
@@ -577,36 +581,38 @@ function UnitContext({ unitId }: { unitId: string }) {
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <DatasetCard
-        title={hasPrevious ? 'Score by S · latest vs previous audit' : 'Score by S · latest audit'}
-        rows={hasPrevious ? pairs : pairs.map(({ section, latest, zoneReadings }) => ({ section, latest, zoneReadings }))}
-        filename="section-scores-latest-previous.csv"
-        alt={`Score by S, latest audit${hasPrevious ? ' against the previous one' : ''}: ${pairs
-          .map((row) => `${row.section} ${pct(row.latest, '')}${hasPrevious ? ` (previous ${pct(row.previous, '')})` : ''}`)
-          .join(', ')}.`}
-      >
-        {/* Paired bars, not a radar (AN4): both series in ink — a score series is not a band,
-            so it takes no band colour — told apart by weight and by the legend. */}
-        <div className="gb-legend">
-          <span><i style={{ background: 'var(--ink)' }} /> Latest audit</span>
-          {hasPrevious ? <span><i style={{ background: 'var(--ink-3)' }} /> Previous audit</span> : null}
-        </div>
-        <ResponsiveContainer width="100%" height={height(pairs.length * (hasPrevious ? 2 : 1))}>
-          <BarChart data={pairs} layout="vertical" accessibilityLayer={false} margin={{ top: 18, right: 4, left: 4, bottom: 0 }}>
-            <CartesianGrid horizontal={false} stroke={token('--edge-soft')} />
-            <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--ink-3')} />
-            <YAxis dataKey="section" type="category" width={110} interval={0} stroke={token('--ink-3')} />
-            <Tooltip contentStyle={TOOLTIP} formatter={(value) => pct(asScore(value), '')} />
-            <ReferenceLine x={TARGET} stroke={token('--crit-band')} strokeDasharray="4 4" label={targetLabel(token)} />
-            {valueAxis(token, 84, (index) => {
-              const row = pairs[index];
-              return row ? (hasPrevious ? `${pct(row.latest, '')} · ${pct(row.previous, '')}` : pct(row.latest, '')) : '';
-            })}
-            <Bar isAnimationActive={false} dataKey="latest" name="Latest audit" fill={token('--ink')} barSize={12} />
-            {hasPrevious ? <Bar isAnimationActive={false} dataKey="previous" name="Previous audit" fill={token('--ink-3')} barSize={12} /> : null}
-          </BarChart>
-        </ResponsiveContainer>
-      </DatasetCard>
+      {hasPrevious || !latestShown ? (
+        <DatasetCard
+          title={hasPrevious ? 'Score by S · latest vs previous audit' : 'Score by S · latest audit'}
+          rows={hasPrevious ? pairs : pairs.map(({ section, latest, zoneReadings }) => ({ section, latest, zoneReadings }))}
+          filename="section-scores-latest-previous.csv"
+          alt={`Score by S, latest audit${hasPrevious ? ' against the previous one' : ''}: ${pairs
+            .map((row) => `${row.section} ${pct(row.latest, '')}${hasPrevious ? ` (previous ${pct(row.previous, '')})` : ''}`)
+            .join(', ')}.`}
+        >
+          {/* Paired bars, not a radar (AN4): both series in ink — a score series is not a band,
+              so it takes no band colour — told apart by weight and by the legend. */}
+          <div className="gb-legend">
+            <span><i style={{ background: 'var(--ink)' }} /> Latest audit</span>
+            {hasPrevious ? <span><i style={{ background: 'var(--ink-3)' }} /> Previous audit</span> : null}
+          </div>
+          <ResponsiveContainer width="100%" height={height(pairs.length * (hasPrevious ? 2 : 1))}>
+            <BarChart data={pairs} layout="vertical" accessibilityLayer={false} margin={{ top: 18, right: 4, left: 4, bottom: 0 }}>
+              <CartesianGrid horizontal={false} stroke={token('--edge-soft')} />
+              <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--ink-3')} />
+              <YAxis dataKey="section" type="category" width={110} interval={0} stroke={token('--ink-3')} />
+              <Tooltip contentStyle={TOOLTIP} formatter={(value) => pct(asScore(value), '')} />
+              <ReferenceLine x={TARGET} stroke={token('--crit-band')} strokeDasharray="4 4" label={targetLabel(token)} />
+              {valueAxis(token, 84, (index) => {
+                const row = pairs[index];
+                return row ? (hasPrevious ? `${pct(row.latest, '')} · ${pct(row.previous, '')}` : pct(row.latest, '')) : '';
+              })}
+              <Bar isAnimationActive={false} dataKey="latest" name="Latest audit" fill={token('--ink')} barSize={12} />
+              {hasPrevious ? <Bar isAnimationActive={false} dataKey="previous" name="Previous audit" fill={token('--ink-3')} barSize={12} /> : null}
+            </BarChart>
+          </ResponsiveContainer>
+        </DatasetCard>
+      ) : null}
 
       <DatasetCard
         title="Corrective actions by stage"
@@ -635,16 +641,16 @@ function UnitContext({ unitId }: { unitId: string }) {
 /**
  * Scores as horizontal bars, one per row, in the order given: the band colour (what the
  * colour means), the value in the right-hand column, the dashed Outstanding line, and the full name
- * on the axis — wrapped to two lines there (the rest on hover), whole in the tooltip and the table.
+ * on the axis — wrapped to three lines there (the rest on hover), whole in the tooltip and the table.
  */
 function ScoreBars({ rows }: { rows: Array<{ name: string; score: number | null; highlighted?: boolean }> }) {
   const token = useToken();
   return (
-    <ResponsiveContainer width="100%" height={rows.length * 36 + 56}>
+    <ResponsiveContainer width="100%" height={rows.length * 48 + 56}>
       <BarChart data={rows} layout="vertical" accessibilityLayer={false} margin={{ top: 18, right: 4, left: 4, bottom: 0 }}>
         <CartesianGrid horizontal={false} stroke={token('--edge-soft')} />
         <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--ink-3')} />
-        <YAxis dataKey="name" type="category" width={150} interval={0} tick={NameTick} stroke={token('--ink-3')} />
+        <YAxis dataKey="name" type="category" width={170} interval={0} tick={NameTick} stroke={token('--ink-3')} />
         {valueAxis(token, 48, (index) => pct(rows[index]?.score ?? null, ''))}
         <Tooltip contentStyle={TOOLTIP} formatter={(value) => [pct(asScore(value)), 'Score']} />
         <ReferenceLine x={TARGET} stroke={token('--crit-band')} strokeDasharray="4 4" label={targetLabel(token)} />
@@ -768,13 +774,13 @@ function DatasetCard({ title, note, rows, filename, alt, tools, children }: {
 /** One decimal in tiles and charts (GEMBA §3); `null` is N/A, never 0. */
 function pct(value: number | null, unit = '%'): string { return value === null ? 'N/A' : `${formatScore(value)}${unit}`; }
 function asScore(value: unknown): number | null { return typeof value === 'number' ? value : null; }
-/** A bar's name on the axis: up to two lines, then an ellipsis; the whole name on hover. */
+/** A bar's name on the axis: up to three lines, then an ellipsis; the whole name on hover (AN4). */
 function NameTick({ x, y, fill, payload }: YAxisTickContentProps) {
   const name = String(payload.value ?? '');
   return (
     <g>
       <title>{name}</title>
-      <Text x={x} y={y} width={140} maxLines={2} textAnchor="end" verticalAnchor="middle" fill={fill}>
+      <Text x={x} y={y} width={160} maxLines={3} textAnchor="end" verticalAnchor="middle" fill={fill}>
         {name}
       </Text>
     </g>

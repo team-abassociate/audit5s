@@ -459,13 +459,54 @@ describe('POST /corrective-actions/{id}/link — one more link, the printed one 
     expect((await open(printed.secret)).status).toBe(200);
   }, 120_000);
 
-  it('needs an Idempotency-Key, and a Super Admin', async () => {
+  it('needs an Idempotency-Key, and a Super Admin or the Coordinator', async () => {
     const { links } = await reportWithLinks({ nonconformities: 1 });
     const actionId = links[0]!.correctiveActionId;
     expect((await mint(actionId, null)).status).toBe(422);
-    for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const) {
+    for (const role of ['CONSULTANT', 'ZONE_LEADER'] as const) {
       const token = role === 'CONSULTANT' ? consultantToken : world.actors[role].accessToken;
       expect((await mint(actionId, randomUUID(), token)).status, role).toBe(403);
+    }
+  }, 120_000);
+
+  it('lets a Coordinator make a working link for their own Unit, and no more (R-47)', async () => {
+    const { links, snapshot } = await reportWithLinks({ nonconformities: 1 });
+    const actionId = links[0]!.correctiveActionId;
+    const coordinator = world.actors.COORDINATOR;
+
+    const response = await mint(actionId, randomUUID(), coordinator.accessToken);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const made = response.body as CorrectiveActionLink;
+    expect(made.snapshotId).toBe(snapshot.id);
+    expect((await open(made.url!.split('/ca/')[1]!)).status).toBe(200);
+    expect((await linksOf(snapshot.id, actionId)).map((l) => l.active)).toEqual([true, true]);
+
+    // Links only: the report, its link list and revoking stay the Super Admin's (R-39).
+    for (const path of [`/reports/${snapshot.id}`, `/reports/${snapshot.id}/tokens`]) {
+      expect((await world.request('GET', `${base}${path}`, { token: coordinator.accessToken })).status, path).toBe(403);
+    }
+    const revoke = await world.request('POST', `${base}/reports/${snapshot.id}/tokens/${made.tokenId}/revoke`, {
+      token: coordinator.accessToken,
+      body: { reason: 'Not mine to revoke' },
+    });
+    expect(revoke.status).toBe(403);
+
+    // With no Zone Leader account to act as, the link acts as the report's Super Admin, not
+    // as the Coordinator who made it: a Coordinator answers no finding (R-22, R-47).
+    const leader = world.actors.ZONE_LEADER.userId;
+    await world.owner.query(`UPDATE "user" SET status = 'DISABLED' WHERE id = $1`, [leader]);
+    try {
+      expect((await open(made.url!.split('/ca/')[1]!)).status).toBe(200);
+    } finally {
+      await world.owner.query(`UPDATE "user" SET status = 'ACTIVE' WHERE id = $1`, [leader]);
+    }
+
+    // Another Unit's action is not there at all.
+    await world.owner.query(`UPDATE unit_membership SET unit_id = $1 WHERE user_id = $2`, [world.unitB, coordinator.userId]);
+    try {
+      expect((await mint(actionId, randomUUID(), coordinator.accessToken)).status).toBe(404);
+    } finally {
+      await world.owner.query(`UPDATE unit_membership SET unit_id = $1 WHERE user_id = $2`, [world.unitA, coordinator.userId]);
     }
   }, 120_000);
 

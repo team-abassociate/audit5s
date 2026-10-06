@@ -649,6 +649,15 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: { SUPER_ADMIN: org, COORDINATOR: ownUnit },
   },
   {
+    // CA9, R-47: one more public link to an open action, for when the PDF's is lost. A
+    // Coordinator makes them for their own Unit; the PDF and the report's link list stay
+    // the Super Admin's (R-39), so this is not `report_access_token:mint`.
+    resource: 'corrective_action',
+    action: 'link',
+    description: 'Make one more Zone Leader link to a corrective action',
+    grants: { SUPER_ADMIN: org, COORDINATOR: ownUnit },
+  },
+  {
     resource: 'corrective_action_submission',
     action: 'read',
     description: 'Read corrective-action submissions',

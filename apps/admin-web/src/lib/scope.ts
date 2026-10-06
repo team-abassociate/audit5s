@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useMatches, useNavigate, useRouterState } from '@tanstack/react-router';
 import type { Page, Unit } from '@audit5s/contracts';
@@ -15,8 +15,8 @@ import { useSession } from './session';
  *
  * A route says whether it is scoped with `staticData.unitScope`:
  * - `'one'`: the screen needs exactly one Unit (the board, Unit analytics);
- * - `'any'`: the screen can also cover every Unit at once — offered only to an
- *   organization-wide role (a Super Admin), as "All Units";
+ * - `'any'`: the screen can also cover every Unit at once — offered to a Super Admin as
+ *   "All Units", and to anyone else who holds more than one (a Consultant) as "All my Units";
  * - absent: the screen is not filtered by Unit, so no picker is shown and the value is just
  *   carried through to the next screen that is.
  *
@@ -99,11 +99,13 @@ export interface UnitScope {
   units: Unit[];
   /** "All Units" may be offered on this screen. */
   allowAll: boolean;
+  /** What "All Units" is called for this caller: "All my Units" unless they see every Unit. */
+  allLabel: string;
   /** One Unit and nothing to choose (a Coordinator). */
   fixed: boolean;
   /** The value the URL should hold for this screen, to normalise it. */
   canonical: string | undefined;
-  setUnit: (id: string) => void;
+  setUnit: (id: string, options?: { replace?: boolean }) => void;
 }
 
 /**
@@ -143,7 +145,9 @@ export function useUnitScope(): UnitScope {
   const query = useUnits();
   const units = useMemo(() => query.data?.data ?? [], [query.data]);
   const organizationWide = scope?.organizationWide ?? false;
-  const allowAll = organizationWide && mode === 'any';
+  // The server narrows a list without `unitId` to the caller's own Units, so "all" is safe
+  // for anyone; it is offered when there is more than one to combine.
+  const allowAll = mode === 'any' && (organizationWide || units.length > 1);
 
   const resolved = useMemo(
     () =>
@@ -157,10 +161,14 @@ export function useUnitScope(): UnitScope {
   );
 
   const setUnit = useCallback(
-    (id: string) => {
+    (id: string, options?: { replace?: boolean }) => {
       if (!id) return;
       rememberScope(id);
-      void navigate({ to: '.', search: ((prev: ScopeSearch) => ({ ...prev, unit: id })) as never });
+      void navigate({
+        to: '.',
+        search: ((prev: ScopeSearch) => ({ ...prev, unit: id })) as never,
+        replace: options?.replace,
+      });
     },
     [navigate],
   );
@@ -174,14 +182,33 @@ export function useUnitScope(): UnitScope {
     unit: unitId ? units.find((unit) => unit.id === unitId) : undefined,
     units,
     allowAll,
+    allLabel: organizationWide ? 'All Units' : 'All my Units',
     fixed: !organizationWide && units.length === 1,
     canonical: !ready || mode === undefined ? undefined : unitId === null ? ALL_UNITS : unitId || undefined,
     setUnit,
   };
 }
 
+/**
+ * NEW-2: a link to another Unit's item (a notification, a pasted URL) moves the scope to
+ * that Unit, so its side panel never opens beside a different Unit's list. Once per item:
+ * picking another Unit afterwards is the reader's choice and stands. "All Units" already
+ * holds every item, so it is left alone.
+ */
+export function useFollowItemUnit(itemId: string | null, itemUnitId: string | undefined): void {
+  const { ready, unitId, units, setUnit } = useUnitScope();
+  const followed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ready || !itemId || !itemUnitId || followed.current === itemId) return;
+    followed.current = itemId;
+    if (unitId !== null && unitId !== itemUnitId && units.some((unit) => unit.id === itemUnitId)) {
+      setUnit(itemUnitId, { replace: true });
+    }
+  }, [ready, itemId, itemUnitId, unitId, units, setUnit]);
+}
+
 /** The scope's name as a title or a label reads it. */
 export function scopeName(scope: UnitScope): string | undefined {
   if (!scope.ready || scope.mode === undefined) return undefined;
-  return scope.unitId === null ? 'All Units' : scope.unit?.name;
+  return scope.unitId === null ? scope.allLabel : scope.unit?.name;
 }
