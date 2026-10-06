@@ -371,10 +371,18 @@ export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good
  * on it (§8.1) and it stays in the problem document and the request log, but on screen it
  * only repeats what the sentence above it already says.
  */
-export function ErrorNotice({ error }: { error: unknown }) {
+/**
+ * `missing`: the sentence for a record loaded by an ID from the URL. A malformed ID (400) and
+ * an unknown one (404) both mean the same to the reader, so neither shows the server's words.
+ */
+export function ErrorNotice({ error, missing }: { error: unknown; missing?: string }) {
   if (!error) return null;
-  const problem = error as { message?: string; problem?: { errors?: Array<{ field: string; message: string }> } };
-  const fields = problem.problem?.errors ?? [];
+  const problem = error as {
+    message?: string;
+    problem?: { status?: number; errors?: Array<{ field: string; message: string }> };
+  };
+  const notFound = missing !== undefined && [400, 404].includes(problem.problem?.status ?? 0);
+  const fields = notFound ? [] : (problem.problem?.errors ?? []);
 
   return (
     <div className="gb-notice" role="alert">
@@ -382,7 +390,9 @@ export function ErrorNotice({ error }: { error: unknown }) {
         {/* fetch rejects with a TypeError ("Failed to fetch") when no answer arrives at all. */}
         {error instanceof TypeError
           ? 'Could not reach the server. Check your connection and try again.'
-          : (problem.message ?? 'Something went wrong')}
+          : notFound
+            ? missing
+            : (problem.message ?? 'Something went wrong')}
       </p>
       {fields.length > 0 && (
         <ul style={{ margin: '6px 0 0', paddingLeft: 16, fontSize: 12.5 }}>

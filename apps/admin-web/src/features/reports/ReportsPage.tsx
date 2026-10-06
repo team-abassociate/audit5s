@@ -44,6 +44,7 @@ import {
   Td,
   Th,
 } from '@/components/ui';
+import { StatusChip } from '@/components/Status';
 
 /**
  * Reports (PART 14, Phase 7's Web row): the PDFs issued to clients.
@@ -540,7 +541,7 @@ function groupMeta(group: ReportGroup): string {
 }
 
 function StatusBadge({ snapshot }: { snapshot: ReportSnapshot }) {
-  if (snapshot.status === 'READY') return <Badge tone="good">Ready</Badge>;
+  if (snapshot.status === 'READY') return <StatusChip shape="done">Ready</StatusChip>;
   if (snapshot.status === 'FAILED') {
     return (
       <span className="flex flex-col gap-0.5">
@@ -549,9 +550,11 @@ function StatusBadge({ snapshot }: { snapshot: ReportSnapshot }) {
       </span>
     );
   }
-  if (snapshot.status === 'CANCELLED') return <Badge>Cancelled</Badge>;
-  if (snapshot.status === 'REMOVED') return <Badge>Deleted</Badge>;
-  return <Badge tone="warn">{snapshot.status === 'QUEUED' ? 'Queued' : 'Rendering'}</Badge>;
+  if (snapshot.status === 'CANCELLED') return <StatusChip shape="ended">Cancelled</StatusChip>;
+  if (snapshot.status === 'REMOVED') return <StatusChip shape="ended">Deleted</StatusChip>;
+  return (
+    <StatusChip shape="progress">{snapshot.status === 'QUEUED' ? 'Queued' : 'Rendering'}</StatusChip>
+  );
 }
 
 /**

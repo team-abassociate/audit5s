@@ -22,6 +22,7 @@ import {
   Td,
   Th,
 } from '@/components/ui';
+import { StatusChip } from '@/components/Status';
 import { cn } from '@/lib/cn';
 import { downloadTemplate } from './template';
 import { isWorstCase, worstIndustries } from './worst-case';
@@ -556,7 +557,7 @@ function SheetVerdict({ sheet }: { sheet: ChecklistImportSheet }) {
   if (sheet.messages.length > 0) {
     return (
       <div className="space-y-1">
-        <Badge tone="warn">Review</Badge>
+        <StatusChip shape="attention">Review</StatusChip>
         {sheet.messages.map((message) => (
           <p key={message} className="text-xs text-ink-2">
             {message}
@@ -565,7 +566,7 @@ function SheetVerdict({ sheet }: { sheet: ChecklistImportSheet }) {
       </div>
     );
   }
-  return <Badge tone="good">Ready</Badge>;
+  return <StatusChip shape="done">Ready</StatusChip>;
 }
 
 /**
