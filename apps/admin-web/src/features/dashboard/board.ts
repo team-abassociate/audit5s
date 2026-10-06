@@ -32,7 +32,8 @@ export function score1(percentage: number | null): string {
  * ledger.
  */
 export function score2(percentage: number | null): string {
-  return percentage === null ? 'N/A' : percentage.toFixed(2);
+  // Truncated like formatScore (R-45(e)): 59.996 must not print "60.00" beside Needs Support.
+  return percentage === null ? 'N/A' : (Math.floor(percentage * 100 + 1e-6) / 100).toFixed(2);
 }
 
 /** Three decimals in anything that stands in for a record (§3). */

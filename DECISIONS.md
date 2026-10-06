@@ -41,6 +41,8 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-42 | A Coordinator's last tab is My Unit; the audit board leads with the auditor | Settled |
 | R-43 | A closure is closed, not verified; a Coordinator reviews; boards filter by Zone | Settled |
 | R-44 | A checklist serves many industries; an import names them | Settled |
+| R-45 | UX audit follow-ups: one-decimal scores, never rounded up; 12-hour times; Devanagari font; who to chase | Settled |
+| R-46 | No sign-in cap per login ID; the lockout stays | Settled |
 
 ---
 
@@ -1881,8 +1883,8 @@ the Units tab's slip and a signed link.
 `CorrectiveAction` gains `closedByName`: on a VERIFIED action, the name on the latest
 response, as its author gave it (R-22); null otherwise. With `resolvedAt` it answers "who
 closed it and when" without opening the item. The web list has a Closed column and the
-detail panel a *Closed by* / *Closed at* pair — the date and the time, 24-hour, to the
-minute ("30 Sept 2026, 14:05"), in the same format the field app prints; the field app's Actions tab gains a
+detail panel a *Closed by* / *Closed at* pair — the date and the time to the
+minute ("30 Sept 2026, 2:05 PM", 12-hour since R-45(b)), in the same format the field app prints; the field app's Actions tab gains a
 **Closed** filter, newest first, and both item screens print the line.
 
 Since R-23 an after-photo closes a finding on submission, so the name is the Zone Leader's
@@ -2101,6 +2103,34 @@ checklist template. Migration `0042`.
   the English as 0036 is). The English, the version and anything an audit answered are
   untouched. `GET /checklist-versions/:id` is therefore no longer `immutable`: its ETag
   covers the content hash and the wording, and it is served `no-cache`.
+
+## R-45 — UX audit follow-ups: one-decimal scores, never rounded up; 12-hour times; Devanagari font; who to chase
+
+**Settled 2026-10-03 and 2026-10-04 by the product owner** (answers D1–D17 to the
+2026-10-03 UX audit). **Changes R-39's 24-hour time and GEMBA-BOARD.md §2.4 and §3.**
+
+- **(a) Every score tile shows one decimal**, the Unit score tile included. Supersedes the
+  GEMBA §3 note that held the tile to `score2`.
+- **(b) Dates and times read "30 Sept 2026, 2:05 PM"** everywhere: web, field app and newly
+  rendered PDFs. 12-hour with AM/PM, to the minute, no seconds, no time-zone suffix in
+  lists. One formatter in `packages/domain`. Supersedes R-39's 24-hour "14:05". Issued PDFs
+  keep their bytes (R-35).
+- **(c) Noto Sans Devanagari is a third family, for Devanagari text only** (GEMBA §2.4).
+- **(d) An overdue corrective action shows its Zone's leader**, user or typed name, grouped
+  by Zone and leader, so someone knows whom to chase. It grants nothing: any Zone Leader of
+  the Unit may still answer any action (R-39(b)).
+- **(e) A displayed score is truncated, never rounded up** (`formatScore`): 59.994 shows
+  "59.9", so the number and its band always agree. Bands still read the exact score. Applies
+  on screen and to new PDF renders.
+- **Kept as they are:** reports are downloaded, not sent from the app; a first password is
+  still the mobile number (accepted risk, §12.1); audits keep assignments, no rounds; the
+  auditor's selfie stays in the client PDF; On Track stays blue in PDFs (R-6b); the public
+  corrective-action page names no Coordinator (R-22, R-41).
+- **Added on the owner's go:** a cross-Unit trend for a Super Admin
+  (`GET /analytics/organization/unit-trends`); overdue notifications bundled per Zone, with
+  one nightly data-check summary; phone uploads (received / held / applied) in the Activity
+  log, whose IP addresses show only when a row is opened; an in-app checklist editor beside
+  the Excel template and upload.
 
 ## R-46 — No sign-in cap per login ID; the lockout stays
 

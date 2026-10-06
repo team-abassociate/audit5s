@@ -28,7 +28,7 @@ An agent that breaks any of these has not built this design system.
 2. **No blurred shadows.** Elevation is `box-shadow: Npx Npx 0 var(--hard)` — hard, offset down-right, zero blur. 2px for buttons, 3px at rest, 5px on hover/selected, 0 on press (with `translate(3px,3px)`).
 3. **No rotation, no random offsets, no "organic" scatter.** Every object sits on the grid.
 4. **Two families only:** Archivo (display + UI) and DM Mono (data). Never introduce a third.
-   > **Extension (owner decision D14, 2026-10; proposed R-45(c)).** Neither family has
+   > **Extension (owner decision D14, 2026-10; `DECISIONS.md` R-45(c)).** Neither family has
    > Devanagari, so Hindi and Marathi fell back to whatever the OS had. **Noto Sans
    > Devanagari** is added for Devanagari text **only**: it sits second in `--font-display`
    > and `--font-data`, so only characters Archivo and DM Mono lack reach it, and the Google
@@ -65,7 +65,8 @@ what keeps all four apart — which is why status must read without colour (non-
 > and is independent of any visual treatment, and that `rating-scale.ts`, `lib/bands.ts` and
 > `board.ts` (`TARGET = 90`) already implement. Restoring the three-band table would put this
 > file back in conflict with `packages/domain`. Do not "revert" it. The decimal-places rule
-> below is held to the shipping code for the same reason (`score2` in `DashboardPage.tsx`).
+> below follows R-45(a) and (e): every score tile shows one decimal, truncated, never rounded up
+> (`formatScore` in `packages/domain`).
 
 Rules that come from the product, not from taste:
 
