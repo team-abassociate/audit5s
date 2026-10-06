@@ -139,7 +139,7 @@ function linkActor(resolved: ResolvedLink): { actor: ActorContext; label: string
   if (resolved.issuedByRole === 'SUPER_ADMIN') {
     return {
       actor: {
-        userId: resolved.createdByUserId,
+        userId: resolved.issuedByUserId,
         role: 'SUPER_ADMIN',
         activeUnitId: null,
         unitIds: [resolved.unitId],

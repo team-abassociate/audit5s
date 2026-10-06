@@ -26,7 +26,7 @@ import {
 import { api } from '@/lib/api';
 import { ACTION_STATUS_LABEL, SECTION_LABEL, SUBMISSION_CHANNEL_LABEL, auditTypeLabel, roleLabel } from '@/lib/labels';
 import { useSession } from '@/lib/session';
-import { useUnitScope } from '@/lib/scope';
+import { useFollowItemUnit, useUnitScope } from '@/lib/scope';
 import {
   Button,
   Card,
@@ -123,7 +123,7 @@ export function CorrectiveActionsPage() {
   const overdue = search.overdue === true;
 
   // The Unit is the portal's scope, chosen in the shell's topbar (lib/scope.ts); `null`
-  // there is "All Units", which only an organization-wide role is offered.
+  // there is "All Units" (or "All my Units" for a Consultant with several).
   const scope = useUnitScope();
   const unitId = scope.unitId ?? '';
 
@@ -190,7 +190,8 @@ export function CorrectiveActionsPage() {
   const waiting = totals ? totals.byStatus.ACTION_SUBMITTED + totals.byStatus.NOT_POSSIBLE : 0;
 
   const unitName = (id: string) =>
-    units.data?.data.find((unit) => unit.id === id)?.name ?? 'Unknown unit';
+    // A Consultant still reads their own audits' findings in a Unit they have since left.
+    units.data?.data.find((unit) => unit.id === id)?.name ?? 'A Unit you are no longer on';
   const now = Date.now();
   const grouped = groupActions(rows, group, totals);
   const chase = overdueByLeader(totals);
@@ -506,6 +507,7 @@ function ActionPanel({ actionId, onClose }: { actionId: string | null; onClose: 
     enabled: actionId !== null,
   });
   const action = detail.data;
+  useFollowItemUnit(actionId, action?.id === actionId ? action.unitId : undefined);
 
   return (
     <SidePanel
@@ -603,8 +605,8 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
       {can('corrective_action', 'reassign') && action.status !== 'VERIFIED' && action.status !== 'WITHDRAWN' && (
         <Reassign action={action} onDone={refresh} />
       )}
-      {can('report_access_token', 'mint') && action.status !== 'VERIFIED' && action.status !== 'WITHDRAWN' && (
-        <CopyLink actionId={action.id} />
+      {can('corrective_action', 'link') && action.status !== 'VERIFIED' && action.status !== 'WITHDRAWN' && (
+        <CopyLink actionId={action.id} listed={can('report_access_token', 'mint')} />
       )}
 
       <div className="space-y-3">
@@ -672,9 +674,10 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
 /**
  * CA9: the link in the PDF is stored only as a hash, so it cannot be shown again. This makes
  * one more link to the same item and copies it; the printed one keeps working, and both are
- * listed with the report's links on Reports, where either can be revoked.
+ * listed with the report's links on Reports, where either can be revoked. A Coordinator
+ * makes links too (R-47) but has no Reports page, so `listed` is false for them.
  */
-function CopyLink({ actionId }: { actionId: string }) {
+function CopyLink({ actionId, listed }: { actionId: string; listed: boolean }) {
   const [copied, setCopied] = useState(false);
   const make = useMutation({
     // One key per press: a retried request mints nothing twice.
@@ -698,7 +701,7 @@ function CopyLink({ actionId }: { actionId: string }) {
           <Input readOnly value={url} aria-label="Zone Leader link" onFocus={(event) => event.currentTarget.select()} />
           <p className="text-sm text-ink-2" role="status">
             {copied ? 'Copied. ' : 'Select the link to copy it. '}
-            This is a new link; the one in the PDF still works. Both are listed with the report on Reports.
+            This is a new link; the one in the PDF still works.{listed ? ' Both are listed with the report on Reports.' : ''}
           </p>
         </>
       ) : (

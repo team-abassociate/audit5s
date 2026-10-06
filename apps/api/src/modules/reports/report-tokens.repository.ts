@@ -1,11 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import {
   correctiveActions,
   auditZones,
   checklistQuestions,
   reportAccessTokens,
-  reportSnapshots,
   users,
   withAuthPhase,
   type Database,
@@ -34,7 +33,8 @@ export interface ResolvedToken extends ReportAccessTokenRow {
   issuedToRole: string | null;
   issuedToName: string | null;
   issuedToActiveUnitId: string | null;
-  /** The account that generated the report, while it is still active (R-22). */
+  /** The account the link acts as when no Zone Leader holds it, while active (R-22, R-47). */
+  issuedByUserId: string;
   issuedByRole: string | null;
   issuedByName: string | null;
 }
@@ -97,17 +97,31 @@ export class ReportTokensRepository extends BaseRepository {
       const usable = holder && holder.archivedAt === null && holder.status === 'ACTIVE';
 
       // The report's issuer: whom the link acts as when no Zone Leader is attached (R-22).
-      const [issuer] = await tx
-        .select({
-          role: users.role,
-          fullName: users.fullName,
-          status: users.status,
-          archivedAt: users.archivedAt,
-        })
-        .from(users)
-        .where(eq(users.id, row.createdByUserId))
-        .limit(1);
-      const issuerUsable = issuer && issuer.archivedAt === null && issuer.status === 'ACTIVE';
+      const account = async (id: string) =>
+        (
+          await tx
+            .select({
+              role: users.role,
+              fullName: users.fullName,
+              status: users.status,
+              archivedAt: users.archivedAt,
+            })
+            .from(users)
+            .where(eq(users.id, id))
+            .limit(1)
+        )[0];
+      let issuedByUserId = row.createdByUserId;
+      let issuer = await account(issuedByUserId);
+      // R-47: a Coordinator's link acts as the Super Admin who generated its report (0043).
+      if (issuer?.role === 'COORDINATOR') {
+        const generator = await tx.execute<{ id: string | null }>(
+          sql`SELECT app_link_report_generator(${row.id}) AS id`,
+        );
+        issuedByUserId = generator.rows[0]?.id ?? issuedByUserId;
+        issuer = generator.rows[0]?.id ? await account(issuedByUserId) : undefined;
+      }
+      const actingIssuer = issuer;
+      const issuerUsable = actingIssuer && actingIssuer.archivedAt === null && actingIssuer.status === 'ACTIVE';
 
       return {
         ...row,
@@ -115,8 +129,9 @@ export class ReportTokensRepository extends BaseRepository {
         issuedToRole: usable ? holder.role : null,
         issuedToName: usable ? holder.fullName : null,
         issuedToActiveUnitId: usable ? row.unitId : null,
-        issuedByRole: issuerUsable ? issuer.role : null,
-        issuedByName: issuerUsable ? issuer.fullName : null,
+        issuedByUserId,
+        issuedByRole: issuerUsable ? actingIssuer.role : null,
+        issuedByName: issuerUsable ? actingIssuer.fullName : null,
       } satisfies ResolvedToken;
     });
   }
@@ -167,12 +182,12 @@ export class ReportTokensRepository extends BaseRepository {
       const [printed] = await tx
         .select({ snapshotId: reportAccessTokens.snapshotId })
         .from(reportAccessTokens)
-        .innerJoin(reportSnapshots, eq(reportSnapshots.id, reportAccessTokens.snapshotId))
         .where(
           and(
             eq(reportAccessTokens.correctiveActionId, actionId),
             eq(reportAccessTokens.purpose, 'CORRECTIVE_ACTION'),
-            ne(reportSnapshots.status, 'REMOVED'),
+            // Not a join: a Coordinator reads no report (R-39), only whether it is listed (0043).
+            sql`app_report_snapshot_listed(${reportAccessTokens.snapshotId})`,
             this.scoped(scope, { unitId: reportAccessTokens.unitId }),
           ),
         )

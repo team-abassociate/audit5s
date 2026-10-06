@@ -1810,6 +1810,7 @@ Cell = the scope resolver that applies. `—` = denied.
 | Report | read snapshot metadata | `organization` | — | `own_unit` | `own_unit` |
 | Report | download PDF | `organization` | — | `own_unit` | `own_unit` |
 | Report | score summary (non-official) | `organization` | `own_audits` | `own_unit` | `own_unit` |
+| CorrectiveAction | link (one more Zone Leader link, R-47) | `organization` | — | `own_unit` | — |
 | ReportAccessToken | mint | `organization` | — | — | — |
 | ReportAccessToken | revoke | `organization` | — | — | — |
 
@@ -2217,7 +2218,7 @@ so a bad spreadsheet can never leave half a checklist behind.
 | POST | `/corrective-actions/{id}/verify` | SA | `{ comment? }` → `VERIFIED`; may roll the audit to `CLOSED` |
 | POST | `/corrective-actions/{id}/reopen` | SA | `{ reason }` (required) → `REOPENED`, `reopen_count++` |
 | POST | `/corrective-actions/{id}/reassign` | SA, COO | `{ zoneLeaderUserId }` |
-| POST | `/corrective-actions/{id}/link` | SA | **Idempotency-Key required.** Mints one more public link to this action for copying or resending; the URL is in this response once and not on a replay. Earlier links, the PDF's included, keep working (R-41) |
+| POST | `/corrective-actions/{id}/link` | SA, Coord (`own_unit`, R-47) | **Idempotency-Key required.** Mints one more public link to this action for copying or resending; the URL is in this response once and not on a replay. Earlier links, the PDF's included, keep working (R-41) |
 
 ### Public, signed-token surface (the live report page)
 

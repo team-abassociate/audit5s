@@ -72,7 +72,7 @@ export function ReportsPage() {
   const [arrivedId, setArrivedId] = useState<string | null>(null);
 
   // R5: the Unit is the portal's scope, picked in the shell's topbar from every Unit;
-  // `null` is "All Units" (organization-wide roles only).
+  // `null` is "All Units", or "All my Units" for anyone holding several.
   const scope = useUnitScope();
   const unitId = scope.unitId ?? '';
 

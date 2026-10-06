@@ -43,6 +43,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-44 | A checklist serves many industries; an import names them | Settled |
 | R-45 | UX audit follow-ups: one-decimal scores, never rounded up; 12-hour times; Devanagari font; who to chase | Settled |
 | R-46 | No sign-in cap per login ID; the lockout stays | Settled |
+| R-47 | A Coordinator copies a Zone Leader link; a Consultant sees "All my Units" | Settled |
 
 ---
 
@@ -2142,3 +2143,29 @@ locked out of the app for 15 minutes after five tries.
 - **Removed:** the in-process 5-per-15-minutes cap on `POST /auth/login` per login ID.
 - **Kept:** the lockout after 10 failed attempts on one login ID within 15 minutes (counted
   from `login_attempt`, so a restart does not reset it), and 20 attempts / 15 min per IP.
+
+## R-47 — A Coordinator copies a Zone Leader link; a Consultant sees "All my Units"
+
+**Settled 2026-10-06 by the product owner.** **Changes R-39** (in part), **ARCHITECTURE.md
+§6.3** (a new `CorrectiveAction · link` row) and **§8**'s `POST /corrective-actions/{id}/link`.
+Two answers to the UX audit's last questions (CA9, and the Unit scope of G4):
+
+> Coordinators too. But only links. No pdfs
+
+- **A Coordinator may copy a Zone Leader link** for an open corrective action of their own
+  Unit, for when the PDF with the printed link is lost — the same "Copy Zone Leader link" a
+  Super Admin has. It is its own permission, `corrective_action:link` (Super Admin
+  `organization`, Coordinator `own_unit`), not `report_access_token:mint`: the PDF, the
+  report's list of links and revoking a link all stay the Super Admin's, as R-39 settled.
+  Migration 0043 is the database's half: a Coordinator may read and add corrective-action
+  links of their own Unit, never a report-level one, and never revoke.
+- **Whom such a link acts as** (R-22): the Zone Leader it is issued to, as before; with no
+  Zone Leader account, the Super Admin who generated its report — not the Coordinator, who
+  answers no finding.
+- **"All my Units".** Where a Super Admin may view Audits, Corrective actions and Reports
+  across "All Units", anyone else who holds more than one Unit — a Consultant — gets the same
+  combined view, named "All my Units". The server already narrows every list to the caller's
+  own Units, so this is the portal's choice alone. A Coordinator holds one Unit and is
+  unchanged.
+- **Kept:** checklists carry English, Hindi and Marathi only (CL5 stays as it is).
+

@@ -73,11 +73,12 @@ export class CorrectiveActionsController {
   }
 
   /**
-   * CA9: one more link to this action, for a Super Admin to copy or resend. The link the
-   * PDF printed keeps working — a link is only ever ended by revoking it (R-41). The raw
-   * secret is in this response once and never stored, not even for a replay.
+   * CA9: one more link to this action, for a Super Admin or the Unit's Coordinator (R-47)
+   * to copy or resend. The link the PDF printed keeps working — a link is only ever ended by
+   * revoking it (R-41). The raw secret is in this response once and never stored, not even
+   * for a replay.
    */
-  @RequirePermission('report_access_token', 'mint')
+  @RequirePermission('corrective_action', 'link')
   @Scope({ param: 'correctiveActionId', intent: 'write' })
   @Post(':correctiveActionId/link')
   @HttpCode(HttpStatus.CREATED)

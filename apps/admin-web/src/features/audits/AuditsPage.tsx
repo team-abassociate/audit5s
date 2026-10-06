@@ -40,7 +40,7 @@ import {
   useRoutedPanel,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
-import { useUnitScope } from '@/lib/scope';
+import { useFollowItemUnit, useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL } from '@/lib/labels';
 import { AuditDetailPanel } from './AuditDetailPanel';
 import { AuditProgress, TeamProgress } from './AuditProgress';
@@ -130,7 +130,7 @@ export function AuditsPage() {
     if (search.assignment) setExpandedAssignment(search.assignment);
   }, [search.assignment]);
 
-  // AU9: the shell's Unit scope. `null` is "All Units" (a Super Admin); a Coordinator's one
+  // AU9: the shell's Unit scope. `null` is "All Units" (or "All my Units"); a Coordinator's one
   // Unit is fixed. The server narrows to the caller's Units either way.
   const unitScope = useUnitScope();
   const unitParam = unitScope.unitId ? `&unitId=${unitScope.unitId}` : '';
@@ -155,6 +155,7 @@ export function AuditsPage() {
     queryKey: ['audit', panel.id],
     queryFn: () => read<AuditDetail>(`/audits/${panel.id}`),
   });
+  useFollowItemUnit(panel.id, opened.data?.id === panel.id ? opened.data.unitId : undefined);
 
   const isConsultant = scope?.role === 'CONSULTANT';
 
