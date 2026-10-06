@@ -7,7 +7,6 @@ export interface RateLimitRule {
 
 /** The limits of ARCHITECTURE.md §12.11. Configuration, tunable without a deploy. */
 export const RATE_LIMITS = {
-  loginPerLoginId: { limit: 5, windowSeconds: 15 * 60 },
   loginPerIp: { limit: 20, windowSeconds: 15 * 60 },
   otpRequestPerPhone: { limit: 3, windowSeconds: 10 * 60 },
   otpRequestPerIp: { limit: 20, windowSeconds: 60 * 60 },
@@ -19,8 +18,12 @@ export const RATE_LIMITS = {
   correctiveActionPerIp: { limit: 30, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
-/** Progressive lockout begins at this many consecutive failures (§12.1). */
+/**
+ * Progressive lockout begins at this many failures inside the window (§12.1). It is the only
+ * per-login-ID limit: the 5-in-15-minutes sign-in cap was removed by the owner (R-46).
+ */
 export const LOCKOUT_THRESHOLD = 10;
+export const LOCKOUT_WINDOW_SECONDS = 15 * 60;
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -37,7 +40,7 @@ export interface RateLimitResult {
  * approximation of a shared one. Two things make that acceptable rather than a shortcut:
  * Caddy limits public exposure to the guarded API and this service handles application
  * rate limits. The security-critical
- * limit — failed logins per login ID — is counted from the `login_attempt` table instead,
+ * limit — the failed-login lockout per login ID — is counted from the `login_attempt` table instead,
  * so it survives a restart and cannot be reset by bouncing the process.
  *
  * If a second API replica is ever added, this becomes per-replica and the login-attempt

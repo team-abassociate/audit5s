@@ -2101,3 +2101,14 @@ checklist template. Migration `0042`.
   the English as 0036 is). The English, the version and anything an audit answered are
   untouched. `GET /checklist-versions/:id` is therefore no longer `immutable`: its ETag
   covers the content hash and the wording, and it is served `no-cache`.
+
+## R-46 — No sign-in cap per login ID; the lockout stays
+
+**Settled 2026-10-06 by the product owner.** **Changes ARCHITECTURE.md §12.11**'s
+"5 attempts / 15 min per login ID", which was a default written into the blueprint, never
+an owner decision. An auditor who mistypes a password on a phone in the plant should not be
+locked out of the app for 15 minutes after five tries.
+
+- **Removed:** the in-process 5-per-15-minutes cap on `POST /auth/login` per login ID.
+- **Kept:** the lockout after 10 failed attempts on one login ID within 15 minutes (counted
+  from `login_attempt`, so a restart does not reset it), and 20 attempts / 15 min per IP.

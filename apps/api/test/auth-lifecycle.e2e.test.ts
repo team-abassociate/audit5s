@@ -71,21 +71,23 @@ describe('login', () => {
     expect(rows[0].succeeded).toBe(false);
   });
 
-  it('rate-limits repeated failures on one login ID (§12.11)', async () => {
+  it('locks a login ID after 10 wrong passwords, with no smaller sign-in cap (R-46)', async () => {
     resetLimits();
     const loginId = world.actors.ZONE_LEADER.loginId;
-    const statuses: number[] = [];
+    const codes: string[] = [];
 
-    for (let attempt = 0; attempt < 7; attempt += 1) {
+    for (let attempt = 0; attempt < 11; attempt += 1) {
       const response = await world.request('POST', `${base}/auth/login`, {
         body: { loginId, password: 'wrong-password-here' },
       });
-      statuses.push(response.status);
+      expect(response.status).toBe(401);
+      codes.push((response.body as { code: string }).code);
     }
 
-    // 5 attempts per 15 minutes per login ID: the sixth must already be refused.
-    expect(statuses.slice(0, 5).every((s) => s === 401)).toBe(true);
-    expect(statuses.at(-1)).toBe(429);
+    expect(codes.slice(0, 10).every((c) => c === 'INVALID_CREDENTIALS')).toBe(true);
+    expect(codes.at(-1)).toBe('ACCOUNT_LOCKED');
+    // The lockout lives in the database; later cases sign in as this Zone Leader.
+    await world.owner.query(`UPDATE "user" SET locked_until = NULL, failed_login_count = 0 WHERE login_id = $1`, [loginId]);
     resetLimits();
   });
 });

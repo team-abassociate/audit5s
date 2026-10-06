@@ -2054,7 +2054,7 @@ stored response; the same key with a *different* body returns `422 IDEMPOTENCY_K
 
 | Method | Path | Role | Request | Response | Authorization | Idempotency |
 | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/auth/login` | public | `{ loginId, password, deviceId?, platform?, location? }` | `{ accessToken, refreshToken, user, mustResetPassword, scope }` | rate-limited per loginId (5/15 min) and per IP (20/15 min); lockout after 10 | none |
+| POST | `/auth/login` | public | `{ loginId, password, deviceId?, platform?, location? }` | `{ accessToken, refreshToken, user, mustResetPassword, scope }` | rate-limited per IP (20/15 min); per-loginId lockout after 10 failures in 15 min (no per-loginId cap: R-46) | none |
 | POST | `/auth/refresh` | public | `{ refreshToken }` | new pair | rotation + family reuse detection (R-1) | single-use by design |
 | POST | `/auth/logout` | any | `{ refreshToken, deviceId? }` | `204` | revokes the family | idempotent |
 | POST | `/auth/change-password` | any | `{ currentPassword, newPassword }` | `204` | `own_record`; clears `must_reset_password`; revokes all other sessions | none |
@@ -2982,7 +2982,7 @@ Each area: **threat → control → residual risk.**
 | | |
 | --- | --- |
 | **Threat** | Phone-number passwords are public, guessable from the login ID, never rotated, and shared across systems. Credential stuffing. Offline cracking of a stolen hash dump. |
-| **Control** | Argon2id (`m=64MiB, t=3, p=1`, tuned to ~250 ms on production hardware), unique salt, `password_algo` recorded for rehash-on-login. Phone number is a **bootstrap credential only**: `must_reset_password=true`, expires in 72 h, forced reset before any other route works (CH-1). Minimum 10 characters on reset, checked against a breached-password list and against the user's own phone/name. No password ever returned by an API, logged, or sent over WhatsApp in plaintext — the invitation carries a one-time reset link instead. Rate limits: 5 attempts / 15 min per login ID, 20 / 15 min per IP, progressive lockout from 10. |
+| **Control** | Argon2id (`m=64MiB, t=3, p=1`, tuned to ~250 ms on production hardware), unique salt, `password_algo` recorded for rehash-on-login. Phone number is a **bootstrap credential only**: `must_reset_password=true`, expires in 72 h, forced reset before any other route works (CH-1). Minimum 10 characters on reset, checked against a breached-password list and against the user's own phone/name. No password ever returned by an API, logged, or sent over WhatsApp in plaintext — the invitation carries a one-time reset link instead. Rate limits: 20 / 15 min per IP, progressive lockout from 10 failures per login ID (the 5 / 15 min per-login-ID cap was removed, `DECISIONS.md` R-46). |
 | **Residual** | If the business insists on permanent phone-number passwords, the account is only as strong as the phone number's secrecy. This must be signed off as an accepted risk with a named owner. The compensating controls (rate limiting, device binding, new-device alerts) reduce but do not eliminate it. Recommended alternative: phone OTP, no password at all. |
 
 ## 12.2 Login IDs
