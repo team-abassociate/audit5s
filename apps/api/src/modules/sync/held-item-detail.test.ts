@@ -53,6 +53,13 @@ describe('held sync item detail (UX audit S1x)', () => {
     const sentence = heldItemSentence(guard, 'AUDIT_ALREADY_COMPLETED');
     expect(sentence).toMatch(/already finished/);
     expect(isPlainSentence(sentence)).toBe(true);
+
+    const rule = AppError.conflict(
+      'AUDIT_ALREADY_COMPLETED',
+      'This audit is completed. Use the post-completion override, which is audit-logged (A-2).',
+    );
+    expect(heldItemSentence(rule, 'AUDIT_ALREADY_COMPLETED')).toMatch(/already finished/);
+    expect(presentHeldDetail('AUDIT_ALREADY_COMPLETED', rule.detail ?? null)).toMatch(/already finished/);
   });
 
   it('names the fields of a malformed payload without quoting the enum it expected', () => {

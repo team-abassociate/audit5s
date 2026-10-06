@@ -39,9 +39,10 @@ const CODE_SENTENCE: Record<string, string> = {
 };
 
 // What may never reach a person. SQL and its bound parameters; stack frames; arrows from
-// state-machine refusals; snake_case column and guard names; SCREAMING enum tokens.
+// state-machine refusals; snake_case column and guard names; SCREAMING enum tokens; a
+// spec reference in brackets — "(A-2)", "(§9.5)" — which reads as jargon on the floor.
 const SQL = /failed query|params:|\$\d|\b(select|insert|update|delete)\b[\s\S]*\b(from|into|set|where|values)\b/i;
-const INTERNALS = /→|->|\bat \S+ \(|\b[a-z]+_[a-z_]+\b|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[A-Z]{4,}\b/;
+const INTERNALS = /→|->|\bat \S+ \(|\b[a-z]+_[a-z_]+\b|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[A-Z]{4,}\b|\((?:[A-Z]{1,3}-\d|§)/;
 
 /** True when a sentence carries nothing a person should not be shown. */
 export function isPlainSentence(text: string): boolean {
