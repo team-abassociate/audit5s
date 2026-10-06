@@ -2,6 +2,10 @@ import {
   QUESTIONS_PER_SECTION,
   S_SECTION_LABELS,
   S_SECTION_ORDER,
+  normalizeQuestionText,
+  parseChecklistSheet,
+  templateCodeForSheet,
+  validateChecklistSheet,
   type CellValue,
 } from '@audit5s/domain';
 
@@ -14,22 +18,109 @@ import {
  */
 export const TEMPLATE_SHEET_NAME = 'Department';
 
-export function templateRows(): CellValue[][] {
+/**
+ * A checklist written in the in-app editor (D13): the department (the sheet name) and the
+ * 50 Check Points in `Sr.` order, each with optional Hindi and Marathi. It travels as the
+ * very workbook a person could have uploaded, so the import validates, diffs, commits and
+ * audit-logs it under the same rules — there is no second way to make a checklist.
+ */
+export interface ChecklistDraft {
+  name: string;
+  questions: Array<{ text: string; hi: string; mr: string }>;
+}
+
+export function templateRows(draft?: ChecklistDraft): CellValue[][] {
   const rows: CellValue[][] = [
-    ['5S AUDIT CHECK SHEET – DEPARTMENT'],
-    [
-      'One sheet per department: name the sheet after the department and copy it for each ' +
-        'one. Fill in all 50 Check Points. The Hindi and Marathi columns are optional.',
-    ],
+    [`5S AUDIT CHECK SHEET – ${(draft?.name ?? TEMPLATE_SHEET_NAME).toUpperCase()}`],
+    draft
+      ? []
+      : [
+          'One sheet per department: name the sheet after the department and copy it for each ' +
+            'one. Fill in all 50 Check Points. The Hindi and Marathi columns are optional.',
+        ],
     [],
     ['Sr.', 'Check Point', 'Check Point (Hindi)', 'Check Point (Marathi)'],
   ];
+  // The importer's own normalisation, so a stray space or a line break typed into the
+  // editor is not reported back as a workbook warning.
+  const clean = (text: string) => normalizeQuestionText(text).text;
   let sr = 0;
   for (const section of S_SECTION_ORDER) {
     rows.push([S_SECTION_LABELS[section]]);
-    for (let n = 0; n < QUESTIONS_PER_SECTION; n += 1) rows.push([(sr += 1)]);
+    for (let n = 0; n < QUESTIONS_PER_SECTION; n += 1) {
+      const question = draft?.questions[sr];
+      sr += 1;
+      rows.push(
+        question ? [sr, clean(question.text), clean(question.hi), clean(question.mr)] : [sr],
+      );
+    }
   }
   return rows;
+}
+
+/** The editor's checklist as the workbook the import reads. */
+export function draftWorkbook(draft: ChecklistDraft): File {
+  return new File([xlsx(draft.name, templateRows(draft))], `${draft.name}.xlsx`, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+}
+
+/** What the editor shows under its fields. Empty everywhere means the draft will import. */
+export interface DraftCheck {
+  name: string | null;
+  /** Indexed like `draft.questions`: the first message per question. */
+  errors: Array<string | null>;
+  warnings: Array<string | null>;
+}
+
+/**
+ * The editor's live check: the import's own `parseChecklistSheet` and
+ * `validateChecklistSheet` run on the workbook the draft becomes, so the editor can never
+ * pass something the import refuses. The server runs them again; this is only earlier.
+ *
+ * The name rules are a workbook's: it is the sheet name, so Excel's 31 characters and
+ * forbidden characters apply, and it must leave a template code.
+ */
+export function checkDraft(draft: ChecklistDraft): DraftCheck {
+  const name = draft.name.trim();
+  const nameError =
+    name === ''
+      ? 'Name the department this checklist is for'
+      : name.length > 31
+        ? 'Keep it to 31 characters, the limit for a sheet name'
+        : /[[\]:*?/\\]/.test(name)
+          ? 'Leave out [ ] : * ? / and \\'
+          : templateCodeForSheet(name) === ''
+            ? 'Use at least one letter or number'
+            : null;
+
+  // A blank question is not a row to the parser, which would then misnumber every question
+  // after it; a unique stand-in keeps the rest of the check about the rest of the sheet.
+  const filled = {
+    name: draft.name,
+    questions: draft.questions.map((question, index) =>
+      question.text.trim() === '' ? { ...question, text: `blank ${index + 1}` } : question,
+    ),
+  };
+  const rows = validateChecklistSheet(
+    parseChecklistSheet({ name: name || TEMPLATE_SHEET_NAME, index: 0, rows: templateRows(filled) }),
+  ).rows;
+  const byOrder = new Map(rows.map((row) => [row.globalOrder, row]));
+  const errors: Array<string | null> = [];
+  const warnings: Array<string | null> = [];
+  draft.questions.forEach((question, index) => {
+    const row = byOrder.get(index + 1);
+    // A blank Check Point is not a question row to the parser, so it is named here.
+    errors.push(
+      question.text.trim() === ''
+        ? 'Write the question in English'
+        : row?.severity === 'ERROR'
+          ? (row.messages[0] ?? null)
+          : null,
+    );
+    warnings.push(row?.severity === 'WARNING' ? row.messages.join(' · ') : null);
+  });
+  return { name: nameError, errors, warnings };
 }
 
 export function downloadTemplate(): void {
@@ -48,7 +139,11 @@ export function downloadTemplate(): void {
 // ponytail: the smallest valid .xlsx (inline strings, no styles) in a stored zip, rather
 // than a spreadsheet library in the bundle for one blank sheet. Columns A–D only.
 const escape = (text: string) =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
 export function xlsx(sheetName: string, rows: CellValue[][]): Uint8Array<ArrayBuffer> {
   const body = rows

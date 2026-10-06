@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ChecklistImportJob,
@@ -8,6 +8,7 @@ import type {
   CommitChecklistImportResponse,
   Industry,
 } from '@audit5s/contracts';
+import { HEADER_IDEMPOTENCY_KEY } from '@audit5s/contracts';
 import { SECTION_LABEL } from '@/lib/labels';
 import { ApiError, api, loadSession } from '@/lib/api';
 import {
@@ -34,7 +35,27 @@ import { isWorstCase, worstIndustries } from './worst-case';
  */
 type Step = 'upload' | 'validating' | 'preview' | 'committed';
 
-export function ImportWizard({ onFinished }: { onFinished: () => void }) {
+/**
+ * A workbook the in-app editor wrote (D13). The wizard starts from it at Validate, so the
+ * editor's checklist is checked, diffed and committed by exactly the import's stages.
+ * `key` is the upload's Idempotency-Key: one per press of the editor's Review.
+ */
+export interface WizardSource {
+  file: File;
+  industryIds: string[];
+  key: string;
+}
+
+export function ImportWizard({
+  onFinished,
+  onClose = onFinished,
+  source,
+}: {
+  onFinished: () => void;
+  /** Leaves before committing; the editor uses it to go back to the checklist. */
+  onClose?: () => void;
+  source?: WizardSource;
+}) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>('upload');
   const [job, setJob] = useState<ChecklistImportJob | null>(null);
@@ -46,8 +67,11 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
   const [dragging, setDragging] = useState(false);
   const noIndustryTicked = industryIds !== null && industryIds.length === 0;
   const pick = (file: File | undefined) => {
-    if (file && !noIndustryTicked) upload.mutate({ file, industryIds: industryIds ?? [] });
+    if (file && !noIndustryTicked)
+      upload.mutate({ file, industryIds: industryIds ?? [], key: crypto.randomUUID() });
   };
+  // Once, even under StrictMode's double effect: the ref survives the remount.
+  const started = useRef(false);
 
   const industries = useQuery({
     queryKey: ['industries', false],
@@ -56,10 +80,10 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
   });
 
   const upload = useMutation({
-    mutationFn: async ({ file }: { file: File; industryIds: string[] }) => {
+    mutationFn: async ({ file, key }: { file: File; industryIds: string[]; key: string }) => {
       const form = new FormData();
       form.append('file', file);
-      return uploadWorkbook(form);
+      return uploadWorkbook(form, key);
     },
     onSuccess: async (created, { industryIds: chosen }) => {
       setError(null);
@@ -77,7 +101,11 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
    */
   async function validate(jobId: string, chosen: string[]): Promise<void> {
     try {
-      await api.post(`/checklist-imports/${jobId}/validate`, { industryIds: chosen });
+      await api.post(
+        `/checklist-imports/${jobId}/validate`,
+        { industryIds: chosen },
+        crypto.randomUUID(),
+      );
       for (let attempt = 0; attempt < 40; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
         const current = await api.get<ChecklistImportJob>(`/checklist-imports/${jobId}`);
@@ -99,12 +127,19 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
     }
   }
 
+  useEffect(() => {
+    if (!source || started.current) return;
+    started.current = true;
+    upload.mutate(source);
+  }, [source, upload]);
+
   const commit = useMutation({
-    mutationFn: () =>
-      api.post<CommitChecklistImportResponse>(`/checklist-imports/${job!.id}/commit`, {
-        sheetIds: [...selected],
-        publish: true,
-      }),
+    mutationFn: (publish: boolean) =>
+      api.post<CommitChecklistImportResponse>(
+        `/checklist-imports/${job!.id}/commit`,
+        { sheetIds: [...selected], publish },
+        crypto.randomUUID(),
+      ),
     onSuccess: async () => {
       setError(null);
       setStep('committed');
@@ -117,16 +152,22 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
   return (
     <Card>
       <CardHeader
-        title="Import department checklists"
-        description="Upload the workbook, review what changed, then commit. Nothing is saved until you commit."
+        title={source ? 'Review the checklist' : 'Import department checklists'}
+        description={
+          source
+            ? 'Check what changes against the published version, then commit. Nothing is saved until you commit.'
+            : 'Upload the workbook, review what changed, then commit. Nothing is saved until you commit.'
+        }
         action={
-          <Button variant="secondary" onClick={onFinished}>
-            Close
-          </Button>
+          step === 'committed' ? null : (
+            <Button variant="secondary" onClick={onClose}>
+              {source ? 'Back to editing' : 'Close'}
+            </Button>
+          )
         }
       />
 
-      <Steps current={step} />
+      <Steps current={step} first={source ? '1 · Write' : undefined} />
 
       {error !== null && error !== undefined && (
         <div className="p-4">
@@ -134,7 +175,7 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
         </div>
       )}
 
-      {step === 'upload' && (
+      {step === 'upload' && !source && (
         <div className="space-y-3 p-4">
           <p className="text-sm text-ink-2">
             Start from the{' '}
@@ -187,7 +228,10 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
         </div>
       )}
 
-      {step === 'validating' && <Spinner label="Reading the workbook…" />}
+      {source && upload.isPending && <Spinner label="Checking the checklist…" />}
+      {step === 'validating' && (
+        <Spinner label={source ? 'Checking the checklist…' : 'Reading the workbook…'} />
+      )}
 
       {step === 'preview' && preview && (
         <PreviewStep
@@ -202,7 +246,7 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
               return next;
             })
           }
-          onCommit={() => commit.mutate()}
+          onCommit={(publish) => commit.mutate(publish)}
           committing={commit.isPending}
         />
       )}
@@ -211,9 +255,10 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
         <div className="space-y-3 p-4">
           <p className="text-sm font-medium text-ink">
             {commit.data && commit.data.versions.length === 0
-              ? 'Translations saved.'
-              : 'Imported and published.'}{' '}
-            Devices pick the change up on their next catalogue sync.
+              ? 'Translations saved. Devices pick them up on their next catalogue sync.'
+              : commit.variables
+                ? 'Committed and published. Devices pick the change up on their next catalogue sync.'
+                : 'Saved as a draft. Audits keep the published version until you publish this one from the checklist’s versions.'}
           </p>
           {commit.data && commit.data.translationsSaved > 0 && (
             <p className="text-sm text-ink-2">
@@ -228,9 +273,9 @@ export function ImportWizard({ onFinished }: { onFinished: () => void }) {
   );
 }
 
-function Steps({ current }: { current: Step }) {
+export function Steps({ current, first = '1 · Upload' }: { current: Step; first?: string }) {
   const steps: Array<{ key: Step; label: string }> = [
-    { key: 'upload', label: '1 · Upload' },
+    { key: 'upload', label: first },
     { key: 'validating', label: '2 · Validate' },
     { key: 'preview', label: '3 · Review the diff' },
     { key: 'committed', label: '4 · Commit' },
@@ -262,7 +307,7 @@ function Steps({ current }: { current: Step }) {
  * match depends on it: a sheet updates an existing checklist only when it was imported for
  * exactly the same industries, and anything else becomes a new checklist.
  */
-function IndustryChoice({
+export function IndustryChoice({
   industries,
   chosen,
   onChange,
@@ -274,7 +319,7 @@ function IndustryChoice({
   if (industries.length === 0) return null;
   return (
     <fieldset className="space-y-2">
-      <legend className="gb-label mb-2">Which industries is this workbook for?</legend>
+      <legend className="gb-label mb-2">Which industries is this for?</legend>
       <label className="flex items-center gap-2 text-sm text-ink">
         <input
           type="radio"
@@ -342,7 +387,7 @@ function PreviewStep({
   industries: Industry[];
   selected: Set<string>;
   onToggle: (sheetId: string) => void;
-  onCommit: () => void;
+  onCommit: (publish: boolean) => void;
   committing: boolean;
 }) {
   const [openSheet, setOpenSheet] = useState<string | null>(null);
@@ -459,10 +504,17 @@ function PreviewStep({
       </Table>
 
       <div className="flex items-center gap-3">
-        <Button disabled={committing || selected.size === 0} onClick={onCommit}>
+        <Button disabled={committing || selected.size === 0} onClick={() => onCommit(true)}>
           {committing
             ? 'Committing…'
-            : `Commit ${selected.size} sheet${selected.size === 1 ? '' : 's'}`}
+            : `Commit and publish ${selected.size} sheet${selected.size === 1 ? '' : 's'}`}
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={committing || selected.size === 0}
+          onClick={() => onCommit(false)}
+        >
+          Commit as draft
         </Button>
         <span className="text-xs text-ink-3">
           {committable.length === 0
@@ -610,11 +662,14 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/
  * carry a JSON content type) and one downloads a binary. Both still carry the session
  * token, and both surface the server's problem document.
  */
-async function uploadWorkbook(form: FormData): Promise<ChecklistImportJob> {
+async function uploadWorkbook(form: FormData, key: string): Promise<ChecklistImportJob> {
   const session = loadSession();
   const response = await fetch(`${BASE_URL}/checklist-imports`, {
     method: 'POST',
-    headers: session ? { authorization: `Bearer ${session.accessToken}` } : {},
+    headers: {
+      [HEADER_IDEMPOTENCY_KEY]: key,
+      ...(session ? { authorization: `Bearer ${session.accessToken}` } : {}),
+    },
     body: form,
   });
   const payload: unknown = await response.json().catch(() => null);
