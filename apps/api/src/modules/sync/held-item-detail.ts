@@ -39,10 +39,13 @@ const CODE_SENTENCE: Record<string, string> = {
 };
 
 // What may never reach a person. SQL and its bound parameters; stack frames; arrows from
-// state-machine refusals; snake_case column and guard names; SCREAMING enum tokens; a
-// spec reference in brackets — "(A-2)", "(§9.5)" — which reads as jargon on the floor.
+// state-machine refusals; snake_case column and guard names; SCREAMING enum tokens.
 const SQL = /failed query|params:|\$\d|\b(select|insert|update|delete)\b[\s\S]*\b(from|into|set|where|values)\b/i;
-const INTERNALS = /→|->|\bat \S+ \(|\b[a-z]+_[a-z_]+\b|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[A-Z]{4,}\b|\((?:[A-Z]{1,3}-\d|§)/;
+const INTERNALS = /→|->|\bat \S+ \(|\b[a-z]+_[a-z_]+\b|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[A-Z]{4,}\b/;
+// A spec reference in brackets — "(A-2)", "(§7.1, §7.2)" — is jargon on the floor; the
+// sentence around it is usually worth keeping ("every Zone needs at least one").
+const SPEC_REF = /\s*\((?:[A-Z]{1,3}-\d+|§[\d.]+)(?:,\s*(?:[A-Z]{1,3}-\d+|§[\d.]+))*\)/g;
+const withoutSpecRefs = (text: string): string => text.replace(SPEC_REF, '');
 
 /** True when a sentence carries nothing a person should not be shown. */
 export function isPlainSentence(text: string): boolean {
@@ -80,8 +83,9 @@ export function heldItemSentence(error: unknown, reason: SyncConflictReason | nu
     if (error.fieldErrors && error.fieldErrors.length > 0) {
       return fieldsSentence(error.fieldErrors.map((e) => e.field));
     }
-    const own = error.detail ?? '';
-    if (own && isPlainSentence(own)) {
+    const own = withoutSpecRefs(error.detail ?? '');
+    // That refusal points an admin at the override; on Sync health it only means "too late".
+    if (own && isPlainSentence(own) && error.code !== 'AUDIT_ALREADY_COMPLETED') {
       return own;
     }
     return CODE_SENTENCE[error.code] ?? REASON_SENTENCE[reason ?? 'VALIDATION_FAILED'];
@@ -101,8 +105,15 @@ export function heldItemSentence(error: unknown, reason: SyncConflictReason | nu
  * message; it is replaced, never shown.
  */
 export function presentHeldDetail(reason: string, detail: string | null): string | null {
-  if (detail === null || isPlainSentence(detail)) {
-    return detail;
+  if (detail === null) {
+    return null;
+  }
+  if (reason === 'AUDIT_ALREADY_COMPLETED') {
+    return REASON_SENTENCE.AUDIT_ALREADY_COMPLETED;
+  }
+  const plain = withoutSpecRefs(detail);
+  if (isPlainSentence(plain)) {
+    return plain;
   }
   if (SQL.test(detail) || /\bat \S+ \(/.test(detail)) {
     return SERVER_FAULT_SENTENCE;

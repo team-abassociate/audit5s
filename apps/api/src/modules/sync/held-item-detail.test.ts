@@ -60,6 +60,14 @@ describe('held sync item detail (UX audit S1x)', () => {
     );
     expect(heldItemSentence(rule, 'AUDIT_ALREADY_COMPLETED')).toMatch(/already finished/);
     expect(presentHeldDetail('AUDIT_ALREADY_COMPLETED', rule.detail ?? null)).toMatch(/already finished/);
+
+    const gate = AppError.conflict(
+      'EVIDENCE_REQUIRED',
+      'Zone Z-04 has no photograph. A walk-by records what was seen, so every Zone needs at least one (§7.1, §7.2).',
+    );
+    expect(heldItemSentence(gate, 'VALIDATION_FAILED')).toBe(
+      'Zone Z-04 has no photograph. A walk-by records what was seen, so every Zone needs at least one.',
+    );
   });
 
   it('names the fields of a malformed payload without quoting the enum it expected', () => {
