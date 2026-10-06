@@ -187,6 +187,7 @@ const checklistsRoute = createRoute({
 const auditsRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/audits',
+  staticData: { unitScope: 'any' },
   // A notification lands on the exact audit or assignment it is about, not just the tab.
   validateSearch: (search: Record<string, unknown>): AuditsSearch => ({
     audit: typeof search.audit === 'string' ? search.audit : undefined,

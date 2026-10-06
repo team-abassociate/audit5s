@@ -40,6 +40,7 @@ import {
   useRoutedPanel,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL } from '@/lib/labels';
 import { AuditDetailPanel } from './AuditDetailPanel';
 import { AuditProgress, TeamProgress } from './AuditProgress';
@@ -129,16 +130,23 @@ export function AuditsPage() {
     if (search.assignment) setExpandedAssignment(search.assignment);
   }, [search.assignment]);
 
+  // AU9: the shell's Unit scope. `null` is "All Units" (a Super Admin); a Coordinator's one
+  // Unit is fixed. The server narrows to the caller's Units either way.
+  const unitScope = useUnitScope();
+  const unitParam = unitScope.unitId ? `&unitId=${unitScope.unitId}` : '';
+
   const audits = useQuery({
-    queryKey: ['audits', 'register'],
-    queryFn: () => readAll<Audit>('/audits?limit=200'),
+    enabled: unitScope.ready,
+    queryKey: ['audits', 'register', unitScope.unitId],
+    queryFn: () => readAll<Audit>(`/audits?limit=200${unitParam}`),
     // The register is also the live view of what is happening in the plants right now.
     refetchInterval: 30_000,
   });
 
   const assignments = useQuery({
-    queryKey: ['audit-assignments'],
-    queryFn: () => read<Page<AuditAssignment>>('/audit-assignments?open=true&limit=200'),
+    enabled: unitScope.ready,
+    queryKey: ['audit-assignments', 'register', unitScope.unitId],
+    queryFn: () => read<Page<AuditAssignment>>(`/audit-assignments?open=true&limit=200${unitParam}`),
   });
 
   // The open audit's own read, shared with the panel body (same key), for the panel's title.
@@ -276,7 +284,7 @@ export function AuditsPage() {
             </dl>
           </details>
 
-          {audits.isLoading && (
+          {audits.isPending && (
             <Skeleton
               variant="rows"
               columns={['Unit', 'Auditor', 'Status', 'Score', 'Updated']}

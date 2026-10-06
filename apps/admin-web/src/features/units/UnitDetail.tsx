@@ -15,6 +15,7 @@ import { devGet } from '@/features/units/worst-case';
 import { Link, useParams } from '@tanstack/react-router';
 import { Button, Card, CardHeader, EmptyState, ErrorNotice, Field, Input, RowActions, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { useDocumentTitle } from '@/components/AppShell';
 import { roleLabel } from '@/lib/labels';
 import { formatDate } from '@audit5s/domain';
 
@@ -36,6 +37,7 @@ export function UnitDetail() {
     queryKey: ['unit', unitId],
     queryFn: () => devGet<Unit>(`/units/${unitId}`),
   });
+  useDocumentTitle(unit.data?.name, 'Units & zones');
 
   const industries = useQuery({
     queryKey: ['industries', false],

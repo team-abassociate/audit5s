@@ -217,3 +217,14 @@ export function humanize(token: string): string {
   const words = token.replace(/[_-]+/g, ' ').trim().toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/**
+ * `lang` for a name a person typed (a Zone, a Unit): `hi` when it is written in Devanagari,
+ * so a screen reader voices it and the browser shapes it as Indic text (D14). English names
+ * get nothing and inherit the page's `en`.
+ */
+// ponytail: Hindi and Marathi share the script and a typed name says neither; `hi` for both
+// until a Zone carries its language.
+export function nameLang(name: string | null | undefined): 'hi' | undefined {
+  return name && /\p{Script=Devanagari}/u.test(name) ? 'hi' : undefined;
+}

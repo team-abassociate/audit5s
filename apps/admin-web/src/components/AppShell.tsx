@@ -91,8 +91,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   // The screen's name comes from the rail even when the rail hides it from this role.
   const screen = notFound ? undefined : NAV.find((item) => pathname.startsWith(item.to));
   const title = notFound ? 'Page not found' : (screen?.label ?? '');
+  // A screen for one record (`/units/$unitId`) names the tab after that record itself.
+  const ownTitle = useRouterState({ select: (s) => Object.keys(s.matches.at(-1)?.params ?? {}).length > 0 });
   const unitScope = useUnitScope();
-  useDocumentTitle(title || undefined, scopeName(unitScope));
+  useDocumentTitle(ownTitle && !notFound ? undefined : title || undefined, scopeName(unitScope));
   useCanonicalScope(unitScope);
 
   return (

@@ -21,7 +21,7 @@ import { BandLabel } from '@/components/Status';
 import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
-import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL } from '@/lib/labels';
+import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL, nameLang } from '@/lib/labels';
 import { daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime, formatScore } from '@audit5s/domain';
 import {
   TARGET,
@@ -383,7 +383,7 @@ export function DashboardPage() {
                     : `Whole audit · ${scorableZones.length} ${scorableZones.length === 1 ? 'zone' : 'zones'}`}
               </option>
               {scorableZones.map((zone) => (
-                <option key={zone.zoneCode} value={zone.zoneCode}>
+                <option key={zone.zoneCode} value={zone.zoneCode} lang={nameLang(zone.zoneName)}>
                   {`${zone.zoneName} (${zone.zoneCode})`}
                 </option>
               ))}
@@ -635,7 +635,7 @@ export function DashboardPage() {
                 <tbody>
                   {board.map((zone) => (
                     <tr key={zone.zoneId}>
-                      <td className={rail(zone.score !== null && zone.score < TARGET ? 'crit' : 'none')}>
+                      <td className={rail(zone.score !== null && zone.score < TARGET ? 'crit' : 'none')} lang={nameLang(zone.name)}>
                         {zone.name}
                       </td>
                       {S_SECTIONS.map((section) => {
@@ -784,7 +784,7 @@ export function DashboardPage() {
                               {findingTitle(action)}
                             </Link>
                           </td>
-                          <td>{action.zoneName}</td>
+                          <td lang={nameLang(action.zoneName)}>{action.zoneName}</td>
                           <td>{ownerOf(action) ?? '—'}</td>
                           <td className="gb-data">{formatDate(action.openedAt)}</td>
                           <td className="gb-data">{formatDate(action.dueAt)}</td>
@@ -933,7 +933,7 @@ function ZoneTile({
           : `${score1(zone.score)} percent, ${bandLabel(zone.score)}`
       }`}
     >
-      <span className="gb-label">{zone.name}</span>
+      <span className="gb-label" lang={nameLang(zone.name)}>{zone.name}</span>
       <span className="gb-row">
         <span className="gb-figure">{pending ? '—' : score1(zone.score)}</span>
         <span className="gb-delta">
@@ -981,7 +981,7 @@ function DetailPanel({
   return (
     <div className="gb-detail">
       <div className="gb-detail-head">
-        <h3 className="gb-h2" ref={headingRef} tabIndex={-1}>
+        <h3 className="gb-h2" ref={headingRef} tabIndex={-1} lang={nameLang(zone.name)}>
           {zone.name}
         </h3>
         <p>
