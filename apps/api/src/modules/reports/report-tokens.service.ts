@@ -10,7 +10,7 @@ import type {
 import type { ScopeContext } from '@audit5s/domain';
 import type { Transaction } from '@audit5s/db';
 import { AppError } from '../../common/errors';
-import { AuditLogService } from '../../common/audit-log/audit-log.service';
+import { auditLogRow } from '../../common/audit-log/audit-log.service';
 import { CONFIG, type AppConfig } from '../../config/env';
 import {
   ReportTokensRepository,
@@ -46,7 +46,6 @@ export interface MintedTokens {
 export class ReportTokensService {
   constructor(
     private readonly repository: ReportTokensRepository,
-    private readonly auditLog: AuditLogService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -121,14 +120,18 @@ export class ReportTokensService {
       actions: [{ id: target.id, assignedZoneLeaderUserId: target.assignedZoneLeaderUserId }],
     });
     const row = minted.rows[0]!;
-    await this.repository.mintOne(scope, row);
-    await this.auditLog.record({
-      action: 'report.token_minted',
-      resourceType: 'report_access_token',
-      resourceId: row.id,
-      unitId: target.unitId,
-      after: { correctiveActionId: target.id, snapshotId: target.snapshotId },
-    });
+    // The link and its log entry commit together: no working link without a record of who made it.
+    await this.repository.mintOne(
+      scope,
+      row,
+      auditLogRow({
+        action: 'report.token_minted',
+        resourceType: 'report_access_token',
+        resourceId: row.id,
+        unitId: target.unitId,
+        after: { correctiveActionId: target.id, snapshotId: target.snapshotId },
+      }),
+    );
     return { tokenId: row.id!, snapshotId: target.snapshotId, url: minted.urls.get(target.id)! };
   }
 
@@ -176,17 +179,20 @@ export class ReportTokensService {
       throw AppError.notFound('No such link on this report');
     }
 
-    const revoked = await this.repository.revoke(scope, tokenId, request.reason);
-    if (revoked) {
-      await this.auditLog.record({
+    // Written on the revoke's own transaction, and only when this call is the one that revoked.
+    await this.repository.revoke(
+      scope,
+      tokenId,
+      request.reason,
+      auditLogRow({
         action: 'report.token_revoked',
         resourceType: 'report_access_token',
         resourceId: tokenId,
         unitId: before.unitId,
         before: { revokedAt: null },
         after: { revokedAt: new Date().toISOString(), reason: request.reason },
-      });
-    }
+      }),
+    );
 
     const after = await this.repository.findById(scope, tokenId);
     return toContract(after ?? before, {}, this.expiryApplies());

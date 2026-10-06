@@ -480,6 +480,11 @@ describe('POST /corrective-actions/{id}/link — one more link, the printed one 
     expect(made.snapshotId).toBe(snapshot.id);
     expect((await open(made.url!.split('/ca/')[1]!)).status).toBe(200);
     expect((await linksOf(snapshot.id, actionId)).map((l) => l.active)).toEqual([true, true]);
+    const logged = await world.owner.query(
+      `SELECT actor_user_id FROM audit_log WHERE action = 'report.token_minted' AND resource_id = $1`,
+      [made.tokenId],
+    );
+    expect(logged.rows).toEqual([{ actor_user_id: coordinator.userId }]);
 
     // Links only: the report, its link list and revoking stay the Super Admin's (R-39).
     for (const path of [`/reports/${snapshot.id}`, `/reports/${snapshot.id}/tokens`]) {
@@ -508,6 +513,38 @@ describe('POST /corrective-actions/{id}/link — one more link, the printed one 
     } finally {
       await world.owner.query(`UPDATE unit_membership SET unit_id = $1 WHERE user_id = $2`, [world.unitA, coordinator.userId]);
     }
+  }, 120_000);
+
+  it('keeps no link, and revokes none, when its log entry cannot be written', async () => {
+    const { links, snapshot } = await reportWithLinks({ nonconformities: 1 });
+    const actionId = links[0]!.correctiveActionId;
+    const printed = (await linksOf(snapshot.id, actionId))[0]!;
+
+    await world.owner.query(`
+      CREATE FUNCTION test_refuse_token_log() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.action IN ('report.token_minted', 'report.token_revoked') THEN
+          RAISE EXCEPTION 'audit_log refused for the test';
+        END IF;
+        RETURN NEW;
+      END $$;
+      CREATE TRIGGER test_refuse_token_log BEFORE INSERT ON audit_log
+        FOR EACH ROW EXECUTE FUNCTION test_refuse_token_log();`);
+    try {
+      expect((await mint(actionId)).status).toBe(500);
+      const revoke = await world.request('POST', `${base}/reports/${snapshot.id}/tokens/${printed.id}/revoke`, {
+        token: superAdmin,
+        body: { reason: 'Sent to the wrong person' },
+      });
+      expect(revoke.status).toBe(500);
+    } finally {
+      await world.owner.query(`
+        DROP TRIGGER test_refuse_token_log ON audit_log;
+        DROP FUNCTION test_refuse_token_log();`);
+    }
+
+    expect((await linksOf(snapshot.id, actionId)).map((l) => [l.id, l.active])).toEqual([[printed.id, true]]);
+    expect((await open(links[0]!.secret)).status).toBe(200);
   }, 120_000);
 
   it('refuses a closed item, and one no report has printed a link to', async () => {

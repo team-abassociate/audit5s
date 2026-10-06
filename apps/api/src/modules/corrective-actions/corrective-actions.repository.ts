@@ -182,12 +182,17 @@ export class CorrectiveActionsRepository extends BaseRepository {
    * can and eventually would — `worker-general` is one process today, and the moment it is
    * two, the duplicate is a Zone Leader told twice about the same finding.
    *
-   * It writes before anyone is notified, which is the safe way round. If the emit then
-   * fails, one overdue action goes unannounced and the dashboard still shows it; the other
-   * order risks announcing the same thing every night, and a nightly reminder is one
-   * people filter.
+   * `onClaimed` queues the announcements on the same transaction (R-2), so the marker and
+   * its notices commit together: a failed enqueue rolls the claim back, and the next night
+   * claims the same actions again. Nothing is announced without its marker, nor marked
+   * without its announcement.
    */
-  async claimOverdue(scope: ScopeContext, unitId: string, now: Date) {
+  async claimOverdue(
+    scope: ScopeContext,
+    unitId: string,
+    now: Date,
+    onClaimed: (tx: Transaction, rows: CorrectiveActionRow[]) => Promise<void>,
+  ): Promise<number> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const claimed = await tx
@@ -204,17 +209,18 @@ export class CorrectiveActionsRepository extends BaseRepository {
         )
         .returning({ id: correctiveActions.id });
 
-      if (claimed.length === 0) return [];
+      if (claimed.length === 0) return 0;
 
       // The Zone's code and name live on the audit's snapshot, not on the action, so the
-      // rows a notification needs come from the same projection every other read uses —
-      // in this transaction, so a claim without its message cannot be committed.
-      return this.selectActions(tx).where(
+      // rows a notification needs come from the same projection every other read uses.
+      const rows = await this.selectActions(tx).where(
         inArray(
           correctiveActions.id,
           claimed.map((row) => row.id),
         ),
       );
+      await onClaimed(tx as Transaction, rows);
+      return rows.length;
     });
   }
 

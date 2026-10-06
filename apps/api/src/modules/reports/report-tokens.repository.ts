@@ -15,6 +15,7 @@ import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { setActorContext } from '../users/users.repository';
+import { insertAuditLog, type AuditLogRow } from '../../common/audit-log/audit-log.repository';
 
 /**
  * Report access tokens (§5.8, §10.4).
@@ -197,11 +198,12 @@ export class ReportTokensRepository extends BaseRepository {
     });
   }
 
-  /** CA9: one link, on its own transaction. */
-  async mintOne(scope: ScopeContext, row: ReportAccessTokenInsert): Promise<void> {
+  /** CA9: one link and its log entry, on one transaction. */
+  async mintOne(scope: ScopeContext, row: ReportAccessTokenInsert, log: AuditLogRow): Promise<void> {
     await this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       await this.mint(tx, [row]);
+      await insertAuditLog(tx, log);
     });
   }
 
@@ -219,12 +221,14 @@ export class ReportTokensRepository extends BaseRepository {
 
   /**
    * Revoke, once. A second revoke of the same link is a no-op rather than an overwrite:
-   * the first reason and the first revoker are the record of what happened.
+   * the first reason and the first revoker are the record of what happened, so `log` is
+   * written only by the call that revoked, on the same transaction.
    */
   async revoke(
     scope: ScopeContext,
     tokenId: string,
     reason: string,
+    log: AuditLogRow,
   ): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
@@ -237,7 +241,9 @@ export class ReportTokensRepository extends BaseRepository {
         })
         .where(and(eq(reportAccessTokens.id, tokenId), isNull(reportAccessTokens.revokedAt)))
         .returning({ id: reportAccessTokens.id });
-      return updated.length > 0;
+      if (updated.length === 0) return false;
+      await insertAuditLog(tx, log);
+      return true;
     });
   }
 }

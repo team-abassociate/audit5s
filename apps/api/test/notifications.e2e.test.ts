@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   API_BASE_PATH,
   type Audit,
@@ -10,6 +10,7 @@ import {
 import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
 import { OverdueActionsWorker } from '../src/modules/corrective-actions/overdue.worker';
 import { PushChannel } from '../src/infrastructure/push/push-channel';
+import { QueueService } from '../src/infrastructure/queue/queue.service';
 import {
   MessageChannel,
   type OutboundMessage,
@@ -292,7 +293,7 @@ describe('preferences (§5.9, §8.10)', () => {
  * bundle must never carry another leader's items, and nobody outside the Unit hears of it.
  */
 describe('overdue bundles (D10)', () => {
-  it('sends one notice per Zone and leader, only to people in scope, and never twice', async () => {
+  it('sends one notice per Zone and leader, only to people in scope, never twice, and retries a failed night', async () => {
     const insertUser = async (loginId: string, name: string, phone: string, role: string, unitId: string) => {
       const { rows } = await world.owner.query(
         `INSERT INTO "user" (login_id, full_name, phone_e164, role, password_hash, must_reset_password, status)
@@ -330,6 +331,23 @@ describe('overdue bundles (D10)', () => {
     );
 
     const overdue = world.app.get(OverdueActionsWorker);
+    const ids = [...zoeWalk.actions, ...zedWalk.actions].map((action) => action.id);
+
+    // A notice that cannot be queued leaves the actions unannounced, so the next night retries.
+    const send = vi
+      .spyOn(world.app.get(QueueService), 'sendInTransaction')
+      .mockRejectedValueOnce(new Error('queue down'));
+    try {
+      await expect(overdue.sweep(SYSTEM_SCOPE, world.unitA)).rejects.toThrow('queue down');
+    } finally {
+      send.mockRestore();
+    }
+    const unmarked = await world.owner.query(
+      `SELECT count(*)::int AS n FROM corrective_action WHERE id = ANY($1::uuid[]) AND overdue_notified_at IS NULL`,
+      [ids],
+    );
+    expect(unmarked.rows[0].n).toBe(5);
+
     expect(await overdue.sweep(SYSTEM_SCOPE, world.unitA)).toBe(5);
     const bundles = (await drainNotifications(world, worker, seen)).filter(
       (event) => event.type === 'CORRECTIVE_ACTION_OVERDUE',

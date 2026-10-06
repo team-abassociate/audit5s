@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { OverdueBundleData } from '@audit5s/contracts';
+import type { Transaction } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
-import { CorrectiveActionsRepository } from './corrective-actions.repository';
+import { CorrectiveActionsRepository, type CorrectiveActionRow } from './corrective-actions.repository';
 
 const DAY = 86_400_000;
 
@@ -31,9 +32,18 @@ export class OverdueActionsWorker {
   ) {}
 
   async sweep(scope: ScopeContext, unitId: string, now = new Date()): Promise<number> {
-    const overdue = await this.repository.claimOverdue(scope, unitId, now);
-    if (overdue.length === 0) return 0;
+    return this.repository.claimOverdue(scope, unitId, now, (tx, overdue) =>
+      this.announce(tx, unitId, now, overdue),
+    );
+  }
 
+  /** On the claim's transaction: the notices commit with the marker, or neither does. */
+  private async announce(
+    tx: Transaction,
+    unitId: string,
+    now: Date,
+    overdue: CorrectiveActionRow[],
+  ): Promise<void> {
     /*
      * D10: one notification per Zone and leader, not one per item — sixty-one "Overdue: …"
      * rows drowned the alerts that matter. Per leader as well as per Zone because a Zone
@@ -41,7 +51,7 @@ export class OverdueActionsWorker {
      * never shows anyone an item that is not theirs. The Coordinator and the Super Admin
      * get every bundle of the Units they hold, as they got every item before.
      */
-    const bundles = new Map<string, typeof overdue>();
+    const bundles = new Map<string, CorrectiveActionRow[]>();
     for (const action of overdue) {
       const key = [action.zoneId, action.assignedZoneLeaderUserId, action.assignedZoneLeaderName].join('|');
       bundles.set(key, [...(bundles.get(key) ?? []), action]);
@@ -65,15 +75,11 @@ export class OverdueActionsWorker {
       };
 
       /*
-       * No transaction to join: the claim is already committed, so R-2's hazard — a job
-       * for a write that rolled back — cannot arise here. A rerun of the night finds
-       * nothing left to claim, so nothing is sent twice.
-       *
-       * The actor is the system rather than a person. `emitCommitted` skips the actor as
-       * "their own act", and a due date passing is nobody's act — least of all the Zone
-       * Leader's, who is precisely the person who has to hear about it.
+       * The actor is the system rather than a person. An event skips its actor as "their
+       * own act", and a due date passing is nobody's act — least of all the Zone Leader's,
+       * who is precisely the person who has to hear about it.
        */
-      await this.events.emitCommitted({
+      await this.events.emit(tx, {
         type: 'CORRECTIVE_ACTION_OVERDUE',
         actorUserId: null,
         unitId,
@@ -88,6 +94,5 @@ export class OverdueActionsWorker {
     this.logger.log(
       `overdue sweep: announced ${overdue.length} action(s) in ${bundles.size} bundle(s) in unit ${unitId}`,
     );
-    return overdue.length;
   }
 }

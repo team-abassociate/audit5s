@@ -50,6 +50,15 @@ const ROLES_BY_REACH: readonly Role[] = ['ZONE_LEADER', 'CONSULTANT', 'COORDINAT
 
 const mobileDigits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
 
+/*
+ * US1: below 54rem of its own width (1024 beside the sidebar) the register drops Last
+ * sign-in to under the status, so Edit and ⋯ stay in sight instead of scrolling out of the
+ * box. The table's minimum drops with it (an unlayered rule, hence `!`).
+ */
+const TABLE_MIN = '[&_table]:min-w-[720px]!';
+const HIDE_SIGN_IN = '@max-[54rem]:hidden';
+const SHOW_SIGN_IN = '@min-[54rem]:hidden';
+
 function keepMobileDigits(event: FormEvent<HTMLInputElement>) {
   event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 10);
 }
@@ -166,7 +175,7 @@ export function UsersPage() {
         )}
 
         {users.data && list.length > 0 && (
-          <div className="[&_table]:min-w-[860px]!">
+          <div className={cn('@container', TABLE_MIN)}>
           <Table variant="register" label="Users">
             <thead>
               <tr>
@@ -175,7 +184,7 @@ export function UsersPage() {
                 <Th width="11%">Role</Th>
                 <Th width="17%">Units</Th>
                 <Th width="13%">Status</Th>
-                <Th width="16%">Last sign-in</Th>
+                <Th width="16%" className={HIDE_SIGN_IN}>Last sign-in</Th>
                 <Th width="14%"><span className="sr-only">Actions</span></Th>
               </tr>
             </thead>
@@ -213,6 +222,7 @@ function UserRow({
   const { can, scope, user: self } = useSession();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const signedIn = user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never';
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['users'] });
 
   const revokeAccess = useMutation({
@@ -311,10 +321,9 @@ function UserRow({
         <Td>
           <StatusChip kind="user" status={user.status} />
           {user.mustResetPassword && <div className="mt-1 text-xs text-ink-3">Must set a password</div>}
+          <div className={cn('mt-1 text-xs text-ink-3', SHOW_SIGN_IN)}>Signed in: {signedIn}</div>
         </Td>
-        <Td className="text-xs text-ink-3">
-          {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}
-        </Td>
+        <Td className={cn('text-xs text-ink-3', HIDE_SIGN_IN)}>{signedIn}</Td>
         <Td>
           <RowActions
             subject={user.fullName}
