@@ -100,7 +100,7 @@ export function AuditDetailPanel({
   });
 
   if (detail.isLoading) return <Spinner label="Loading the audit…" />;
-  if (detail.error) return <ErrorNotice error={detail.error} />;
+  if (detail.error) return <ErrorNotice error={detail.error} missing="This audit doesn't exist, or was removed." />;
   if (!detail.data) return null;
 
   const audit = detail.data;

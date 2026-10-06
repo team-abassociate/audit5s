@@ -515,7 +515,9 @@ function ActionPanel({ actionId, onClose }: { actionId: string | null; onClose: 
       onClose={onClose}
     >
       {detail.isLoading && <Spinner />}
-      {detail.error && <ErrorNotice error={detail.error} />}
+      {detail.error && (
+        <ErrorNotice error={detail.error} missing="This corrective action doesn't exist, or was removed." />
+      )}
       {action && (
         <ActionDetail
           key={action.id}

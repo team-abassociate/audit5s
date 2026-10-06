@@ -9,10 +9,9 @@ import type {
   Page,
 } from '@audit5s/contracts';
 import { S_SECTION_ORDER, formatDate } from '@audit5s/domain';
-import { CHECKLIST_VERSION_STATUS_LABEL, SECTION_LABEL } from '@/lib/labels';
+import { SECTION_LABEL } from '@/lib/labels';
 import { api } from '@/lib/api';
 import {
-  Badge,
   Button,
   Card,
   CardHeader,
@@ -26,6 +25,7 @@ import {
   Td,
   Th,
 } from '@/components/ui';
+import { StatusChip } from '@/components/Status';
 import { useSession } from '@/lib/session';
 import { ChecklistEditor } from './ChecklistEditor';
 import { ImportWizard } from './ImportWizard';
@@ -186,9 +186,9 @@ export function ChecklistsPage() {
                     </Td>
                     <Td>
                       {template.publishedVersionId ? (
-                        <Badge tone="good">Published</Badge>
+                        <StatusChip kind="checklist" status="PUBLISHED" />
                       ) : (
-                        <Badge tone="warn">No published version</Badge>
+                        <StatusChip shape="open">No published version</StatusChip>
                       )}
                     </Td>
                     <Td>50</Td>
@@ -280,17 +280,7 @@ function TemplateDetail({
                 <tr key={version.id}>
                   <Td>v{version.versionNumber}</Td>
                   <Td>
-                    <Badge
-                      tone={
-                        version.status === 'PUBLISHED'
-                          ? 'good'
-                          : version.status === 'DRAFT'
-                            ? 'warn'
-                            : 'neutral'
-                      }
-                    >
-                      {CHECKLIST_VERSION_STATUS_LABEL[version.status]}
-                    </Badge>
+                    <StatusChip kind="checklist" status={version.status} />
                   </Td>
                   <Td>
                     {formatDate(version.publishedAt)}

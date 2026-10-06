@@ -61,7 +61,7 @@ export function UnitDetail() {
   });
 
   if (unit.isLoading) return <Spinner />;
-  if (unit.error) return <ErrorNotice error={unit.error} />;
+  if (unit.error) return <ErrorNotice error={unit.error} missing="This Unit doesn't exist, or was removed." />;
   if (!unit.data) return null;
 
   const editable = (field: string): boolean =>
