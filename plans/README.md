@@ -2,7 +2,13 @@
 
 Written by session S1 with `improve-animations` in plan mode (the report had already vetted
 the findings, so there was no audit pass). Commit stamp `ffae30c`. Effect names follow
-`animation-vocabulary`. S16 reconciles this folder against the code.
+`animation-vocabulary`.
+
+**Reconciled by S17 on 2026-10-06 against `main` 2c5f133: all five still hold.** The
+meter fills by `scaleX` (`styles.css` `.gb-meter i`); `--press` lives in `gemba-tokens.css`
+and is zeroed under reduced motion; lift hovers sit behind `(hover: hover) and (pointer: fine)`;
+the arrival highlight is a `box-shadow` transition with `@starting-style`. The "current"
+line numbers inside each plan describe the code before S1 and are left as written.
 
 | # | Plan | Severity | Status |
 |---|---|---|---|

@@ -2212,10 +2212,12 @@ so a bad spreadsheet can never leave half a checklist behind.
 | --- | --- | --- | --- |
 | GET | `/corrective-actions` | scope | `?unitId=&zoneId=&status=&assignedTo=&auditId=&overdue=true` |
 | GET | `/corrective-actions/{id}` | scope | Includes the full submission history |
+| GET | `/corrective-actions/summary` | scope | Counts for the list's filters, so a screen never counts the rows it has loaded (UX audit CA10) |
 | POST | `/corrective-actions/{id}/submissions` | ZL (`own_unit`) | **Idempotency-Key required.** Option A `{ option:"COMPLETED", submittedByName, description, afterEvidenceId }` · Option B `{ option:"NOT_POSSIBLE", explanation }` → `201`; state → `ACTION_SUBMITTED`/`NOT_POSSIBLE`; event to Super Admin. Touches exactly one action (7.3). A device sends the attempt's own `id` instead, minted when the form opened, so a replayed sync item finds its attempt rather than making `attempt_no + 1` (R-13). |
 | POST | `/corrective-actions/{id}/verify` | SA | `{ comment? }` → `VERIFIED`; may roll the audit to `CLOSED` |
 | POST | `/corrective-actions/{id}/reopen` | SA | `{ reason }` (required) → `REOPENED`, `reopen_count++` |
 | POST | `/corrective-actions/{id}/reassign` | SA, COO | `{ zoneLeaderUserId }` |
+| POST | `/corrective-actions/{id}/link` | SA | **Idempotency-Key required.** Mints one more public link to this action for copying or resending; the URL is in this response once and not on a replay. Earlier links, the PDF's included, keep working (R-41) |
 
 ### Public, signed-token surface (the live report page)
 
@@ -2254,6 +2256,7 @@ Consultants have **no** route here. `GET /audits/{id}/summary` (8.6) is their re
 | POST | `/notifications/{id}/read` · `/notifications/read-all` | own | idempotent |
 | GET/PUT | `/notification-preferences` | own | per event type × channel |
 | GET | `/analytics/organization/overview` | SA | KPI tiles |
+| GET | `/analytics/organization/unit-trends` | SA | One score trend per Unit with its change, for comparing Units (R-45(e)) |
 | GET | `/analytics/units/{unitId}/overview` | SA, COO `own_unit` | |
 | GET | `/analytics/units/{unitId}/trend` | SA, COO | `?metric=score&granularity=month&from=&to=` |
 | GET | `/analytics/units/{unitId}/sections` | SA, COO | Radar data, per S |
@@ -2263,6 +2266,7 @@ Consultants have **no** route here. `GET /audits/{id}/summary` (8.6) is their re
 | GET | `/analytics/activity/consultants` · `/zone-leaders` | SA, COO | |
 | GET | `/audit-logs` | SA | `?actorId=&action=&resourceType=&resourceId=&from=&to=` |
 | GET | `/sync-conflicts` | SA | `?resolved=false` |
+| GET | `/sync-conflicts/summary` | SA | Queue totals for the same filters as the list |
 | POST | `/sync-conflicts/{id}/resolve` | SA | `{ resolution: "APPLY" \| "DISCARD", note }` — `APPLY` routes through the post-completion override path so it is fully audit-logged |
 | GET | `/health` · `/health/ready` | public / internal | liveness, readiness (DB, R2) |
 

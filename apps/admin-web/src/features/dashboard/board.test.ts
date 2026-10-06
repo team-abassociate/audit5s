@@ -75,11 +75,10 @@ describe('figures', () => {
     expect(score2(76.9)).toBe('76.90');
   });
 
-  it('never lets the displayed rounding decide a band', () => {
-    // 74.999 is Improving; rounding it for display reads as 75.00, which is On Track. The
-    // band must come from the raw value, never be re-derived from this string. R-6b puts
-    // the four boundaries at 90 / 75 / 60.
-    expect(score2(74.999)).toBe('75.00');
+  it('truncates, so the shown figure never crosses into the next band', () => {
+    // 74.999 is Improving; rounded it would read 75.00, which is On Track. R-45(e) truncates.
+    // The band still comes from the raw value. R-6b puts the boundaries at 90 / 75 / 60.
+    expect(score2(74.999)).toBe('74.99');
     expect(bandOf(74.999)).toBe('warn');
     expect(bandOf(75)).toBe('ok');
   });
