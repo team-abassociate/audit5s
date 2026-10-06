@@ -21,6 +21,7 @@ import { TokenService, hashToken } from '../../common/auth/token.service';
 import { getRequestContext } from '../../common/observability/request-context';
 import {
   LOCKOUT_THRESHOLD,
+  LOCKOUT_WINDOW_SECONDS,
   RATE_LIMITS,
   RateLimitService,
 } from '../../common/rate-limit/rate-limit.service';
@@ -50,7 +51,7 @@ export class AuthService {
     const context = getRequestContext();
     const ipAddress = context?.ipAddress ?? null;
 
-    this.enforceLoginRateLimits(request.loginId, ipAddress);
+    this.enforceLoginRateLimits(ipAddress);
 
     const user = await this.repository.findByLoginId(request.loginId);
 
@@ -567,16 +568,10 @@ export class AuthService {
     };
   }
 
-  private enforceLoginRateLimits(loginId: string, ipAddress: string | null): void {
-    const perLoginId = this.rateLimits.consume(`login:${loginId}`, RATE_LIMITS.loginPerLoginId);
-    const perIp = this.rateLimits.consume(
-      `login-ip:${ipAddress ?? 'unknown'}`,
-      RATE_LIMITS.loginPerIp,
-    );
-
-    if (!perLoginId.allowed || !perIp.allowed) {
-      const retryAfter = Math.max(perLoginId.retryAfterSeconds, perIp.retryAfterSeconds);
-      throw AppError.rateLimited(`Too many attempts. Try again in ${retryAfter} seconds.`);
+  private enforceLoginRateLimits(ipAddress: string | null): void {
+    const perIp = this.rateLimits.consume(`login-ip:${ipAddress ?? 'unknown'}`, RATE_LIMITS.loginPerIp);
+    if (!perIp.allowed) {
+      throw AppError.rateLimited(`Too many attempts. Try again in ${perIp.retryAfterSeconds} seconds.`);
     }
   }
 
@@ -587,12 +582,12 @@ export class AuthService {
     // does not hand an attacker a fresh budget.
     const failures = await this.repository.recentFailureCount(
       request.loginId,
-      RATE_LIMITS.loginPerLoginId.windowSeconds,
+      LOCKOUT_WINDOW_SECONDS,
     );
 
     const lockUntil =
       failures >= LOCKOUT_THRESHOLD
-        ? new Date(Date.now() + RATE_LIMITS.loginPerLoginId.windowSeconds * 1000)
+        ? new Date(Date.now() + LOCKOUT_WINDOW_SECONDS * 1000)
         : null;
 
     await this.repository.applyFailedLogin(user.id, lockUntil);
