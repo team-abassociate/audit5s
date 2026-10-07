@@ -57,3 +57,11 @@ Every rule on who may do what: `apps/api/test/authorization-matrix.ts`.
 - Do not run Prettier on this repo: it reformats whole files.
 - The full gate before every PR, from the repo root: `pnpm typecheck && pnpm lint`, the
   package tests one by one, and the e2e suites you touched.
+
+## Before release day (do not lose this)
+
+- **Memory check of `worker-report` (plan §12, STACK §9).** Kaizen sheets and 5S reports print in
+  the same 1536 MB container. Prints are serialised (`ReportRenderer.printToPdf`), so they never
+  share Chromium, but image resizing can overlap. On a local stack, queue a photo-heavy 5S Zone
+  report and a few Kaizen exports together and watch `docker stats` for the worker. It must stay
+  well under its `mem_limit`. If it doesn't, stop and tell the owner. Never test against production.

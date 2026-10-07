@@ -402,8 +402,11 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
 - `POST /:id/export` enqueues `kaizen.export` and returns 202 with an `exportId`;
   `GET /:id/export/:exportId` answers QUEUED / READY / FAILED, and once READY carries a
   short-TTL presigned GET. The job id is the export id, so there is no export table.
-- It prints in `worker-report`, the one process with Chromium, on its own queue at
-  concurrency 1 and on the same browser as the 5S reports, so neither waits for the other.
+- It prints in `worker-report`, the one process with Chromium, from its own queue at
+  concurrency 1, on the same browser as the 5S reports. Prints are serialised in
+  `ReportRenderer.printToPdf`: a Kaizen sheet and a 5S report never hold Chromium memory at
+  once, so the container's peak is a single 5S report's, as before. A sheet prints in about a
+  second, so the most a 5S report waits is about that.
   Same rules as the 5S PDF: no network at render, fonts (Archivo, IBM Plex Mono, OFL) and
   photos embedded.
 
@@ -651,7 +654,8 @@ including running migrations on the live database. So:
   that installs today's production build, queues offline 5S audits with photos, upgrades to
   the Kaizen build and syncs. **Zero queued 5S items may be lost.**
 - **Kaizen export runs at concurrency 1 in `worker-report`** (its own queue, the 5S
-  reports' browser) and must not delay 5S report jobs. Check the container memory ceilings (STACK §9) with a Kaizen export and a 5S report
+  reports' browser, prints serialised with them) and must not delay 5S report jobs beyond a
+  second or so. Check the container memory ceilings (STACK §9) with a Kaizen export and a 5S report
   rendering at the same time.
 
 ### Release rehearsal (before release day)

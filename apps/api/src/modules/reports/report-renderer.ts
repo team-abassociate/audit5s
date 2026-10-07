@@ -68,10 +68,11 @@ export class ReportRenderer implements OnModuleDestroy {
   private readonly logger = new Logger(ReportRenderer.name);
   private browser: Browser | null = null;
   /**
-   * The launch in progress. A Kaizen sheet and a 5S report are separate queues and can
-   * print at once; without this both would launch, and one browser would be leaked.
+   * The print in progress. A Kaizen sheet and a 5S report come from separate queues, so they
+   * could print at once; each waits for the other instead, so this 1536 MB container never
+   * holds two pages in Chromium. A Kaizen sheet prints in about a second.
    */
-  private launching: Promise<Browser> | null = null;
+  private printing: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly storage: ObjectStorage,
@@ -259,8 +260,14 @@ export class ReportRenderer implements OnModuleDestroy {
     return new Map(fetched.filter((entry) => entry !== null));
   }
 
-  /** Self-contained HTML (no network, see above) to an A4 PDF. Kaizen's sheet prints through it too. */
-  async printToPdf(html: string): Promise<Buffer> {
+  /** Self-contained HTML (no network, see above) to an A4 PDF, one at a time. Kaizen's sheet prints through it too. */
+  printToPdf(html: string): Promise<Buffer> {
+    const run = this.printing.then(() => this.print(html));
+    this.printing = run.catch(() => undefined);
+    return run;
+  }
+
+  private async print(html: string): Promise<Buffer> {
     const browser = await this.launch();
     const context = await browser.newContext({
       // Fixed viewport and scale factor: the print box comes from `@page`, but a
@@ -299,13 +306,6 @@ export class ReportRenderer implements OnModuleDestroy {
 
   private async launch(): Promise<Browser> {
     if (this.browser?.isConnected()) return this.browser;
-    this.launching ??= this.startBrowser().finally(() => {
-      this.launching = null;
-    });
-    return this.launching;
-  }
-
-  private async startBrowser(): Promise<Browser> {
 
     // Imported lazily so `apps/api` and `worker-general` never load a browser driver they
     // do not use — and so a missing Chromium is an error in the worker that needs it
