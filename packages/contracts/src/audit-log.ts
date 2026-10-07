@@ -89,6 +89,14 @@ export const AUDIT_LOG_ACTIONS = [
   'sync.item_held',
   /** The auditor withdrew an unfinished Zone from their audit ("abort this Zone", 0031). */
   'audit_zone.withdrawn',
+  /** Kaizen (R-48): a Zone Leader filed one; the DRAFT got its number. */
+  'kaizen.created',
+  /** The author submitted it, first time or after a send-back. */
+  'kaizen.submitted',
+  /** The Coordinator's three answers; each also writes `kaizen_review`, in the same transaction. */
+  'kaizen.approved',
+  'kaizen.sent_back',
+  'kaizen.rejected',
 ] as const;
 export const auditLogActionSchema = z.enum(AUDIT_LOG_ACTIONS);
 export type AuditLogAction = z.infer<typeof auditLogActionSchema>;

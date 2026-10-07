@@ -1402,6 +1402,125 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description: 'audit_log:read — SUPER_ADMIN only (PART 6.3)',
     expected: { SUPER_ADMIN: { inScope: OK } },
   },
+
+  // ------------------------------------------------------------- Kaizen (R-48)
+  // A Zone Leader's Kaizens are their own: another leader's, even in their Unit, reads as
+  // absent. "Out of scope" below is another Unit's Kaizen; the author-only cases are in
+  // the dedicated suite.
+  {
+    method: 'GET',
+    path: '/api/v1/kaizens',
+    description: 'kaizen:read — a Zone Leader their own, a Coordinator the Unit, a Consultant assigned Units',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/kaizens/dashboard',
+    description: 'kaizen:read — the four §4.7 visuals, over exactly what the list would show',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/kaizens/analysis',
+    description: 'kaizen:read — the department-wise / zone-wise table',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/kaizens/:kaizenId',
+    description: 'kaizen:read — one Kaizen with its review history',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/kaizens',
+    description: 'kaizen:create — a DRAFT, idempotent on the device-minted id; numbered by the database',
+    expected: { SUPER_ADMIN: { inScope: CREATED }, ZONE_LEADER: { inScope: CREATED, outOfScope: NOT_FOUND } },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/kaizens/:kaizenId',
+    description: 'kaizen:create — the author edits while DRAFT or SENT_BACK',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/kaizens/:kaizenId/submit',
+    description: 'kaizen:create — the author submits a complete sheet; idempotent on submissionId',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/kaizens/:kaizenId/review',
+    description:
+      'kaizen:review — approve, send back or reject (a reason for the last two); Idempotency-Key ' +
+      'required; kaizen_review + audit_log in one transaction',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/kaizens/:kaizenId/photos/upload-intent',
+    description: 'kaizen:create — the evidence pipeline’s presigned PUT, for the before/after boxes',
+    expected: {
+      SUPER_ADMIN: { inScope: CREATED, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: CREATED, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/kaizens/:kaizenId/photos/:photoId/commit',
+    description: 'kaizen:create — size, checksum and magic bytes verified; EXIF strip enqueued',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'DELETE',
+    path: '/api/v1/kaizens/:kaizenId/photos/:photoId',
+    description: 'kaizen:create — soft delete, while the Kaizen is editable',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
 ];
 
 /** `METHOD path` — the key the completeness check compares on. */

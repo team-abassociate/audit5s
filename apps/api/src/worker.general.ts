@@ -5,6 +5,7 @@ import { AppModule } from './app.module';
 import { QUEUES, QueueService } from './infrastructure/queue/queue.service';
 import { ChecklistImportWorker } from './modules/checklists/import/checklist-import.worker';
 import { MediaWorker } from './modules/evidence/media.worker';
+import { KaizenPhotoWorker } from './modules/kaizens/kaizen-photo.worker';
 import { DeviceReleaseWorker } from './modules/sync/device-release.worker';
 import { NotificationWorker } from './modules/notifications/notification.worker';
 import { StructuredLogger } from './common/observability/logger';
@@ -41,6 +42,7 @@ async function bootstrap(): Promise<void> {
 
   await app.get(ChecklistImportWorker).register(queue);
   await app.get(MediaWorker).register(queue);
+  await app.get(KaizenPhotoWorker).register(queue);
   await app.get(NotificationWorker).register(queue);
   await app.get(DeviceReleaseWorker).register(queue);
   const analytics = app.get(AnalyticsRollupWorker);

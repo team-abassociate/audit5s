@@ -20,6 +20,7 @@ import { AssignmentsModule } from './modules/audit-assignments/assignments.modul
 import { AuditsModule } from './modules/audits/audits.module';
 import { DevicesModule } from './modules/devices/devices.module';
 import { CorrectiveActionsModule } from './modules/corrective-actions/corrective-actions.module';
+import { KaizensModule } from './modules/kaizens/kaizens.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
@@ -64,6 +65,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     AuditsModule,
     EvidenceModule,
     CorrectiveActionsModule,
+    KaizensModule,
     ReportsModule,
     NotificationsModule,
     DevicesModule,
