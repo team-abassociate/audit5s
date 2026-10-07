@@ -82,6 +82,12 @@ export const SYNC_ENTITY_TYPES = [
   'evidence',
   // After `evidence`: Option A cites an after-photo, whose commit must land first.
   'corrective_action_submission',
+  // Kaizen (R-48). A separate tree, so its place after 5S's changes nothing for 5S:
+  // the Kaizen, then its photos, then the submission — a submitted Kaizen takes no new
+  // photo, so the submission has to follow them.
+  'kaizen',
+  'kaizen_photo',
+  'kaizen_submission',
 ] as const;
 export const syncEntityTypeSchema = z.enum(SYNC_ENTITY_TYPES);
 export type SyncEntityType = z.infer<typeof syncEntityTypeSchema>;

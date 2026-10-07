@@ -184,6 +184,9 @@ export const SYNC_ENTITY_LABEL: Record<SyncEntityType, string> = {
   question_response: 'Answer to a question',
   evidence: 'Photo',
   corrective_action_submission: 'Corrective action answer',
+  kaizen: 'Kaizen',
+  kaizen_photo: 'Kaizen photo',
+  kaizen_submission: 'Kaizen submission',
 };
 
 export function syncEntityLabel(type: string): string {

@@ -180,8 +180,9 @@ Kaizen follows **every** audit5s rule. These are the ones that will be tested:
 - **Idempotency keys** on every mutating Kaizen endpoint, through the existing middleware.
 - **Media never transits the API.** Before/after photos use the existing `evidence` /
   `media_queue` / presigned-PUT pipeline: client downscale ≤1920px at ~80% JPEG, magic-byte
-  check, EXIF strip, SHA-256, content-addressed key. Add evidence kinds for Kaizen rather
-  than a parallel media table.
+  check, EXIF strip, SHA-256, content-addressed key. **Owner's decision (2026-10-07):** Kaizen
+  photos live in their own `kaizen_photo` table, not in 5S's `evidence` (which belongs to
+  audits), so 5S's photo records are untouched. Same pipeline code, different row.
 - **Offline-first.** A Zone Leader can draft and submit a Kaizen with no signal. Writes are
   committed per field to SQLite. Submission goes through the existing `outbox`, and the
   sync indicator covers Kaizen items too.
@@ -214,28 +215,29 @@ first), named in the house style (e.g. `0044_a_zone_leader_records_a_kaizen.sql`
 matching Drizzle schema in `packages/db/src/schema` and a schema test:
 
 - `kaizen`: id (uuid), unit_id, zone_id, author_user_id, `kaizen_no` (server-assigned,
-  unique per unit, format `KZ-{ZONECODE}-{NNN}`. A device that is offline shows "Number on
-  sync"), machine, line_area, implemented_on (date), team_members, theme, target,
+  unique per unit, format `KZ-{ZONECODE}-{NNN}`, e.g. `KZ-Z07-001`, the count running per
+  Unit. A device that is offline shows "Number on sync"), machine, line_area, implemented_on (date), team_members, theme, target,
   problem_5w1h, root_cause_4m, analysis_7qc, countermeasure, wastes (enum array),
   parameters (enum array), horizontal_deployment (bool), benefits, annual_saving
-  numeric(14,2), idea_by, implemented_by, status, client_id (for idempotent sync),
-  created_at, submitted_at, updated_at.
+  numeric(14,2), idea_by, implemented_by, status, created_at, submitted_at (first
+  submission), updated_at. The id itself is device-minted (house style), which is what makes
+  sync idempotent, so there is no separate client_id.
 - `kaizen_review`: append-only. kaizen_id, reviewer_user_id, decision, comment, created_at.
 - Enums from `packages/contracts`:
   - `KAIZEN_STATUSES = ['DRAFT','SUBMITTED','APPROVED','SENT_BACK','REJECTED']`
   - `KAIZEN_WASTES`: Defects, Overproduction, Waiting Time, Non-utilized talent,
     Transportation, Inventory, Motion, Extra-processing (the sheet's order, numbered 1–8)
   - `KAIZEN_PARAMETERS`: Productivity, Quality, Cost, Delivery, Safety, Morale
-- New permissions (`kaizen.create`, `kaizen.review`, `kaizen.read`), seeded into
-  `role_permission` in the same migration.
-- New `evidence` kinds `KAIZEN_BEFORE` and `KAIZEN_AFTER`. Check the R-5/R-10/R-12 trigger
-  carve-outs still hold for them.
+- `kaizen_photo`: the before/after photos (see §3, Media).
+- New permissions `kaizen:create`, `kaizen:read`, `kaizen:review` (house format
+  `resource:action`), added to `PERMISSION_MATRIX` in `packages/domain`. The guard reads the
+  matrix in code, so no migration row is needed; `seed.ts` mirrors it into `role_permission`.
 
 ### 4.2 Roles: existing roles, no new ones
 
 | Role | Kaizen ability |
 |---|---|
-| ZONE_LEADER | Create, edit DRAFT/SENT_BACK, submit, and see own Kaizens. Tabs: **Overview · New Kaizen · History** |
+| ZONE_LEADER | Create, edit DRAFT/SENT_BACK, submit, and see **only their own** Kaizens (owner, 2026-10-07). Tabs: **Overview · New Kaizen · History** |
 | COORDINATOR | Review SUBMITTED Kaizens in their Unit (Approve / Send back / Reject; a reason is **required** for Send back and Reject). Tabs: **Overview · Kaizens · My Unit · Analysis** |
 | CONSULTANT | Read and analyse Kaizens in assigned Units (R-19/R-28 scoping) |
 | SUPER_ADMIN | Everything (R-18) |
@@ -393,6 +395,7 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
 ### 4.6 Excel export (the Kaizen Sheet)
 
 - The template is `docs/requirements/kaizen/kaizen-sheet-format.xlsx` (already in the repo). Ship it as an API asset.
+- The downloaded file is named `{Unit name} - Zone {n} {Zone name} - {date}.xlsx` (owner, 2026-10-07).
 - The output must be the client's sheet filled in: cells Q3 Kaizen No., Q4 Machine, Q5
   Line/Area, Q6 Date, C8 Team, C9 Theme, L9 Target, C10 Problem, G10 Countermeasure, C25
   Analysis, C41 Root cause, G33 Benefits. Before/after photos go in the G13 and M13 boxes,
@@ -538,7 +541,7 @@ to the plan is a PR to that file, never an edit on one machine only.
 
 **Order:**
 
-1. **Phase 0 (Device A alone): steps 1 + 2.** Contracts, migration and domain merged to `main`.
+1. **Phase 0 (Device A alone): steps 1 + 2.** Contracts, migration and domain merged to `feat/kaizen`.
    Device B meanwhile: setup (below), then the `prototype` skill on the module picker and the
    Kaizen card (two or three GEMBA variants), and pick one. No code merged yet.
 2. **Phase 1 (parallel).** Device A: step 3 (API) **first**, then 7 (export), then 8 (admin

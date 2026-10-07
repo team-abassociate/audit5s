@@ -14,3 +14,4 @@ export * from './corrective-action';
 export * from './image-metadata';
 export * from './sync-policy';
 export * from './datetime';
+export * from './kaizen';

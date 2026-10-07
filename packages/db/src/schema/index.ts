@@ -10,3 +10,4 @@ export * from './reports';
 export * from './notifications';
 export * from './sync';
 export * from './analytics';
+export * from './kaizens';
