@@ -283,7 +283,13 @@ adding a second sync path.
 The owner supplied reference images in `docs/requirements/kaizen/inspo/`. **Open all five before
 building any of these.** `0-full-dashboard.png` is mood only. `1`–`4` are the four components
 wanted. **Take the content, structure and behaviour from the images, and the look from
-GEMBA-BOARD.** No gradients, no rounded corners, no donut, no blue. Tiles are GEMBA tiles: zero
+GEMBA-BOARD.** No gradients, no rounded corners, no donut, no blue.
+
+**Owner's decision (2026-10-07), recorded as part of R-48: in the Kaizen module, green means
+Approved.** Approved marks use the GEMBA green tokens (`--ok-band` for bar fills, `--ok` for
+fills that carry text). Kaizen has no score bands, so the module has no ambiguity. Green stays
+reserved for *Approved* and nothing else in Kaizen: no other status, series or decoration
+uses it. Tiles are GEMBA tiles: zero
 radius, 1.5/2px ink edge, hard offset shadow, Archivo 900 figures, DM Mono labels.
 
 Every number on these visuals comes from **one endpoint**, `GET /kaizens/dashboard?period=…`,
@@ -327,8 +333,11 @@ hand-authored SVG, with colours read from the tokens.
 - Shape: **web**, SVG trapezoids, where each stage's top edge is its own width and its bottom
   edge is the next stage's width (the reference shape). **Phone**, centred stacked bars of the
   same widths (a stepped funnel), with no SVG.
-- Fills step from light to dark through the ink scale (`--tile-2` → `--edge-soft` → `--ink-3` →
-  `--ink`), text flipping to `--tile` on the dark stages. Not the reference's blue/green.
+- Fills: Submitted `--edge-soft`, Reviewed `--ink-3`, then the two Approved stages in green:
+  Approved `--ok-band`, Approved with a saving `--ok`. This matches the reference, whose last
+  stage is green. Text on each stage uses whichever of `--ink` / `--tile` meets 4.5:1 **in that
+  theme** (dark mode's `--ok` is a light green). Check both themes.
+- **Stages are confirmed by the owner**: Submitted → Reviewed → Approved → Approved with a saving.
 - Same **Overall · Month · Year** control as the KPI card.
 - Width changes animate when the period changes: the `--motion` duration, ease-out,
   interruptible, and none under reduced motion (`animate-expo` / `animate` skills).
@@ -338,7 +347,8 @@ hand-authored SVG, with colours read from the tokens.
   one. Left bar = **Submitted** that month, right bar = **Approved** that month (by
   review date). The title reads "KAIZEN SUBMISSION / COMPLETION TREND", and the two title
   words act as the legend, styled like their bars.
-- Bars: Submitted = `--edge-soft` fill with a 1px `--ink-3` outline; Approved = solid `--ink`.
+- Bars: Submitted = `--edge-soft` fill with a 1px `--ink-3` outline; Approved = solid
+  `--ok-band` (green, as in the reference).
   Square tops. Y axis starts at 0, integer ticks only, axis labels in `--ink-3` DM Mono.
 - A month with no Kaizens shows empty bars at 0 with its label kept, never a gap in the axis.
 
@@ -439,7 +449,8 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
 
 ## 8. Documentation to update (same PRs, not later)
 
-- `DECISIONS.md`: add **R-48: Leanstack hosts two modules, 5S and Kaizen**. It covers the
+- `DECISIONS.md`: add **R-48: Leanstack hosts two modules, 5S and Kaizen**. Include the
+  owner's ruling that green means Approved inside the Kaizen module (§4.7). It covers the
   module picker, the Kaizen roles, the gallery allowance for Kaizen photos, server-assigned
   Kaizen numbers, and the export renderer choice.
 - `ARCHITECTURE.md`: a Kaizen section (entities, state machine, endpoints, sync items).
@@ -463,11 +474,6 @@ owner for confirmation**, then:
   prefix.)
 - Should approved savings feed the existing analytics rollups (`metric_daily_*`)? (Default:
   no, Kaizen analysis is computed live until it measurably needs a rollup.)
-- Dashboard colours: §4.7 uses ink tones, not the reference's green for "completed", because
-  GEMBA reserves green for score bands. If the owner wants green for Approved, that is a
-  design-system decision for R-48. Ask, don't just do it.
-- Funnel stages: §4.7 B assumes Submitted → Reviewed → Approved → Approved with a saving.
-  Confirm with the owner before step 3 if a different stage list is wanted.
 - Anything from the STACK.md §6 "do not add" table, RAM below ~4 GB, or an authorization
   cell that reads ambiguously.
 
