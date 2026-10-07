@@ -1,8 +1,9 @@
 # Motion plans — UX audit 2026-10-03 (report §10.2, M1–M5)
 
 > **⛔ Kaizen work: `feat/kaizen` is the main branch for Kaizen.** Never commit, push, merge
-> or open a PR to `main`: `main` deploys to the production VPS that clients use for 5S. Branch
-> from `feat/kaizen` as `feat/kaizen-<step>-<topic>`, and PR into `feat/kaizen`. Only the owner
+> or open a PR to `main`: `main` deploys to the production VPS that clients use for 5S. Work
+> only on your device branch (`kaizen/krxna` on Device A, `kaizen/geetahuja` on Device B), and PR
+> it into `feat/kaizen`. Only the owner
 > merges `feat/kaizen` → `main`, by hand, on release day. Plan:
 > [`plans/kaizen-module.md`](kaizen-module.md) (BRANCH RULE).
 

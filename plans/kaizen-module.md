@@ -13,9 +13,21 @@
 - The repo's **`main` is production.** Every commit on it deploys automatically to the VPS
   that client plants use for 5S. **No Kaizen commit, branch, merge, rebase or PR ever targets
   `main`.** No exceptions, no "small fix", no "just docs".
-- Every Kaizen branch is cut **from `feat/kaizen`** and named `feat/kaizen-<step>-<topic>`
-  (e.g. `feat/kaizen-3-api`, `feat/kaizen-5-leader-screens`). Every Kaizen PR has
-  **base = `feat/kaizen`**. Before `gh pr create`, check that `--base feat/kaizen` is set.
+- **Each device works on its own branch, cut from `feat/kaizen`:**
+  - **Device A (krxna): `kaizen/krxna`**
+  - **Device B (geetahuja): `kaizen/geetahuja`**
+
+  All commits go to your own device branch, never to the other device's branch, never
+  directly to `feat/kaizen`, and never to `main`. Changes reach `feat/kaizen` only through a PR
+  **from your device branch, base `feat/kaizen`**. Before `gh pr create`, check that
+  `--head kaizen/<you> --base feat/kaizen` is set.
+- One PR per build step (or slice of one), titled with the step, e.g.
+  `Kaizen step 3: API module`. Merge with a **merge commit** (the repo's existing style),
+  never squash or rebase-merge, so your branch and `feat/kaizen` keep the same commits.
+- **Keep your branch current by merging, never rebasing:** at the start of every session and
+  before every PR, `git fetch origin && git merge origin/feat/kaizen`. Your branch is shared on
+  GitHub, so a rebase would need a force-push, which is forbidden. This overrides the
+  "rebase on `main`" line in `AGENTS.md`, which is about 5S work.
 - The only flow into `main` is **one** PR, `feat/kaizen` → `main`, opened and merged **by the
   owner, by hand, on release day** (§12). No agent opens or merges that PR.
 - 5S fixes for clients are a separate track: they go to `main` as before, and are then
@@ -415,7 +427,7 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
 
 ---
 
-## 6. Build order (one PR per step into `feat/kaizen`, rebase on `feat/kaizen` before each)
+## 6. Build order (one PR per step, device branch → `feat/kaizen`; merge `origin/feat/kaizen` into your branch before each)
 
 1. `contracts/kaizen.ts` + migration + Drizzle schema + RLS + triggers + schema test.
    (Contracts is the contention point, so land this alone and first.)
@@ -491,9 +503,13 @@ It has **no upstream**, so a bare `git push` can't reach `main`. The prototype a
 Kaizen Sheet are in `docs/requirements/kaizen/`, and the branch rule is at the top of `CLAUDE.md`,
 `AGENTS.md` and `plans/README.md`.
 
-**Still to do, by the owner:** publish the branch with `git push -u origin feat/kaizen` (from the
-worktree). Device B can start once it is on GitHub: `git fetch origin && git switch feat/kaizen`,
-then read this file.
+**Still to do, by the owner:** publish both shared branches, from the worktree:
+`git push origin feat/kaizen kaizen/krxna` (each to its own name; never `main`).
+Device A's branch `kaizen/krxna` already exists locally, cut from `feat/kaizen`.
+
+**Device B, first time:** `git fetch origin && git switch -c kaizen/geetahuja origin/feat/kaizen
+&& git push -u origin kaizen/geetahuja`, then read this file. After that, `git push` from
+`kaizen/geetahuja` goes only to `kaizen/geetahuja`.
 
 From then on, `plans/kaizen-module.md` on `feat/kaizen` is the copy both devices read. A change
 to the plan is a PR to that file, never an edit on one machine only.
@@ -524,9 +540,11 @@ to the plan is a PR to that file, never an edit on one machine only.
 - Device B needs a contract change? Do not edit `packages/contracts`. Open a GitHub issue or
   draft PR describing it; Device A makes it. Same for migrations. Two people writing
   migrations means two `0044_…` files.
-- One branch per step: `feat/kaizen-1-schema`, `feat/kaizen-5-leader-screens`, etc. Small PRs,
-  PRs target `feat/kaizen`, never `main`. Rebase on `feat/kaizen` before opening, and pull it at
-  the start of every session.
+- Device A commits only on `kaizen/krxna`, and Device B only on `kaizen/geetahuja`. PRs go from
+  the device branch into `feat/kaizen`, never `main`. Merge `origin/feat/kaizen` into your branch
+  at the start of every session and before opening a PR (no rebase, no force-push).
+- Need something from the other device before their PR is merged? Wait for the merge into
+  `feat/kaizen`. Never merge or cherry-pick from the other device's branch.
 - Each PR description ends with a **"For the other device"** line: what changed that they
   depend on (new endpoint, renamed field, new enum value), or "nothing".
 - Both devices run the full stack locally (`pnpm dev:up && pnpm db:migrate && pnpm seed`).
