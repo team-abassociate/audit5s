@@ -28,6 +28,8 @@ export const QUEUES = {
    * nightly rollup. Enqueued inside `complete`'s own transaction (R-2).
    */
   analyticsRollup: 'analytics.rollup',
+  /** A Kaizen photo's EXIF strip (R-48): the media worker's rule for Kaizen's own photo list. */
+  kaizenPhotoProcess: 'kaizen.photo.process',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

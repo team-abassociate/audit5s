@@ -229,7 +229,7 @@ async function insertUnit(owner: Client, name: string): Promise<string> {
  * walk each actor through a reset before it could test anything else. The forced-reset
  * behaviour has its own test.
  */
-async function makeActor(
+export async function makeActor(
   owner: Client,
   request: TestWorld['request'],
   role: Role,

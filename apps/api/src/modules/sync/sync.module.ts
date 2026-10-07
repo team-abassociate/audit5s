@@ -3,6 +3,7 @@ import { AssignmentsModule } from '../audit-assignments/assignments.module';
 import { AuditsModule } from '../audits/audits.module';
 import { ChecklistsModule } from '../checklists/checklists.module';
 import { CorrectiveActionsModule } from '../corrective-actions/corrective-actions.module';
+import { KaizensModule } from '../kaizens/kaizens.module';
 import { DevicesModule } from '../devices/devices.module';
 import { EvidenceModule } from '../evidence/evidence.module';
 import { UnitsModule } from '../units/units.module';
@@ -34,6 +35,7 @@ import { DeviceReleaseWorker } from './device-release.worker';
     AuditsModule,
     EvidenceModule,
     CorrectiveActionsModule,
+    KaizensModule,
     DevicesModule,
   ],
   controllers: [SyncController, SyncConflictsController],
