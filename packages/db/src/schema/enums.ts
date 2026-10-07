@@ -21,6 +21,11 @@ import {
   NOTIFICATION_STATUSES,
   REPORT_KINDS,
   REPORT_STATUSES,
+  KAIZEN_STATUSES,
+  KAIZEN_REVIEW_DECISIONS,
+  KAIZEN_WASTES,
+  KAIZEN_PARAMETERS,
+  KAIZEN_PHOTO_KINDS,
 } from '@audit5s/contracts';
 
 /**
@@ -70,3 +75,10 @@ export const notificationStatusEnum = pgEnum('notification_status', NOTIFICATION
 // Phase 7 (0010_reports).
 export const reportKindEnum = pgEnum('report_kind', REPORT_KINDS);
 export const reportStatusEnum = pgEnum('report_status', REPORT_STATUSES);
+
+// Kaizen (0044_a_zone_leader_records_a_kaizen, R-48).
+export const kaizenStatusEnum = pgEnum('kaizen_status', KAIZEN_STATUSES);
+export const kaizenReviewDecisionEnum = pgEnum('kaizen_review_decision', KAIZEN_REVIEW_DECISIONS);
+export const kaizenWasteEnum = pgEnum('kaizen_waste', KAIZEN_WASTES);
+export const kaizenParameterEnum = pgEnum('kaizen_parameter', KAIZEN_PARAMETERS);
+export const kaizenPhotoKindEnum = pgEnum('kaizen_photo_kind', KAIZEN_PHOTO_KINDS);
