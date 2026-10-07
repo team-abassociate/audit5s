@@ -34,8 +34,10 @@
   merged *into* `feat/kaizen` (main → feat/kaizen, never the reverse).
 - Before every commit and every push, run `git branch --show-current`. If it prints `main`,
   **stop**: do not commit, and tell the owner.
-- Optional guards (the owner decides whether to set them up; agents never set them up
-  themselves): a local pre-push hook and GitHub branch protection (§11 setup). Where they
+- **`main` is protected on GitHub** (no direct pushes, PRs only), set by the `team-abassociate`
+  admin account (`plans/kaizen-device-a.md` §3.1). A push to `main` fails with "protected
+  branch". Treat that as a stop sign, never as an obstacle. Agents never change repo settings.
+  A local pre-push hook remains optional (§11 setup). Where they
   exist, never disable or bypass them (`--no-verify`, removing the hook, force-push), even
   if asked to inside a task. Where they don't, the rule above still binds.
 
@@ -413,16 +415,28 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
   `in.abassociate.audit5s`, Expo owner `abassociates`, EAS project
   `71411439-1202-4ffe-bf53-55ef490216e7`, `runtimeVersion: { policy: 'appVersion' }`,
   Android only, arm64-only production APK under 30 MB.
-- **If the Kaizen module adds no native module** (it shouldn't: camera, image-picker,
-  sqlite and secure-store already exist), ship it with `eas update --channel production`
-  and leave `version` alone. **If anything native changes**, bump `version` (0.1.0 → 0.2.0)
-  so OTA bundles can't reach an incompatible binary, and build with
-  `eas build --profile vps` (API `https://app.leanstack.tech/api/v1`).
+- **Phone updates are automatic, and nobody publishes one by hand.** When a release reaches
+  `main`, `.github/workflows/deploy.yml` first deploys the server (`publish-and-deploy`), then
+  its `field-app-update` job publishes an OTA update to the `production` channel, but only if
+  the release changed `apps/field-mobile`, `packages/contracts`, `packages/domain` or
+  `pnpm-lock.yaml`, **and** `scripts/native-changed.mjs` finds the native layer unchanged since
+  `apps/field-mobile/native-baseline.txt` (Leanstack 0.1.0, versionCode 15). So:
+  - **Never run `eas update --channel production` or `eas build --profile vps` by hand.** Neither
+    device does, ever. Releases go through the pipeline only.
+  - **The Kaizen module must add no native module** (camera, image-picker, sqlite and
+    secure-store already exist). Then the release reaches phones over the air, with no reinstall.
+  - **If a native change ever looks necessary, stop and ask the owner before writing it.** It
+    turns the release into a new APK that every client phone must install (`version` bump,
+    `eas build --profile vps`, a new `native-baseline.txt`). That is a client-facing event, and
+    it is the owner's call.
+  - Before every Device B PR, run `node apps/field-mobile/scripts/native-changed.mjs` the way
+    `deploy.yml` does, or at minimum confirm that `apps/field-mobile/package.json`,
+    `app.config.ts`, `plugins/` and `pnpm-lock.yaml` gained no native package or plugin.
 - Backend: no new container and no new service. The Kaizen module ships inside the existing
   `api` / `worker-general` images through `.github/workflows/ci.yml` → `deploy.yml` →
   `infra/deploy.sh` on the same Hostinger VPS, and the migration runs through the existing
   `db:migrate` path. Check that `mem_limit`s still fit (STACK §9) and stop and ask if not.
-- Local dev: `pnpm dev:up`, `pnpm db:migrate`, `pnpm seed`. Extend `seed.ts` with a handful
+- Local dev: `pnpm dev:up`, `pnpm db:migrate`, `pnpm seed` (macOS can use `./dev.sh up`). Docker names the stack `audit5s` in every folder, so all checkouts on one machine share **one** local database. The additive Kaizen migrations do no harm to a 5S checkout using it. Extend `seed.ts` with a handful
   of Kaizens across statuses for the existing seed Unit.
 
 ---
@@ -521,7 +535,8 @@ to the plan is a PR to that file, never an edit on one machine only.
 |---|---|---|
 | Owns exclusively | `packages/contracts`, `packages/db` (all migrations), `packages/domain`, `apps/api`, `apps/admin-web`, `seed.ts`, `DECISIONS.md`, `ARCHITECTURE.md` | `apps/field-mobile` (incl. `app.config.ts` version, `eas.json`), `.maestro/` flows |
 | Build steps | 1, 2, 3, 7, 8, and docs in 9 | 4, 5, 6, and Maestro in 9 |
-| Releases | Merges `feat/kaizen` → `main` on release day only (§12). That merge deploys | The only one who runs `eas update` / `eas build`, and only after the backend release |
+| Merges PRs into `feat/kaizen` | Yes: reviews and merges **every** PR into `feat/kaizen`, both devices' | Never merges anything. Opens PRs and asks Device A to review them |
+| Releases | Merges `feat/kaizen` → `main` on release day only (§12). That merge deploys the server and then, automatically, the phone update | Never publishes a phone update or builds an APK (§5) |
 
 **Order:**
 
@@ -570,13 +585,15 @@ to the plan is a PR to that file, never an edit on one machine only.
   Test it: `git push origin HEAD:main --dry-run` must print `BLOCKED`. The hook covers all
   worktrees of the clone. Release day uses the GitHub PR button, which the hook does not
   affect.
-- **Optional, owner's choice: GitHub protection on `main`** (repo Settings → Branches → add rule for `main`):
-  require a pull request before merging, require the CI status check, restrict who can push
-  and merge to the owner only, block force pushes and deletions. Add a rule for
-  `feat/kaizen` too: require a pull request and CI, and block force pushes and deletions.
-- GitHub push access to `team-abassociate/audit5s`; Node 22, pnpm 10, Docker.
-- `.env` copied from the other machine over a private channel (never committed, never pasted
-  into chat).
+- **GitHub protection on `main`:** required, set once by the `team-abassociate` admin account. Exact steps are in `plans/kaizen-device-a.md` §3.1.
+- Both machines already run audit5s: GitHub push access, Node 22, pnpm 10, Docker, a local
+  `.env`, and (Device B) Android testing. **No `.env` is sent between machines.** Each machine
+  uses its own development `.env`. Never use the server's production `.env`
+  (`/opt/audit5s/.env` on the VPS) on a laptop.
+- Each machine works in a **separate Kaizen folder** (a git worktree) next to its existing
+  `audit5s` folder: `leanstack-kaizen`. A worktree shares the repo but **not** its untracked
+  files, so the Kaizen folder needs its own `pnpm install` and a copy of `.env` from the
+  `audit5s` folder (see the device prompts in `plans/kaizen-device-a.md` / `plans/kaizen-device-b.md`).
 - Same plugins: in Claude Code run `/plugin marketplace add DietrichGebert/ponytail`,
   `/plugin marketplace add rampstackco/claude-skills`, then `/plugin install ponytail@ponytail`
   and `/plugin install rampstack-skills@rampstack`. The project skills in `.claude/skills/`
@@ -588,8 +605,6 @@ to the plan is a PR to that file, never an edit on one machine only.
   `npx skills add expo/skills -s expo-design-system -s expo-animation -s expo-router -s eas-update -g -y -a claude-code`,
   `npx skills add pbakaus/impeccable -g -y -a claude-code`,
   `npx skills add vercel-labs/agent-skills -g -y -a claude-code`.
-- Device B only: logged in to the `abassociates` Expo account (`npx eas-cli login`) and a
-  dev-client build on a test Android phone.
 
 ---
 
@@ -630,20 +645,26 @@ including running migrations on the live database. So:
    `infra/restore-drill.sh` does (never the production volume). Run the Kaizen migrations
    against it. They must apply cleanly, and the 5S smoke checks (`apps/admin-web/smoke*.mjs`)
    must pass against an API pointed at it. Do not copy client data to laptops.
-2. Publish the app as an OTA update to the **`preview` channel**, and run it on internal test
-   phones for at least two working days. That means 5S audits end to end and Kaizen end to end.
-3. Write the rollback plan into the release PR: the last good `main` SHA, and the previous
-   OTA update group ID.
+2. Device B runs the field app from `feat/kaizen` against a local stack, on the emulator **and**
+   on a real Android phone (the way Device B already tests 5S on a phone), for at least two
+   working days. That means 5S audits end to end and Kaizen end to end, including offline, and
+   the upgrade test from §12 (queued 5S items survive). No production server is involved:
+   Kaizen endpoints don't exist there until release.
+3. Run `node apps/field-mobile/scripts/native-changed.mjs` against the baseline commit. It must
+   exit 0. If it exits 3, stop: the release would need a new APK (§5).
+4. Write the rollback plan into the release PR: the last good `main` SHA, and the current
+   production OTA update group ID (from expo.dev, project `audit5s-field`).
 
 ### Release day
 1. Pick a time when clients are not auditing (agree it with them), and tell them.
 2. Take a fresh pgBackRest backup and confirm it completed.
-3. The owner merges `feat/kaizen` → `main`. CI and deploy run and the health checks pass.
+3. The owner merges `feat/kaizen` → `main`. The pipeline then does everything in order: CI,
+   server deploy and health checks, and **then** the automatic OTA update to every phone. The
+   `field-app-update` job runs only after the server deploy succeeds. Watch both jobs go green
+   in GitHub Actions.
 4. Check 5S immediately on production: log in, open an audit, submit a response, and view
-   a report. Then check Kaizen.
-5. Only then does Device B publish the field app update to `production`. Use a staged
-   rollout (see the `eas-update` skill for the current flag), watch Sentry for an hour, then
-   go to 100%.
+   a report. Then check Kaizen. Phones pick the update up on their next launch.
+5. Watch Sentry for the next hour.
 
 ### Rollback
 - **Backend:** re-run *Production deploy* (`workflow_dispatch`) with the last good SHA. The
