@@ -3,6 +3,7 @@ import type {
   AuditStatus,
   AuditZoneStatus,
   CorrectiveActionStatus,
+  KaizenStatus,
   Role,
 } from '@audit5s/contracts';
 
@@ -29,7 +30,12 @@ import type {
  */
 
 /** The entities that have a state machine. */
-export type StateMachineEntity = 'audit' | 'audit_zone' | 'audit_assignment' | 'corrective_action';
+export type StateMachineEntity =
+  | 'audit'
+  | 'audit_zone'
+  | 'audit_assignment'
+  | 'corrective_action'
+  | 'kaizen';
 
 /**
  * A precondition the pure layer cannot evaluate. The service resolves each into a boolean
@@ -61,6 +67,8 @@ export const TRANSITION_GUARDS = [
   'reason_given',
   /** R-33: this audit has been restarted fewer than `MAX_AUDIT_RESTARTS` times. */
   'restarts_remaining',
+  /** Every step of the Kaizen Sheet marked REQUIRED is filled (`missingKaizenFields`). */
+  'kaizen_sheet_complete',
 ] as const;
 
 export type TransitionGuard = (typeof TRANSITION_GUARDS)[number];
@@ -317,11 +325,33 @@ export const CORRECTIVE_ACTION_TRANSITIONS: readonly Transition<CorrectiveAction
   { from: 'WITHDRAWN', to: 'REOPENED', actors: [], guards: ['reason_given'] },
 ];
 
+/**
+ * `kaizen` (R-48, plans/kaizen-module.md §4.2). Migration 0044's trigger holds the same
+ * edges in SQL; this is the one the API and both clients ask.
+ *
+ * The author is not a role, so "only the author submits" is the service's scope check
+ * (`kaizen:create` under `own_record`), not an edge. APPROVED and REJECTED have no way out.
+ */
+export const KAIZEN_TRANSITIONS: readonly Transition<KaizenStatus>[] = [
+  { from: 'DRAFT', to: 'SUBMITTED', actors: ['ZONE_LEADER'], guards: ['kaizen_sheet_complete'] },
+  {
+    from: 'SENT_BACK',
+    to: 'SUBMITTED',
+    actors: ['ZONE_LEADER'],
+    guards: ['kaizen_sheet_complete'],
+    note: 'Edit & resubmit',
+  },
+  { from: 'SUBMITTED', to: 'APPROVED', actors: ['COORDINATOR'] },
+  { from: 'SUBMITTED', to: 'SENT_BACK', actors: ['COORDINATOR'], guards: ['reason_given'] },
+  { from: 'SUBMITTED', to: 'REJECTED', actors: ['COORDINATOR'], guards: ['reason_given'] },
+];
+
 const TABLES = {
   audit: AUDIT_TRANSITIONS,
   audit_zone: AUDIT_ZONE_TRANSITIONS,
   audit_assignment: ASSIGNMENT_TRANSITIONS,
   corrective_action: CORRECTIVE_ACTION_TRANSITIONS,
+  kaizen: KAIZEN_TRANSITIONS,
 } as const satisfies Record<StateMachineEntity, readonly Transition<string>[]>;
 
 /** What the caller knows that the table cannot: who is asking, and which guards hold. */

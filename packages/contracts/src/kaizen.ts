@@ -370,7 +370,7 @@ export const kaizenFunnelSchema = z.array(
 );
 export type KaizenFunnel = z.infer<typeof kaizenFunnelSchema>;
 
-/** `YYYY-MM`, a calendar month in the Unit's time zone. */
+/** `YYYY-MM`, a calendar month in India Standard Time, as every screen reads dates. */
 export const yearMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM');
 
 /**
