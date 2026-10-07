@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+> **⛔ Kaizen work: `feat/kaizen` is the main branch for Kaizen.** Never commit, push, merge
+> or open a PR to `main`: `main` deploys to the production VPS that clients use for 5S. Branch
+> from `feat/kaizen` as `feat/kaizen-<step>-<topic>`, and PR into `feat/kaizen`. Only the owner
+> merges `feat/kaizen` → `main`, by hand, on release day. Plan:
+> [`plans/kaizen-module.md`](plans/kaizen-module.md) (BRANCH RULE).
+
 **Read [`AGENTS.md`](./AGENTS.md) first.** It is the single brief for every agent working
 in this repository — the document precedence rule, the rules that may not be broken, the
 build order, and how to behave when several agents run in parallel. Everything in it

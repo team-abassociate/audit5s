@@ -1,0 +1,472 @@
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, Pressable, Image, Modal, useColorScheme, KeyboardAvoidingView, Platform } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import { useFonts, Archivo_400Regular, Archivo_600SemiBold, Archivo_800ExtraBold, Archivo_900Black } from '@expo-google-fonts/archivo';
+import { DMMono_400Regular, DMMono_500Medium } from '@expo-google-fonts/dm-mono';
+import { gemba, Theme, useC, F, Tile, Btn, Label, H, Body, Mono, Figure, Section, Chip, Band, Field, Check, Slip, STATUS } from './ui';
+import { load, save, lastMonth, top3, rupees, keepPhoto, exportKaizen } from './store';
+import { WASTES, PARAMS } from './xlsx';
+
+export default function App() {
+  const scheme = useColorScheme();
+  const [fontsLoaded] = useFonts({ Archivo_400Regular, Archivo_600SemiBold, Archivo_800ExtraBold, Archivo_900Black, DMMono_400Regular, DMMono_500Medium });
+  const [db, setDb] = useState(null);
+  const [user, setUser] = useState(null);
+  useEffect(() => { load().then(setDb); }, []);
+  const c = gemba[scheme === 'dark' ? 'dark' : 'light'];
+  if (!fontsLoaded || !db) return <View style={{ flex: 1, backgroundColor: c.board }} />;
+  const update = (fn) => setDb((d) => { const n = fn(JSON.parse(JSON.stringify(d))); save(n); return n; });
+  return (
+    <SafeAreaProvider>
+      <Theme.Provider value={c}>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        {user ? <Shell db={db} update={update} user={user} logout={() => setUser(null)} /> : <Login db={db} onLogin={setUser} />}
+      </Theme.Provider>
+    </SafeAreaProvider>
+  );
+}
+
+function Login({ db, onLogin }) {
+  const c = useC(), ins = useSafeAreaInsets();
+  const [u, setU] = useState(''), [p, setP] = useState(''), [err, setErr] = useState('');
+  const go = () => {
+    const found = db.users.find((x) => x.username === u.trim().toLowerCase() && x.password === p);
+    found ? onLogin(found) : setErr('Wrong login ID or password.');
+  };
+  return (
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: c.board, justifyContent: 'center', padding: 22, paddingTop: ins.top }}>
+      <Text style={{ fontFamily: F.x, fontSize: 40, letterSpacing: -1.5, color: c.ink }}>KAIZEN</Text>
+      <Body dim style={{ marginBottom: 28 }}>Submit, review and export Kaizen sheets.</Body>
+      <Tile>
+        <Field label="Login ID" value={u} onChangeText={setU} autoCapitalize="none" autoCorrect={false} />
+        <Field label="Password" value={p} onChangeText={setP} secureTextEntry onSubmitEditing={go} />
+        {!!err && <Text style={{ fontFamily: F.s, color: c.crit, marginBottom: 12 }}>{err}</Text>}
+        <Btn primary title="Log in" onPress={go} />
+      </Tile>
+      <Mono style={{ marginTop: 8 }}>Demo: coordinator / 1234 · zl1 / 1234</Mono>
+    </KeyboardAvoidingView>
+  );
+}
+
+const TABS = {
+  coordinator: ['Overview', 'Kaizens', 'My Unit', 'Analysis'],
+  leader: ['Overview', 'New Kaizen', 'History'],
+};
+
+function Shell({ db, update, user, logout }) {
+  const c = useC(), ins = useSafeAreaInsets();
+  const [tab, setTab] = useState('Overview');
+  const [open, setOpen] = useState(null); // kaizen id in the detail sheet
+  const [editing, setEditing] = useState(null); // sent-back kaizen being reworked
+  const [notice, setNotice] = useState(null);
+  const scroll = useRef(null);
+  const go = (t, msg) => { setTab(t); setNotice(msg ?? null); scroll.current?.scrollTo({ y: 0, animated: false }); };
+  const mine = db.kaizens.filter((k) => k.leaderId === user.id);
+  const props = { db, update, user, mine, openK: setOpen, go };
+  const screens = {
+    coordinator: { Overview: COverview, Kaizens: CKaizens, 'My Unit': CUnit, Analysis: CAnalysis },
+    leader: { Overview: LOverview, 'New Kaizen': NewKaizen, History: LHistory },
+  }[user.role];
+  const Screen = screens[tab];
+  const kOpen = db.kaizens.find((k) => k.id === open);
+  return (
+    <View style={{ flex: 1, backgroundColor: c.board }}>
+      <View style={{ paddingTop: ins.top + 10, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 2, borderColor: c.ink, backgroundColor: c.tile, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1 }}>
+          <H>{tab}</H>
+          <Mono>{user.name}{user.zone ? ` · ${user.zone} · ${user.department}` : ' · Coordinator'}</Mono>
+        </View>
+        <Btn title="Log out" onPress={logout} />
+      </View>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+          {notice && <Slip title="Done">{notice}</Slip>}
+          <Screen key={tab + (editing?.id || '')} {...props} editing={tab === 'New Kaizen' ? editing : null}
+            doneEditing={() => setEditing(null)} scrollTo={(y = 0) => scroll.current?.scrollTo({ y })} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+      <View style={{ flexDirection: 'row', borderTopWidth: 2, borderColor: c.ink, backgroundColor: c.tile, paddingBottom: ins.bottom }}>
+        {TABS[user.role].map((t) => (
+          <Pressable key={t} onPress={() => { if (t === 'New Kaizen') setEditing(null); go(t); }} accessibilityRole="tab" accessibilityState={{ selected: tab === t }}
+            style={{ flex: 1, paddingVertical: 14, alignItems: 'center', backgroundColor: tab === t ? c.tile2 : c.tile, borderTopWidth: 4, borderColor: tab === t ? c.ink : 'transparent' }}>
+            <Text style={{ fontFamily: tab === t ? F.b : F.s, fontSize: 11.5, letterSpacing: 0.8, textTransform: 'uppercase', color: tab === t ? c.ink : c.ink2 }}>{t}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {kOpen && <Detail k={kOpen} user={user} update={update} close={() => setOpen(null)}
+        rework={() => { setOpen(null); setEditing(kOpen); go('New Kaizen'); }} />}
+    </View>
+  );
+}
+
+// ---------- shared pieces ----------
+
+function Kpis({ items }) {
+  const c = useC();
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 }}>
+      {items.map(([label, value, context, tone]) => (
+        <View key={label} style={{ width: '50%', paddingHorizontal: 5 }}>
+          <Tile>
+            <Label>{label}</Label>
+            <Figure>{value}</Figure>
+            <Text style={{ fontFamily: F.r, fontSize: 12.5, color: c.ink2 }}>{context}</Text>
+            <Band tone={tone} />
+          </Tile>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function KCard({ k, onPress, rank }) {
+  const c = useC(), rail = { approved: 'transparent', pending: c.warnBand, rejected: c.critBand, sent_back: c.critBand }[k.status];
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button">
+      <Tile style={{ borderLeftWidth: 5, borderLeftColor: rail === 'transparent' ? c.edge : rail }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <Mono style={{ fontFamily: F.mm, color: c.ink }}>{rank ? `#${rank}  ` : ''}{k.no}</Mono>
+          <Chip status={k.status} />
+        </View>
+        <Text style={{ fontFamily: F.b, fontSize: 16, color: c.ink }} numberOfLines={2}>{k.theme}</Text>
+        <Mono style={{ marginTop: 4 }}>{k.zone} · {k.department} · {k.machine} · {k.date}</Mono>
+        {!!k.savings && <Text style={{ fontFamily: F.x, fontSize: 18, color: c.ink, marginTop: 6 }}>{rupees(k.savings)}<Text style={{ fontFamily: F.r, fontSize: 12, color: c.ink2 }}> /yr saving</Text></Text>}
+        {!!k.comment && k.status !== 'pending' && <Body dim style={{ marginTop: 6, fontSize: 13 }}>Coordinator: “{k.comment}”</Body>}
+      </Tile>
+    </Pressable>
+  );
+}
+
+const Empty = ({ children }) => <Tile pending><Body dim>{children}</Body></Tile>;
+const List = ({ ks, openK, empty, ranked }) => ks.length ? ks.map((k, i) => <KCard key={k.id} k={k} rank={ranked && i + 1} onPress={() => openK(k.id)} />) : <Empty>{empty}</Empty>;
+const newestFirst = (ks) => [...ks].sort((a, b) => b.submittedAt - a.submittedAt);
+
+function Detail({ k, user, update, close, rework }) {
+  const c = useC(), ins = useSafeAreaInsets();
+  const [action, setAction] = useState(null), [comment, setComment] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  const review = () => {
+    if (action !== 'approved' && !comment.trim()) return setErr('A reason is required to reject or send back a Kaizen.');
+    update((d) => { const x = d.kaizens.find((y) => y.id === k.id); x.status = action; x.comment = comment.trim(); x.reviewedAt = Date.now(); return d; });
+    close();
+  };
+  const exp = async () => { setBusy(true); try { await exportKaizen(k); } catch (e) { setErr('Export failed: ' + e.message); } setBusy(false); };
+  const row = (label, value) => !!value && <View style={{ marginBottom: 12 }}><Label>{label}</Label><Body>{value}</Body></View>;
+  return (
+    <Modal animationType="slide" onRequestClose={close} statusBarTranslucent navigationBarTranslucent>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: c.board }}>
+        <View style={{ paddingTop: ins.top + 10, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 2, borderColor: c.ink, backgroundColor: c.tile, flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}><H>{k.no}</H><Mono>{k.leaderName} · {k.zone}</Mono></View>
+          <Btn title="Close" onPress={close} />
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: ins.bottom + 40 }} keyboardShouldPersistTaps="handled">
+          <Tile>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}><Chip status={k.status} /><Mono>{k.date}</Mono></View>
+            <Text style={{ fontFamily: F.b, fontSize: 18, color: c.ink, marginBottom: 12 }}>{k.theme}</Text>
+            {row('Machine · Line/Area', `${k.machine} · ${k.line}`)}
+            {row('Department', k.department)}
+            {row('Team members', k.team)}
+            {row('Idea given by', k.ideaBy)}
+            {row('Implemented by', k.implementedBy)}
+            {row('Target & target date', k.target)}
+            {row('Problem [5W1H]', k.problem)}
+            {row('Root cause [4M]', k.rootCause)}
+            {row('Analysis [7 QC tools]', k.analysis)}
+            {row('Countermeasure', k.countermeasure)}
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+              {[['Before', k.beforeUri], ['After', k.afterUri]].map(([l, uri]) => (
+                <View key={l} style={{ flex: 1 }}>
+                  <Label>{l}</Label>
+                  {uri ? <Image source={{ uri }} style={{ width: '100%', aspectRatio: 4 / 3, borderWidth: 1.5, borderColor: c.edge }} /> : <Mono>No photo</Mono>}
+                </View>
+              ))}
+            </View>
+            {row('Waste attacked', k.wastes.join(', '))}
+            {row('Parameters', k.params.join(', '))}
+            {row('Horizontal deployment', k.horizontal)}
+            {row('Benefits / results', k.benefits)}
+            {row('Annual cost saving', k.savings ? rupees(k.savings) : '')}
+            {row('Coordinator comment', k.comment)}
+          </Tile>
+          {!!err && <Text style={{ fontFamily: F.s, color: c.crit, marginBottom: 12 }}>{err}</Text>}
+          <Btn title={busy ? 'Generating…' : 'Export Excel sheet'} onPress={exp} disabled={busy} style={{ marginBottom: 14 }} />
+          {user.role === 'leader' && k.status === 'sent_back' && <Btn primary title="Edit & resubmit" onPress={rework} />}
+          {user.role === 'coordinator' && k.status === 'pending' && (
+            <Section title="Review">
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                {[['approved', 'Approve'], ['sent_back', 'Send back'], ['rejected', 'Reject']].map(([a, t]) => (
+                  <Btn key={a} title={t} primary={action === a} style={{ flex: 1 }} onPress={() => { setAction(a); setErr(''); }} />
+                ))}
+              </View>
+              {action && <>
+                <Field label={action === 'approved' ? 'Comment' : 'Reason (required)'} optional={action === 'approved'} multiline value={comment} onChangeText={setComment} />
+                <Btn primary title={`Confirm: ${STATUS[action][0]}`} onPress={review} />
+              </>}
+            </Section>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ---------- coordinator ----------
+
+function COverview({ db, openK, go }) {
+  const recent = lastMonth(db.kaizens), pending = db.kaizens.filter((k) => k.status === 'pending');
+  const count = (s) => recent.filter((k) => k.status === s).length;
+  return <>
+    {pending.length > 0 && <Pressable onPress={() => go('Kaizens')}><Slip title="Awaiting your review">{pending.length} Kaizen{pending.length > 1 ? 's' : ''} submitted to you. Tap to review.</Slip></Pressable>}
+    <Section title="Last 30 days">
+      <Kpis items={[
+        ['Submitted', recent.length, 'all zones'],
+        ['Approved', count('approved'), 'accepted', 'ok'],
+        ['Pending', count('pending'), 'need review', 'warn'],
+        ['Returned', count('rejected') + count('sent_back'), 'rejected / sent back', 'crit'],
+      ]} />
+      <Tile><Label>Cost saving approved</Label><Figure>{rupees(recent.filter((k) => k.status === 'approved').reduce((s, k) => s + (k.savings || 0), 0))}</Figure></Tile>
+    </Section>
+    <Section title="Top 3 Kaizens"><List ranked ks={top3(recent)} openK={openK} empty="No approved Kaizens in the last 30 days. Top 3 ranks approved Kaizens by annual cost saving." /></Section>
+  </>;
+}
+
+function CKaizens({ db, openK }) {
+  const c = useC(), [f, setF] = useState('pending');
+  const filters = { pending: 'Pending', approved: 'Approved', returned: 'Returned', all: 'All' };
+  const ks = newestFirst(db.kaizens.filter((k) => f === 'all' || k.status === f || (f === 'returned' && ['rejected', 'sent_back'].includes(k.status))));
+  return <>
+    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+      {Object.entries(filters).map(([key, l]) => (
+        <Pressable key={key} onPress={() => setF(key)} style={{ flex: 1, borderWidth: 1.5, borderColor: c.edge, backgroundColor: f === key ? c.ink : c.tile, paddingVertical: 8, alignItems: 'center' }}>
+          <Text style={{ fontFamily: F.s, fontSize: 12, color: f === key ? c.board : c.ink }}>{l}</Text>
+        </Pressable>
+      ))}
+    </View>
+    <List ks={ks} openK={openK} empty="Nothing here." />
+  </>;
+}
+
+function CUnit({ db, update }) {
+  const blank = { name: '', username: '', password: '', zone: '', department: '' };
+  const [f, setF] = useState(blank), [msg, setMsg] = useState(''), c = useC();
+  const leaders = db.users.filter((u) => u.role === 'leader');
+  const create = () => {
+    const v = Object.fromEntries(Object.entries(f).map(([k, x]) => [k, x.trim()]));
+    v.username = v.username.toLowerCase();
+    if (Object.values(v).some((x) => !x)) return setMsg('Fill in every field.');
+    if (db.users.some((u) => u.username === v.username)) return setMsg(`Login ID “${v.username}” is taken.`);
+    update((d) => { d.users.push({ ...v, id: 'u-' + Date.now(), role: 'leader' }); return d; });
+    setF(blank); setMsg(`Created ${v.name}. They log in with “${v.username}”.`);
+  };
+  const set = (k) => (x) => setF({ ...f, [k]: x });
+  return <>
+    <Section title="Create zone leader login">
+      <Tile>
+        <Field label="Full name" value={f.name} onChangeText={set('name')} />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}><Field label="Zone" value={f.zone} onChangeText={set('zone')} placeholder="Zone B" /></View>
+          <View style={{ flex: 1 }}><Field label="Department" value={f.department} onChangeText={set('department')} placeholder="Machining" /></View>
+        </View>
+        <Field label="Login ID" value={f.username} onChangeText={set('username')} autoCapitalize="none" autoCorrect={false} />
+        <Field label="Password" value={f.password} onChangeText={set('password')} autoCapitalize="none" />
+        {!!msg && <Body style={{ marginBottom: 12, fontSize: 13 }}>{msg}</Body>}
+        <Btn primary title="Create login" onPress={create} />
+      </Tile>
+    </Section>
+    <Section title={`Zone leaders · ${leaders.length}`}>
+      {leaders.map((u) => {
+        const ks = db.kaizens.filter((k) => k.leaderId === u.id);
+        return (
+          <Tile key={u.id}>
+            <Text style={{ fontFamily: F.b, fontSize: 15, color: c.ink }}>{u.name}</Text>
+            <Mono>{u.zone} · {u.department} · login: {u.username}</Mono>
+            <Mono>{ks.length} submitted · {ks.filter((k) => k.status === 'approved').length} approved</Mono>
+          </Tile>
+        );
+      })}
+    </Section>
+  </>;
+}
+
+function CAnalysis({ db }) {
+  const c = useC(), [by, setBy] = useState('department');
+  const groups = {};
+  db.users.filter((u) => u.role === 'leader').forEach((u) => { groups[u[by]] ??= []; });
+  db.kaizens.forEach((k) => { (groups[k[by]] ??= []).push(k); });
+  const rows = Object.entries(groups).map(([name, ks]) => ({
+    name, total: ks.length,
+    approved: ks.filter((k) => k.status === 'approved').length,
+    pending: ks.filter((k) => k.status === 'pending').length,
+    returned: ks.filter((k) => ['rejected', 'sent_back'].includes(k.status)).length,
+    savings: ks.filter((k) => k.status === 'approved').reduce((s, k) => s + (k.savings || 0), 0),
+  })).sort((a, b) => b.total - a.total);
+  const max = Math.max(1, ...rows.map((r) => r.total));
+  const all = db.kaizens;
+  return <>
+    <Kpis items={[
+      ['Total Kaizens', all.length, 'whole unit'],
+      ['Approved', all.filter((k) => k.status === 'approved').length, 'all time', 'ok'],
+    ]} />
+    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+      {['department', 'zone'].map((k) => (
+        <Pressable key={k} onPress={() => setBy(k)} style={{ flex: 1, borderWidth: 1.5, borderColor: c.edge, backgroundColor: by === k ? c.ink : c.tile, paddingVertical: 9, alignItems: 'center' }}>
+          <Text style={{ fontFamily: F.s, fontSize: 12.5, color: by === k ? c.board : c.ink, textTransform: 'uppercase', letterSpacing: 0.8 }}>{k}-wise</Text>
+        </Pressable>
+      ))}
+    </View>
+    <Section title={`By ${by}`}>
+      {rows.length ? rows.map((r) => (
+        <Tile key={r.name}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <Text style={{ fontFamily: F.b, fontSize: 15, color: c.ink, flex: 1 }}>{r.name}</Text>
+            <Figure style={{ fontSize: 26 }}>{r.total}</Figure>
+          </View>
+          {/* stacked bar: approved / pending / returned, scaled to the busiest group */}
+          <View style={{ flexDirection: 'row', height: 12, marginVertical: 8, backgroundColor: c.tile2, borderWidth: 1, borderColor: c.edgeSoft }}>
+            <View style={{ width: `${(r.approved / max) * 100}%`, backgroundColor: c.okBand }} />
+            <View style={{ width: `${(r.pending / max) * 100}%`, backgroundColor: c.warnBand }} />
+            <View style={{ width: `${(r.returned / max) * 100}%`, backgroundColor: c.critBand }} />
+          </View>
+          <Mono>{r.approved} approved · {r.pending} pending · {r.returned} returned · {rupees(r.savings)} saved</Mono>
+        </Tile>
+      )) : <Empty>No zone leaders yet.</Empty>}
+    </Section>
+  </>;
+}
+
+// ---------- zone leader ----------
+
+function LOverview({ mine, openK, go }) {
+  const recent = lastMonth(mine);
+  const returned = newestFirst(mine.filter((k) => ['rejected', 'sent_back'].includes(k.status)));
+  return <>
+    <Section title="Last 30 days">
+      <Kpis items={[
+        ['Submitted', recent.length, 'by you'],
+        ['Accepted', recent.filter((k) => k.status === 'approved').length, 'by coordinator', 'ok'],
+        ['Pending', recent.filter((k) => k.status === 'pending').length, 'awaiting review', 'warn'],
+        ['Returned', returned.length, 'rejected / sent back', 'crit'],
+      ]} />
+      <Btn primary title="+ New Kaizen" onPress={() => go('New Kaizen')} />
+    </Section>
+    <Section title="Rejected / sent back"><List ks={returned} openK={openK} empty="Nothing returned by the coordinator." /></Section>
+    <Section title="Accepted · last 30 days"><List ks={newestFirst(recent.filter((k) => k.status === 'approved'))} openK={openK} empty="No accepted Kaizens in the last 30 days." /></Section>
+    <Section title="Awaiting review"><List ks={newestFirst(mine.filter((k) => k.status === 'pending'))} openK={openK} empty="Nothing pending." /></Section>
+  </>;
+}
+
+function LHistory({ mine, openK }) {
+  const done = newestFirst(mine.filter((k) => k.status === 'approved'));
+  return <Section title={`Implemented · ${done.length}`}><List ks={done} openK={openK} empty="Approved Kaizens will appear here." /></Section>;
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+function NewKaizen({ db, update, user, mine, editing, doneEditing, go, scrollTo }) {
+  const c = useC(), ys = useRef({});
+  const [k, setK] = useState(() => editing ?? {
+    no: `KZ-${user.zone.replace(/\W/g, '').toUpperCase()}-${String(mine.length + 1).padStart(3, '0')}`,
+    machine: '', line: '', date: today(), team: '', theme: '', target: '', problem: '', countermeasure: '',
+    beforeUri: null, afterUri: null, wastes: [], params: [], horizontal: null,
+    benefits: '', savings: '', rootCause: '', analysis: '', ideaBy: '', implementedBy: '',
+  });
+  const [open, setOpen] = useState(0), [errors, setErrors] = useState([]), [busy, setBusy] = useState(false);
+  // bring the opened step to the top once the previous one has collapsed
+  useEffect(() => { if (open > 0) setTimeout(() => scrollTo(ys.current[open] - 8), 60); }, [open]);
+  const set = (f) => (v) => setK((x) => ({ ...x, [f]: v }));
+  const toggle = (f, v) => setK((x) => ({ ...x, [f]: x[f].includes(v) ? x[f].filter((y) => y !== v) : [...x[f], v] }));
+
+  const photo = async (field, camera) => {
+    if (camera && !(await ImagePicker.requestCameraPermissionsAsync()).granted) return;
+    const r = await (camera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync)({ mediaTypes: ['images'], quality: 0.5 });
+    if (!r.canceled) set(field)(keepPhoto(r.assets[0].uri));
+  };
+  const Photo = ({ field }) => (
+    <>
+      {k[field] && <Image source={{ uri: k[field] }} style={{ width: '100%', aspectRatio: 4 / 3, borderWidth: 1.5, borderColor: c.edge, marginBottom: 12 }} />}
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+        <Btn title="Take photo" style={{ flex: 1 }} onPress={() => photo(field, true)} />
+        <Btn title="From gallery" style={{ flex: 1 }} onPress={() => photo(field, false)} />
+      </View>
+    </>
+  );
+
+  // [title, required fields, body]
+  const steps = [
+    ['Kaizen details', ['no', 'machine', 'line', 'date'], <>
+      <Field label="Kaizen no." value={k.no} onChangeText={set('no')} autoCapitalize="characters" />
+      <Field label="Machine" value={k.machine} onChangeText={set('machine')} />
+      <Field label="Line / area" value={k.line} onChangeText={set('line')} />
+      <Field label="Date of implementation (YYYY-MM-DD)" value={k.date} onChangeText={set('date')} keyboardType="numbers-and-punctuation" />
+    </>],
+    ['Team members', ['team'], <Field label="Names, comma separated" multiline value={k.team} onChangeText={set('team')} />],
+    ['Kaizen theme', ['theme'], <>
+      <Field label="Theme" value={k.theme} onChangeText={set('theme')} />
+      <Field label="Target & target date" optional value={k.target} onChangeText={set('target')} />
+    </>],
+    ['Problem', ['problem'], <Field label="Problem [5W1H]" multiline value={k.problem} onChangeText={set('problem')} />],
+    ['Countermeasure', ['countermeasure'], <Field label="Countermeasure" multiline value={k.countermeasure} onChangeText={set('countermeasure')} />],
+    ['Before countermeasure', [], <Photo field="beforeUri" />],
+    ['After countermeasure', [], <Photo field="afterUri" />],
+    ['Waste attacked', [], <View style={{ marginBottom: 14 }}>{WASTES.map((w, i) => <Check key={w} label={`${i + 1}. ${w}`} checked={k.wastes.includes(w)} onPress={() => toggle('wastes', w)} />)}</View>],
+    ['Parameters', [], <View style={{ marginBottom: 14 }}>{PARAMS.map((p) => <Check key={p} label={p} checked={k.params.includes(p)} onPress={() => toggle('params', p)} />)}</View>],
+    ['Horizontal deployment', ['horizontal'], <View style={{ marginBottom: 14 }}>
+      <Label>Scope and plan for horizontal deployment</Label>
+      {['Yes', 'No'].map((v) => <Check radio key={v} label={v} checked={k.horizontal === v} onPress={() => set('horizontal')(v)} />)}
+    </View>],
+    ['Benefits / results', ['benefits'], <>
+      <Field label="Benefits, results and saving calculation" multiline value={k.benefits} onChangeText={set('benefits')}
+        placeholder="e.g. Changeover cut 20 → 8 min. 12 min × 3 shifts × 300 days × ₹10/min = ₹1,08,000/yr" />
+      <Field label="Annual cost saving (₹)" optional value={String(k.savings ?? '')} onChangeText={(v) => set('savings')(v.replace(/[^\d.]/g, ''))} keyboardType="decimal-pad" />
+    </>],
+    ['Root cause & people', ['rootCause', 'ideaBy', 'implementedBy'], <>
+      <Field label="Root cause [4M]" multiline value={k.rootCause} onChangeText={set('rootCause')} />
+      <Field label="Analysis [7 QC tools]" optional multiline value={k.analysis} onChangeText={set('analysis')} />
+      <Field label="Idea given by" value={k.ideaBy} onChangeText={set('ideaBy')} />
+      <Field label="Implemented by" value={k.implementedBy} onChangeText={set('implementedBy')} />
+    </>],
+  ];
+  const filled = (fs) => fs.every((f) => String(k[f] ?? '').trim());
+  const done = ([, fs], i) => fs.length ? filled(fs) : (i === 5 ? k.beforeUri : i === 6 ? k.afterUri : (k.wastes.length && i === 7) || (k.params.length && i === 8));
+
+  const submit = async () => {
+    const missing = steps.filter(([, fs]) => !filled(fs)).map(([t]) => t);
+    if (missing.length) { setErrors(missing); scrollTo(0); return; }
+    setBusy(true);
+    const rec = {
+      ...k, savings: Number(k.savings) || 0, id: editing?.id ?? 'k-' + Date.now(), leaderId: user.id, leaderName: user.name,
+      zone: user.zone, department: user.department, status: 'pending', comment: '', submittedAt: Date.now(),
+    };
+    update((d) => { d.kaizens = [...d.kaizens.filter((x) => x.id !== rec.id), rec]; return d; });
+    let note = `${rec.no} submitted to the coordinator.`;
+    try { await exportKaizen(rec); note += ' Excel sheet generated.'; } catch (e) { note += ` Excel export failed: ${e.message}`; }
+    setBusy(false); doneEditing(); go('Overview', note);
+  };
+
+  return <>
+    {errors.length > 0 && <Slip title="Fill these before submitting">{errors.join(' · ')}</Slip>}
+    {editing && <Body dim style={{ marginBottom: 14 }}>Reworking {editing.no}. Coordinator: “{editing.comment}”</Body>}
+    {steps.map((s, i) => {
+      const [title, fs, body] = s, isOpen = open === i;
+      return (
+        <View key={title} onLayout={(e) => { ys.current[i] = e.nativeEvent.layout.y; }}>
+        <Tile selected={isOpen} style={{ paddingVertical: 0 }}>
+          <Pressable onPress={() => setOpen(isOpen ? -1 : i)} accessibilityRole="button" accessibilityState={{ expanded: isOpen }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+            <Mono style={{ width: 28 }}>{String(i + 1).padStart(2, '0')}</Mono>
+            <Text style={{ flex: 1, fontFamily: F.b, fontSize: 15, color: c.ink, textTransform: 'uppercase', letterSpacing: 0.3 }}>{title}</Text>
+            <Text style={{ fontFamily: F.s, fontSize: 11, color: done(s, i) ? c.ok : c.ink3, letterSpacing: 0.8 }}>
+              {done(s, i) ? '✓ DONE' : fs.length ? 'REQUIRED' : 'OPTIONAL'}</Text>
+          </Pressable>
+          {isOpen && <View style={{ paddingBottom: 14 }}>
+            {body}
+            {i < steps.length - 1 ? <Btn title="Next" onPress={() => setOpen(i + 1)} /> : <Btn primary title={busy ? 'Submitting…' : editing ? 'Resubmit Kaizen' : 'Submit Kaizen'} onPress={submit} disabled={busy} />}
+          </View>}
+        </Tile>
+        </View>
+      );
+    })}
+    {open !== steps.length - 1 && <Btn primary title={busy ? 'Submitting…' : editing ? 'Resubmit Kaizen' : 'Submit Kaizen'} onPress={submit} disabled={busy} style={{ marginTop: 8 }} />}
+  </>;
+}

@@ -1,5 +1,11 @@
 # AGENTS.md — brief for any coding agent working in this repository
 
+> **⛔ Kaizen work: `feat/kaizen` is the main branch for Kaizen.** Never commit, push, merge
+> or open a PR to `main`: `main` deploys to the production VPS that clients use for 5S. Branch
+> from `feat/kaizen` as `feat/kaizen-<step>-<topic>`, and PR into `feat/kaizen`. Only the owner
+> merges `feat/kaizen` → `main`, by hand, on release day. Plan:
+> [`plans/kaizen-module.md`](plans/kaizen-module.md) (BRANCH RULE).
+
 This file is the entry point for Claude Code, Codex, and every other CLI agent.
 Read it before touching anything. It is short on purpose: it tells you which documents
 bind you, which rules you may not break, and how to behave when several agents are
