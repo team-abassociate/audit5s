@@ -7,12 +7,14 @@ import { useTheme } from '../../lib/theme';
 /**
  * The bottom tabs, by role.
  *
- * - **Consultant, Zone Leader:** Overview · Units · History · Profile. Overview is where
+ * - **Consultant:** Overview · Units · History · Profile. Overview is where
  *   the phone opens: an auditor who paused in Zone 3 yesterday wants the way back into it,
  *   not a list of Units to search. The other three stay exactly as N1 has them, and an
  *   auditor holding a phone in a plant is still not browsing.
- * - **Zone Leader (R-39):** Nonconformities as well, between Units and History — the work
- *   they owe, one tap away rather than behind a slip that only shows while something waits.
+ * - **Zone Leader:** Overview · Audit · NCs · History · Profile. They belong to one Unit, so
+ *   Audit opens that Unit's audit start directly instead of a Units list of one row — the
+ *   same reasoning as a Coordinator's My Unit. Nonconformities (R-39) sit between Audit and
+ *   History — the work they owe, one tap away rather than behind a slip that only shows while something waits.
  *   "Nonconformities" does not fit a fifth of a phone's width, so the bar says "NCs" and the
  *   header spells it out.
  * - **Super Admin (R-24):** Overview · Audits · Actions · Units · People — the admin web's
@@ -89,7 +91,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="units" options={{ title: 'Units', tabBarIcon: icon('▣'), ...shownTo(admin && !coordinator) }} />
       <Tabs.Screen name="people" options={{ title: 'People', tabBarIcon: icon('◉'), ...shownTo(admin) }} />
       <Tabs.Screen name="my-unit" options={{ title: 'My Unit', tabBarIcon: icon('▣'), ...shownTo(coordinator) }} />
-      <Tabs.Screen name="index" options={{ tabBarButtonTestID: 'field-units-tab', title: 'Units', tabBarIcon: icon('▣'), ...shownTo(!admin) }} />
+      <Tabs.Screen name="index" options={{ tabBarButtonTestID: 'field-units-tab', title: 'Units', tabBarIcon: icon('▣'), ...shownTo(!admin && !zoneLeader) }} />
+      <Tabs.Screen name="audit" options={{ tabBarButtonTestID: 'field-audit-tab', title: 'Audit', tabBarIcon: icon('▣'), ...shownTo(zoneLeader) }} />
       <Tabs.Screen
         name="nonconformities"
         options={{
