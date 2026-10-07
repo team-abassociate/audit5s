@@ -155,7 +155,7 @@ In a checkout of `feat/kaizen`:
    `store.js.txt`, `check-xlsx.mjs.txt`, and `docs/requirements/kaizen/kaizen-sheet-format.xlsx`.
 
 **Where to work.** On Device A, Kaizen work happens in the worktree
-`/Users/krxna/main/leanstack-kaizen` (branch `feat/kaizen`), never in `/Users/krxna/main/audit5s`.
+`/Users/krxna/main/kaizen` (branch `kaizen/krxna`), never in `/Users/krxna/main/audit5s`.
 That checkout is on `main` and holds someone else's uncommitted 5S work. Do not stage, revert
 or edit it. **Never open a Kaizen PR against `main`.**
 
@@ -510,7 +510,7 @@ sees the other's conversation, memory or local files. Everything the other side 
 be in a merged PR, a PR description, or this file (committed at `plans/kaizen-module.md`).
 
 **Setup already done (commit that added this file):** the `feat/kaizen` branch was created
-from `main` (after PR #90, `4147924`), with the worktree at `/Users/krxna/main/leanstack-kaizen` on Device A.
+from `main` (after PR #90, `4147924`), with the worktree at `/Users/krxna/main/kaizen` on Device A.
 It has **no upstream**, so a bare `git push` can't reach `main`. The prototype and the client's
 Kaizen Sheet are in `docs/requirements/kaizen/`, and the branch rule is at the top of `CLAUDE.md`,
 `AGENTS.md` and `plans/README.md`.
@@ -588,7 +588,7 @@ to the plan is a PR to that file, never an edit on one machine only.
   uses its own development `.env`. Never use the server's production `.env`
   (`/opt/audit5s/.env` on the VPS) on a laptop.
 - Each machine works in a **separate Kaizen folder** (a git worktree) next to its existing
-  `audit5s` folder: `leanstack-kaizen`. A worktree shares the repo but **not** its untracked
+  `audit5s` folder: `kaizen`. A worktree shares the repo but **not** its untracked
   files, so the Kaizen folder needs its own `pnpm install` and a copy of `.env` from the
   `audit5s` folder (see the device prompts in `plans/kaizen-device-a.md` / `plans/kaizen-device-b.md`).
 - Same plugins: in Claude Code run `/plugin marketplace add DietrichGebert/ponytail`,

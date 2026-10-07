@@ -23,7 +23,7 @@ main               ← PRODUCTION. Every commit here deploys the server AND auto
 ```
 
 - Repo: `https://github.com/team-abassociate/audit5s`
-- Your Kaizen folder: **`/Users/krxna/main/leanstack-kaizen`** (a git worktree, already on
+- Your Kaizen folder: **`/Users/krxna/main/kaizen`** (a git worktree, already on
   `kaizen/krxna`, already pushed, upstream `origin/kaizen/krxna`).
 - Your 5S folder: **`/Users/krxna/main/audit5s`**. It stays on `main` for 5S work. **Never do
   Kaizen work there.**
@@ -50,15 +50,15 @@ Run in Terminal, one block at a time. After each block, compare against "Expect"
 stop and fix it before going on.
 
 ```bash
-cd /Users/krxna/main/leanstack-kaizen
+cd /Users/krxna/main/kaizen
 git branch --show-current
 git rev-parse --abbrev-ref @{upstream}
 ```
 **Expect:** `kaizen/krxna`, then `origin/kaizen/krxna`.
 
 ```bash
-cp /Users/krxna/main/audit5s/.env /Users/krxna/main/leanstack-kaizen/.env
-cd /Users/krxna/main/leanstack-kaizen && pnpm install && pnpm build
+cp /Users/krxna/main/audit5s/.env /Users/krxna/main/kaizen/.env
+cd /Users/krxna/main/kaizen && pnpm install && pnpm build
 ```
 **Expect:** both finish without errors. A worktree doesn't share untracked files, so it needs
 its own `.env` and `node_modules`. `.env` is git-ignored and is never committed.
@@ -67,7 +67,7 @@ Then, only if your 5S stack is running, stop it first (`cd /Users/krxna/main/aud
 Both folders use the **same** Docker stack named `audit5s`, so the same database and ports.
 Start the stack from the Kaizen folder:
 ```bash
-cd /Users/krxna/main/leanstack-kaizen && ./dev.sh up
+cd /Users/krxna/main/kaizen && ./dev.sh up
 ```
 **Expect:** it ends with `Ready.` and the status table shows everything running.
 
@@ -96,7 +96,7 @@ Build steps are defined in plan §6. Your steps: **1, 2, 3, 7, 8**, plus docs in
 
 **Start of every session**, in Terminal:
 ```bash
-cd /Users/krxna/main/leanstack-kaizen
+cd /Users/krxna/main/kaizen
 git branch --show-current          # must print kaizen/krxna
 git fetch origin
 git merge origin/feat/kaizen       # bring in whatever was merged (yours and Device B's)
@@ -108,7 +108,7 @@ Then start Claude Code in that folder and paste the **every-session prompt** (§
 **Keep `feat/kaizen` current with 5S fixes** (at least weekly, and the same day as any 5S
 hotfix release):
 ```bash
-cd /Users/krxna/main/leanstack-kaizen && git fetch origin && git merge origin/main
+cd /Users/krxna/main/kaizen && git fetch origin && git merge origin/main
 git push && gh pr create --head kaizen/krxna --base feat/kaizen --title "Kaizen: bring in main ($(git rev-parse --short origin/main))" --body "Sync only. Touches 5S: no code changes of ours. For the other device: merge origin/feat/kaizen after this is merged."
 ```
 Merge it like any other PR (§6). Never merge `main` into `feat/kaizen` any other way.
@@ -155,16 +155,16 @@ against plan §3 and §4". You also check yourself:
 
 ## 8. Prompts to paste into Claude Code
 
-Always start Claude Code **in `/Users/krxna/main/leanstack-kaizen`**.
+Always start Claude Code **in `/Users/krxna/main/kaizen`**.
 
 ### 8a. First session (paste once)
 
 ```text
 I am Device A (krxna): backend + admin web for the Kaizen module of Leanstack.
-My working folder is /Users/krxna/main/leanstack-kaizen and my branch is kaizen/krxna.
+My working folder is /Users/krxna/main/kaizen and my branch is kaizen/krxna.
 
 Before anything else:
-1. Run `pwd` and `git branch --show-current`. If they are not /Users/krxna/main/leanstack-kaizen
+1. Run `pwd` and `git branch --show-current`. If they are not /Users/krxna/main/kaizen
    and kaizen/krxna, stop and tell me. Do not switch branches yourself.
 2. Read plans/kaizen-device-a.md in full, then plans/kaizen-module.md in full (BRANCH RULE and
    §0–§12), then AGENTS.md, CLAUDE.md, STACK.md and DECISIONS.md in full. Grep ARCHITECTURE.md
@@ -185,7 +185,7 @@ the template in device-a guide §6, and stop.
 ### 8b. Every later session (paste at the start of each one)
 
 ```text
-I am Device A (krxna). Folder /Users/krxna/main/leanstack-kaizen, branch kaizen/krxna.
+I am Device A (krxna). Folder /Users/krxna/main/kaizen, branch kaizen/krxna.
 1. Run `pwd` and `git branch --show-current`; stop if either is wrong.
 2. Run `git fetch origin && git merge origin/feat/kaizen`. If it conflicts, stop and show me.
 3. Re-read plans/kaizen-device-a.md and the plan sections for the step we're on.
@@ -201,7 +201,7 @@ rebase or force-push, never edit apps/field-mobile.
 
 | What happened | What to do |
 |---|---|
-| `git branch --show-current` shows `main` in the Kaizen folder | Stop. Don't commit. Run `git switch kaizen/krxna`. If you have uncommitted changes, `git stash`, then `git switch kaizen/krxna`, then `git stash pop`. |
+| `git branch --show-current` shows `main` in the Kaizen folder | Stop. Don't commit. Run `git switch kaizen/krxna`. Git carries uncommitted changes across when it can. If it refuses, don't use `git stash` (the stash list is shared with your other folders): ask Claude to help instead. |
 | You committed on the wrong branch, **not pushed** | `git log --oneline -3` and note the commit SHA. Run `git switch kaizen/krxna` and `git cherry-pick <sha>`. Then remove it from the wrong branch with `git switch <wrong branch>` and `git reset --hard HEAD~1` (only because it was never pushed). |
 | Something was **pushed to `main`** by mistake | Production deploy starts automatically. Immediately open GitHub → Actions → cancel the running "Production deploy" if it hasn't finished. Then treat it as plan §12 *Rollback*. |
 | `git merge origin/feat/kaizen` conflicts | Don't guess. Ask Claude to show both sides. Keep both devices' intent. If the conflict is in Device B's files, ask them on the PR. |

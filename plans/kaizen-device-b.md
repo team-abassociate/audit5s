@@ -29,9 +29,9 @@ main               ← PRODUCTION. Every commit here deploys the server AND auto
 - Repo: `https://github.com/team-abassociate/audit5s`
 - Your 5S folder: your existing `audit5s` folder. It stays exactly as it is. **Never do Kaizen
   work in it.**
-- Your Kaizen folder: **`leanstack-kaizen`**, created in §3 right **next to** your `audit5s`
+- Your Kaizen folder: **`kaizen`**, created in §3 right **next to** your `audit5s`
   folder (same parent folder). Example: if `audit5s` is `C:\Users\you\projects\audit5s`, the Kaizen
-  folder is `C:\Users\you\projects\leanstack-kaizen`.
+  folder is `C:\Users\you\projects\kaizen`.
 
 ## 2. What you own (Device B)
 
@@ -65,10 +65,14 @@ git remote get-url origin
 touched.
 
 **3.2 Create your Kaizen folder and branch**
+
+First make sure the name is free: there must be **no** folder called `kaizen` next to your
+`audit5s` folder. `Test-Path ..\kaizen` must print `False`. If it prints `True`, stop and message
+krxna. Don't delete, rename or reuse that folder.
 ```powershell
 git fetch origin
-git worktree add ..\leanstack-kaizen -b kaizen/geetahuja origin/feat/kaizen
-cd ..\leanstack-kaizen
+git worktree add ..\kaizen -b kaizen/geetahuja origin/feat/kaizen
+cd ..\kaizen
 git push -u origin kaizen/geetahuja
 git branch --show-current
 git rev-parse --abbrev-ref "@{upstream}"
@@ -106,7 +110,7 @@ The project's own skills (`.claude/skills/` in the repo) come with the folder au
 
 **3.5 Run the app from the Kaizen folder.** Your local database is shared: Docker names the stack
 `audit5s` in every folder. So **first stop whatever you run from `audit5s`** (API, workers,
-Metro). Then start the same things **from `leanstack-kaizen`**, exactly the way you already do
+Metro). Then start the same things **from `kaizen`**, exactly the way you already do
 for 5S, including how you load `.env`, migrate (`pnpm db:migrate`), seed (`pnpm seed`) and launch
 the app on the emulator and on your Android phone.
 **Expect:** the 5S app works exactly as before. Kaizen screens appear only once you build them.
@@ -133,7 +137,7 @@ device testing in plan §12 *Release rehearsal* step 2.
 
 **Start of every session**, in PowerShell:
 ```powershell
-cd <path to your leanstack-kaizen folder>
+cd <path to your kaizen folder>
 git branch --show-current
 git fetch origin
 git merge origin/feat/kaizen
@@ -202,18 +206,18 @@ One pull request per build step (or a clear slice of one). When Claude says a st
 
 ## 8. Prompts to paste into Claude Code
 
-Always start Claude Code **inside your `leanstack-kaizen` folder**.
+Always start Claude Code **inside your `kaizen` folder**.
 
 ### 8a. First session (paste once)
 
 ```text
 I am Device B (geetahuja): the Android field app for the Kaizen module of Leanstack.
-I'm on Windows. My working folder is the leanstack-kaizen folder (a git worktree next to my
+I'm on Windows. My working folder is the kaizen folder (a git worktree next to my
 audit5s folder) and my branch is kaizen/geetahuja.
 
 Before anything else:
 1. Run `git branch --show-current` and `git rev-parse --show-toplevel`. If the branch is not
-   kaizen/geetahuja or the folder is not leanstack-kaizen, stop and tell me. Do not switch
+   kaizen/geetahuja or the folder is not kaizen, stop and tell me. Do not switch
    branches yourself.
 2. Read plans/kaizen-device-b.md in full, then plans/kaizen-module.md in full (BRANCH RULE and
    §0–§12), then AGENTS.md, CLAUDE.md, STACK.md, DECISIONS.md, apps/field-mobile/AGENTS.md,
@@ -239,7 +243,7 @@ tests, run the native check from plans/kaizen-device-b.md §6, and draft the PR 
 ### 8b. Every later session (paste at the start of each one)
 
 ```text
-I am Device B (geetahuja), on Windows, in my leanstack-kaizen folder, branch kaizen/geetahuja.
+I am Device B (geetahuja), on Windows, in my kaizen folder, branch kaizen/geetahuja.
 1. Run `git branch --show-current`; stop if it isn't kaizen/geetahuja.
 2. Run `git fetch origin` and `git merge origin/feat/kaizen`. If it conflicts, stop and show me.
 3. Re-read plans/kaizen-device-b.md and the plan sections for the step we're on.
@@ -256,7 +260,7 @@ dependencies, never main, never rebase or force-push, never eas update/build, ne
 
 | What happened | What to do |
 |---|---|
-| `git branch --show-current` doesn't print `kaizen/geetahuja` | Stop. Don't commit. Check you are in the `leanstack-kaizen` folder. If you are, run `git switch kaizen/geetahuja`. If it complains about uncommitted changes: `git stash`, `git switch kaizen/geetahuja`, `git stash pop`. |
+| `git branch --show-current` doesn't print `kaizen/geetahuja` | Stop. Don't commit. Check you are in the `kaizen` folder. If you are, run `git switch kaizen/geetahuja`. Git carries uncommitted changes across when it can. If it refuses, don't use `git stash` (the stash list is shared with your other folders): message krxna instead. |
 | You committed on the wrong branch, **not pushed** | Message krxna with the output of `git log --oneline -3` and `git branch --show-current`. Fix it together. Don't try `reset` commands on your own. |
 | Any `git` output mentions `main` when you push | Stop immediately, run nothing more, and message krxna. A push to `main` deploys to clients.
 | `git merge origin/feat/kaizen` says **CONFLICT** | Stop. Don't pick sides. Run `git merge --abort`, then message krxna with the list of files it named. |
