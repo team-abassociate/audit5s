@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { v7 as uuidv7 } from 'uuid';
-import type { KaizenDashboard, KaizenDetail, Page, Kaizen, SyncBatchResponse } from '@audit5s/contracts';
+import type { KaizenDashboard, KaizenDetail, KaizenExport, Page, Kaizen, SyncBatchResponse } from '@audit5s/contracts';
 import { ObjectStorage } from '../src/infrastructure/storage/object-storage';
+import { KaizenExportWorker } from '../src/modules/kaizens/kaizen-export.worker';
 import { KaizenPhotoWorker } from '../src/modules/kaizens/kaizen-photo.worker';
 import {
   TINY_JPEG,
@@ -411,6 +412,64 @@ describe('the EXIF strip (§12.8), in worker-general', () => {
 
     await worker.handle({ photoId, userId: world.actors.ZONE_LEADER.userId });
     expect(sha256Hex(await storage.get(objectKey))).toBe(sha256Hex(stored));
+  });
+});
+
+describe('the Kaizen Sheet export (§4.6): a PDF, printed by worker-report', () => {
+  let inA: KaizenDetail;
+  let inB: KaizenDetail;
+
+  beforeAll(async () => {
+    inA = await submitted(world.actors.ZONE_LEADER);
+    inB = await submitted(world.outOfScopeActor, world.zoneB);
+  });
+
+  const requestExport = (actor: TestActor, kaizenId: string) =>
+    world.request('POST', `${base}/${kaizenId}/export`, { token: as(actor) });
+  const exportStatus = (actor: TestActor, kaizenId: string, exportId: string) =>
+    world.request('GET', `${base}/${kaizenId}/export/${exportId}`, { token: as(actor) });
+
+  it.each([
+    ['SUPER_ADMIN', 202, 202],
+    ['CONSULTANT', 202, 404],
+    ['COORDINATOR', 202, 404],
+    ['ZONE_LEADER', 202, 404],
+  ] as const)('%s exports: own Unit %i, other Unit %i', async (role, inScope, outOfScope) => {
+    expect((await requestExport(world.actors[role], inA.id)).status).toBe(inScope);
+    expect((await requestExport(world.actors[role], inB.id)).status).toBe(outOfScope);
+  });
+
+  it('a colleague Zone Leader cannot export another’s Kaizen', async () => {
+    expect((await requestExport(otherLeader, inA.id)).status).toBe(404);
+  });
+
+  it('QUEUED → printed → READY with a short-lived download of a PDF; the id is bound to its Kaizen', async () => {
+    const queued = await requestExport(world.actors.COORDINATOR, inA.id);
+    const job = queued.body as KaizenExport;
+    expect(job.status).toBe('QUEUED');
+    expect(job.fileName).toMatch(/ - Zone \d+ .+ - \d{2} \w+ \d{4}\.pdf$/);
+    expect(job.downloadUrl).toBeNull();
+    expect((await exportStatus(world.actors.COORDINATOR, inA.id, job.exportId)).body).toMatchObject({ status: 'QUEUED' });
+
+    // Another Kaizen's path, or an id nobody issued, reads as absent.
+    const other = await draft(world.actors.ZONE_LEADER);
+    expect((await exportStatus(world.actors.COORDINATOR, other.id, job.exportId)).status).toBe(404);
+    expect((await exportStatus(world.actors.COORDINATOR, inA.id, randomUUID())).status).toBe(404);
+
+    await world.app.get(KaizenExportWorker).handle({
+      kaizenId: inA.id,
+      exportId: job.exportId,
+      userId: world.actors.COORDINATOR.userId,
+    });
+
+    const ready = (await exportStatus(world.actors.ZONE_LEADER, inA.id, job.exportId)).body as KaizenExport;
+    expect(ready.status).toBe('READY');
+    expect(ready.expiresIn).toBeLessThanOrEqual(300);
+    const download = await world.app.inject({ method: 'GET', url: ready.downloadUrl!.replace(/^https?:\/\/[^/]+/, '') });
+    expect(download.statusCode).toBe(200);
+    expect(download.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    // Out of scope, a READY export is as absent as its Kaizen.
+    expect((await exportStatus(world.outOfScopeActor, inA.id, job.exportId)).status).toBe(404);
   });
 });
 

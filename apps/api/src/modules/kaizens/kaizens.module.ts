@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { KaizenExportWorker } from './kaizen-export.worker';
 import { KaizenPhotoWorker } from './kaizen-photo.worker';
 import { KaizensController } from './kaizens.controller';
 import { KaizensRepository } from './kaizens.repository';
@@ -10,7 +11,7 @@ import { KaizensService } from './kaizens.service';
  */
 @Module({
   controllers: [KaizensController],
-  providers: [KaizensService, KaizensRepository, KaizenPhotoWorker],
-  exports: [KaizensService, KaizenPhotoWorker],
+  providers: [KaizensService, KaizensRepository, KaizenPhotoWorker, KaizenExportWorker],
+  exports: [KaizensService, KaizenPhotoWorker, KaizenExportWorker],
 })
 export class KaizensModule {}

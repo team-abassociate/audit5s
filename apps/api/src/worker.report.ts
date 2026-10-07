@@ -5,6 +5,7 @@ import { AppModule } from './app.module';
 import { QueueService } from './infrastructure/queue/queue.service';
 import { StructuredLogger } from './common/observability/logger';
 import { ReportWorker } from './modules/reports/report.worker';
+import { KaizenExportWorker } from './modules/kaizens/kaizen-export.worker';
 
 /**
  * `worker-report` (STACK.md §4/§5): PDF rendering, concurrency 1, 1536m.
@@ -23,6 +24,9 @@ async function bootstrap(): Promise<void> {
   const queue = app.get(QueueService);
 
   await app.get(ReportWorker).register(queue);
+  // The Kaizen Sheet prints on the same browser, from its own queue, so it never waits
+  // behind a 5S report nor holds one up.
+  await app.get(KaizenExportWorker).register(queue);
 
   logger.log('worker-report ready');
 }

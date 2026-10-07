@@ -108,7 +108,7 @@ Respect reduced motion (see `plans/002-reduced-motion.md`).
 | OTA vs new build | `eas-update` (channel `production`, `runtimeVersion` policy `appVersion`) |
 | Spec and decision record | `rampstack-skills:pm-spec-writing` |
 | Ops impact on the VPS | `rampstack-skills:performance-optimization`, `rampstack-skills:backup-and-disaster-recovery`, `rampstack-skills:monitoring-and-alerting` |
-| Excel export | `anthropic-skills:xlsx` |
+| Kaizen Sheet PDF | none: it reuses the 5S report renderer (owner, 2026-10-07: no Excel) |
 | Mobile E2E | project skill `maestro` |
 | Before every PR | `rampstack-skills:security-baseline`, `security-review`, `code-review high`, `ponytail:ponytail-review`, `simplify` |
 
@@ -392,21 +392,23 @@ on phones). **Web:** hover and focus show the same tooltip.
 department name 60 characters long, Devanagari names, all-rejected, all-approved), light and
 dark, English and Hindi, and the GEMBA acceptance checklist.
 
-### 4.6 Excel export (the Kaizen Sheet)
+### 4.6 Export (the Kaizen Sheet, as a PDF)
 
-- The template is `docs/requirements/kaizen/kaizen-sheet-format.xlsx` (already in the repo). Ship it as an API asset.
-- The downloaded file is named `{Unit name} - Zone {n} {Zone name} - {date}.xlsx` (owner, 2026-10-07).
-- The output must be the client's sheet filled in: cells Q3 Kaizen No., Q4 Machine, Q5
-  Line/Area, Q6 Date, C8 Team, C9 Theme, L9 Target, C10 Problem, G10 Countermeasure, C25
-  Analysis, C41 Root cause, G33 Benefits. Before/after photos go in the G13 and M13 boxes,
-  the 8 waste checkboxes are ticked, and horizontal deployment Yes/No is ticked.
-- `POST /:id/export` enqueues a pg-boss job on `worker-general` and returns 202. The worker
-  writes the file to object storage, and the client downloads it via a short-TTL presigned GET.
-- Port the prototype's `xlsx.js` approach (template ZIP + direct XML edit of
-  `sheet1.xml`, `ctrlProps`, VML and drawings). First **verify whether `exceljs`
-  (already a dependency) round-trips the form-control checkboxes**. If it does, use it. If
-  it drops them, add `jszip` to `apps/api` only, with a one-line note in the PR. Keep the
-  prototype's `check-xlsx.mjs` idea as a test that opens the output and asserts the cells.
+- **Owner, 2026-10-07: a redesigned sheet, no Excel.** The export is a one-page A4 PDF in the
+  "A3 Reimagined" theme (`apps/api/assets/kaizen-sheet.css`, colour-coded Plan / Do / Check /
+  Act), not the client's `.xlsx` filled in. `docs/requirements/kaizen/kaizen-sheet-format.xlsx`
+  stays as the reference for which fields the sheet carries.
+- The downloaded file is named `{Unit name} - Zone {n} {Zone name} - {date}.pdf` (owner, 2026-10-07).
+- `POST /:id/export` enqueues `kaizen.export` and returns 202 with an `exportId`;
+  `GET /:id/export/:exportId` answers QUEUED / READY / FAILED, and once READY carries a
+  short-TTL presigned GET. The job id is the export id, so there is no export table.
+- It prints in `worker-report`, the one process with Chromium, from its own queue at
+  concurrency 1, on the same browser as the 5S reports. Prints are serialised in
+  `ReportRenderer.printToPdf`: a Kaizen sheet and a 5S report never hold Chromium memory at
+  once, so the container's peak is a single 5S report's, as before. A sheet prints in about a
+  second, so the most a 5S report waits is about that.
+  Same rules as the 5S PDF: no network at render, fonts (Archivo, IBM Plex Mono, OFL) and
+  photos embedded.
 
 ---
 
@@ -451,7 +453,7 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
 4. Mobile: module picker + SQLite tables + outbox/sync wiring + offline unlock still works.
 5. Mobile: leader screens (New / History / Overview), photos via the evidence pipeline.
 6. Mobile: coordinator screens (Kaizens / Review / Analysis / Overview).
-7. Excel export worker + download.
+7. Kaizen Sheet PDF export + download.
 8. Admin web: module switch + Kaizen list/detail/review/analysis.
 9. Docs, Maestro flow, cleanup (§8, §9).
 
@@ -465,7 +467,7 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
 - A Maestro flow passes on a device: log in as Zone Leader → pick Kaizen → create a Kaizen
   in airplane mode with two photos → reconnect → it syncs and gets a number → log in as
   Coordinator → send it back with a reason → leader resubmits → coordinator approves → it
-  appears in Top 3 → export opens in Excel with ticks and photos in place.
+  appears in Top 3 → the exported PDF shows its ticks and photos in place.
 - Switching 5S ↔ Kaizen keeps the session. The 5S module behaves exactly as before
   (no regressions in its tests).
 - The GEMBA-BOARD acceptance checklist passes on every new screen, in light and dark,
@@ -532,6 +534,20 @@ to the plan is a PR to that file, never an edit on one machine only.
 **Start every session by saying which device you are:** "I am Device A (backend)" or
 "I am Device B (mobile)". Stay in your lane.
 
+> **Handover, 2026-10-07 (owner): Device A is idle; Device B does all remaining Kaizen work.**
+> Steps 1, 2, 3 and 7 are on `feat/kaizen`. Device B now owns **everything** below, both
+> columns of the table, still on **`kaizen/geetahuja` only**: steps 4, 5, 6 (field app), step 8
+> (admin web), and all of step 9 (docs: R-48 and the ARCHITECTURE section; Maestro; cleanup).
+> While this note stands:
+> - Device B may edit `packages/contracts`, `packages/db` (migrations), `packages/domain`,
+>   `apps/api` and `apps/admin-web` itself. Check `ls packages/db/migrations` for the next free
+>   number before writing one; nobody else is writing migrations.
+> - Device A makes no Kaizen commits, so there is no second writer to conflict with.
+> - The **owner** reviews and merges Device B's PRs into `feat/kaizen` (merge commit), in
+>   place of Device A. Device B still never merges anything, and nothing goes to `main`.
+> - Start of handover: read [`plans/kaizen-handoff.md`](kaizen-handoff.md).
+> If Device A comes back, the owner removes this note first, and the table applies again.
+
 | | Device A: backend + web | Device B: field app |
 |---|---|---|
 | Owns exclusively | `packages/contracts`, `packages/db` (all migrations), `packages/domain`, `apps/api`, `apps/admin-web`, `seed.ts`, `DECISIONS.md`, `ARCHITECTURE.md` | `apps/field-mobile` (incl. `app.config.ts` version, `eas.json`), `.maestro/` flows |
@@ -553,7 +569,8 @@ to the plan is a PR to that file, never an edit on one machine only.
    the failure this prevents.
 
 **Rules for the split:**
-- Device B needs a contract change? Do not edit `packages/contracts`. Open a GitHub issue or
+- Device B needs a contract change? (Suspended by the handover note above while Device A is
+  idle: Device B makes it.) Do not edit `packages/contracts`. Open a GitHub issue or
   draft PR describing it; Device A makes it. Same for migrations. Two people writing
   migrations means two `0044_…` files.
 - Device A commits only on `kaizen/krxna`, and Device B only on `kaizen/geetahuja`. PRs go from
@@ -636,8 +653,9 @@ including running migrations on the live database. So:
 - **The phone's local database upgrades in place.** New SQLite tables only. Write a test
   that installs today's production build, queues offline 5S audits with photos, upgrades to
   the Kaizen build and syncs. **Zero queued 5S items may be lost.**
-- **Kaizen export runs at concurrency 1 in `worker-general`** and must not delay 5S report
-  jobs. Check the container memory ceilings (STACK §9) with a Kaizen export and a 5S report
+- **Kaizen export runs at concurrency 1 in `worker-report`** (its own queue, the 5S
+  reports' browser, prints serialised with them) and must not delay 5S report jobs beyond a
+  second or so. Check the container memory ceilings (STACK §9) with a Kaizen export and a 5S report
   rendering at the same time.
 
 ### Release rehearsal (before release day)

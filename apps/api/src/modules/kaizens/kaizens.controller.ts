@@ -31,6 +31,7 @@ import {
   type KaizenDashboard,
   type KaizenDashboardQuery,
   type KaizenDetail,
+  type KaizenExport,
   type KaizenPhoto,
   type KaizenPhotoUploadIntentRequest,
   type KaizenPhotoUploadIntentResponse,
@@ -152,6 +153,30 @@ export class KaizensController {
       ]);
     }
     return this.kaizens.review(scope, kaizenId, body);
+  }
+
+  /** §4.6: queues the Kaizen Sheet and answers 202; poll the export for its download. */
+  @RequirePermission('kaizen', 'read')
+  @Scope({ param: 'kaizenId', intent: 'read' })
+  @Post(':kaizenId/export')
+  @HttpCode(HttpStatus.ACCEPTED)
+  requestExport(
+    @CurrentScope() scope: ScopeContext,
+    @Param('kaizenId', ParseUUIDPipe) kaizenId: string,
+  ): Promise<KaizenExport> {
+    return this.kaizens.requestExport(scope, kaizenId);
+  }
+
+  /** A short-TTL presigned GET once READY (§12.6), minted after the scope check. */
+  @RequirePermission('kaizen', 'read')
+  @Scope({ param: 'kaizenId', intent: 'read' })
+  @Get(':kaizenId/export/:exportId')
+  exportStatus(
+    @CurrentScope() scope: ScopeContext,
+    @Param('kaizenId', ParseUUIDPipe) kaizenId: string,
+    @Param('exportId', ParseUUIDPipe) exportId: string,
+  ): Promise<KaizenExport> {
+    return this.kaizens.exportStatus(scope, kaizenId, exportId);
   }
 
   @RequirePermission('kaizen', 'create')

@@ -459,8 +459,8 @@ export type KaizenExportStatus = z.infer<typeof kaizenExportStatusSchema>;
 
 /**
  * `POST /kaizens/{id}/export` answers 202 with this; `GET /kaizens/{id}/export/{exportId}`
- * answers the same shape until it is READY. The file is the client's Kaizen Sheet filled
- * in, named "{Unit} - Zone {n} {Zone name} - {date}.xlsx".
+ * answers the same shape until it is READY. The file is the Kaizen Sheet as a PDF
+ * (owner, 2026-10-07: redesigned, no Excel), named "{Unit} - Zone {n} {Zone name} - {date}.pdf".
  */
 export const kaizenExportSchema = z.object({
   exportId: uuidSchema,

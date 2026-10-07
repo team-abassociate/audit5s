@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type {
   CommitKaizenPhotoRequest,
   CreateKaizenRequest,
@@ -8,6 +9,7 @@ import type {
   KaizenDashboard,
   KaizenDashboardQuery,
   KaizenDetail,
+  KaizenExport,
   KaizenFields,
   KaizenPhoto,
   KaizenPhotoUploadIntentRequest,
@@ -38,6 +40,9 @@ import { CONFIG, type AppConfig } from '../../config/env';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
 import { asAppError } from '../audit-assignments/assignments.service';
+import { REPORT_IMAGE_TIERS, fitImage, prepareImage, toDataUri } from '../reports/report-images';
+import { ReportRenderer } from '../reports/report-renderer';
+import { kaizenSheetFileName, renderKaizenSheetHtml } from './kaizen-sheet';
 import {
   KaizensRepository,
   kaizenColumnsOf,
@@ -47,6 +52,14 @@ import {
 } from './kaizens.repository';
 
 const EDITABLE = new Set(['DRAFT', 'SENT_BACK']);
+
+
+export interface KaizenExportJobData {
+  kaizenId: string;
+  exportId: string;
+  /** Who asked. Identity, never authority: the worker re-reads the grant. */
+  userId: string;
+}
 const FIELD_KEYS = Object.keys(kaizenFieldsSchema.shape) as (keyof KaizenFields)[];
 
 /**
@@ -67,10 +80,13 @@ const FIELD_KEYS = Object.keys(kaizenFieldsSchema.shape) as (keyof KaizenFields)
  */
 @Injectable()
 export class KaizensService {
+  private readonly logger = new Logger('kaizen.export');
+
   constructor(
     private readonly repository: KaizensRepository,
     private readonly storage: ObjectStorage,
     private readonly queue: QueueService,
+    private readonly renderer: ReportRenderer,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -368,6 +384,60 @@ export class KaizensService {
     await this.repository.inTransaction(write, (tx) => this.repository.removePhoto(tx, write, photoId));
   }
 
+  // ------------------------------------------------------- the export (§4.6)
+
+  /**
+   * `POST /kaizens/{id}/export`: anyone who can read the Kaizen can have its sheet. No
+   * database write, so the job is sent on its own; its id is the export's id.
+   */
+  async requestExport(scope: ScopeContext, kaizenId: string): Promise<KaizenExport> {
+    const kaizen = await this.get(scope, kaizenId);
+    const exportId = randomUUID();
+    const job: KaizenExportJobData = { kaizenId, exportId, userId: scope.actor.userId };
+    await this.queue.send(QUEUES.kaizenExport, job, { id: exportId });
+    return { exportId, status: 'QUEUED', fileName: kaizenSheetFileName(kaizen), downloadUrl: null, expiresIn: null };
+  }
+
+  /** `GET /kaizens/{id}/export/{exportId}`: READY once the file is stored, FAILED once pg-boss gives up. */
+  async exportStatus(scope: ScopeContext, kaizenId: string, exportId: string): Promise<KaizenExport> {
+    const kaizen = await this.get(scope, kaizenId);
+    const fileName = kaizenSheetFileName(kaizen);
+    const key = exportKey(kaizen.unitId, kaizenId, exportId);
+
+    if (await this.storage.head(key)) {
+      const download = await this.storage.presignGet(key, {
+        expiresInSeconds: this.config.REPORT_GET_URL_TTL_SECONDS,
+      });
+      return { exportId, status: 'READY', fileName, downloadUrl: download.url, expiresIn: download.expiresIn };
+    }
+    const job = await this.queue.findJob<KaizenExportJobData>(QUEUES.kaizenExport, exportId);
+    // Another Kaizen's export id reads as absent, like another Unit's Kaizen.
+    if (!job || job.data.kaizenId !== kaizenId) throw AppError.notFound('No such export');
+    const failed = job.state === 'failed' || job.state === 'cancelled';
+    return { exportId, status: failed ? 'FAILED' : 'QUEUED', fileName, downloadUrl: null, expiresIn: null };
+  }
+
+  /** The worker's half: print the sheet and store it where `exportStatus` looks. */
+  async writeExport(scope: ScopeContext, kaizenId: string, exportId: string): Promise<void> {
+    const read = scopeFor(scope, 'kaizen:read');
+    const kaizen = await this.get(scope, kaizenId);
+    const photos = await this.repository.photosFor(read, [kaizenId]);
+    const dataUri = async (kind: 'BEFORE' | 'AFTER'): Promise<string | null> => {
+      const photo = photos.find((p) => p.kind === kind && p.uploadedAt);
+      if (!photo) return null;
+      const prepared = await prepareImage({
+        slot: 'photo',
+        bytes: await this.storage.get(photo.objectKey),
+        contentType: photo.contentType,
+      });
+      return toDataUri(await fitImage(prepared, REPORT_IMAGE_TIERS[0]!));
+    };
+    const html = renderKaizenSheetHtml(kaizen, { before: await dataUri('BEFORE'), after: await dataUri('AFTER') });
+    const pdf = await this.renderer.printToPdf(html);
+    await this.storage.put(exportKey(kaizen.unitId, kaizenId, exportId), pdf, 'application/pdf');
+    this.logger.log(`${kaizen.kaizenNo}: sheet exported (${pdf.byteLength} bytes)`);
+  }
+
   // ---------------------------------------------------------------- helpers
 
   private async withChildren(
@@ -453,6 +523,10 @@ export class KaizensService {
   private notEditable(row: KaizenRow, what = `is ${row.status}`): AppError {
     return AppError.conflict('INVALID_STATE_TRANSITION', `Kaizen ${row.kaizenNo} ${what}: it cannot be changed now`);
   }
+}
+
+function exportKey(unitId: string, kaizenId: string, exportId: string): string {
+  return `kaizen/${unitId}/${kaizenId}/exports/${exportId}.pdf`;
 }
 
 const REVIEW_ACTIONS = {
