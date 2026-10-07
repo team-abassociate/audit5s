@@ -250,17 +250,22 @@ State machine in `packages/domain`: `DRAFT→SUBMITTED`, `SUBMITTED→APPROVED|S
   phone. Record that as a decision (§8).
 - **Detail**: read-only sheet with before/after side by side, status chip, review comment.
   Includes *Edit & resubmit* for SENT_BACK (leader) and the Review section (coordinator).
-- **Overview (leader)**: own counts, last-month list. **Overview (coordinator)**: KPIs,
-  pending queue, **Top 3 approved by saving** (one yellow slip only when a review is waiting).
+- **Overview (leader)**: own counts, last-month list. **Overview (coordinator)**: the **KPI card
+  (§4.7 A)** first, then the pending queue, then **Top 3 approved by saving** (one yellow slip
+  only when a review is waiting).
 - **Kaizens (coordinator)**: filter chips All / Pending / Approved / Sent back / Rejected.
-- **Analysis**: department-wise / zone-wise table with total, approved, pending, returned and
-  approved savings. Bars are meters drawn from the band/ink tokens, never `--accent`.
+- **Analysis**, top to bottom: **KPI card (§4.7 A)**, **Kaizen funnel (§4.7 B)**, **submission /
+  completion trend (§4.7 C)**, **Top 5 trend: Departments (§4.7 D)**, then the department-wise /
+  zone-wise table with total, approved, pending, returned and approved savings. Bars are meters
+  drawn from the ink tokens, never `--accent`.
 - **My Unit**: reuse the existing unit/people screens. Do not rebuild them.
 
 ### 4.4 Admin web
 
 - After login, the same module switch sits in `AppShell` (a segmented control: 5S | Kaizen).
-- Kaizen routes: list with filters, detail with review actions, Analysis. All are scope-filtered
+- Kaizen routes: list with filters, detail with review actions, Analysis. The web Analysis page
+  shows the same four §4.7 visuals in a grid (KPI card · funnel · trend on the first row, Top 5
+  Departments below), like the reference dashboard. The web Kaizen overview leads with the KPI card. All are scope-filtered
   by the server, with Recharts colours read from tokens. Reuse `EmptyState`, `Status`,
   `Slip`, `SidePanel`, `ui.tsx`.
 
@@ -269,9 +274,99 @@ State machine in `packages/domain`: `DRAFT→SUBMITTED`, `SUBMITTED→APPROVED|S
 New module `apps/api/src/modules/kaizens/`, shaped like `corrective-actions`:
 `GET /api/v1/kaizens` (scoped, filterable), `GET /:id`, `POST` (idempotent, accepts
 client_id), `PATCH /:id` (DRAFT/SENT_BACK, author only), `POST /:id/submit`,
-`POST /:id/review`, `GET /kaizens/analysis?by=department|zone`, `POST /:id/export`.
+`POST /:id/review`, `GET /kaizens/analysis?by=department|zone`, `GET /kaizens/dashboard?period=overall|year|month` (§4.7), `POST /:id/export`.
 Extend the sync protocol envelope in `contracts/sync.ts` for Kaizen outbox items rather than
 adding a second sync path.
+
+### 4.7 Dashboard visuals (owner's reference images)
+
+The owner supplied reference images in `docs/requirements/kaizen/inspo/`. **Open all five before
+building any of these.** `0-full-dashboard.png` is mood only. `1`–`4` are the four components
+wanted. **Take the content, structure and behaviour from the images, and the look from
+GEMBA-BOARD.** No gradients, no rounded corners, no donut, no blue. Tiles are GEMBA tiles: zero
+radius, 1.5/2px ink edge, hard offset shadow, Archivo 900 figures, DM Mono labels.
+
+Every number on these visuals comes from **one endpoint**, `GET /kaizens/dashboard?period=…`,
+scope-filtered like every other read. The counting rules (what counts as submitted,
+approved and so on, and the ratios) are pure functions in `packages/domain/src/kaizen.ts`,
+tested, and used by the API only. The client renders what it receives and computes nothing.
+DRAFT Kaizens are never counted anywhere: they haven't been submitted.
+
+**Phone constraint:** the field app has **no chart or SVG library**, and adding
+`react-native-svg` is a native change (new APK on every client phone). Build the phone
+versions from plain `View`s as described below. If something truly cannot be drawn that way,
+**stop and ask**. Do not add the library. The admin web uses Recharts (already installed) or
+hand-authored SVG, with colours read from the tokens.
+
+**A. KPI card** (`1-kpi-card.png`). Coordinator Overview (phone + web) and top of Analysis.
+- A 2-column × 3-row grid of figures separated by 1px `--edge-soft` hairlines, inside one tile,
+  with an **Overall · Year · Month** segmented control (selection uses `--accent`, as all
+  selection does).
+- Figures (reference label → ours):
+  | Reference | Ours | Rule |
+  |---|---|---|
+  | Submitted ideas | **Submitted** | every Kaizen ever submitted in the period (any status but DRAFT) |
+  | Fresh ideas | **Awaiting review** | status SUBMITTED |
+  | In progress | **Sent back** | status SENT_BACK (being reworked by the author) |
+  | Rejected ideas | **Rejected** | status REJECTED |
+  | Rejection ratio | **Rejection ratio** | rejected ÷ submitted |
+  | Acceptance ratio | **Acceptance ratio** | approved ÷ submitted |
+- Ratios show as a percentage with **one decimal, truncated, never rounded up** (R-45). With 0
+  submitted, a ratio is an em dash `—`, never `0 %`.
+- Figures: Archivo 900, tabular, `letter-spacing:-.04em`. Labels: DM Mono, uppercase, `--ink-2`.
+
+**B. Kaizen funnel** (`2-kaizen-funnel.png`). Analysis. **Stage size follows the numbers.**
+- Stages, each a subset of the one above, so the funnel always narrows:
+  1. **Submitted** (all non-DRAFT)
+  2. **Reviewed** (has at least one review decision: approved, sent back or rejected, now or before)
+  3. **Approved**
+  4. **Approved with a saving** (approved and `annual_saving > 0`)
+- Each stage's width = its count ÷ stage-1 count × the full width, with a minimum width so its
+  label (count, Archivo 900, plus stage name) still fits. A zero stage shows its label at the
+  minimum width, never vanishing. Each stage also shows **% of Submitted** in DM Mono.
+- Shape: **web**, SVG trapezoids, where each stage's top edge is its own width and its bottom
+  edge is the next stage's width (the reference shape). **Phone**, centred stacked bars of the
+  same widths (a stepped funnel), with no SVG.
+- Fills step from light to dark through the ink scale (`--tile-2` → `--edge-soft` → `--ink-3` →
+  `--ink`), text flipping to `--tile` on the dark stages. Not the reference's blue/green.
+- Same **Overall · Month · Year** control as the KPI card.
+- Width changes animate when the period changes: the `--motion` duration, ease-out,
+  interruptible, and none under reduced motion (`animate-expo` / `animate` skills).
+
+**C. Submission / completion trend** (`3-submission-completion-trend.png`). Analysis.
+- Grouped vertical bars, one pair per month, **last 6 calendar months** including the current
+  one. Left bar = **Submitted** that month, right bar = **Approved** that month (by
+  review date). The title reads "KAIZEN SUBMISSION / COMPLETION TREND", and the two title
+  words act as the legend, styled like their bars.
+- Bars: Submitted = `--edge-soft` fill with a 1px `--ink-3` outline; Approved = solid `--ink`.
+  Square tops. Y axis starts at 0, integer ticks only, axis labels in `--ink-3` DM Mono.
+- A month with no Kaizens shows empty bars at 0 with its label kept, never a gap in the axis.
+
+**D. Top 5 trend: Departments** (`4-top5-trend-departments.png`, with **"Locations" renamed
+"Departments"**). Analysis.
+- Title "TOP 5 TREND – DEPARTMENTS", with a **Submitted | Approved** toggle (the reference's
+  "Completed kaizens" is our Approved).
+- The 5 departments with the most Kaizens in the last 6 months under the active toggle. Grouped
+  bars per month for the same 6 months as C, one bar per department, with a legend underneath.
+  Fewer than 5 departments → show what there is. None → the honest empty state.
+- Telling 5 series apart **without colour** (GEMBA: colour is semantic only): five ink-scale
+  fills (`--ink`, `--ink-2`, `--ink-3`, `--edge-soft`, `--tape`) **plus** a pattern on
+  alternate series (solid / `.gb-na`-style hatch / outline), so the chart reads in sunlight
+  and in greyscale. The legend swatches repeat fill + pattern.
+- "Department" is the Kaizen's Zone's `zone.department_hint`, the field 5S already has. It is
+  optional free text, so group by its trimmed, case-folded value, display the most common
+  spelling, and put Zones without one under **"No department"** (it can be in the top 5 like any
+  other). If spellings visibly split one department in real data, tell the owner rather than
+  adding a department table.
+
+**Phone layout:** all four stack full-width in the order A, B, C, D. Charts C and D scroll
+horizontally **inside their own container** if the 6 months don't fit (GEMBA §6). The page
+itself never scrolls sideways. Tapping a bar shows its exact count in a small tile (no hover
+on phones). **Web:** hover and focus show the same tooltip.
+
+**Done means:** each visual passes `break-ui` (0 Kaizens, 1 Kaizen, 10,000 Kaizens, a
+department name 60 characters long, Devanagari names, all-rejected, all-approved), light and
+dark, English and Hindi, and the GEMBA acceptance checklist.
 
 ### 4.6 Excel export (the Kaizen Sheet)
 
@@ -368,6 +463,11 @@ owner for confirmation**, then:
   prefix.)
 - Should approved savings feed the existing analytics rollups (`metric_daily_*`)? (Default:
   no, Kaizen analysis is computed live until it measurably needs a rollup.)
+- Dashboard colours: §4.7 uses ink tones, not the reference's green for "completed", because
+  GEMBA reserves green for score bands. If the owner wants green for Approved, that is a
+  design-system decision for R-48. Ask, don't just do it.
+- Funnel stages: §4.7 B assumes Submitted → Reviewed → Approved → Approved with a saving.
+  Confirm with the owner before step 3 if a different stage list is wanted.
 - Anything from the STACK.md §6 "do not add" table, RAM below ~4 GB, or an authorization
   cell that reads ambiguously.
 
