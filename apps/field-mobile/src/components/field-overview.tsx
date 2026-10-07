@@ -57,6 +57,9 @@ export function FieldOverview() {
   const { user, scope } = useSession();
   // R-18: a Super Admin answers corrective actions too; a Consultant never does.
   const answersActions = scope?.role === 'ZONE_LEADER' || scope?.role === 'SUPER_ADMIN';
+  // A Zone Leader's one Unit is the Audit tab; everyone else picks from the Units tab.
+  const zoneLeader = scope?.role === 'ZONE_LEADER';
+  const startHref = zoneLeader ? '/audit' : '/';
 
   const resumable = useQuery({
     queryKey: ['local', 'resumable-audits'],
@@ -181,7 +184,12 @@ export function FieldOverview() {
               title="No audit in progress"
               detail="When you start one it appears here, with the way back to the question you stopped on."
             />
-            <Button testID="open-field-unit" title="Open a Unit" variant="secondary" onPress={() => router.push('/')} />
+            <Button
+              testID="open-field-unit"
+              title={zoneLeader ? 'Start an audit' : 'Open a Unit'}
+              variant="secondary"
+              onPress={() => router.push(startHref)}
+            />
           </Card>
         ) : (
           open.map((audit) => (
@@ -243,7 +251,12 @@ export function FieldOverview() {
               <Button title="History" variant="secondary" onPress={() => router.push('/history')} />
             </View>
             <View style={styles.action}>
-              <Button testID="field-units-shortcut" title="Units" variant="secondary" onPress={() => router.push('/')} />
+              <Button
+                testID="field-units-shortcut"
+                title={zoneLeader ? 'Audit' : 'Units'}
+                variant="secondary"
+                onPress={() => router.push(startHref)}
+              />
             </View>
           </View>
         </View>
