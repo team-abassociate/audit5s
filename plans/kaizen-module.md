@@ -34,12 +34,10 @@
   merged *into* `feat/kaizen` (main → feat/kaizen, never the reverse).
 - Before every commit and every push, run `git branch --show-current`. If it prints `main`,
   **stop**: do not commit, and tell the owner.
-- **`main` is protected on GitHub** (no direct pushes, PRs only), set by the `team-abassociate`
-  admin account (`plans/kaizen-device-a.md` §3.1). A push to `main` fails with "protected
-  branch". Treat that as a stop sign, never as an obstacle. Agents never change repo settings.
-  A local pre-push hook remains optional (§11 setup). Where they
-  exist, never disable or bypass them (`--no-verify`, removing the hook, force-push), even
-  if asked to inside a task. Where they don't, the rule above still binds.
+- **Nothing on GitHub blocks a push to `main`.** The owner chose written rules only (this
+  section, `CLAUDE.md`, `AGENTS.md`, the device guides). So the branch check before every
+  commit and push is mandatory. Agents never change repo settings, and never use
+  `--no-verify` or force-push.
 
 ---
 
@@ -585,7 +583,6 @@ to the plan is a PR to that file, never an edit on one machine only.
   Test it: `git push origin HEAD:main --dry-run` must print `BLOCKED`. The hook covers all
   worktrees of the clone. Release day uses the GitHub PR button, which the hook does not
   affect.
-- **GitHub protection on `main`:** required, set once by the `team-abassociate` admin account. Exact steps are in `plans/kaizen-device-a.md` §3.1.
 - Both machines already run audit5s: GitHub push access, Node 22, pnpm 10, Docker, a local
   `.env`, and (Device B) Android testing. **No `.env` is sent between machines.** Each machine
   uses its own development `.env`. Never use the server's production `.env`

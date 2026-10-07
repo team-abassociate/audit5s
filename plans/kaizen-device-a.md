@@ -15,8 +15,8 @@ plan ever disagree, the plan wins. Stop and fix whichever one is wrong in a PR.
 
 ```
 main               ← PRODUCTION. Every commit here deploys the server AND auto-updates every
-                     client phone. Protected on GitHub (§3.1): no direct pushes, PRs only.
-                     Only krxna merges into it, once, on release day.
+                     client phone. Nothing on GitHub blocks a direct push: the written rules
+                     are the only guard. Only krxna merges into it, once, on release day.
  └─ feat/kaizen    ← the "main" of Kaizen. Receives PRs only. Nobody commits on it directly.
      ├─ kaizen/krxna      ← YOUR branch (Device A). You commit only here.
      └─ kaizen/geetahuja  ← Device B's branch. You never commit, merge or cherry-pick from it.
@@ -44,30 +44,7 @@ merge `feat/kaizen` → `main` on release day.
 
 ## 3. One-time setup (do this once, before your first Claude session)
 
-### 3.1 Protect `main` on GitHub (once, signed in as **team-abassociate**)
-
-The repo belongs to the `team-abassociate` GitHub account. `krxna` only has write access, so this
-**must be done while signed in as `team-abassociate`** (the admin). It is a setting on this one
-repo only.
-
-1. Open `https://github.com/team-abassociate/audit5s/settings/branches`.
-2. Click **Add branch protection rule** (or **Add classic branch protection rule**).
-3. **Branch name pattern:** `main`
-4. Tick **Require a pull request before merging**. Untick **Require approvals**: you merge your
-   own 5S PRs, and GitHub won't let you approve your own.
-5. Tick **Do not allow bypassing the above settings**, so the admin can't push directly by
-   accident either.
-6. Leave **Allow force pushes** and **Allow deletions** unticked.
-7. Click **Create**.
-8. **Check it**, from `/Users/krxna/main/audit5s` (this pushes nothing; it only asks GitHub):
-   `gh api repos/team-abassociate/audit5s/branches/main --jq .protected` must print `true`.
-
-Afterwards, a direct `git push` to `main` from anyone fails with "protected branch". Your normal
-5S flow (PR → merge button) is unchanged. On a personal-account repo GitHub can't limit *who*
-clicks Merge, so "only krxna merges into `main`" stays a written rule (§7) that Device B's guide
-also states.
-
-### 3.2 Your Kaizen folder
+### Your Kaizen folder
 
 Run in Terminal, one block at a time. After each block, compare against "Expect". If it differs,
 stop and fix it before going on.
@@ -226,8 +203,7 @@ rebase or force-push, never edit apps/field-mobile.
 |---|---|
 | `git branch --show-current` shows `main` in the Kaizen folder | Stop. Don't commit. Run `git switch kaizen/krxna`. If you have uncommitted changes, `git stash`, then `git switch kaizen/krxna`, then `git stash pop`. |
 | You committed on the wrong branch, **not pushed** | `git log --oneline -3` and note the commit SHA. Run `git switch kaizen/krxna` and `git cherry-pick <sha>`. Then remove it from the wrong branch with `git switch <wrong branch>` and `git reset --hard HEAD~1` (only because it was never pushed). |
-| A push was refused with "protected branch" | The protection worked: nothing reached production. Find out which command targeted `main` and why. |
-| Something was **pushed to `main`** by mistake (only possible if §3.1 isn't done) | Production deploy starts automatically. Immediately open GitHub → Actions → cancel the running "Production deploy" if it hasn't finished. Then treat it as plan §12 *Rollback*. |
+| Something was **pushed to `main`** by mistake | Production deploy starts automatically. Immediately open GitHub → Actions → cancel the running "Production deploy" if it hasn't finished. Then treat it as plan §12 *Rollback*. |
 | `git merge origin/feat/kaizen` conflicts | Don't guess. Ask Claude to show both sides. Keep both devices' intent. If the conflict is in Device B's files, ask them on the PR. |
 | CI is red on your PR | Fix on `kaizen/krxna`, then push again. The PR updates itself. Don't merge red. |
 | A 5S test fails and the fix isn't obvious | Stop (plan §12 *Stop and ask*). Don't loosen the test. |

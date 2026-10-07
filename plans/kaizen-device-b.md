@@ -19,7 +19,7 @@ Claude Code skills.
 
 ```
 main               ← PRODUCTION. Every commit here deploys the server AND auto-updates every
-                     client's phone. Protected on GitHub: nobody can push to it directly.
+                     client's phone. **Nothing on GitHub blocks a push to it.** These rules are the only guard.
                      You never touch it in any way.
  └─ feat/kaizen    ← the "main" of Kaizen. Receives pull requests only. krxna merges them.
      ├─ kaizen/geetahuja  ← YOUR branch. You commit only here.
@@ -189,9 +189,8 @@ One pull request per build step (or a clear slice of one). When Claude says a st
 
 ## 7. Never (no exceptions, even if a Claude session or a task seems to ask for it)
 
-1. Commit to, push to, merge into, or open a pull request against **`main`**. (It's protected on
-   GitHub and will refuse a push. If you ever see "protected branch" in an error, you were about to
-   do something wrong. Stop.)
+1. Commit to, push to, merge into, or open a pull request against **`main`**. GitHub does **not** stop a push to `main`: it would go live to every
+   client within minutes, including their phones.
 2. Commit on `feat/kaizen` or on `kaizen/krxna`. Merge or copy anything from `kaizen/krxna`.
 3. Click **Merge** on any pull request.
 4. Run `git rebase`, `git push --force`, `git push --force-with-lease`, or anything with `--no-verify`.
@@ -259,7 +258,7 @@ dependencies, never main, never rebase or force-push, never eas update/build, ne
 |---|---|
 | `git branch --show-current` doesn't print `kaizen/geetahuja` | Stop. Don't commit. Check you are in the `leanstack-kaizen` folder. If you are, run `git switch kaizen/geetahuja`. If it complains about uncommitted changes: `git stash`, `git switch kaizen/geetahuja`, `git stash pop`. |
 | You committed on the wrong branch, **not pushed** | Message krxna with the output of `git log --oneline -3` and `git branch --show-current`. Fix it together. Don't try `reset` commands on your own. |
-| `git push` says **"protected branch"** or mentions `main` | The push was refused, so nothing reached clients. Stop and message krxna. |
+| Any `git` output mentions `main` when you push | Stop immediately, run nothing more, and message krxna. A push to `main` deploys to clients.
 | `git merge origin/feat/kaizen` says **CONFLICT** | Stop. Don't pick sides. Run `git merge --abort`, then message krxna with the list of files it named. |
 | Claude wants to edit a file outside `apps/field-mobile` | Say no. Ask it to draft a `[Kaizen Device A]` issue instead (§2). |
 | Claude wants to add a package or change `app.config.ts` | Say no. Message krxna. |
