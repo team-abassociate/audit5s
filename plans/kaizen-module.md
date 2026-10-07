@@ -498,7 +498,7 @@ sees the other's conversation, memory or local files. Everything the other side 
 be in a merged PR, a PR description, or this file (committed at `plans/kaizen-module.md`).
 
 **Setup already done (commit that added this file):** the `feat/kaizen` branch was created
-from `main` at `a8171e1`, with the worktree at `/Users/krxna/main/leanstack-kaizen` on Device A.
+from `main` (after PR #90, `4147924`), with the worktree at `/Users/krxna/main/leanstack-kaizen` on Device A.
 It has **no upstream**, so a bare `git push` can't reach `main`. The prototype and the client's
 Kaizen Sheet are in `docs/requirements/kaizen/`, and the branch rule is at the top of `CLAUDE.md`,
 `AGENTS.md` and `plans/README.md`.
