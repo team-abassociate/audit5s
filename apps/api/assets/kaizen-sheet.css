@@ -1,0 +1,128 @@
+/* =========================================================
+   Kaizen Sheet — "A3 Reimagined" theme
+   Fonts: Archivo (400/600/800/900) + IBM Plex Mono (400/600)
+   @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&family=IBM+Plex+Mono:wght@400;600&display=swap');
+   ========================================================= */
+
+:root {
+  /* ---- Base ---- */
+  --kz-ink:        #17181A;  /* text, rules */
+  --kz-muted:      #474A50;  /* secondary text */
+  --kz-faint:      #5A5E66;  /* labels */
+  --kz-line:       #C9CCD1;  /* borders */
+  --kz-paper:      #FFFFFF;
+  --kz-surface:    #F4F5F7;  /* team bar, neutral fills */
+
+  /* ---- Zones (PDCA color coding) ----
+     blue   = Plan: Problem 5W1H, Analysis, Theme
+     amber  = Do:   Root cause 4M, Counter measures
+     green  = Check: Target, After, Results, Waste ticks
+     purple = Act:  Horizontal deployment          */
+  --kz-blue:        #1F5AA6;  --kz-blue-bg:   #F1F5FA;
+  --kz-blue-2:      #6E90C2;  --kz-blue-3:    #A9BEDD;  /* pareto shades */
+  --kz-amber:       #A35A12;  --kz-amber-bar: #C9701C;  --kz-amber-bg: #FCF4EA;
+  --kz-green:       #1E7A46;  --kz-green-bg:  #EEF6F1;  --kz-green-line: #CFE3D6;
+  --kz-green-photo: #D6EADD;
+  --kz-purple:      #6A4E9C;  --kz-purple-bg: #F3F0F8;
+  --kz-before:      #6B6E74;  --kz-before-photo: #E3E4E7;
+
+  /* ---- Type ---- */
+  --kz-font:  'Archivo', 'Helvetica Neue', sans-serif;
+  --kz-mono:  'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  --kz-fs-title:   30px;   /* KAIZEN SHEET, weight 900, tracking .02em */
+  --kz-fs-metric:  22px;   /* result numbers, weight 900 */
+  --kz-fs-callout: 14px;   /* theme / target value, weight 800 */
+  --kz-fs-h:       12px;   /* section heading, weight 900 */
+  --kz-fs-body:    10.5px; /* field text */
+  --kz-fs-small:   9.5px;  /* notes, captions */
+  --kz-fs-label:   8.5px;  /* mono, uppercase labels */
+
+  /* ---- Space & shape ---- */
+  --kz-page-w: 210mm;  --kz-page-h: 297mm;   /* A4 portrait */
+  --kz-page-pad: 26px 28px;
+  --kz-gap: 8px;
+  --kz-box-pad: 8px 10px;
+  --kz-zone-rule: 3px;   /* top border on every section box */
+  --kz-radius: 0;        /* square corners throughout */
+}
+
+/* ---------- Page ---------- */
+.kz-page {
+  width: var(--kz-page-w); height: var(--kz-page-h);
+  padding: var(--kz-page-pad); box-sizing: border-box;
+  background: var(--kz-paper); color: var(--kz-ink);
+  font-family: var(--kz-font); font-size: var(--kz-fs-body); line-height: 1.3;
+  display: flex; flex-direction: column; gap: var(--kz-gap);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.kz-page * { box-sizing: border-box; }
+@media print { @page { size: A4; margin: 0; } }
+
+/* ---------- Header ---------- */
+.kz-header { display: flex; gap: 10px; border-bottom: 3px solid var(--kz-ink); padding-bottom: 10px; }
+.kz-kicker { font-family: var(--kz-mono); font-size: 10px; font-weight: 600; letter-spacing: .14em; color: var(--kz-blue); }
+.kz-title  { margin: 2px 0 0; font-size: var(--kz-fs-title); font-weight: 900; letter-spacing: .02em; }
+.kz-meta   { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--kz-line); width: 240px; }
+.kz-meta > div { padding: 4px 8px; }
+.kz-meta > div:nth-child(odd)   { border-right: 1px solid var(--kz-line); }
+.kz-meta > div:nth-child(-n+2) { border-bottom: 1px solid var(--kz-line); }
+
+.kz-label { font-family: var(--kz-mono); font-size: var(--kz-fs-label); font-weight: 600; color: var(--kz-faint); text-transform: uppercase; letter-spacing: .04em; }
+.kz-value { font-size: 12px; font-weight: 800; }
+
+/* ---------- Bars & callouts ---------- */
+.kz-team    { display: flex; gap: 10px; align-items: baseline; background: var(--kz-surface); padding: 7px 10px; font-size: 12px; }
+.kz-callout { border-left: 4px solid; padding: 7px 10px; }
+.kz-callout .kz-value { font-size: var(--kz-fs-callout); }
+.kz-callout.blue  { border-color: var(--kz-blue);  background: var(--kz-blue-bg); }
+.kz-callout.green { border-color: var(--kz-green); background: var(--kz-green-bg); }
+
+/* ---------- Section boxes ---------- */
+.kz-box { padding: var(--kz-box-pad); border-top: var(--kz-zone-rule) solid; display: flex; flex-direction: column; gap: 5px; }
+.kz-box.blue   { background: var(--kz-blue-bg);   border-color: var(--kz-blue); }
+.kz-box.amber  { background: var(--kz-amber-bg);  border-color: var(--kz-amber-bar); }
+.kz-box.green  { background: var(--kz-green-bg);  border-color: var(--kz-green); }
+.kz-box.purple { background: var(--kz-purple-bg); border-color: var(--kz-purple); }
+.kz-h   { font-size: var(--kz-fs-h); font-weight: 900; }
+.kz-tag { font-family: var(--kz-mono); font-size: 9px; font-weight: 600; margin-left: 4px; }
+.blue .kz-tag { color: var(--kz-blue); }  .amber .kz-tag { color: var(--kz-amber); }
+
+/* key/value rows (5W1H, 4M) */
+.kz-kv { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 8px; font-size: var(--kz-fs-body); }
+.blue .kz-kv b  { color: var(--kz-blue); }
+.amber .kz-kv b { color: var(--kz-amber); }
+
+/* pareto bars: top causes --kz-blue, then --kz-blue-2, --kz-blue-3 */
+.kz-bar { height: 9px; background: var(--kz-blue); }
+
+/* ---------- Before / After ---------- */
+.kz-photo        { height: 220px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.kz-photo img    { width: 100%; height: 100%; object-fit: cover; }
+.kz-before .kz-h { color: var(--kz-before); }
+.kz-after  .kz-h { color: var(--kz-green); }
+.kz-before .kz-photo { background: var(--kz-before-photo); }
+.kz-after  .kz-photo { background: var(--kz-green-photo); }
+.kz-before .kz-desc  { background: var(--kz-surface);  padding: 6px 8px; }
+.kz-after  .kz-desc  { background: var(--kz-green-bg); padding: 6px 8px; }
+.kz-after  .kz-desc b { color: var(--kz-green); }
+
+/* ---------- Checklists (Waste attacked, PQCDSM) ---------- */
+.kz-checklist { border: 1px solid var(--kz-line); padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; font-size: 10px; }
+.kz-check     { display: flex; gap: 5px; align-items: center; color: #6B6E74; }
+.kz-check::before { content: ""; width: 8px; height: 8px; border: 1px solid #9AA0A8; }
+.kz-check.on  { color: var(--kz-ink); font-weight: 800; }
+.kz-check.on::before { width: 10px; height: 10px; border: 0; background: var(--kz-green); }
+.kz-impact b  { color: var(--kz-green); }   /* ▲ improved (▼ for Cost) */
+
+/* ---------- Yes / No pills ---------- */
+.kz-pill     { font-size: 11px; font-weight: 800; padding: 4px 12px; border: 1px solid #9AA0A8; color: #6B6E74; }
+.kz-pill.on  { background: var(--kz-purple); border-color: var(--kz-purple); color: #FFFFFF; font-weight: 900; }
+
+/* ---------- Result metrics ---------- */
+.kz-metrics  { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; }
+.kz-metric   { background: var(--kz-paper); border: 1px solid var(--kz-green-line); padding: 6px 8px; }
+.kz-metric-v { font-size: var(--kz-fs-metric); font-weight: 900; color: var(--kz-green); letter-spacing: -.02em; }
+.kz-metric-n { font-size: var(--kz-fs-small); color: var(--kz-muted); }
+
+/* ---------- Footer ---------- */
+.kz-footer { font-family: var(--kz-mono); font-size: 9px; color: var(--kz-faint); display: flex; justify-content: space-between; }

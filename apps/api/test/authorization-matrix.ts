@@ -45,6 +45,7 @@ const DENIED = 403;
 const NOT_FOUND = 404;
 const OK = 200;
 const CREATED = 201;
+const ACCEPTED = 202;
 const NO_CONTENT = 204;
 const GONE = 410;
 
@@ -1488,6 +1489,30 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     expected: {
       SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/kaizens/:kaizenId/export',
+    description: 'kaizen:read — queues the Kaizen Sheet PDF on worker-report; 202',
+    expected: {
+      SUPER_ADMIN: { inScope: ACCEPTED, outOfScope: ACCEPTED },
+      CONSULTANT: { inScope: ACCEPTED, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: ACCEPTED, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: ACCEPTED, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/kaizens/:kaizenId/export/:exportId',
+    description: 'kaizen:read — the export’s state; a short-TTL presigned GET once READY',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
     coveredBy: 'kaizens.e2e.test.ts',
   },
