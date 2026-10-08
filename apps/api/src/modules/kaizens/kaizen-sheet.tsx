@@ -9,7 +9,7 @@ import {
   type KaizenStatus,
   type KaizenWaste,
 } from '@audit5s/contracts';
-import { formatDate, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDate, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
 import { sanitizeFileName } from '../reports/report-file-name';
 import { REPORT_LOGO } from '../reports/templates/logo';
 
@@ -76,7 +76,6 @@ const STATUS_LABELS: Record<KaizenStatus, string> = {
   REJECTED: 'Rejected',
 };
 
-const RUPEES = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
 export interface KaizenSheetPhotos {
   before: string | null;
@@ -166,7 +165,7 @@ function KaizenSheet({ kaizen, photos }: { kaizen: KaizenDetail; photos: KaizenS
       <section className="kz-box green">
         <div className="kz-h">Results <span className="kz-tag">CHECK</span></div>
         <div className="kz-metrics">
-          <Metric value={kaizen.annualSaving === null ? '—' : `₹${RUPEES.format(kaizen.annualSaving)}`} name="Estimated annual saving" />
+          <Metric value={formatRupees(kaizen.annualSaving)} name="Estimated annual saving" />
           <Metric value={`${kaizen.wastes.length}/${KAIZEN_WASTES.length}`} name="Wastes attacked" />
           <Metric value={`${kaizen.parameters.length}/${KAIZEN_PARAMETERS.length}`} name="PQCDSM improved" />
           <Metric value={STATUS_LABELS[kaizen.status]} name="Status" />

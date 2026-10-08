@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   departmentKey,
+  formatRupees,
   inKaizenPeriod,
   kaizenAnalysis,
   kaizenDashboard,
@@ -292,5 +293,17 @@ describe('top 3 approved by saving', () => {
       { id: 'e', status: 'APPROVED' as const, annualSaving: null, submittedAt: null },
     ];
     expect(topApprovedBySaving(items).map((k) => k.id)).toEqual(['c', 'd', 'a']);
+  });
+});
+
+describe('formatRupees', () => {
+  it('groups the Indian way and prints whole rupees', () => {
+    expect(formatRupees(0)).toBe('₹0');
+    expect(formatRupees(999)).toBe('₹999');
+    expect(formatRupees(1000)).toBe('₹1,000');
+    expect(formatRupees(108000)).toBe('₹1,08,000');
+    expect(formatRupees(12_40_000.49)).toBe('₹12,40,000');
+    expect(formatRupees(1_23_45_67_890)).toBe('₹1,23,45,67,890');
+    expect(formatRupees(null)).toBe('—');
   });
 });

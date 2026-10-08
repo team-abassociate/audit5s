@@ -101,6 +101,7 @@ describe('photos', () => {
     const second = await photo(id);
 
     expect((await getLocalKaizenPhoto(database, id, 'BEFORE'))?.id).toBe(second);
+    expect(await getLocalKaizen(database, id)).toMatchObject({ before: { id: second }, after: null });
     const items = (await listOutbox(database)).filter((row) => row.entityType === 'kaizen_photo');
     expect(items.map((row) => [row.entityId, row.operation, row.queue])).toEqual([[second, 'upsert', 'media']]);
     void first;

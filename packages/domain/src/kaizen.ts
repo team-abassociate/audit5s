@@ -93,6 +93,18 @@ export function kaizenRatioPct(part: number, whole: number): number | null {
   return whole > 0 ? (part / whole) * 100 : null;
 }
 
+/**
+ * `₹1,08,000`: whole rupees, grouped the Indian way (lakh, crore). Written out rather than
+ * `Intl` because Hermes on Android does not reliably group `en-IN`, and the phone, the web
+ * and the PDF must print the same figure. Null is "—", never ₹0.
+ */
+export function formatRupees(value: number | null): string {
+  if (value === null) return '—';
+  const digits = String(Math.round(Math.abs(value)));
+  const head = digits.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',');
+  return `${value < 0 ? '-' : ''}₹${head ? `${head},` : ''}${digits.slice(-3)}`;
+}
+
 /** Rupee sums in paise, so ten thousand savings add up to the rupee they should. */
 function sumRupees(values: readonly (number | null)[]): number {
   return values.reduce<number>((total, value) => total + Math.round((value ?? 0) * 100), 0) / 100;

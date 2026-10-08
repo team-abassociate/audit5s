@@ -11,7 +11,7 @@ import { missingKaizenFields } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import { enqueue, uuidv7 } from './audit.repository';
 import { UNSETTLED_STATES } from './outbox.repository';
-import { localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox } from './schema';
+import { localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox, zones } from './schema';
 
 /**
  * A Zone Leader's Kaizens on the device (R-48, plans/kaizen-module.md step 4).
@@ -36,6 +36,9 @@ export interface LocalKaizen extends Omit<LocalKaizenRow, 'sheet' | 'status'> {
   /** What the Kaizen is from this device's point of view: a pending Submit wins. */
   status: KaizenStatus;
   pendingSubmissionId: string | null;
+  /** The live photo of each kind, if any. */
+  before: LocalKaizenPhoto | null;
+  after: LocalKaizenPhoto | null;
 }
 
 /** Only these may be edited or submitted (`KAIZEN_TRANSITIONS`). */
@@ -45,6 +48,9 @@ export async function listLocalKaizens(database: LocalDatabase): Promise<LocalKa
   const rows = await database.select().from(localKaizens).orderBy(desc(localKaizens.updatedAt));
   const pending = await database.select().from(localKaizenSubmissions);
   const byKaizen = new Map(pending.map((submission) => [submission.kaizenId, submission.id]));
+  const photos = await database.select().from(localKaizenPhotos).where(isNull(localKaizenPhotos.deletedAt));
+  const photo = (kaizenId: string, kind: KaizenPhotoKind) =>
+    photos.find((row) => row.kaizenId === kaizenId && row.kind === kind) ?? null;
   return rows.map((row) => {
     const pendingSubmissionId = byKaizen.get(row.id) ?? null;
     return {
@@ -52,6 +58,8 @@ export async function listLocalKaizens(database: LocalDatabase): Promise<LocalKa
       sheet: JSON.parse(row.sheet) as KaizenFields,
       status: pendingSubmissionId ? 'SUBMITTED' : (row.status as KaizenStatus),
       pendingSubmissionId,
+      before: photo(row.id, 'BEFORE'),
+      after: photo(row.id, 'AFTER'),
     };
   });
 }
@@ -69,6 +77,15 @@ export async function localKaizenCounts(
     sentBack: kaizens.filter((kaizen) => kaizen.status === 'SENT_BACK').length,
     drafts: kaizens.filter((kaizen) => kaizen.status === 'DRAFT').length,
   };
+}
+
+/** The Zones this person leads, from the cached catalogue: where their Kaizens can be. */
+export function listLeaderZones(database: LocalDatabase, userId: string) {
+  return database
+    .select()
+    .from(zones)
+    .where(and(eq(zones.zoneLeaderId, userId), eq(zones.archived, 0)))
+    .orderBy(zones.sortOrder, zones.code);
 }
 
 /** A new DRAFT in the leader's Zone. The Zone is fixed here: the number carries its code. */

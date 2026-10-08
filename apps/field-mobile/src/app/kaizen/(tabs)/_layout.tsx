@@ -2,16 +2,25 @@ import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
 import { ModuleSwitch } from '../../../components/module-switch';
 import { HeaderTitle } from '../../../components/ui';
+import { KAIZEN_STRINGS } from '../../../lib/kaizen-strings';
+import { useLanguage } from '../../../lib/language-provider';
+import { useSession } from '../../../lib/session';
 import { useTheme } from '../../../lib/theme';
 
 /**
  * Kaizen's tabs (plans/kaizen-module.md §4.2), a group of its own beside 5S's `(tabs)` so
- * neither module's bar knows about the other. Step 4 lands here with Overview only; the
- * leader's New Kaizen · History (step 5) and the Coordinator's Kaizens · My Unit · Analysis
- * (step 6) join it. The bar is 5S's: tile-2 ground, a 2px ink rule, the current item in ink.
+ * neither module's bar knows about the other. A Zone Leader (`kaizen:create`) gets
+ * Overview · New Kaizen · History; the Coordinator's Kaizens · My Unit · Analysis join in
+ * step 6. A tab a role does not get is `href: null`, as in 5S. The bar is 5S's: tile-2
+ * ground, a 2px ink rule, the current item in ink.
  */
 export default function KaizenTabsLayout() {
   const theme = useTheme();
+  const { can } = useSession();
+  const { language } = useLanguage();
+  const t = KAIZEN_STRINGS[language];
+  const author = can('kaizen', 'create');
+  const shownTo = (show: boolean) => (show ? {} : { href: null });
   const icon = (glyph: string) =>
     function TabIcon({ color }: { color: ColorValue }) {
       return <Text style={{ color, fontFamily: theme.family.bold, fontSize: 18 }}>{glyph}</Text>;
@@ -37,7 +46,9 @@ export default function KaizenTabsLayout() {
         tabBarInactiveTintColor: theme.color.ink3,
       }}
     >
-      <Tabs.Screen name="overview" options={{ title: 'Overview', tabBarIcon: icon('▦') }} />
+      <Tabs.Screen name="overview" options={{ title: t.overview, tabBarIcon: icon('▦') }} />
+      <Tabs.Screen name="new" options={{ title: t.newKaizen, tabBarIcon: icon('+'), ...shownTo(author) }} />
+      <Tabs.Screen name="history" options={{ title: t.history, tabBarIcon: icon('◷'), ...shownTo(author) }} />
     </Tabs>
   );
 }
