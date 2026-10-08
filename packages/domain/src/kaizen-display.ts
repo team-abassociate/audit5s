@@ -1,31 +1,32 @@
-import { formatScore } from '@audit5s/domain';
+import { formatScore } from './scoring';
 
 /**
- * The geometry and wording rules under Kaizen's phone charts (`kaizen-charts.tsx`), apart
- * from React Native so they can be tested — the same split as `theme-choice.ts`.
+ * How Kaizen's dashboard prints and colours what the API sends (§4.7), once for the field
+ * app and the admin web. Display only: every count and ratio is the server's.
  */
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 
-/** "Oct 26" from "2026-10": en-IN month abbreviations, as every date in the app. */
-export function monthLabel(yearMonth: string): string {
+/** "Oct 26" from "2026-10": en-IN month abbreviations, as every date in the product. */
+export function formatYearMonth(yearMonth: string): string {
   const [year, month] = yearMonth.split('-');
   return `${MONTHS[Number(month) - 1] ?? month} ${year?.slice(2)}`;
 }
 
 /** One decimal, truncated, never rounded up (R-45); no submissions is "—", never 0 %. */
-export function ratio(pct: number | null): string {
+export function formatKaizenRatio(pct: number | null): string {
   return pct === null ? '—' : `${formatScore(pct)}%`;
 }
 
-/** Ink or tile, whichever has the higher contrast on `fill` (`#RRGGBB`) in this theme. */
-export function textOn(fill: string, ink: string, tile: string): string {
-  return contrast(fill, ink) >= contrast(fill, tile) ? ink : tile;
-}
-
-export function contrast(a: string, b: string): number {
+/** WCAG contrast of two `#RRGGBB` colours. */
+export function contrastRatio(a: string, b: string): number {
   const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p) as [number, number];
   return (x + 0.05) / (y + 0.05);
+}
+
+/** Ink or tile, whichever has the higher contrast on `fill` in this theme. */
+export function textOn(fill: string, ink: string, tile: string): string {
+  return contrastRatio(fill, ink) >= contrastRatio(fill, tile) ? ink : tile;
 }
 
 function luminance(hex: string): number {

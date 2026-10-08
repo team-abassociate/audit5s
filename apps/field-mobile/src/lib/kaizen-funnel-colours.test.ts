@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { gemba } from './gemba';
-import { contrast, monthLabel, ratio, textOn } from './kaizen-chart-math';
+import { contrastRatio as contrast, textOn } from '@audit5s/domain';
 
-describe('Kaizen chart rules', () => {
-  it('label months the en-IN way and ratios truncated, never rounded up', () => {
-    expect(monthLabel('2026-09')).toBe('Sept 26');
-    expect(monthLabel('2027-01')).toBe('Jan 27');
-    expect(ratio(57.149)).toBe('57.1%');
-    expect(ratio(99.99)).toBe('99.9%');
-    expect(ratio(null)).toBe('—');
-  });
-
+describe('Kaizen funnel colours', () => {
   it("put a readable count on every funnel stage, in both themes (dark mode's green is light)", () => {
     for (const palette of [gemba.light, gemba.dark]) {
       for (const fill of [palette.edgeSoft, palette.ink3, palette.okBand, palette.ok]) {

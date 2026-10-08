@@ -8,8 +8,7 @@ import type {
   KaizenKpi,
   KaizenTrendMonth,
 } from '@audit5s/contracts';
-import { formatRupees } from '@audit5s/domain';
-import { monthLabel, ratio, textOn } from '../lib/kaizen-chart-math';
+import { formatKaizenRatio as ratio, formatRupees, formatYearMonth as monthLabel, textOn } from '@audit5s/domain';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
 import { createThemedStyles, useTheme } from '../lib/theme';
