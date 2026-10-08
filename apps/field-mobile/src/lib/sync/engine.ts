@@ -41,6 +41,14 @@ import {
   recordUploadAttempt,
 } from '../db/evidence.repository';
 import { confirmLocalSubmission, settleLocalSubmission } from '../db/corrective-action.repository';
+import {
+  confirmLocalKaizenSubmission,
+  getKaizenPhotoById,
+  markKaizenPhotoIntentIssued,
+  markKaizenPhotoUploaded,
+  queueKaizenPhotoCommit,
+  settleLocalKaizenSubmission,
+} from '../db/kaizen.repository';
 import type { SyncTransport } from './transport';
 
 /**
@@ -215,6 +223,13 @@ async function drainMediaQueue(
   let failed = 0;
 
   for (const item of ready) {
+    if (item.entityType === 'kaizen_photo') {
+      const sent = await uploadKaizenPhoto(database, transport, item, now);
+      if (sent === true) uploaded += 1;
+      if (sent === false) failed += 1;
+      continue;
+    }
+
     const [row] = await evidenceById(database, item.entityId);
 
     // The photo was deleted before it ever went up; the queued metadata is moot.
@@ -246,6 +261,41 @@ async function drainMediaQueue(
   }
 
   return { uploaded, failed };
+}
+
+/**
+ * One Kaizen photo (R-48): the evidence flow on the Kaizen's own route and table.
+ * `null` ⇒ the photo was removed before it went, and its item with it.
+ */
+async function uploadKaizenPhoto(
+  database: LocalDatabase,
+  transport: SyncTransport,
+  item: OutboxRow,
+  now: () => number,
+): Promise<boolean | null> {
+  const photo = await getKaizenPhotoById(database, item.entityId);
+  if (!photo || photo.deletedAt || !photo.localFileUri) {
+    await removeItem(database, item.id);
+    return null;
+  }
+
+  await markSyncing(database, item.id, new Date(now()).toISOString());
+  try {
+    const intent = await transport.kaizenPhotoUploadIntent(
+      photo.kaizenId,
+      JSON.parse(item.payload) as Record<string, unknown>,
+    );
+    await markKaizenPhotoIntentIssued(database, photo.id, intent.objectKey);
+    if (!intent.alreadyExists) {
+      await transport.uploadObject(intent, photo.localFileUri, photo.contentType);
+    }
+    await queueKaizenPhotoCommit(database, photo);
+    await removeItem(database, item.id);
+    return true;
+  } catch (error) {
+    await recordFailure(database, item, error, now());
+    return false;
+  }
 }
 
 // ------------------------------------------------------------------------ data queue
@@ -364,6 +414,12 @@ async function applyVerdict(
       if (row.entityType === 'corrective_action_submission') {
         await confirmLocalSubmission(database, row.entityId);
       }
+      if (row.entityType === 'kaizen_photo' && row.operation === 'commit') {
+        await markKaizenPhotoUploaded(database, row.entityId);
+      }
+      if (row.entityType === 'kaizen_submission') {
+        await confirmLocalKaizenSubmission(database, row.entityId);
+      }
       await removeItem(database, row.id);
       result.accepted += 1;
       return;
@@ -386,6 +442,9 @@ async function applyVerdict(
       }
       if (row.entityType === 'corrective_action_submission') {
         await settleLocalSubmission(database, row.entityId);
+      }
+      if (row.entityType === 'kaizen_submission') {
+        await settleLocalKaizenSubmission(database, row.entityId);
       }
       await markSettled(database, row.id, `Held for review: ${verdict.reason ?? 'conflict'}`);
       result.conflicted += 1;

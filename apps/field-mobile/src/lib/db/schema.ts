@@ -340,3 +340,57 @@ export const localCorrectiveSubmissions = sqliteTable('corrective_submission', {
   afterEvidenceId: text('after_evidence_id'),
   createdAt: text('created_at').notNull(),
 });
+
+// ---------------------------------------------------------------------------- kaizen
+
+/**
+ * A Zone Leader's Kaizen (R-48), local v11. Authored here and refreshed from
+ * `GET /kaizens?mine=true`; the outbox decides which copy wins (`kaizen.repository.ts`).
+ *
+ * `sheet` is a JSON `KaizenFields`. `kaizenNo` is null until the server has numbered it
+ * ("Number on sync"). The `review*` columns are the Coordinator's latest decision.
+ */
+export const localKaizens = sqliteTable('kaizen', {
+  id: text('id').primaryKey(),
+  unitId: text('unit_id').notNull(),
+  zoneId: text('zone_id').notNull(),
+  zoneCode: text('zone_code').notNull(),
+  zoneName: text('zone_name').notNull(),
+  kaizenNo: text('kaizen_no'),
+  sheet: text('sheet').notNull().default('{}'),
+  status: text('status').notNull().default('DRAFT'),
+  submittedAt: text('submitted_at'),
+  reviewDecision: text('review_decision'),
+  reviewComment: text('review_comment'),
+  reviewedAt: text('reviewed_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * A Kaizen's before or after photo. One live row per kind; a replaced or removed one keeps
+ * its row with `deletedAt`. `localFileUri` is null for a photo known only from the server.
+ */
+export const localKaizenPhotos = sqliteTable('kaizen_photo', {
+  id: text('id').primaryKey(),
+  kaizenId: text('kaizen_id').notNull(),
+  kind: text('kind').notNull(),
+  localFileUri: text('local_file_uri'),
+  objectKey: text('object_key'),
+  contentType: text('content_type').notNull().default('image/jpeg'),
+  byteSize: integer('byte_size').notNull().default(0),
+  width: integer('width'),
+  height: integer('height'),
+  checksumSha256: text('checksum_sha256').notNull(),
+  isLiveCapture: integer('is_live_capture').notNull().default(1),
+  capturedAt: text('captured_at').notNull(),
+  uploadedAt: text('uploaded_at'),
+  deletedAt: text('deleted_at'),
+});
+
+/** A Submit tapped here and not yet confirmed: the Kaizen shows SUBMITTED meanwhile. */
+export const localKaizenSubmissions = sqliteTable('kaizen_submission', {
+  id: text('id').primaryKey(),
+  kaizenId: text('kaizen_id').notNull(),
+  createdAt: text('created_at').notNull(),
+});

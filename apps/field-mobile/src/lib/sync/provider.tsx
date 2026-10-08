@@ -7,6 +7,7 @@ import { readFileBytes } from '../capture/media';
 import { getDeviceId } from '../secure-storage';
 import { useOptionalLocalDatabase } from '../db/provider';
 import { useSession } from '../session';
+import { pullKaizens } from '../kaizen-sync';
 
 /**
  * The sync engine's triggers (§9.3).
@@ -46,6 +47,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const allowed = status === 'ready' && can('sync', 'push') && database !== null;
   const allowedRef = useRef(allowed);
   allowedRef.current = allowed;
+  const kaizenRef = useRef(false);
+  kaizenRef.current = can('kaizen', 'create');
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState(true);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
@@ -68,6 +71,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       // `allowed` guarantees a database; the guard is for the type.
       if (!database) return IDLE;
       const result = await runSync(database, transport, { deviceId: await getDeviceId() });
+      // After the push, so the server has this phone's edits before it answers with its copy.
+      if (result.error === undefined && kaizenRef.current) {
+        await pullKaizens(database).catch(() => undefined);
+      }
 
       // Connectivity is inferred from the attempt rather than from a listener: a device
       // that just pushed successfully is online, whatever a radio API claims.
