@@ -191,6 +191,7 @@ export default function KaizenDetailScreen() {
             {decision ? (
               <>
                 <Field
+                  testID="kaizen-review-comment"
                   label={needsReason ? t.reason : t.comment}
                   value={comment}
                   onChangeText={setComment}

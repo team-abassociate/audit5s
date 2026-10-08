@@ -287,6 +287,7 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
   const textField = (field: KaizenTextField) => (
     <Field
       key={field}
+      testID={`kaizen-${field}`}
       label={t.field[field]}
       value={texts[field]}
       multiline={MULTILINE.has(field)}

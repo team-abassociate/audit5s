@@ -44,6 +44,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-45 | UX audit follow-ups: one-decimal scores, never rounded up; 12-hour times; Devanagari font; who to chase | Settled |
 | R-46 | No sign-in cap per login ID; the lockout stays | Settled |
 | R-47 | A Coordinator copies a Zone Leader link; a Consultant sees "All my Units" | Settled |
+| R-48 | Leanstack hosts two modules, 5S and Kaizen | Settled |
 
 ---
 
@@ -2169,3 +2170,65 @@ Two answers to the UX audit's last questions (CA9, and the Unit scope of G4):
   unchanged.
 - **Kept:** checklists carry English, Hindi and Marathi only (CL5 stays as it is).
 
+## R-48 — Leanstack hosts two modules, 5S and Kaizen
+
+**Settled 2026-10-07 by the product owner** (plans/kaizen-module.md). **Changes R-24**'s
+landing screen for roles holding Kaizen, and **adds ARCHITECTURE.md PART 17**. The product is
+Leanstack: the 5S audit platform and a Kaizen module on the same database, API, phones and
+portal. Nothing is renamed — not the packages, the repository, the Android package or the
+EAS slug — because a rename breaks installed APKs and their signing.
+
+- **(a) A Zone Leader records a Kaizen; their Unit's Coordinator decides it.** The Kaizen Sheet
+  is the client's own (`docs/requirements/kaizen/kaizen-sheet-format.xlsx`). States:
+  `DRAFT → SUBMITTED → APPROVED | SENT_BACK | REJECTED`, and `SENT_BACK → SUBMITTED`; APPROVED
+  and REJECTED are final (`KAIZEN_TRANSITIONS`). A reason is required to send back or reject.
+  Each transition writes `kaizen_review` (decisions only, append-only) and `audit_log` in the
+  same transaction. Nothing is hard-deleted.
+- **(b) Existing roles, no new ones.** Three permissions, `kaizen:create`, `kaizen:read`,
+  `kaizen:review`, in `PERMISSION_MATRIX`:
+
+  | Role | Kaizen |
+  | --- | --- |
+  | ZONE_LEADER | Creates, edits DRAFT / SENT_BACK, submits; sees **only their own** (owner, 2026-10-07) |
+  | COORDINATOR | Reviews SUBMITTED Kaizens of their Unit; reads and analyses the Unit's |
+  | CONSULTANT | Reads and analyses Kaizens in assigned Units (R-19/R-28 scoping) |
+  | SUPER_ADMIN | Everything (R-18) |
+
+- **(c) The module picker.** After sign-in, a role holding `kaizen:read` picks **5S Audit** or
+  **Kaizen** (the "Split" design chosen in Phase 0): two tiles, each with what waits there,
+  counted from the phone's own database so it opens offline. The choice is remembered per
+  person on a shared phone, like the language, and "⇄ Switch" on every tab header goes back.
+  A role without Kaizen lands on Overview as R-24 says. In the portal the module is the
+  address: anything under `/kaizen` is Kaizen, with a 5S | Kaizen switch on the rail.
+- **(d) Offline-first, like an audit.** A Kaizen is written to SQLite per field and synced through
+  the existing outbox (`kaizen:upsert`, `kaizen_photo:upsert|commit|delete`,
+  `kaizen_submission:submit`), not a second sync path. A Submit carries its own id, so a replay
+  arriving late cannot resubmit a Kaizen the Coordinator has since sent back. After each
+  successful push, the phone pulls the leader's own Kaizens (`GET /kaizens?mine=true`) so their
+  numbers, statuses and the Coordinator's reasons are there offline. A pull never overwrites a
+  Kaizen with anything unsent. A Coordinator reviews online only (R-24).
+- **(e) The server numbers a Kaizen.** `KZ-{zone code}-{NNN}`, counted per Unit, assigned on first
+  receipt (migration 0044), so two phones offline at once can never mint the same number. Until
+  it syncs, the phone shows "Number on sync". The id is the device's (UUIDv7), which is what
+  makes the create idempotent.
+- **(f) Kaizen photos may come from the gallery.** A "before" photo is often already on the phone,
+  taken before anyone thought of a Kaizen, so the before and after photos may be live or picked
+  (`isLiveCapture` records which). Both go through the evidence pipeline: downscaled, EXIF
+  stripped, hashed, a presigned PUT, then `commit`. One live photo per kind. Gallery use stays
+  where R-38 and R-40 allow it elsewhere.
+- **(g) The export is a redesigned one-page A4 PDF, not the client's Excel filled in** (owner,
+  2026-10-07). The "A3 Reimagined" theme (`apps/api/assets/kaizen-sheet.css`), named
+  `{Unit} - Zone {n} {Zone name} - {date}.pdf`. `POST /kaizens/{id}/export` queues
+  `kaizen.export` and answers 202; it prints in `worker-report`, on the same Chromium as the 5S
+  reports, prints serialised so the container's peak memory is unchanged; the file is a
+  short-TTL presigned GET. The workbook stays as the reference for which fields the sheet has.
+- **(h) In Kaizen, green means Approved and nothing else** (owner, 2026-10-07). Kaizen has no
+  score bands, so there is no ambiguity: the Approved status, the Approved bars and the two
+  Approved funnel stages use the GEMBA green tokens, and no other status, series or decoration
+  does. A finished form step is marked in ink. Because light `--ok-band` holds no small text
+  at 4.5:1 in either ink or tile, a funnel stage carries only its large count; its name and
+  share sit beside it in ink.
+- **(i) "Department" is the Zone's `department_hint`**, trimmed and case-folded, shown in its most
+  common spelling; Zones without one count under "No department". No department table.
+- **Not done here:** no new roles, no new extensions, no chart or SVG library on the phone (its
+  charts are plain Views), and no change to the 5S module's behaviour.

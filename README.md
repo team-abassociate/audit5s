@@ -3,6 +3,9 @@
 Production-grade 5S Audit Management Platform — admin web portal, offline-first field mobile
 application, and a NestJS/PostgreSQL backend.
 
+The product is **Leanstack**: two modules, 5S and Kaizen, on one database, API, field app and
+portal (DECISIONS.md R-48). The repository, packages and app keep the `audit5s` name.
+
 ## Architecture
 
 The complete design and implementation blueprint lives in **[ARCHITECTURE.md](./ARCHITECTURE.md)**:
