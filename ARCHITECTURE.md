@@ -3658,7 +3658,7 @@ transaction. Only DRAFT and SENT_BACK may be edited, by their author.
 
 | Method and path | Permission | Notes |
 | --- | --- | --- |
-| `GET /kaizens` | read | Scoped; `unitId`, `zoneId`, `status`, `mine`, `submittedFrom`, `sort=recent\|saving`; cursor paging. A Coordinator or Consultant also sees their Units' DRAFTs (RLS `kaizen_select`); the dashboard never counts one |
+| `GET /kaizens` | read | Scoped; `unitId`, `zoneId`, `status`, `mine`, `submittedFrom`, `sort=recent\|saving`; cursor paging. A Coordinator or Consultant also sees their Units' DRAFTs (R-48(b), RLS `kaizen_select`); the dashboard never counts one |
 | `GET /kaizens/{id}` | read | With every review and short-TTL photo view URLs |
 | `GET /kaizens/dashboard?period=overall\|year\|month` | read | KPI card, funnel, six-month trend, top-5 departments, counted in `packages/domain` |
 | `GET /kaizens/analysis?by=department\|zone&period=` | read | The table under the charts |

@@ -21,6 +21,7 @@ import { IndustriesService } from './modules/industries/industries.service';
 import { PasswordService } from './modules/auth/password.service';
 import { CONFIG, type AppConfig } from './config/env';
 import { StructuredLogger } from './common/observability/logger';
+import { seedSampleKaizens } from './seed-sample-kaizens';
 
 /**
  * The fourth entrypoint of the API image (`node dist/seed`).
@@ -33,7 +34,9 @@ import { StructuredLogger } from './common/observability/logger';
  *      document, the seed and the runtime cannot drift;
  *   2. the initial Super Admin, from `SEED_SUPER_ADMIN_*`;
  *   3. the nine department checklists, imported from the real workbook **through the real
- *      import pipeline** and published as v1.
+ *      import pipeline** and published as v1;
+ *   4. **development only** (`NODE_ENV=development`): a sample Unit with Kaizens in every
+ *      status (`seed-sample-kaizens.ts`). Never in production, where this runs on deploy.
  *
  * The third is deliberate: hand-writing the templates here would create a second import
  * implementation that nothing exercises, and the one that ships would first run against
@@ -79,6 +82,12 @@ async function bootstrap(): Promise<void> {
           ? 'Checklists: already up to date'
           : `Checklists: ${imported} version(s) imported and published`,
       );
+
+      if (config.NODE_ENV === 'development') {
+        const scope = await superAdminScope(db);
+        if (!scope) throw new Error('Cannot seed sample Kaizens: no usable SUPER_ADMIN exists');
+        await seedSampleKaizens(app, db, passwords, scope.actor.userId, logger);
+      }
     } finally {
       await ownerPool.end();
     }

@@ -2194,6 +2194,10 @@ EAS slug — because a rename breaks installed APKs and their signing.
   | CONSULTANT | Reads and analyses Kaizens in assigned Units (R-19/R-28 scoping) |
   | SUPER_ADMIN | Everything (R-18) |
 
+  **A Coordinator or Consultant also sees their Units' DRAFTs** (owner, 2026-10-08): the
+  list shows them like any other status, and only the author may edit or submit one. The
+  dashboard and the analysis never count a DRAFT.
+
 - **(c) The module picker.** After sign-in, a role holding `kaizen:read` picks **5S Audit** or
   **Kaizen** (the "Split" design chosen in Phase 0): two tiles, each with what waits there,
   counted from the phone's own database so it opens offline. The choice is remembered per
