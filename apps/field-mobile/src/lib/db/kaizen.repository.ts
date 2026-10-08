@@ -394,7 +394,8 @@ const SHEET_KEYS = [
   'horizontalDeployment', 'benefits', 'annualSaving', 'ideaBy', 'implementedBy',
 ] as const satisfies readonly (keyof KaizenFields)[];
 
-function sheetOf(kaizen: Kaizen): KaizenFields {
+/** The sheet fields of a server Kaizen, as the device stores them. */
+export function sheetOf(kaizen: Kaizen): KaizenFields {
   return Object.fromEntries(SHEET_KEYS.map((key) => [key, kaizen[key]])) as KaizenFields;
 }
 

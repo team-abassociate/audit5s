@@ -1,4 +1,10 @@
-import type { KaizenParameter, KaizenStatus, KaizenWaste } from '@audit5s/contracts';
+import type {
+  KaizenDashboardPeriod,
+  KaizenFunnelStage,
+  KaizenParameter,
+  KaizenStatus,
+  KaizenWaste,
+} from '@audit5s/contracts';
 import type { AppLanguage } from './language';
 
 /**
@@ -118,6 +124,43 @@ export interface KaizenStrings {
   badSaving: string;
   submittedNote: string;
 
+  // the Coordinator (step 6)
+  kaizens: string;
+  myUnit: string;
+  analysis: string;
+  all: string;
+  period: Record<KaizenDashboardPeriod, string>;
+  atAGlance: string;
+  rejectionRatio: string;
+  acceptanceRatio: string;
+  funnelTitle: string;
+  funnelStage: Record<KaizenFunnelStage, string>;
+  ofSubmitted: (pct: string) => string;
+  trendPrefix: string;
+  trendSubmission: string;
+  trendCompletion: string;
+  trendSuffix: string;
+  topTitle: string;
+  noDepartment: string;
+  noData: string;
+  department: string;
+  total: string;
+  approvedSaving: string;
+  reviewWaiting: (count: number) => string;
+  top3Section: string;
+  top3Empty: string;
+  queueEmpty: string;
+  needsConnection: string;
+  reviewTitle: string;
+  decision: Record<'APPROVED' | 'SENT_BACK' | 'REJECTED', string>;
+  comment: string;
+  reason: string;
+  reasonRequired: string;
+  confirm: (decision: string) => string;
+  exportPdf: string;
+  exporting: string;
+  exportFailed: string;
+  by: (name: string) => string;
 }
 
 const EN: KaizenStrings = {
@@ -236,6 +279,42 @@ const EN: KaizenStrings = {
   badSaving: 'Enter the saving in rupees, digits only.',
   submittedNote: 'Submitted. It reaches your Coordinator when there is signal.',
 
+  kaizens: 'Kaizens',
+  myUnit: 'My Unit',
+  analysis: 'Analysis',
+  all: 'All',
+  period: { overall: 'Overall', year: 'Year', month: 'Month' },
+  atAGlance: 'Kaizen at a glance',
+  rejectionRatio: 'Rejection ratio',
+  acceptanceRatio: 'Acceptance ratio',
+  funnelTitle: 'Kaizen funnel',
+  funnelStage: { SUBMITTED: 'Submitted', REVIEWED: 'Reviewed', APPROVED: 'Approved', APPROVED_WITH_SAVING: 'Approved with a saving' },
+  ofSubmitted: (pct) => `${pct} of submitted`,
+  trendPrefix: 'Kaizen',
+  trendSubmission: 'Submission',
+  trendCompletion: 'Completion',
+  trendSuffix: 'trend',
+  topTitle: 'Top 5 trend – Departments',
+  noDepartment: 'No department',
+  noData: 'No Kaizens submitted yet.',
+  department: 'Department',
+  total: 'Total',
+  approvedSaving: 'Approved saving',
+  reviewWaiting: (n) => `${n} ${n === 1 ? 'Kaizen waits' : 'Kaizens wait'} for your review`,
+  top3Section: 'Top 3 approved by saving · last 30 days',
+  top3Empty: 'No approved Kaizens in the last 30 days. Top 3 ranks them by annual saving.',
+  queueEmpty: 'Nothing waiting for review.',
+  needsConnection: 'These figures need a connection. Pull down to try again.',
+  reviewTitle: 'Review',
+  decision: { APPROVED: 'Approve', SENT_BACK: 'Send back', REJECTED: 'Reject' },
+  comment: 'Comment (optional)',
+  reason: 'Reason (required)',
+  reasonRequired: 'A reason is required to send back or reject a Kaizen.',
+  confirm: (decision) => `Confirm: ${decision}`,
+  exportPdf: 'Download Kaizen Sheet (PDF)',
+  exporting: 'Preparing the PDF…',
+  exportFailed: 'The PDF could not be made. Try again.',
+  by: (name) => `By ${name}`,
 };
 
 const HI: KaizenStrings = {
@@ -354,6 +433,42 @@ const HI: KaizenStrings = {
   badSaving: 'बचत रुपयों में लिखें, केवल अंक।',
   submittedNote: 'जमा हो गया। सिग्नल मिलने पर यह आपके कोऑर्डिनेटर तक पहुँचेगा।',
 
+  kaizens: 'काइज़ेन',
+  myUnit: 'मेरी यूनिट',
+  analysis: 'विश्लेषण',
+  all: 'सभी',
+  period: { overall: 'कुल', year: 'वर्ष', month: 'महीना' },
+  atAGlance: 'काइज़ेन एक नज़र में',
+  rejectionRatio: 'अस्वीकृति अनुपात',
+  acceptanceRatio: 'स्वीकृति अनुपात',
+  funnelTitle: 'काइज़ेन फ़नल',
+  funnelStage: { SUBMITTED: 'जमा', REVIEWED: 'समीक्षित', APPROVED: 'स्वीकृत', APPROVED_WITH_SAVING: 'बचत सहित स्वीकृत' },
+  ofSubmitted: (pct) => `जमा का ${pct}`,
+  trendPrefix: 'काइज़ेन',
+  trendSubmission: 'जमा',
+  trendCompletion: 'पूर्णता',
+  trendSuffix: 'ट्रेंड',
+  topTitle: 'टॉप 5 ट्रेंड – विभाग',
+  noDepartment: 'कोई विभाग नहीं',
+  noData: 'अभी कोई काइज़ेन जमा नहीं हुआ।',
+  department: 'विभाग',
+  total: 'कुल',
+  approvedSaving: 'स्वीकृत बचत',
+  reviewWaiting: (n) => `${n} काइज़ेन आपकी समीक्षा की प्रतीक्षा में`,
+  top3Section: 'बचत के अनुसार टॉप 3 स्वीकृत · पिछले 30 दिन',
+  top3Empty: 'पिछले 30 दिनों में कोई काइज़ेन स्वीकृत नहीं हुआ। टॉप 3 वार्षिक बचत के क्रम में दिखते हैं।',
+  queueEmpty: 'समीक्षा के लिए कुछ नहीं।',
+  needsConnection: 'इन आँकड़ों के लिए इंटरनेट चाहिए। फिर से कोशिश के लिए नीचे खींचें।',
+  reviewTitle: 'समीक्षा',
+  decision: { APPROVED: 'स्वीकार करें', SENT_BACK: 'वापस भेजें', REJECTED: 'अस्वीकार करें' },
+  comment: 'टिप्पणी (वैकल्पिक)',
+  reason: 'कारण (आवश्यक)',
+  reasonRequired: 'वापस भेजने या अस्वीकार करने के लिए कारण ज़रूरी है।',
+  confirm: (decision) => `पुष्टि करें: ${decision}`,
+  exportPdf: 'काइज़ेन शीट डाउनलोड करें (PDF)',
+  exporting: 'PDF तैयार हो रहा है…',
+  exportFailed: 'PDF नहीं बन सका। फिर से कोशिश करें।',
+  by: (name) => `${name} द्वारा`,
 };
 
 const MR: KaizenStrings = {
@@ -472,6 +587,42 @@ const MR: KaizenStrings = {
   badSaving: 'बचत रुपयांत लिहा, फक्त अंक.',
   submittedNote: 'सादर झाले. सिग्नल मिळाल्यावर ते तुमच्या कोऑर्डिनेटरकडे पोहोचेल.',
 
+  kaizens: 'कायझेन',
+  myUnit: 'माझे युनिट',
+  analysis: 'विश्लेषण',
+  all: 'सर्व',
+  period: { overall: 'एकूण', year: 'वर्ष', month: 'महिना' },
+  atAGlance: 'कायझेन एका दृष्टीक्षेपात',
+  rejectionRatio: 'नाकारण्याचे प्रमाण',
+  acceptanceRatio: 'मंजुरीचे प्रमाण',
+  funnelTitle: 'कायझेन फनेल',
+  funnelStage: { SUBMITTED: 'सादर', REVIEWED: 'पुनरावलोकन झाले', APPROVED: 'मंजूर', APPROVED_WITH_SAVING: 'बचतीसह मंजूर' },
+  ofSubmitted: (pct) => `सादरपैकी ${pct}`,
+  trendPrefix: 'कायझेन',
+  trendSubmission: 'सादरीकरण',
+  trendCompletion: 'पूर्णता',
+  trendSuffix: 'ट्रेंड',
+  topTitle: 'टॉप 5 ट्रेंड – विभाग',
+  noDepartment: 'विभाग नाही',
+  noData: 'अजून एकही कायझेन सादर झाले नाही.',
+  department: 'विभाग',
+  total: 'एकूण',
+  approvedSaving: 'मंजूर बचत',
+  reviewWaiting: (n) => `${n} कायझेन तुमच्या पुनरावलोकनाच्या प्रतीक्षेत`,
+  top3Section: 'बचतीनुसार टॉप 3 मंजूर · मागील 30 दिवस',
+  top3Empty: 'मागील 30 दिवसांत एकही कायझेन मंजूर झाले नाही. टॉप 3 वार्षिक बचतीनुसार दिसतात.',
+  queueEmpty: 'पुनरावलोकनासाठी काहीही नाही.',
+  needsConnection: 'या आकड्यांसाठी इंटरनेट लागते. पुन्हा प्रयत्नासाठी खाली ओढा.',
+  reviewTitle: 'पुनरावलोकन',
+  decision: { APPROVED: 'मंजूर करा', SENT_BACK: 'परत पाठवा', REJECTED: 'नाकारा' },
+  comment: 'टिप्पणी (ऐच्छिक)',
+  reason: 'कारण (आवश्यक)',
+  reasonRequired: 'परत पाठवण्यासाठी किंवा नाकारण्यासाठी कारण आवश्यक आहे.',
+  confirm: (decision) => `निश्चित करा: ${decision}`,
+  exportPdf: 'कायझेन शीट डाउनलोड करा (PDF)',
+  exporting: 'PDF तयार होत आहे…',
+  exportFailed: 'PDF तयार झाले नाही. पुन्हा प्रयत्न करा.',
+  by: (name) => `${name} यांनी`,
 };
 
 export const KAIZEN_STRINGS: Record<AppLanguage, KaizenStrings> = { en: EN, hi: HI, mr: MR };

@@ -1,10 +1,33 @@
 import { Image, Text, View } from 'react-native';
 import { formatDayMonth, formatRupees } from '@audit5s/domain';
-import type { LocalKaizen, LocalKaizenPhoto } from '../lib/db/kaizen.repository';
+import type { Kaizen } from '@audit5s/contracts';
+import type { LocalKaizen } from '../lib/db/kaizen.repository';
 import { KAIZEN_STATUS_TONE, KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
 import { createThemedStyles } from '../lib/theme';
 import { Card, Chip, Data, Figure, Hatch } from './ui';
+
+/**
+ * What a card needs, from either source: the leader's own Kaizens from SQLite, or a
+ * Coordinator's list from the API (`cardFromServer`). A photo with no file here is one only
+ * the server holds.
+ */
+export interface KaizenCardData extends Pick<LocalKaizen, 'id' | 'status' | 'kaizenNo' | 'sheet' | 'reviewComment'> {
+  before: { localFileUri: string | null } | null;
+  after: { localFileUri: string | null } | null;
+}
+
+export function cardFromServer(kaizen: Kaizen): KaizenCardData {
+  return {
+    id: kaizen.id,
+    status: kaizen.status,
+    kaizenNo: kaizen.kaizenNo,
+    sheet: { theme: kaizen.theme, machine: kaizen.machine, implementedOn: kaizen.implementedOn, annualSaving: kaizen.annualSaving },
+    reviewComment: kaizen.latestReview?.comment ?? null,
+    before: kaizen.beforePhoto ? { localFileUri: null } : null,
+    after: kaizen.afterPhoto ? { localFileUri: null } : null,
+  };
+}
 
 /** Where a tap on a Kaizen goes: a draft straight back into the form, anything else its sheet. */
 export function kaizenHref(kaizen: Pick<LocalKaizen, 'id' | 'status'>) {
@@ -22,13 +45,22 @@ export function kaizenHref(kaizen: Pick<LocalKaizen, 'id' | 'status'>) {
  * shows its tag on a plain ground (the list API carries no view URLs; the detail fetches
  * them). A missing photo is the hatch, never a blank: "nothing here", not "still loading".
  */
-export function KaizenCard({ kaizen, onPress }: { kaizen: LocalKaizen; onPress: () => void }) {
+export function KaizenCard({
+  kaizen,
+  author,
+  onPress,
+}: {
+  kaizen: KaizenCardData;
+  /** "{author} · {zone code}", leading the meta line on a Coordinator's list. */
+  author?: string;
+  onPress: () => void;
+}) {
   const styles = useStyles();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
   const sheet = kaizen.sheet;
   const no = kaizen.kaizenNo ?? t.numberOnSync;
-  const meta = [sheet.machine, sheet.implementedOn ? formatDayMonth(sheet.implementedOn) : null].filter(Boolean).join(' · ');
+  const meta = [author ?? sheet.machine, sheet.implementedOn ? formatDayMonth(sheet.implementedOn) : null].filter(Boolean).join(' · ');
   const saving = sheet.annualSaving ?? null;
   const returned = kaizen.status === 'SENT_BACK' || kaizen.status === 'REJECTED';
 
@@ -73,7 +105,7 @@ export function KaizenCard({ kaizen, onPress }: { kaizen: LocalKaizen; onPress: 
   );
 }
 
-function Photo({ photo, tag, none }: { photo: LocalKaizenPhoto | null; tag: string; none: string }) {
+function Photo({ photo, tag, none }: { photo: KaizenCardData['before']; tag: string; none: string }) {
   const styles = useStyles();
   return (
     <View style={styles.photo}>

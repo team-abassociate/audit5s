@@ -10,13 +10,14 @@ import { useTheme } from '../../../lib/theme';
 /**
  * Kaizen's tabs (plans/kaizen-module.md §4.2), a group of its own beside 5S's `(tabs)` so
  * neither module's bar knows about the other. A Zone Leader (`kaizen:create`) gets
- * Overview · New Kaizen · History; the Coordinator's Kaizens · My Unit · Analysis join in
- * step 6. A tab a role does not get is `href: null`, as in 5S. The bar is 5S's: tile-2
- * ground, a 2px ink rule, the current item in ink.
+ * Overview · New Kaizen · History. Everyone else who reads Kaizens — a Coordinator, a
+ * Consultant, the Super Admin — gets Overview · Kaizens · Analysis, and a Coordinator also
+ * My Unit (the 5S screen itself). A tab a role does not get is `href: null`, as in 5S. The
+ * bar is 5S's: tile-2 ground, a 2px ink rule, the current item in ink.
  */
 export default function KaizenTabsLayout() {
   const theme = useTheme();
-  const { can } = useSession();
+  const { can, scope } = useSession();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
   const author = can('kaizen', 'create');
@@ -49,6 +50,9 @@ export default function KaizenTabsLayout() {
       <Tabs.Screen name="overview" options={{ title: t.overview, tabBarIcon: icon('▦') }} />
       <Tabs.Screen name="new" options={{ title: t.newKaizen, tabBarIcon: icon('+'), ...shownTo(author) }} />
       <Tabs.Screen name="history" options={{ title: t.history, tabBarIcon: icon('◷'), ...shownTo(author) }} />
+      <Tabs.Screen name="kaizens" options={{ title: t.kaizens, tabBarIcon: icon('◷'), ...shownTo(!author) }} />
+      <Tabs.Screen name="my-unit" options={{ title: t.myUnit, tabBarIcon: icon('▣'), ...shownTo(scope?.role === 'COORDINATOR') }} />
+      <Tabs.Screen name="analysis" options={{ title: t.analysis, tabBarIcon: icon('▤'), ...shownTo(!author) }} />
     </Tabs>
   );
 }
