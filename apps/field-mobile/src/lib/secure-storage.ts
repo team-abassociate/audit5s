@@ -140,6 +140,28 @@ export async function saveLanguage(userId: string, value: AppLanguage): Promise<
   }
 }
 
+/** The two modules a person works in (plans/kaizen-module.md §4.3). */
+export const APP_MODULES = ['five-s', 'kaizen'] as const;
+export type AppModule = (typeof APP_MODULES)[number];
+
+/**
+ * The module the person last picked, per person like the language: on a shared phone the
+ * Kaizen-minded leader and the auditor after them each reopen where they left off. None
+ * stored ⇒ the picker.
+ */
+export async function loadModule(userId: string): Promise<AppModule | null> {
+  const stored = await readString(`audit5s.module.${userId}`);
+  return APP_MODULES.includes(stored as AppModule) ? (stored as AppModule) : null;
+}
+
+export async function saveModule(userId: string, value: AppModule): Promise<void> {
+  try {
+    await writeString(`audit5s.module.${userId}`, value);
+  } catch {
+    // As with the theme: the choice holds for this session even if it is not remembered.
+  }
+}
+
 /**
  * The install's device ID: client-generated, stable for the life of the install, and the
  * primary key of the `device` row on the server. A reinstall is deliberately a new device

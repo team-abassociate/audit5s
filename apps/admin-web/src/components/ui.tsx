@@ -259,6 +259,38 @@ export function Field({
   );
 }
 
+/**
+ * A segmented control: one choice of a few, side by side (5S | Kaizen, Overall · Year ·
+ * Month). The selected segment carries the accent, as all selection does (GEMBA §2), and
+ * `aria-pressed`, so it reads without colour.
+ */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: ReadonlyArray<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+  label: string;
+}) {
+  return (
+    <div className="gb-seg" role="group" aria-label={label}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={option.value === value}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** A magnet on the board: hard 1.5px edge, hard offset shadow, nothing . */
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return <div className={cn('gb-panel', className)}>{children}</div>;

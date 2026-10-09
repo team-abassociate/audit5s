@@ -6,6 +6,9 @@ import type {
   ChecklistVersionStatus,
   CorrectiveActionStatus,
   EvidenceKind,
+  KaizenParameter,
+  KaizenStatus,
+  KaizenWaste,
   NotificationEventType,
   ReportKind,
   Role,
@@ -22,6 +25,36 @@ import type {
  * The wording matches the field app's `src/lib/labels.ts`, so a status or a role reads the
  * same on the phone and in the portal.
  */
+
+/** The field app's words (`kaizen-strings.ts`), so a Kaizen reads the same on both. */
+export const KAIZEN_STATUS_LABEL: Record<KaizenStatus, string> = {
+  DRAFT: 'Draft',
+  SUBMITTED: 'Pending',
+  APPROVED: 'Approved',
+  SENT_BACK: 'Sent back',
+  REJECTED: 'Rejected',
+};
+
+/** The Kaizen Sheet's eight wastes, numbered as its checkboxes are. */
+export const KAIZEN_WASTE_LABEL: Record<KaizenWaste, string> = {
+  DEFECTS: '1. Defects',
+  OVERPRODUCTION: '2. Overproduction',
+  WAITING_TIME: '3. Waiting time',
+  NON_UTILIZED_TALENT: '4. Non-utilized talent',
+  TRANSPORTATION: '5. Transportation',
+  INVENTORY: '6. Inventory',
+  MOTION: '7. Motion',
+  EXTRA_PROCESSING: '8. Extra-processing',
+};
+
+export const KAIZEN_PARAMETER_LABEL: Record<KaizenParameter, string> = {
+  PRODUCTIVITY: 'Productivity',
+  QUALITY: 'Quality',
+  COST: 'Cost',
+  DELIVERY: 'Delivery',
+  SAFETY: 'Safety',
+  MORALE: 'Morale',
+};
 
 export const ROLE_LABEL: Record<Role, string> = {
   SUPER_ADMIN: 'Super Admin',

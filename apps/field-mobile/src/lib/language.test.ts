@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AUDIT_STRINGS } from './audit-strings';
+import { KAIZEN_STRINGS } from './kaizen-strings';
 import {
   APP_LANGUAGES,
   DEFAULT_LANGUAGE,
@@ -71,5 +72,25 @@ describe('the questionnaire screen words', () => {
     expect(english.unanswered(4)).toBe('4 questions still need an answer. They are marked in red.');
     expect(english.photoCount(1)).toBe('1 photo');
     expect(english.marksLine(34, 50, 20, 3)).toBe('34/50 marks\n20 answered, 3 NA');
+  });
+});
+
+describe('the Kaizen strings', () => {
+  it('give every language every word, and Hindi and Marathi in Devanagari', () => {
+    // Every leaf, so a key added to English and forgotten elsewhere fails here.
+    const leaves = (value: unknown, path: string): [string, string][] =>
+      typeof value === 'string'
+        ? [[path, value]]
+        : typeof value === 'function'
+          ? [[path, String((value as (n: number) => string)(2))]]
+          : Object.entries(value as object).flatMap(([key, inner]) => leaves(inner, `${path}.${key}`));
+    const english = leaves(KAIZEN_STRINGS.en, 'en').map(([path]) => path.slice(3));
+    for (const language of ['hi', 'mr'] as const) {
+      const strings = leaves(KAIZEN_STRINGS[language], language);
+      expect(strings.map(([path]) => path.slice(3))).toEqual(english);
+      for (const [path, value] of strings) expect(value.trim(), path).not.toBe('');
+      expect(KAIZEN_STRINGS[language].submit).toMatch(/[ऀ-ॿ]/);
+      expect(Object.values(KAIZEN_STRINGS[language].status).every((label) => /[ऀ-ॿ]/.test(label))).toBe(true);
+    }
   });
 });

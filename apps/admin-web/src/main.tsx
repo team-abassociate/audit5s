@@ -25,6 +25,12 @@ import {
 } from '@/features/corrective-actions/CorrectiveActionsPage';
 import { PublicCorrectiveActionPage } from '@/features/corrective-actions/PublicCorrectiveActionPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
+import {
+  KaizenAnalysisPage,
+  KaizenOverviewPage,
+  KaizensPage,
+  validateKaizensSearch,
+} from '@/features/kaizen/KaizenPages';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { SyncHealthPage, validateSyncSearch } from '@/features/sync/SyncHealthPage';
 import { IndustriesPage } from '@/features/industries/IndustriesPage';
@@ -274,6 +280,61 @@ const auditLogRoute = createRoute({
   component: AuditLogPage,
 });
 
+/**
+ * Kaizen (plans/kaizen-module.md §4.4): its own corner of the portal under `/kaizen`, which
+ * is also what puts the shell's module switch on Kaizen. A role without `kaizen:read` is
+ * sent home rather than shown pages whose every query the server refuses.
+ */
+function KaizenOnly({ children }: { children: ReactNode }) {
+  const { can } = useSession();
+  return can('kaizen', 'read') ? children : <Navigate to="/" replace />;
+}
+
+const kaizenOverviewRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/kaizen',
+  staticData: { unitScope: 'any' },
+  component: () => (
+    <KaizenOnly>
+      <KaizenOverviewPage />
+    </KaizenOnly>
+  ),
+});
+
+const kaizenListRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/kaizen/list',
+  staticData: { unitScope: 'any' },
+  // The open Kaizen (`?kaizen=`) and the status filter live in the URL, as corrective actions'.
+  validateSearch: validateKaizensSearch,
+  component: () => (
+    <KaizenOnly>
+      <KaizensPage />
+    </KaizenOnly>
+  ),
+});
+
+const kaizenAnalysisRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/kaizen/analysis',
+  staticData: { unitScope: 'any' },
+  component: () => (
+    <KaizenOnly>
+      <KaizenAnalysisPage />
+    </KaizenOnly>
+  ),
+});
+
+/** A Kaizen's own address opens it in the list's side panel. */
+const kaizenDetailRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/kaizen/$kaizenId',
+  component: function KaizenLink() {
+    const { kaizenId } = kaizenDetailRoute.useParams();
+    return <Navigate to="/kaizen/list" search={{ kaizen: kaizenId }} replace />;
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   // Outside the gate, deliberately and alone.
   correctiveActionRoute,
@@ -296,6 +357,10 @@ const routeTree = rootRoute.addChildren([
     syncRoute,
     usersRoute,
     auditLogRoute,
+    kaizenOverviewRoute,
+    kaizenListRoute,
+    kaizenAnalysisRoute,
+    kaizenDetailRoute,
   ]),
 ]);
 

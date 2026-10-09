@@ -14,7 +14,7 @@ import {
   type ScopeSearch,
   type UnitScope,
 } from '@/lib/scope';
-import { Combobox } from '@/components/ui';
+import { Combobox, Segmented } from '@/components/ui';
 import { roleLabel } from '@/lib/labels';
 
 interface NavItem {
@@ -47,6 +47,16 @@ const NAV: NavItem[] = [
   { to: '/reports', label: 'Reports', resource: 'report', action: 'read_snapshot', group: 3 },
   { to: '/sync', label: 'Sync health', resource: 'sync_conflict', action: 'read', group: 3 },
   { to: '/audit-log', label: 'Activity log', resource: 'audit_log', action: 'read', group: 3 },
+];
+
+/**
+ * Kaizen's rail (plans/kaizen-module.md §4.4). The module is the address: anything under
+ * `/kaizen` is Kaizen, so a link or a reload lands in the right one with no stored state.
+ */
+const KAIZEN_NAV: NavItem[] = [
+  { to: '/kaizen', label: 'Kaizen overview', resource: 'kaizen', action: 'read', group: 1 },
+  { to: '/kaizen/list', label: 'Kaizens', resource: 'kaizen', action: 'read', group: 1 },
+  { to: '/kaizen/analysis', label: 'Kaizen analysis', resource: 'kaizen', action: 'read', group: 1 },
 ];
 
 const TOPBAR_SLOT_ID = 'gb-topbar-tools';
@@ -86,10 +96,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       );
     },
   });
-  const items = NAV.filter((item) => can(item.resource, item.action));
-  const current = notFound ? undefined : items.find((item) => pathname.startsWith(item.to));
+  const kaizen = pathname === '/kaizen' || pathname.startsWith('/kaizen/');
+  const nav = kaizen ? KAIZEN_NAV : NAV;
+  const items = nav.filter((item) => can(item.resource, item.action));
+  // The longest match: `/kaizen` is a prefix of every Kaizen screen.
+  const match = (list: NavItem[]) =>
+    list.filter((item) => pathname.startsWith(item.to)).sort((a, b) => b.to.length - a.to.length)[0];
+  const current = notFound ? undefined : match(items);
   // The screen's name comes from the rail even when the rail hides it from this role.
-  const screen = notFound ? undefined : NAV.find((item) => pathname.startsWith(item.to));
+  const screen = notFound ? undefined : match(nav);
   const title = notFound ? 'Page not found' : (screen?.label ?? '');
   // A screen for one record (`/units/$unitId`) names the tab after that record itself.
   const ownTitle = useRouterState({ select: (s) => Object.keys(s.matches.at(-1)?.params ?? {}).length > 0 });
@@ -107,6 +122,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <img className="gb-brand-logo" src="/audit5s-logo.png" alt="audit5s" width="42" height="42" />
           <span>audit5s · portal</span>
         </div>
+        {can('kaizen', 'read') ? <ModuleSwitch kaizen={kaizen} /> : null}
         <Nav items={items} current={current} />
         <div className="gb-railfoot">
           <b>{scope?.organizationWide ? 'Organization-wide' : `${scope?.unitIds.length ?? 0} Unit scope`}</b>
@@ -143,6 +159,24 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+    </div>
+  );
+}
+
+/** 5S | Kaizen (§4.4): the two modules, for a role that holds both. */
+function ModuleSwitch({ kaizen }: { kaizen: boolean }) {
+  const navigate = useNavigate();
+  return (
+    <div className="gb-module">
+      <Segmented
+        label="Module"
+        options={[
+          { value: '5s', label: '5S' },
+          { value: 'kaizen', label: 'Kaizen' },
+        ]}
+        value={kaizen ? 'kaizen' : '5s'}
+        onChange={(module) => void navigate({ to: module === 'kaizen' ? '/kaizen' : '/' })}
+      />
     </div>
   );
 }

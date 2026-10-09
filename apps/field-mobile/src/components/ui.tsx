@@ -80,7 +80,7 @@ export function Screen({
 }
 
 /** The hard offset shadow. Android's `elevation` is always blurred, so it is a second view. */
-function Magnet({
+export function Magnet({
   offset = 3,
   style,
   children,

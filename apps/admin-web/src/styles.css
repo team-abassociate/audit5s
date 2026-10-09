@@ -2675,3 +2675,166 @@ li:has(> .gb-menu-item--danger) {
     content: 'Closed';
   }
 }
+
+/* ==========================================================================
+   KAIZEN (plans/kaizen-module.md §4.4, §4.7)
+   ========================================================================== */
+.gb-seg {
+  display: inline-flex;
+  border: 1.5px solid var(--edge);
+  background: var(--tile);
+}
+.gb-seg button {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.gb-seg button + button {
+  border-left: 1px solid var(--edge-soft);
+}
+.gb-seg button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--ink);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.gb-seg button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.gb-module {
+  padding: 0 14px 12px;
+}
+.gb-module .gb-seg {
+  width: 100%;
+}
+.gb-module .gb-seg button {
+  flex: 1;
+}
+
+/* A. the KPI card: 2 × 3 figures split by hairlines. */
+.gb-kz-kpi {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 12px;
+}
+.gb-kz-kpi > div {
+  padding: 10px 12px;
+}
+.gb-kz-kpi > div:nth-child(even) {
+  border-left: 1px solid var(--edge-soft);
+}
+.gb-kz-kpi > div:nth-child(n + 3) {
+  border-top: 1px solid var(--edge-soft);
+}
+.gb-kz-kpi .gb-figure {
+  display: block;
+  font-size: 30px;
+}
+.gb-kz-kpi span {
+  display: block;
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* B. the funnel: clip-path trapezoids, so a period change eases the widths. */
+.gb-kz-funnel {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+}
+.gb-kz-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 12px;
+}
+.gb-kz-trap {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: clip-path var(--motion) ease-out;
+}
+.gb-kz-trap .gb-figure {
+  font-size: 20px;
+}
+.gb-kz-stage-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.gb-kz-stage-name small {
+  display: block;
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gb-kz-trap {
+    transition: none;
+  }
+}
+
+/* The Analysis grid: KPI · funnel · trend, then Top 5 across. */
+.gb-kz-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.gb-kz-grid > .gb-kz-wide {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1180px) {
+  .gb-kz-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.gb-kz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.gb-kz-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gb-kz-legend svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.gb-kz-trend-title b {
+  font-weight: 800;
+}
+
+/* The detail's before / after pair. */
+.gb-kz-photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.gb-kz-photo {
+  aspect-ratio: 1;
+  border: 1.5px solid var(--edge);
+  /* The colour only: a missing photo also carries .gb-na, whose hatch is its background image. */
+  background-color: var(--tile-2);
+  overflow: hidden;
+}
+.gb-kz-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}

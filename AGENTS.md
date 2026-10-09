@@ -17,6 +17,9 @@ working on this repository at once.
 `audit5s` — a 5S audit platform for industrial facilities in India: an admin web portal,
 an offline-first Android field app, and a NestJS/PostgreSQL backend.
 
+The product is **Leanstack**: two modules, 5S and Kaizen, on one database, API, field app and
+portal (DECISIONS.md R-48). The repository, packages and app keep the `audit5s` name.
+
 **Stage: implementation.** The API, web portal, Android field app and infrastructure
 scaffolding are present. Read the current tree rather than assuming a build step is empty.
 
