@@ -1,6 +1,8 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
+import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import {
   createKaizenRequestSchema,
+  kaizenFieldsSchema,
   kaizenPhotoUploadIntentRequestSchema,
   type Kaizen,
   type KaizenFields,
@@ -44,11 +46,19 @@ export interface LocalKaizen extends Omit<LocalKaizenRow, 'sheet' | 'status'> {
 /** Only these may be edited or submitted (`KAIZEN_TRANSITIONS`). */
 const EDITABLE: readonly KaizenStatus[] = ['DRAFT', 'SENT_BACK'];
 
-export async function listLocalKaizens(database: LocalDatabase): Promise<LocalKaizen[]> {
-  const rows = await database.select().from(localKaizens).orderBy(desc(localKaizens.updatedAt));
-  const pending = await database.select().from(localKaizenSubmissions);
+export async function listLocalKaizens(database: LocalDatabase, kaizenId?: string): Promise<LocalKaizen[]> {
+  const one = (column: SQLiteColumn) => (kaizenId === undefined ? undefined : eq(column, kaizenId));
+  const rows = await database
+    .select()
+    .from(localKaizens)
+    .where(one(localKaizens.id))
+    .orderBy(desc(localKaizens.updatedAt));
+  const pending = await database.select().from(localKaizenSubmissions).where(one(localKaizenSubmissions.kaizenId));
   const byKaizen = new Map(pending.map((submission) => [submission.kaizenId, submission.id]));
-  const photos = await database.select().from(localKaizenPhotos).where(isNull(localKaizenPhotos.deletedAt));
+  const photos = await database
+    .select()
+    .from(localKaizenPhotos)
+    .where(and(isNull(localKaizenPhotos.deletedAt), one(localKaizenPhotos.kaizenId)));
   const photo = (kaizenId: string, kind: KaizenPhotoKind) =>
     photos.find((row) => row.kaizenId === kaizenId && row.kind === kind) ?? null;
   return rows.map((row) => {
@@ -65,7 +75,7 @@ export async function listLocalKaizens(database: LocalDatabase): Promise<LocalKa
 }
 
 export async function getLocalKaizen(database: LocalDatabase, kaizenId: string): Promise<LocalKaizen | null> {
-  return (await listLocalKaizens(database)).find((kaizen) => kaizen.id === kaizenId) ?? null;
+  return (await listLocalKaizens(database, kaizenId))[0] ?? null;
 }
 
 /** The module picker's Kaizen line: what is waiting on the leader. */
@@ -363,6 +373,18 @@ export async function refreshLocalKaizens(database: LocalDatabase, kaizens: read
         })
         .onConflictDoNothing();
     }
+    // A photo the server replaced or removed is gone here too, so one kind has one live row.
+    const live = [kaizen.beforePhoto, kaizen.afterPhoto].flatMap((photo) => (photo ? [photo.id] : []));
+    await database
+      .update(localKaizenPhotos)
+      .set({ deletedAt: new Date().toISOString() })
+      .where(
+        and(
+          eq(localKaizenPhotos.kaizenId, kaizen.id),
+          isNull(localKaizenPhotos.deletedAt),
+          ...(live.length > 0 ? [notInArray(localKaizenPhotos.id, live)] : []),
+        ),
+      );
   }
 }
 
@@ -388,11 +410,7 @@ function touch(database: LocalDatabase, kaizenId: string, now: string) {
   return database.update(localKaizens).set({ updatedAt: now }).where(eq(localKaizens.id, kaizenId));
 }
 
-const SHEET_KEYS = [
-  'machine', 'lineArea', 'implementedOn', 'teamMembers', 'theme', 'target', 'problem5w1h',
-  'rootCause4m', 'analysis7qc', 'countermeasure', 'wastes', 'parameters',
-  'horizontalDeployment', 'benefits', 'annualSaving', 'ideaBy', 'implementedBy',
-] as const satisfies readonly (keyof KaizenFields)[];
+const SHEET_KEYS = Object.keys(kaizenFieldsSchema.shape) as (keyof KaizenFields)[];
 
 /** The sheet fields of a server Kaizen, as the device stores them. */
 export function sheetOf(kaizen: Kaizen): KaizenFields {

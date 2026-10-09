@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KaizenDetail, KaizenExport, KaizenPhoto, KaizenReviewDecision } from '@audit5s/contracts';
 import { formatDate, formatDateTime, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { KAIZEN_PARAMETER_LABEL, KAIZEN_STATUS_LABEL, KAIZEN_WASTE_LABEL, roleLabel } from '@/lib/labels';
 import { useFollowItemUnit } from '@/lib/scope';
 import { useSession } from '@/lib/session';
+import { savePdf } from '@/features/reports/report-pdf';
 
 /**
  * One Kaizen beside its list (§4.4): the sheet top to bottom with before and after side by
@@ -126,9 +127,18 @@ function Review({ kaizen }: { kaizen: KaizenDetail }) {
   const [decision, setDecision] = useState<KaizenReviewDecision | null>(null);
   const [comment, setComment] = useState('');
   const [missing, setMissing] = useState(false);
+  // One Idempotency-Key per decision: a retry of the same body replays it, and a changed
+  // decision or reason gets a new key (the server refuses a key reused with another body).
+  const attempt = useRef<{ body: string; key: string } | null>(null);
   const review = useMutation({
-    mutationFn: () => api.post(`/kaizens/${kaizen.id}/review`, { decision, comment: comment.trim() || null }),
+    mutationFn: () => {
+      const body = { decision, comment: comment.trim() || null };
+      const json = JSON.stringify(body);
+      if (attempt.current?.body !== json) attempt.current = { body: json, key: crypto.randomUUID() };
+      return api.post(`/kaizens/${kaizen.id}/review`, body, attempt.current.key);
+    },
     onSuccess: async () => {
+      attempt.current = null;
       setDecision(null);
       setComment('');
       await queryClient.invalidateQueries({ queryKey: ['kaizen', kaizen.id] });
@@ -194,7 +204,10 @@ function ExportButton({ kaizen }: { kaizen: KaizenDetail }) {
         job = await api.get<KaizenExport>(`${path}/${job.exportId}`);
       }
       if (job.status !== 'READY' || !job.downloadUrl) throw new Error('The PDF could not be made. Try again.');
-      window.location.assign(job.downloadUrl);
+      // Fetched and saved under the sheet's own name (R-48(g)), as the 5S reports are.
+      const response = await fetch(job.downloadUrl);
+      if (!response.ok) throw new Error(`The PDF could not be fetched (HTTP ${response.status}).`);
+      savePdf({ bytes: await response.arrayBuffer(), fileName: job.fileName, checksum: 'unchecked' });
     },
   });
   return (

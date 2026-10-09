@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { BackHandler, Image, Pressable, ScrollView, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,7 +30,7 @@ import { KAIZEN_STEPS, KAIZEN_STRINGS, type KaizenStep, type KaizenTextField } f
 import { useLanguage } from '../lib/language-provider';
 import { useSession } from '../lib/session';
 import { useSync } from '../lib/sync/provider';
-import { createThemedStyles } from '../lib/theme';
+import { createThemedStyles, tabBarStyle, useTheme } from '../lib/theme';
 import { CameraCapture } from './camera-capture';
 import { Button, Card, CheckRow, ChoiceList, ErrorBanner, Field, Label, Muted, SelectField, Slip, SlipText } from './ui';
 
@@ -92,6 +92,10 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
   const [id, setId] = useState(kaizenId);
   // Read by `save`, so two saves in one render cannot both see "no draft yet" and make two.
   const idRef = useRef(kaizenId);
+  // Saves run one at a time, so a blur and a tap together cannot both create a draft.
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  // The tick lists as last written; the query cache lags a save behind on quick taps.
+  const ticks = useRef<Pick<KaizenFields, 'wastes' | 'parameters'>>({});
   const [texts, setTexts] = useState<Texts | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
   const [open, setOpen] = useState<number>(0);
@@ -122,6 +126,20 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
     if (zoneId === null && zones.data?.[0]) setZoneId(zones.data[0].id);
   }, [zones.data, zoneId]);
 
+  // The camera is the whole screen: no tab bar under it (the form is also mounted in a
+  // stack, which has none), and the header's arrow closes the camera. Both are put back when
+  // it closes, so the arrow never outlives the camera as a dead button.
+  const navigation = useNavigation();
+  const theme = useTheme();
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: camera ? { display: 'none' } : tabBarStyle(theme),
+      headerLeft: camera
+        ? ({ tintColor }: { tintColor?: string }) => <HeaderBackButton tintColor={tintColor} onPress={() => setCamera(null)} />
+        : undefined,
+    });
+  }, [camera, navigation, theme]);
+
   // Back over the camera closes the camera, never the form.
   useEffect(() => {
     if (!camera) return;
@@ -136,24 +154,29 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
 
   /** The one write path: the first save creates the draft, every later one merges into it. */
   const save = useMutation({
-    mutationFn: async (fields: KaizenFields): Promise<string> => {
-      if (idRef.current !== null) {
-        await saveLocalKaizenFields(database, idRef.current, fields);
-        return idRef.current;
-      }
-      const zone = zones.data?.find((z) => z.id === zoneId);
-      if (!zone) throw new Error(t.noZone);
-      const created = await createLocalKaizen(database, {
-        unitId: zone.unitId,
-        zone: { id: zone.id, code: zone.code, name: zone.name },
-        sheet: fields,
-      });
-      idRef.current = created;
-      setId(created);
-      return created;
+    mutationFn: (fields: KaizenFields): Promise<string> => {
+      const run = saving.current.then(() => write(fields));
+      saving.current = run.catch(() => undefined);
+      return run;
     },
     onSuccess: () => void refresh(),
   });
+  async function write(fields: KaizenFields): Promise<string> {
+    if (idRef.current !== null) {
+      await saveLocalKaizenFields(database, idRef.current, fields);
+      return idRef.current;
+    }
+    const zone = zones.data?.find((z) => z.id === zoneId);
+    if (!zone) throw new Error(t.noZone);
+    const created = await createLocalKaizen(database, {
+      unitId: zone.unitId,
+      zone: { id: zone.id, code: zone.code, name: zone.name },
+      sheet: fields,
+    });
+    idRef.current = created;
+    setId(created);
+    return created;
+  }
 
   const photo = useMutation({
     mutationFn: async ({ kind, image, live }: { kind: KaizenPhotoKind; image: ProcessedImage; live: boolean }) => {
@@ -248,16 +271,11 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
 
   if (camera) {
     return (
-      <>
-        <Stack.Screen
-          options={{ headerLeft: ({ tintColor }) => <HeaderBackButton tintColor={tintColor} onPress={() => setCamera(null)} /> }}
-        />
-        <CameraCapture
-          prompt={t.cameraPrompt(camera)}
-          onCaptured={(image) => photo.mutateAsync({ kind: camera, image, live: true })}
-          onCancel={() => setCamera(null)}
-        />
-      </>
+      <CameraCapture
+        prompt={t.cameraPrompt(camera)}
+        onCaptured={(image) => photo.mutateAsync({ kind: camera, image, live: true })}
+        onCancel={() => setCamera(null)}
+      />
     );
   }
   if (!texts) return null;
@@ -266,7 +284,7 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
   }
 
   const current: LocalKaizen | null = kaizen.data ?? null;
-  const sheet: KaizenFields = current?.sheet ?? {};
+  const sheet: KaizenFields = { ...current?.sheet, ...ticks.current };
   const resubmitting = current?.status === 'SENT_BACK';
   const missingNow = new Set(missingKaizenFields({ ...sheet, ...pendingTextFields() }));
   const stepState = (step: KaizenStep): 'done' | 'required' | 'optional' => {
@@ -279,8 +297,9 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
   };
 
   const toggle = <T extends string>(field: 'wastes' | 'parameters', value: T) => {
-    const list = (sheet[field] ?? []) as readonly string[];
+    const list = (ticks.current[field] ?? sheet[field] ?? []) as readonly string[];
     const next = list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+    ticks.current = { ...ticks.current, [field]: next };
     save.mutate({ [field]: next } as KaizenFields);
   };
 

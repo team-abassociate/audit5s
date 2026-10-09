@@ -534,20 +534,6 @@ to the plan is a PR to that file, never an edit on one machine only.
 **Start every session by saying which device you are:** "I am Device A (backend)" or
 "I am Device B (mobile)". Stay in your lane.
 
-> **Handover, 2026-10-07 (owner): Device A is idle; Device B does all remaining Kaizen work.**
-> Steps 1, 2, 3 and 7 are on `feat/kaizen`. Device B now owns **everything** below, both
-> columns of the table, still on **`kaizen/geetahuja` only**: steps 4, 5, 6 (field app), step 8
-> (admin web), and all of step 9 (docs: R-48 and the ARCHITECTURE section; Maestro; cleanup).
-> While this note stands:
-> - Device B may edit `packages/contracts`, `packages/db` (migrations), `packages/domain`,
->   `apps/api` and `apps/admin-web` itself. Check `ls packages/db/migrations` for the next free
->   number before writing one; nobody else is writing migrations.
-> - Device A makes no Kaizen commits, so there is no second writer to conflict with.
-> - The **owner** reviews and merges Device B's PRs into `feat/kaizen` (merge commit), in
->   place of Device A. Device B still never merges anything, and nothing goes to `main`.
-> - Start of handover: read [`plans/kaizen-handoff.md`](kaizen-handoff.md).
-> If Device A comes back, the owner removes this note first, and the table applies again.
-
 | | Device A: backend + web | Device B: field app |
 |---|---|---|
 | Owns exclusively | `packages/contracts`, `packages/db` (all migrations), `packages/domain`, `apps/api`, `apps/admin-web`, `seed.ts`, `DECISIONS.md`, `ARCHITECTURE.md` | `apps/field-mobile` (incl. `app.config.ts` version, `eas.json`), `.maestro/` flows |
@@ -569,8 +555,7 @@ to the plan is a PR to that file, never an edit on one machine only.
    the failure this prevents.
 
 **Rules for the split:**
-- Device B needs a contract change? (Suspended by the handover note above while Device A is
-  idle: Device B makes it.) Do not edit `packages/contracts`. Open a GitHub issue or
+- Device B needs a contract change? Do not edit `packages/contracts`. Open a GitHub issue or
   draft PR describing it; Device A makes it. Same for migrations. Two people writing
   migrations means two `0044_…` files.
 - Device A commits only on `kaizen/krxna`, and Device B only on `kaizen/geetahuja`. PRs go from
