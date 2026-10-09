@@ -147,8 +147,8 @@ env:
       notVisible: "All synced"
     times: 10
     commands:
-      - swipe:
-          direction: DOWN
+      # Sync now, not a swipe: the phone only retries on its 60-second tick otherwise.
+      - tapOn: "Sync now"
       - waitForAnimationToEnd
 - assertVisible: "All synced"
 - takeScreenshot: kaizen-synced
@@ -217,8 +217,8 @@ env:
       notVisible: "All synced"
     times: 10
     commands:
-      - swipe:
-          direction: DOWN
+      # Sync now, not a swipe: the phone only retries on its 60-second tick otherwise.
+      - tapOn: "Sync now"
       - waitForAnimationToEnd
 - assertVisible: "All synced"
 
