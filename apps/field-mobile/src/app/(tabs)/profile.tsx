@@ -17,6 +17,7 @@ import {
   Screen,
   StatGrid,
 } from '../../components/ui';
+import { ModuleSwitch } from '../../components/module-switch';
 import { api } from '../../lib/api';
 import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
 import { useLocalDatabase } from '../../lib/db/provider';
@@ -242,6 +243,7 @@ export default function ProfileScreen() {
           </Card>
         </Link>
 
+        <ModuleSwitch />
         <Button title="Sign out" variant="secondary" onPress={() => void attemptSignOut()} />
         <Text style={styles.version}>App version {Constants.expoConfig?.version ?? 'dev'}</Text>
       </ScrollView>

@@ -1,11 +1,10 @@
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
-import { ModuleSwitch } from '../../../components/module-switch';
 import { HeaderTitle } from '../../../components/ui';
 import { KAIZEN_STRINGS } from '../../../lib/kaizen-strings';
 import { useLanguage } from '../../../lib/language-provider';
 import { useSession } from '../../../lib/session';
-import { useTheme } from '../../../lib/theme';
+import { tabBarStyle, useTheme } from '../../../lib/theme';
 
 /**
  * Kaizen's tabs (plans/kaizen-module.md §4.2), a group of its own beside 5S's `(tabs)` so
@@ -33,15 +32,8 @@ export default function KaizenTabsLayout() {
         headerTintColor: theme.color.ink,
         headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
         headerShadowVisible: false,
-        headerLeft: () => <ModuleSwitch />,
         sceneStyle: { backgroundColor: theme.color.board },
-        tabBarStyle: {
-          minHeight: 64,
-          backgroundColor: theme.color.tile2,
-          borderTopWidth: 2,
-          borderTopColor: theme.color.edge,
-          elevation: 0,
-        },
+        tabBarStyle: tabBarStyle(theme),
         tabBarLabelStyle: { fontFamily: theme.family.bold, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase' },
         tabBarActiveTintColor: theme.color.ink,
         tabBarInactiveTintColor: theme.color.ink3,
@@ -53,6 +45,8 @@ export default function KaizenTabsLayout() {
       <Tabs.Screen name="kaizens" options={{ title: t.kaizens, tabBarIcon: icon('◷'), ...shownTo(!author) }} />
       <Tabs.Screen name="my-unit" options={{ title: t.myUnit, tabBarIcon: icon('▣'), ...shownTo(scope?.role === 'COORDINATOR') }} />
       <Tabs.Screen name="analysis" options={{ title: t.analysis, tabBarIcon: icon('▤'), ...shownTo(!author) }} />
+      {/* Opened by the initials in the top-left corner, never a tab: it keeps Kaizen's bar. */}
+      <Tabs.Screen name="profile" options={{ title: t.profile, href: null }} />
     </Tabs>
   );
 }

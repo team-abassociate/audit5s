@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { BackHandler, Image, Pressable, ScrollView, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,7 +30,7 @@ import { KAIZEN_STEPS, KAIZEN_STRINGS, type KaizenStep, type KaizenTextField } f
 import { useLanguage } from '../lib/language-provider';
 import { useSession } from '../lib/session';
 import { useSync } from '../lib/sync/provider';
-import { createThemedStyles } from '../lib/theme';
+import { createThemedStyles, tabBarStyle, useTheme } from '../lib/theme';
 import { CameraCapture } from './camera-capture';
 import { Button, Card, CheckRow, ChoiceList, ErrorBanner, Field, Label, Muted, SelectField, Slip, SlipText } from './ui';
 
@@ -125,6 +125,20 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
   useEffect(() => {
     if (zoneId === null && zones.data?.[0]) setZoneId(zones.data[0].id);
   }, [zones.data, zoneId]);
+
+  // The camera is the whole screen: no tab bar under it (the form is also mounted in a
+  // stack, which has none), and the header's arrow closes the camera. Both are put back when
+  // it closes, so the arrow never outlives the camera as a dead button.
+  const navigation = useNavigation();
+  const theme = useTheme();
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: camera ? { display: 'none' } : tabBarStyle(theme),
+      headerLeft: camera
+        ? ({ tintColor }: { tintColor?: string }) => <HeaderBackButton tintColor={tintColor} onPress={() => setCamera(null)} />
+        : undefined,
+    });
+  }, [camera, navigation, theme]);
 
   // Back over the camera closes the camera, never the form.
   useEffect(() => {
@@ -257,16 +271,11 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
 
   if (camera) {
     return (
-      <>
-        <Stack.Screen
-          options={{ headerLeft: ({ tintColor }) => <HeaderBackButton tintColor={tintColor} onPress={() => setCamera(null)} /> }}
-        />
-        <CameraCapture
-          prompt={t.cameraPrompt(camera)}
-          onCaptured={(image) => photo.mutateAsync({ kind: camera, image, live: true })}
-          onCancel={() => setCamera(null)}
-        />
-      </>
+      <CameraCapture
+        prompt={t.cameraPrompt(camera)}
+        onCaptured={(image) => photo.mutateAsync({ kind: camera, image, live: true })}
+        onCancel={() => setCamera(null)}
+      />
     );
   }
   if (!texts) return null;

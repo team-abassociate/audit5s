@@ -2,7 +2,7 @@
 // on every API request needs one.
 import '../lib/crypto-polyfill';
 import { useEffect, useRef } from 'react';
-import { ActivityIndicator, Alert, AppState, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, LogBox, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular';
 import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold';
@@ -27,6 +27,10 @@ import { leaveScreen } from '../lib/leave-screen';
 import { permissionPromptOpen } from '../lib/permission-prompt';
 import { requestPermissionsAtLaunch } from '../components/camera-capture';
 import { loadModule } from '../lib/secure-storage';
+
+// Maestro runs (Metro started with EXPO_PUBLIC_E2E=1): the debug build's warning toast
+// takes taps meant for the bottom of the screen. A release build has no LogBox at all.
+if (__DEV__ && process.env.EXPO_PUBLIC_E2E === '1') LogBox.ignoreAllLogs();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -183,16 +187,13 @@ function AuthGate() {
     );
   }
 
-  // §9.9: the status affordance is on **every** field screen, not on a sync page nobody
-  // visits. The login and forced-reset screens are the exception — there is no device
-  // store to report on until somebody is signed in.
+  // The sync bar (initials, status, Sync now) is on the main page of each 5S and Kaizen tab
+  // only, as the owner ruled on 2026-10-09. Every screen pushed on top of a tab, the module
+  // picker included, uses the space for its own work; sync keeps running underneath, and its
+  // status is one Back away. Nobody signed in, nothing to report.
   const signedIn = status === 'ready';
-  // Audit capture and its Zones list use the space for the work itself. Sync keeps running
-  // underneath; its status remains available on Overview and the other signed-in screens.
-  const inAudit =
-    (segments[0] === 'audit' && segments[1] === '[auditZoneId]') || segments[0] === 'walk-by';
-  const inAuditZones = segments[0] === 'audit' && segments[1] === 'zones';
-  const showBar = signedIn && !inAudit && !inAuditZones;
+  const onTab = segments[0] === '(tabs)' || (segments[0] === 'kaizen' && segments[1] === '(tabs)');
+  const showBar = signedIn && onTab;
 
   return (
     <>
