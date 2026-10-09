@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AppState } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { runSync, type SyncResult } from './engine';
 import { createSyncTransport } from './http-transport';
 import { readFileBytes } from '../capture/media';
@@ -43,6 +44,7 @@ const IDLE: SyncResult = { accepted: 0, conflicted: 0, failed: 0, deferred: 0, p
 
 export function SyncProvider({ children }: { children: ReactNode }) {
   const database = useOptionalLocalDatabase();
+  const queryClient = useQueryClient();
   const { status, can } = useSession();
   const allowed = status === 'ready' && can('sync', 'push') && database !== null;
   const allowedRef = useRef(allowed);
@@ -74,6 +76,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       // After the push, so the server has this phone's edits before it answers with its copy.
       if (result.error === undefined && kaizenRef.current) {
         await pullKaizens(database).catch(() => undefined);
+        // The pulled numbers, statuses and reviews show on screens already open.
+        for (const key of ['kaizen', 'kaizens', 'module-picker']) {
+          void queryClient.invalidateQueries({ queryKey: ['local', key] });
+        }
       }
 
       // Connectivity is inferred from the attempt rather than from a listener: a device
@@ -102,7 +108,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         void latest.current();
       }
     }
-  }, [database]);
+  }, [database, queryClient]);
   latest.current = sync;
 
   useEffect(() => {

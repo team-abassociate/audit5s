@@ -119,6 +119,27 @@ describe('photos', () => {
 });
 
 describe('sync', () => {
+  it('a refused Submit hands the Kaizen back to the leader to fix', async () => {
+    const id = await newKaizen(COMPLETE);
+    await submitLocalKaizen(database, id);
+
+    await runSync(database, fakeServer({ reject: 'kaizen_submission:submit' }).transport, { deviceId: 'device' });
+
+    expect(await getLocalKaizen(database, id)).toMatchObject({ status: 'DRAFT', pendingSubmissionId: null });
+    await saveLocalKaizenFields(database, id, { theme: 'Fixed' });
+  });
+
+  it('a photo removed while it uploads is deleted on the server, never committed', async () => {
+    const id = await newKaizen();
+    const photoId = await photo(id);
+    const server = fakeServer({ duringPut: () => removeLocalKaizenPhoto(database, photoId) });
+
+    await runSync(database, server.transport, { deviceId: 'device' });
+
+    expect(server.sent).toContain('kaizen_photo:delete');
+    expect(server.sent).not.toContain('kaizen_photo:commit');
+  });
+
   it('sends the sheet, uploads the photo, commits it, then the submission, in that order', async () => {
     const id = await newKaizen(COMPLETE);
     const photoId = await photo(id);
@@ -155,12 +176,25 @@ describe('the pull', () => {
     expect((await getLocalKaizen(database, busy))?.sheet.theme).toBe('Edited again');
     expect(await localKaizenCounts(database)).toEqual({ sentBack: 1, drafts: 1 });
   });
+
+  it('a photo the server replaced leaves one live photo of that kind', async () => {
+    const id = await newKaizen();
+    const old = await photo(id);
+    await runSync(database, fakeServer().transport, { deviceId: 'device' });
+    const replacement = 'cccccccc-0000-4000-8000-000000000001';
+
+    await refreshLocalKaizens(database, [server(id, { status: 'DRAFT', kaizenNo: 'KZ-Z07-016', beforePhotoId: replacement })]);
+
+    expect((await getLocalKaizen(database, id))?.before?.id).toBe(replacement);
+    expect((await getLocalKaizenPhoto(database, id, 'BEFORE'))?.id).toBe(replacement);
+    void old;
+  });
 });
 
 // ---------------------------------------------------------------------------- helpers
 
-/** A server that accepts everything, and records what arrived in what order. */
-function fakeServer() {
+/** A server that accepts everything but `reject`, and records what arrived in what order. */
+function fakeServer(options: { reject?: string; duringPut?: () => Promise<void> } = {}) {
   const sent: string[] = [];
   const transport: SyncTransport = {
     async pushBatch(request: SyncBatchRequest) {
@@ -169,7 +203,11 @@ function fakeServer() {
         batchId: request.batchId,
         serverTime: new Date().toISOString(),
         replayed: false,
-        results: request.items.map((item) => ({ outboxId: item.outboxId, entityId: item.entityId, status: 'ACCEPTED' as const })),
+        results: request.items.map((item) =>
+          `${item.entityType}:${item.operation}` === options.reject
+            ? { outboxId: item.outboxId, entityId: item.entityId, status: 'REJECTED' as const, errors: ['Refused'] }
+            : { outboxId: item.outboxId, entityId: item.entityId, status: 'ACCEPTED' as const },
+        ),
       };
     },
     uploadIntent: () => Promise.reject(new Error('No 5S photos here')),
@@ -186,6 +224,7 @@ function fakeServer() {
     },
     async uploadObject() {
       sent.push('put');
+      await options.duringPut?.();
     },
     status: () => Promise.reject(new Error('unused')),
   };
@@ -194,7 +233,7 @@ function fakeServer() {
 
 function server(
   id: string,
-  input: { status: Kaizen['status']; kaizenNo: string; comment?: string },
+  input: { status: Kaizen['status']; kaizenNo: string; comment?: string; beforePhotoId?: string },
 ): Kaizen {
   const at = '2026-10-05T10:00:00.000Z';
   return {
@@ -239,7 +278,22 @@ function server(
           createdAt: at,
         }
       : null,
-    beforePhoto: null,
+    beforePhoto: input.beforePhotoId
+      ? {
+          id: input.beforePhotoId,
+          kaizenId: id,
+          kind: 'BEFORE',
+          contentType: 'image/jpeg',
+          byteSize: 1234,
+          width: 1920,
+          height: 1080,
+          checksumSha256: SHA,
+          capturedAt: at,
+          uploadedAt: at,
+          isLiveCapture: true,
+          viewUrl: null,
+        }
+      : null,
     afterPhoto: null,
     createdAt: at,
     updatedAt: at,
