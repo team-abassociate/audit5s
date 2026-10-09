@@ -2828,7 +2828,8 @@ li:has(> .gb-menu-item--danger) {
 .gb-kz-photo {
   aspect-ratio: 1;
   border: 1.5px solid var(--edge);
-  background: var(--tile-2);
+  /* The colour only: a missing photo also carries .gb-na, whose hatch is its background image. */
+  background-color: var(--tile-2);
   overflow: hidden;
 }
 .gb-kz-photo img {

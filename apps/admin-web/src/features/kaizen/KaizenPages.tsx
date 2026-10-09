@@ -234,7 +234,7 @@ export function KaizenOverviewPage() {
   return (
     <div className="space-y-4">
       {dashboard.error ? <ErrorNotice error={dashboard.error} /> : null}
-      {dashboard.data ? <KpiCard kpi={dashboard.data.kpi} period={period} onPeriod={setPeriod} /> : <Skeleton variant="rows" columns={['', '']} />}
+      {dashboard.data ? <KpiCard kpi={dashboard.data.kpi} period={period} onPeriod={setPeriod} /> : <Skeleton variant="tiles" count={6} label="Loading the Kaizen figures" />}
       {can('kaizen', 'review') && waiting > 0 ? (
         <Slip title={`${waiting} ${waiting === 1 ? 'Kaizen waits' : 'Kaizens wait'} for your review`}>
           <Link to="/kaizen/list" search={{ status: 'SUBMITTED' } as never} className="underline">
@@ -293,7 +293,7 @@ export function KaizenAnalysisPage() {
           </div>
         </div>
       ) : (
-        <Skeleton variant="rows" columns={['', '', '']} />
+        <Skeleton variant="tiles" count={3} label="Loading the Kaizen dashboard" />
       )}
 
       <Card>
