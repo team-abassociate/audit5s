@@ -65,14 +65,16 @@ env:
 # 06 Before photo, 07 After photo: live, from the emulator's camera
 - tapOn: "Take photo"
 - tapOn: "Take the photograph"
-- extendedWaitUntil:
-    visible: "Retake photo"
+# The photo can push its buttons below the fold: scroll, not just wait.
+- scrollUntilVisible:
+    element: "Retake photo"
     timeout: 20000
 - tapOn: "Next"
 - tapOn: "Take photo"
 - tapOn: "Take the photograph"
-- extendedWaitUntil:
-    visible: "Retake photo"
+# The photo can push its buttons below the fold: scroll, not just wait.
+- scrollUntilVisible:
+    element: "Retake photo"
     timeout: 20000
 - tapOn: "Next"
 # 08 Waste attacked, 09 Parameters
