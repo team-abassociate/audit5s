@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Kaizen, KaizenFields, SyncBatchRequest } from '@audit5s/contracts';
 import { runSync } from '../sync/engine';
 import type { SyncTransport } from '../sync/transport';
-import { listOutbox } from './audit.repository';
+import { enqueue, listOutbox } from './audit.repository';
 import {
   addLocalKaizenPhoto,
   createLocalKaizen,
@@ -140,6 +140,17 @@ describe('sync', () => {
     expect(server.sent).not.toContain('kaizen_photo:commit');
   });
 
+  it('a server that refuses Kaizen items still takes the 5S items queued beside them', async () => {
+    await newKaizen({ theme: 'Unsent' });
+    await enqueue(database, 'audit', 'aaaaaaaa-0000-4000-8000-0000000000a1', 'upsert', {});
+    const server = fakeServer({ beforeKaizen: true });
+
+    await runSync(database, server.transport, { deviceId: 'device' });
+
+    expect(server.sent).toEqual(['audit:upsert']);
+    expect((await listOutbox(database)).map((row) => row.entityType)).toEqual(['kaizen']);
+  });
+
   it('sends the sheet, uploads the photo, commits it, then the submission, in that order', async () => {
     const id = await newKaizen(COMPLETE);
     const photoId = await photo(id);
@@ -194,10 +205,14 @@ describe('the pull', () => {
 // ---------------------------------------------------------------------------- helpers
 
 /** A server that accepts everything but `reject`, and records what arrived in what order. */
-function fakeServer(options: { reject?: string; duringPut?: () => Promise<void> } = {}) {
+function fakeServer(options: { reject?: string; duringPut?: () => Promise<void>; beforeKaizen?: boolean } = {}) {
   const sent: string[] = [];
   const transport: SyncTransport = {
     async pushBatch(request: SyncBatchRequest) {
+      // A server from before Kaizen: its schema refuses the whole batch over one unknown type.
+      if (options.beforeKaizen && request.items.some((item) => item.entityType.startsWith('kaizen'))) {
+        throw Object.assign(new Error('Validation failed'), { status: 400 });
+      }
       sent.push(...request.items.map((item) => `${item.entityType}:${item.operation}`));
       return {
         batchId: request.batchId,
