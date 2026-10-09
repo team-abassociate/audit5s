@@ -23,6 +23,7 @@ import {
   itemsInState,
   markDeadLetter,
   auditsAwaitingPhotos,
+  kaizensAwaitingPhotos,
   markPending,
   markSettled,
   markSyncing,
@@ -326,12 +327,19 @@ async function drainDataQueue(
   );
   // An audit's `complete` waits for its photographs (see `auditsAwaitingPhotos`). It stays
   // PENDING and goes in the first cycle after the last photo is up.
+  // A Kaizen's `submit` waits for its photographs the same way (`kaizensAwaitingPhotos`).
   const holding = await auditsAwaitingPhotos(database);
+  const holdingKaizens = module === 'kaizen' ? await kaizensAwaitingPhotos(database) : new Set<string>();
   const ready = (operations
     ? all.filter((row) => operations.includes(row.operation as SyncOperation))
     : all
   ).filter(
-    (row) => !(row.entityType === 'audit' && row.operation === 'complete' && holding.has(row.entityId)),
+    (row) =>
+      !(row.entityType === 'audit' && row.operation === 'complete' && holding.has(row.entityId)) &&
+      !(
+        row.entityType === 'kaizen_submission' &&
+        holdingKaizens.has((JSON.parse(row.payload) as { kaizenId: string }).kaizenId)
+      ),
   );
 
   if (ready.length === 0) {
