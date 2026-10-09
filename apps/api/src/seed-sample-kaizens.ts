@@ -25,15 +25,15 @@ export const SAMPLE_UNIT_NAME = 'Bhosari Plant 2 (sample)';
 export const SAMPLE_PASSWORD = 'Kaizen@2026';
 
 const ZONES = [
-  { code: 'Z07', name: 'Press Shop', department: 'Press' },
-  { code: 'Z03', name: 'Paint Shop', department: 'Paint' },
-  { code: 'Z11', name: 'Assembly', department: 'Assembly' },
+  { code: 'Z-07', name: 'Press Shop', department: 'Press' },
+  { code: 'Z-03', name: 'Paint Shop', department: 'Paint' },
+  { code: 'Z-11', name: 'Assembly', department: 'Assembly' },
 ] as const;
 
 const LEADERS = [
-  { fullName: 'Sunita Kale', phone: '+919999000071', zone: 'Z07' },
-  { fullName: 'Rahul Pawar', phone: '+919999000072', zone: 'Z03' },
-  { fullName: 'Anjali Deshmukh', phone: '+919999000073', zone: 'Z11' },
+  { fullName: 'Sunita Kale', phone: '+919999000071', zone: 'Z-07' },
+  { fullName: 'Rahul Pawar', phone: '+919999000072', zone: 'Z-03' },
+  { fullName: 'Anjali Deshmukh', phone: '+919999000073', zone: 'Z-11' },
 ] as const;
 const COORDINATOR = { fullName: 'Meera Joshi', phone: '+919999000070' };
 
