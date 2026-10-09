@@ -92,6 +92,10 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
   const [id, setId] = useState(kaizenId);
   // Read by `save`, so two saves in one render cannot both see "no draft yet" and make two.
   const idRef = useRef(kaizenId);
+  // Saves run one at a time, so a blur and a tap together cannot both create a draft.
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  // The tick lists as last written; the query cache lags a save behind on quick taps.
+  const ticks = useRef<Pick<KaizenFields, 'wastes' | 'parameters'>>({});
   const [texts, setTexts] = useState<Texts | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
   const [open, setOpen] = useState<number>(0);
@@ -136,24 +140,29 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
 
   /** The one write path: the first save creates the draft, every later one merges into it. */
   const save = useMutation({
-    mutationFn: async (fields: KaizenFields): Promise<string> => {
-      if (idRef.current !== null) {
-        await saveLocalKaizenFields(database, idRef.current, fields);
-        return idRef.current;
-      }
-      const zone = zones.data?.find((z) => z.id === zoneId);
-      if (!zone) throw new Error(t.noZone);
-      const created = await createLocalKaizen(database, {
-        unitId: zone.unitId,
-        zone: { id: zone.id, code: zone.code, name: zone.name },
-        sheet: fields,
-      });
-      idRef.current = created;
-      setId(created);
-      return created;
+    mutationFn: (fields: KaizenFields): Promise<string> => {
+      const run = saving.current.then(() => write(fields));
+      saving.current = run.catch(() => undefined);
+      return run;
     },
     onSuccess: () => void refresh(),
   });
+  async function write(fields: KaizenFields): Promise<string> {
+    if (idRef.current !== null) {
+      await saveLocalKaizenFields(database, idRef.current, fields);
+      return idRef.current;
+    }
+    const zone = zones.data?.find((z) => z.id === zoneId);
+    if (!zone) throw new Error(t.noZone);
+    const created = await createLocalKaizen(database, {
+      unitId: zone.unitId,
+      zone: { id: zone.id, code: zone.code, name: zone.name },
+      sheet: fields,
+    });
+    idRef.current = created;
+    setId(created);
+    return created;
+  }
 
   const photo = useMutation({
     mutationFn: async ({ kind, image, live }: { kind: KaizenPhotoKind; image: ProcessedImage; live: boolean }) => {
@@ -266,7 +275,7 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
   }
 
   const current: LocalKaizen | null = kaizen.data ?? null;
-  const sheet: KaizenFields = current?.sheet ?? {};
+  const sheet: KaizenFields = { ...current?.sheet, ...ticks.current };
   const resubmitting = current?.status === 'SENT_BACK';
   const missingNow = new Set(missingKaizenFields({ ...sheet, ...pendingTextFields() }));
   const stepState = (step: KaizenStep): 'done' | 'required' | 'optional' => {
@@ -279,8 +288,9 @@ export function KaizenForm({ kaizenId, onSubmitted }: { kaizenId: string | null;
   };
 
   const toggle = <T extends string>(field: 'wastes' | 'parameters', value: T) => {
-    const list = (sheet[field] ?? []) as readonly string[];
+    const list = (ticks.current[field] ?? sheet[field] ?? []) as readonly string[];
     const next = list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+    ticks.current = { ...ticks.current, [field]: next };
     save.mutate({ [field]: next } as KaizenFields);
   };
 

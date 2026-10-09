@@ -16,7 +16,7 @@ import {
 } from '@audit5s/domain';
 import type { LocalDatabase } from '../db/local-database';
 import { SYNC_META_KEYS } from '../db/schema';
-import { uuidv7 } from '../db/audit.repository';
+import { enqueue, uuidv7 } from '../db/audit.repository';
 import { setSyncMeta } from '../db/catalogue.repository';
 import {
   evidenceById,
@@ -289,7 +289,12 @@ async function uploadKaizenPhoto(
     if (!intent.alreadyExists) {
       await transport.uploadObject(intent, photo.localFileUri, photo.contentType);
     }
-    await queueKaizenPhotoCommit(database, photo);
+    // Removed while it was in flight: the server now holds it, so delete it there instead.
+    if ((await getKaizenPhotoById(database, photo.id))?.deletedAt) {
+      await enqueue(database, 'kaizen_photo', photo.id, 'delete', { kaizenId: photo.kaizenId });
+    } else {
+      await queueKaizenPhotoCommit(database, photo);
+    }
     await removeItem(database, item.id);
     return true;
   } catch (error) {
@@ -455,6 +460,10 @@ async function applyVerdict(
       // A malformed payload. Retrying it changes nothing — the server will refuse it
       // identically — so it goes straight to DEAD_LETTER and a visible banner rather than
       // burning eight attempts to arrive at the same place.
+      if (row.entityType === 'kaizen_submission') {
+        // Back to its own status (draft or sent back), so the leader can fix and resubmit it.
+        await settleLocalKaizenSubmission(database, row.entityId);
+      }
       await markDeadLetter(database, row.id, {
         attempts: MAX_SYNC_ATTEMPTS,
         lastError: (verdict.errors ?? ['Rejected by the server']).join('; '),

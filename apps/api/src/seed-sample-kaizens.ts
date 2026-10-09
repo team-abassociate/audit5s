@@ -17,7 +17,8 @@ import type { PasswordService } from './modules/auth/password.service';
  * seed runs on every deploy. The Unit, Zones and people are written with the owner
  * connection, as the test harness does; every Kaizen goes through `KaizensService` as its
  * own author and Coordinator, so numbering, triggers, reviews and `audit_log` are the real
- * ones. Runs once: a database that already has the sample Unit is left alone.
+ * ones. Runs once: a database that already has the complete sample is left alone, and a
+ * partial one (a run that failed halfway) stops the seed rather than passing for done.
  */
 
 export const SAMPLE_UNIT_NAME = 'Bhosari Plant 2 (sample)';
@@ -94,8 +95,27 @@ export async function seedSampleKaizens(
   superAdminId: string,
   logger: Logger,
 ): Promise<void> {
+  const kaizens = app.get(KaizensService);
+  const scopeOf = (userId: string, role: Role, unitId: string): ScopeContext => ({
+    actor: { userId, role, activeUnitId: unitId, unitIds: [unitId], deviceId: null },
+    resolver: grantFor(role, 'kaizen:read')!.resolver,
+  });
+
   const [existing] = await db.select({ id: units.id }).from(units).where(eq(units.name, SAMPLE_UNIT_NAME)).limit(1);
   if (existing) {
+    // The Unit is committed before the Kaizens, so a run that died halfway leaves it behind.
+    const seeded = await kaizens.list(scopeOf(superAdminId, 'SUPER_ADMIN', existing.id), {
+      unitId: existing.id,
+      limit: 200,
+      mine: false,
+      sort: 'recent',
+    });
+    // A count, not the statuses: people review the samples once they are there.
+    if (seeded.data.length < KAIZENS.length) {
+      throw new Error(
+        `Sample Kaizens: "${SAMPLE_UNIT_NAME}" is only partly seeded. Reset the development database and run the seed again.`,
+      );
+    }
     logger.log(`Sample Kaizens: already seeded in "${SAMPLE_UNIT_NAME}"`);
     return;
   }
@@ -137,16 +157,11 @@ export async function seedSampleKaizens(
     return { unitId, coordinator, leaders };
   });
 
-  const kaizens = app.get(KaizensService);
-  const scopeOf = (userId: string, role: Role): ScopeContext => ({
-    actor: { userId, role, activeUnitId: people.unitId, unitIds: [people.unitId], deviceId: null },
-    resolver: grantFor(role, 'kaizen:read')!.resolver,
-  });
-  const coordinator = scopeOf(people.coordinator.id, 'COORDINATOR');
+  const coordinator = scopeOf(people.coordinator.id, 'COORDINATOR', people.unitId);
 
   for (const entry of KAIZENS) {
     const leader = people.leaders[entry.leader]!;
-    const author = scopeOf(leader.id, 'ZONE_LEADER');
+    const author = scopeOf(leader.id, 'ZONE_LEADER', people.unitId);
     const created = await kaizens.create(author, { id: uuidv7(), zoneId: leader.zoneId, ...entry.sheet });
     if (entry.outcome === 'DRAFT') continue;
 
