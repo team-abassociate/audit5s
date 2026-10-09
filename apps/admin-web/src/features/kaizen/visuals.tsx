@@ -170,7 +170,9 @@ export function TopDepartmentsCard({
   };
   const data = months.map((month, monthIndex) => ({
     month: formatYearMonth(month),
-    ...Object.fromEntries(lines.map((line) => [line.key || 'none', line.monthly[monthIndex] ?? 0])),
+    // Keyed by position: a department's own key may hold a dot, which the chart would read
+    // as a path ("b.i.w." → nothing), or be "none".
+    ...Object.fromEntries(lines.map((line, index) => [`s${index}`, line.monthly[monthIndex] ?? 0])),
   }));
 
   return (
@@ -213,7 +215,7 @@ export function TopDepartmentsCard({
                 <Bar
                   key={line.key || 'none'}
                   isAnimationActive={false}
-                  dataKey={line.key || 'none'}
+                  dataKey={`s${index}`}
                   name={name(line)}
                   fill={look(index).fill}
                   stroke={look(index).stroke ?? 'none'}
