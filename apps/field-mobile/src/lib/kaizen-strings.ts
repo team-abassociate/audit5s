@@ -127,6 +127,7 @@ export interface KaizenStrings {
   // the Coordinator (step 6)
   kaizens: string;
   myUnit: string;
+  profile: string;
   analysis: string;
   all: string;
   period: Record<KaizenDashboardPeriod, string>;
@@ -165,7 +166,7 @@ export interface KaizenStrings {
 
 const EN: KaizenStrings = {
   chooseWork: 'Choose work',
-  switchModule: '⇄ Switch',
+  switchModule: '⇄ Switch module',
   fiveS: '5S Audit',
   fiveSLine: 'Audit your zone, close nonconformities',
   kaizen: 'Kaizen',
@@ -281,6 +282,7 @@ const EN: KaizenStrings = {
 
   kaizens: 'Kaizens',
   myUnit: 'My Unit',
+  profile: 'Profile',
   analysis: 'Analysis',
   all: 'All',
   period: { overall: 'Overall', year: 'Year', month: 'Month' },
@@ -319,7 +321,7 @@ const EN: KaizenStrings = {
 
 const HI: KaizenStrings = {
   chooseWork: 'काम चुनें',
-  switchModule: '⇄ बदलें',
+  switchModule: '⇄ मॉड्यूल बदलें',
   fiveS: '5S ऑडिट',
   fiveSLine: 'अपने ज़ोन का ऑडिट करें, कमियाँ दूर करें',
   kaizen: 'काइज़ेन',
@@ -435,6 +437,7 @@ const HI: KaizenStrings = {
 
   kaizens: 'काइज़ेन',
   myUnit: 'मेरी यूनिट',
+  profile: 'प्रोफ़ाइल',
   analysis: 'विश्लेषण',
   all: 'सभी',
   period: { overall: 'कुल', year: 'वर्ष', month: 'महीना' },
@@ -473,7 +476,7 @@ const HI: KaizenStrings = {
 
 const MR: KaizenStrings = {
   chooseWork: 'काम निवडा',
-  switchModule: '⇄ बदला',
+  switchModule: '⇄ मॉड्यूल बदला',
   fiveS: '5S ऑडिट',
   fiveSLine: 'तुमच्या झोनचे ऑडिट करा, त्रुटी दूर करा',
   kaizen: 'कायझेन',
@@ -589,6 +592,7 @@ const MR: KaizenStrings = {
 
   kaizens: 'कायझेन',
   myUnit: 'माझे युनिट',
+  profile: 'प्रोफाइल',
   analysis: 'विश्लेषण',
   all: 'सर्व',
   period: { overall: 'एकूण', year: 'वर्ष', month: 'महिना' },

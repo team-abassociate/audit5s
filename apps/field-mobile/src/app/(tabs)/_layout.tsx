@@ -1,9 +1,8 @@
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
-import { ModuleSwitch } from '../../components/module-switch';
 import { HeaderTitle } from '../../components/ui';
 import { managesOnPhone, useSession } from '../../lib/session';
-import { useTheme } from '../../lib/theme';
+import { tabBarStyle, useTheme } from '../../lib/theme';
 
 /**
  * The bottom tabs, by role.
@@ -71,16 +70,8 @@ export default function TabsLayout() {
         headerTintColor: theme.color.ink,
         headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
         headerShadowVisible: false,
-        // Back to the module picker (Kaizen). Renders nothing for a role without Kaizen.
-        headerLeft: () => <ModuleSwitch />,
         sceneStyle: { backgroundColor: theme.color.board },
-        tabBarStyle: {
-          minHeight: 64,
-          backgroundColor: theme.color.tile2,
-          borderTopWidth: 2,
-          borderTopColor: theme.color.edge,
-          elevation: 0,
-        },
+        tabBarStyle: tabBarStyle(theme),
         // Selected is ink with a 2px underline — shape as well as colour — never a filled box.
         tabBarLabel: ({ children, color, focused }) => tabLabel(children, color, focused),
         tabBarActiveTintColor: theme.color.ink,

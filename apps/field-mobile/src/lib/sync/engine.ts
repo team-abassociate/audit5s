@@ -129,11 +129,16 @@ export async function runSync(
 
   await recoverStaleWork(database, transport, now());
 
-  const structure = await drainDataQueue(database, transport, options, now, STRUCTURE_OPERATIONS);
+  // 5S and Kaizen never share a batch: a server that refuses one module's items (a server
+  // rolled back to before Kaizen refuses the whole batch) must not take the other's with it.
+  const structure = await drainDataQueue(database, transport, options, now, 'five-s', STRUCTURE_OPERATIONS);
+  const kaizenStructure = await drainDataQueue(database, transport, options, now, 'kaizen', STRUCTURE_OPERATIONS);
   const media = await drainMediaQueue(database, transport, now);
-  const rest = await drainDataQueue(database, transport, options, now);
+  const rest = await drainDataQueue(database, transport, options, now, 'five-s');
+  const kaizenRest = await drainDataQueue(database, transport, options, now, 'kaizen');
 
-  const passes = [structure, rest];
+  const passes = [structure, kaizenStructure, rest, kaizenRest];
+  const error = passes.find((pass) => pass.error !== undefined)?.error;
 
   return {
     accepted: sum(passes, 'accepted'),
@@ -143,7 +148,7 @@ export async function runSync(
     photosUploaded: media.uploaded,
     idle:
       passes.every((pass) => pass.idle) && media.uploaded === 0 && media.failed === 0,
-    ...(structure.error ?? rest.error ? { error: structure.error ?? rest.error } : {}),
+    ...(error !== undefined ? { error } : {}),
   };
 }
 
@@ -154,6 +159,8 @@ export async function runSync(
  * in the third pass.
  */
 const STRUCTURE_OPERATIONS: readonly SyncOperation[] = ['upsert', 'delete'];
+
+const KAIZEN_ENTITY_TYPES = new Set<string>(['kaizen', 'kaizen_photo', 'kaizen_submission']);
 
 function sum(passes: SyncResult[], key: 'accepted' | 'conflicted' | 'failed' | 'deferred'): number {
   return passes.reduce((total, pass) => total + pass[key], 0);
@@ -310,10 +317,13 @@ async function drainDataQueue(
   transport: SyncTransport,
   options: { deviceId: string; appVersion?: string },
   now: () => number,
+  module: 'five-s' | 'kaizen',
   /** When given, only these operations are sent — the pass structure above. */
   operations?: readonly SyncOperation[],
 ): Promise<SyncResult> {
-  const all = await readyItems(database, 'data', new Date(now()).toISOString());
+  const all = (await readyItems(database, 'data', new Date(now()).toISOString())).filter(
+    (row) => KAIZEN_ENTITY_TYPES.has(row.entityType) === (module === 'kaizen'),
+  );
   // An audit's `complete` waits for its photographs (see `auditsAwaitingPhotos`). It stays
   // PENDING and goes in the first cycle after the last photo is up.
   const holding = await auditsAwaitingPhotos(database);

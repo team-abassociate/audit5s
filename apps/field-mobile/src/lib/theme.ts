@@ -70,6 +70,17 @@ export function createThemedStyles<T extends StyleSheet.NamedStyles<T>>(
   };
 }
 
+/** The 5S and Kaizen tab bar: tile-2 ground, a 2px ink rule. */
+export function tabBarStyle(theme: GembaTheme): ViewStyle {
+  return {
+    minHeight: 64,
+    backgroundColor: theme.color.tile2,
+    borderTopWidth: 2,
+    borderTopColor: theme.color.edge,
+    elevation: 0,
+  };
+}
+
 export function iosHardShadow(color: string, offset = 3): ViewStyle {
   return Platform.OS === 'ios'
     ? {
