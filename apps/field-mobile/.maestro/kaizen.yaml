@@ -1,0 +1,259 @@
+# Kaizen end to end (plans/kaizen-module.md §7, Definition of done):
+# a Zone Leader records a Kaizen offline with two photos → it syncs and gets its number →
+# the Coordinator sends it back with a reason → the leader fixes and resubmits → the
+# Coordinator approves → it is in Top 3 → the Kaizen Sheet PDF opens.
+#
+# Needs the local stack (pnpm dev:up && pnpm db:migrate && pnpm seed), a Zone Leader and the
+# Coordinator of the same Unit, both past their first-password reset, and an emulator whose
+# camera is the virtual scene:
+#
+#   EXPO_PUBLIC_E2E=1 npx expo start   # Metro: silences the debug warning toast, which eats taps
+#   adb reverse tcp:8081 tcp:8081       # Metro over adb, so airplane mode does not cut it off
+#   maestro test -e METRO_URL=http://localhost:8081 -e LEADER_ID=... -e LEADER_PASSWORD=... \
+#     -e COORDINATOR_ID=... -e COORDINATOR_PASSWORD=... .maestro/kaizen.yaml
+#
+# Switching person is a cleared app (`clearState`): the leader's Kaizen comes back from the
+# server on their next sign-in, which is the pull this flow also exercises.
+appId: in.abassociate.audit5s
+env:
+  METRO_URL: http://10.0.2.2:8081
+---
+- evalScript: ${output.theme = 'Quick-release die clamps ' + Date.now()}
+
+# --- the Zone Leader, offline ------------------------------------------------------------
+- runFlow:
+    file: subflows/kaizen-sign-in.yaml
+    env:
+      LOGIN_ID: ${LEADER_ID}
+      PASSWORD: ${LEADER_PASSWORD}
+- takeScreenshot: kaizen-leader-overview
+- setAirplaneMode: enabled
+# The button in the page, not the tab: a debug build's LogBox toast covers the tab bar.
+- tapOn: "\\+ New Kaizen"
+- waitForAnimationToEnd
+
+# 01 Kaizen details (the date is today's already)
+- tapOn:
+    id: kaizen-machine
+- inputText: 250T Press P-04
+- tapOn:
+    id: kaizen-lineArea
+- inputText: Line 3
+- hideKeyboard
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 02 Team members
+- tapOn:
+    id: kaizen-teamMembers
+- inputText: Sunita Kale, Rahul Pawar
+- hideKeyboard
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 03 Theme
+- tapOn:
+    id: kaizen-theme
+- inputText: ${output.theme}
+- hideKeyboard
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 04 Problem
+- tapOn:
+    id: kaizen-problem5w1h
+- inputText: Die change takes 42 minutes on the 250T press
+- hideKeyboard
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 05 Countermeasure
+- tapOn:
+    id: kaizen-countermeasure
+- inputText: Quick-release clamps replace the bolted ones
+- hideKeyboard
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 06 Before photo, 07 After photo: live, from the emulator's camera
+- tapOn: "Take photo"
+- tapOn: "Take the photograph"
+# Below the photo once it is taken, so scroll to it rather than expect it on screen.
+- scrollUntilVisible:
+    element: "Retake photo"
+    timeout: 20000
+- tapOn: "Next"
+- waitForAnimationToEnd
+- tapOn: "Take photo"
+- tapOn: "Take the photograph"
+# Below the photo once it is taken, so scroll to it rather than expect it on screen.
+- scrollUntilVisible:
+    element: "Retake photo"
+    timeout: 20000
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 08 Waste attacked, 09 Parameters
+- tapOn: "3. Waiting time"
+- tapOn: "Next"
+- waitForAnimationToEnd
+- tapOn: "Productivity"
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 10 Horizontal deployment
+- tapOn: "No"
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 11 Benefits / saving
+- tapOn:
+    id: kaizen-benefits
+- inputText: 24 minutes saved per changeover
+- tapOn:
+    id: kaizen-annualSaving
+- inputText: "360000"
+- hideKeyboard
+- tapOn: "Next"
+- waitForAnimationToEnd
+# 12 Root cause & people
+- tapOn:
+    id: kaizen-rootCause4m
+- inputText: "Method: bolted clamps"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: kaizen-ideaBy
+- tapOn:
+    id: kaizen-ideaBy
+- inputText: Sunita Kale
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: kaizen-implementedBy
+- tapOn:
+    id: kaizen-implementedBy
+- inputText: Maintenance
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: kaizen-submit
+- tapOn:
+    id: kaizen-submit
+# Its card is below the counts and the sent-back list: scroll to it.
+- scrollUntilVisible:
+    element: "Number on sync"
+    timeout: 15000
+- takeScreenshot: kaizen-offline-number-on-sync
+
+# --- back online: it syncs and gets its number -------------------------------------------
+- setAirplaneMode: disabled
+# Everything sent before the next sign-in clears the app (an unsent Submit would be lost).
+# "KZ-.*" alone is not proof: the sample's sent-back card already shows a number.
+- repeat:
+    while:
+      notVisible: "All synced"
+    times: 10
+    commands:
+      # Sync now, not a swipe: the phone only retries on its 60-second tick otherwise.
+      - tapOn: "Sync now"
+      - waitForAnimationToEnd
+- assertVisible: "All synced"
+- takeScreenshot: kaizen-synced
+
+# --- the Coordinator sends it back --------------------------------------------------------
+- runFlow:
+    file: subflows/kaizen-sign-in.yaml
+    env:
+      LOGIN_ID: ${COORDINATOR_ID}
+      PASSWORD: ${COORDINATOR_PASSWORD}
+- scrollUntilVisible:
+    element: ${output.theme}
+- tapOn: ${output.theme}
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Send back"
+- tapOn: "Send back"
+- tapOn:
+    id: kaizen-review-confirm
+- assertVisible: "A reason is required to send back or reject a Kaizen."
+- tapOn:
+    id: kaizen-review-comment
+- inputText: Add the logbook changeover times, not estimates.
+- hideKeyboard
+- tapOn:
+    id: kaizen-review-confirm
+- waitForAnimationToEnd
+
+# --- the leader fixes it and resubmits -----------------------------------------------------
+- runFlow:
+    file: subflows/kaizen-sign-in.yaml
+    env:
+      LOGIN_ID: ${LEADER_ID}
+      PASSWORD: ${LEADER_PASSWORD}
+- extendedWaitUntil:
+    visible: "Add the logbook changeover times, not estimates."
+    timeout: 60000
+- takeScreenshot: kaizen-sent-back
+- scrollUntilVisible:
+    element: ${output.theme}
+- tapOn: ${output.theme}
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: kaizen-edit
+- tapOn:
+    id: kaizen-edit
+- scrollUntilVisible:
+    element: "Benefits / saving"
+- tapOn: "Benefits / saving"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: kaizen-benefits
+- tapOn:
+    id: kaizen-benefits
+- inputText: " Logbook: 42 → 18 min, 30 changeovers a month."
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: kaizen-submit
+- tapOn:
+    id: kaizen-submit
+- repeat:
+    while:
+      notVisible: "All synced"
+    times: 10
+    commands:
+      # Sync now, not a swipe: the phone only retries on its 60-second tick otherwise.
+      - tapOn: "Sync now"
+      - waitForAnimationToEnd
+- assertVisible: "All synced"
+
+# --- the Coordinator approves; it is in Top 3; the PDF opens -------------------------------
+- runFlow:
+    file: subflows/kaizen-sign-in.yaml
+    env:
+      LOGIN_ID: ${COORDINATOR_ID}
+      PASSWORD: ${COORDINATOR_PASSWORD}
+- scrollUntilVisible:
+    element: ${output.theme}
+- tapOn: ${output.theme}
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: "Approve"
+- tapOn: "Approve"
+- tapOn:
+    id: kaizen-review-confirm
+- waitForAnimationToEnd
+- swipe:
+    direction: DOWN
+- scrollUntilVisible:
+    element: "Top 3 approved by saving · last 30 days"
+- assertVisible: ${output.theme}
+- takeScreenshot: kaizen-top3
+- scrollUntilVisible:
+    element: ${output.theme}
+- tapOn: ${output.theme}
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: kaizen-export
+- tapOn:
+    id: kaizen-export
+# The PDF opens in the phone's viewer: check by eye that its ticks and photos are in place.
+- waitForAnimationToEnd:
+    timeout: 60000
+- takeScreenshot: kaizen-sheet-pdf

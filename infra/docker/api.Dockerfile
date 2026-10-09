@@ -66,6 +66,8 @@ ENV NODE_ENV=production \
 COPY --from=build --chown=app:app /repo/node_modules ./node_modules
 COPY --from=build --chown=app:app /repo/packages ./packages
 COPY --from=build --chown=app:app /repo/apps/api/dist ./apps/api/dist
+# Files the code reads at run time, beside `dist` as in the source tree: the Kaizen Sheet template.
+COPY --from=build --chown=app:app /repo/apps/api/assets ./apps/api/assets
 COPY --from=build --chown=app:app /repo/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build --chown=app:app /repo/apps/api/package.json ./apps/api/package.json
 

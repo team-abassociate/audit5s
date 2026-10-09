@@ -3,7 +3,9 @@ import { ImageManipulator } from 'expo-image-manipulator';
 import { processCapturedPhoto, type ProcessedImage } from './media';
 
 /**
- * A photograph from the phone's gallery — **overall corrective actions only** (R-38).
+ * A photograph from the phone's gallery — **overall corrective actions** (R-38) and **Kaizen's
+ * before and after** (R-48: a "before" is often already on the phone, taken before anyone
+ * thought of a Kaizen). Nowhere else.
  *
  * Every other photograph in this app is a live capture through `CameraCapture` (§12.10), and
  * this file is the only importer of `expo-image-picker`, so a grep for it finds the whole of

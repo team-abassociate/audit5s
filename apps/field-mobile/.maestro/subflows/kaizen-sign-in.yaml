@@ -1,0 +1,26 @@
+# Signs in as LOGIN_ID / PASSWORD on a cleared app and opens Kaizen from the module picker.
+appId: in.abassociate.audit5s
+---
+- launchApp:
+    clearState: true
+- openLink: audit5s://expo-development-client/?url=${METRO_URL}
+- extendedWaitUntil:
+    visible:
+      id: login-id
+    timeout: 60000
+- tapOn:
+    id: login-id
+- inputText: ${LOGIN_ID}
+- tapOn:
+    id: password
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: sign-in
+- extendedWaitUntil:
+    visible:
+      id: module-kaizen
+    timeout: 60000
+- tapOn:
+    id: module-kaizen
+- waitForAnimationToEnd

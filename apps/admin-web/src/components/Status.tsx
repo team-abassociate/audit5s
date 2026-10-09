@@ -5,6 +5,7 @@ import type {
   AuditZoneStatus,
   ChecklistVersionStatus,
   CorrectiveActionStatus,
+  KaizenStatus,
   UserStatus,
 } from '@audit5s/contracts';
 import { bandFor } from '@audit5s/domain';
@@ -15,6 +16,7 @@ import {
   ASSIGNMENT_STATUS_LABEL,
   AUDIT_STATUS_LABEL,
   CHECKLIST_VERSION_STATUS_LABEL,
+  KAIZEN_STATUS_LABEL,
   USER_STATUS_LABEL,
   ZONE_STATUS_LABEL,
 } from '@/lib/labels';
@@ -80,6 +82,14 @@ const USER: Record<UserStatus, StatusShape> = {
   LOCKED: 'attention',
 };
 
+const KAIZEN: Record<KaizenStatus, StatusShape> = {
+  DRAFT: 'open',
+  SUBMITTED: 'progress',
+  APPROVED: 'done',
+  SENT_BACK: 'attention',
+  REJECTED: 'ended',
+};
+
 type StatusChipProps =
   | { kind: 'audit'; status: AuditStatus }
   | { kind: 'zone'; status: AuditZoneStatus }
@@ -87,6 +97,7 @@ type StatusChipProps =
   | { kind: 'action'; status: CorrectiveActionStatus }
   | { kind: 'checklist'; status: ChecklistVersionStatus }
   | { kind: 'user'; status: UserStatus }
+  | { kind: 'kaizen'; status: KaizenStatus }
   /** Anything that is not one of the enums above: say the shape and the word. */
   | { shape: StatusShape; children: ReactNode };
 
@@ -105,6 +116,8 @@ function resolve(props: StatusChipProps): { shape: StatusShape; label: ReactNode
       return { shape: CHECKLIST[props.status], label: CHECKLIST_VERSION_STATUS_LABEL[props.status] };
     case 'user':
       return { shape: USER[props.status], label: USER_STATUS_LABEL[props.status] };
+    case 'kaizen':
+      return { shape: KAIZEN[props.status], label: KAIZEN_STATUS_LABEL[props.status] };
   }
 }
 

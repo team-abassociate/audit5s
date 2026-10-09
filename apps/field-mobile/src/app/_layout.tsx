@@ -2,7 +2,7 @@
 // on every API request needs one.
 import '../lib/crypto-polyfill';
 import { useEffect, useRef } from 'react';
-import { ActivityIndicator, Alert, AppState, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, LogBox, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular';
 import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold';
@@ -10,7 +10,7 @@ import { Archivo_800ExtraBold } from '@expo-google-fonts/archivo/800ExtraBold';
 import { Archivo_900Black } from '@expo-google-fonts/archivo/900Black';
 import { DMMono_400Regular } from '@expo-google-fonts/dm-mono/400Regular';
 import { DMMono_500Medium } from '@expo-google-fonts/dm-mono/500Medium';
-import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
+import { Stack, useGlobalSearchParams, useRouter, useSegments, type Href } from 'expo-router';
 import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { getLocalAudit, getLocalAuditZone, pauseLocalAudit } from '../lib/db/audit.repository';
@@ -26,6 +26,11 @@ import { RouteErrorBoundary } from '../components/route-error-boundary';
 import { leaveScreen } from '../lib/leave-screen';
 import { permissionPromptOpen } from '../lib/permission-prompt';
 import { requestPermissionsAtLaunch } from '../components/camera-capture';
+import { loadModule } from '../lib/secure-storage';
+
+// Maestro runs (Metro started with EXPO_PUBLIC_E2E=1): the debug build's warning toast
+// takes taps meant for the bottom of the screen. A release build has no LogBox at all.
+if (__DEV__ && process.env.EXPO_PUBLIC_E2E === '1') LogBox.ignoreAllLogs();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,7 +55,7 @@ const queryClient = new QueryClient({
 function AuthGate() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { status } = useSession();
+  const { status, user, can } = useSession();
   const segments = useSegments() as string[];
   const { auditId, auditZoneId } = useGlobalSearchParams<{ auditId?: string; auditZoneId?: string }>();
   const router = useRouter();
@@ -67,6 +72,17 @@ function AuthGate() {
   useEffect(() => {
     if (status === 'loading') return;
     if (status !== 'ready') landed.current = false;
+    // Where a session starts: the module last picked, or the picker. A role without Kaizen
+    // has one module and goes straight to it. Read from the keystore, so it works offline.
+    const land = () => {
+      landed.current = true;
+      void (async (): Promise<Href> => {
+        if (!user || !can('kaizen', 'read')) return '/overview';
+        const module = await loadModule(user.id);
+        if (module === 'kaizen') return '/kaizen/overview';
+        return module === 'five-s' ? '/overview' : '/module';
+      })().then((path) => router.replace(path));
+    };
 
     const group = segments[0];
     // Screens pushed on top of a tab — a Unit's Zones, an audit — are part of the
@@ -80,6 +96,8 @@ function AuthGate() {
       group === 'actions' ||
       group === 'notifications' ||
       group === 'manage' ||
+      group === 'module' ||
+      group === 'kaizen' ||
       // A signed-in Zone Leader following a link from a PDF lands here.
       group === 'ca';
 
@@ -94,18 +112,17 @@ function AuthGate() {
     } else if (status === 'must-reset' && group !== 'reset-password') {
       router.replace('/reset-password');
     } else if (status === 'ready' && !insideApp) {
-      landed.current = true;
-      router.replace('/overview');
+      land();
     } else if (status === 'ready' && !landed.current) {
       // Every role lands on Overview (R-24), and the field Units tab is the app's root
       // route — so a launch that opens on it is moved once. Only once: this used to fire
       // on every visit to the root, so the field Units tab, and Overview's "Open a Unit"
       // and "Units" buttons, all bounced straight back. An auditor could never reach
       // their Units, see a new assignment, or start an audit.
-      landed.current = true;
-      if (group === '(tabs)' && segments.length === 1) router.replace('/overview');
+      if (group === '(tabs)' && segments.length === 1) land();
+      else landed.current = true;
     }
-  }, [status, segments, router]);
+  }, [status, segments, router, user, can]);
 
   // An answered call puts Android in the background. Pause the local audit then, and show
   // Overview's Resume action when the app is active again. Other app switches do the same.
@@ -170,16 +187,13 @@ function AuthGate() {
     );
   }
 
-  // §9.9: the status affordance is on **every** field screen, not on a sync page nobody
-  // visits. The login and forced-reset screens are the exception — there is no device
-  // store to report on until somebody is signed in.
+  // The sync bar (initials, status, Sync now) is on the main page of each 5S and Kaizen tab
+  // only, as the owner ruled on 2026-10-09. Every screen pushed on top of a tab, the module
+  // picker included, uses the space for its own work; sync keeps running underneath, and its
+  // status is one Back away. Nobody signed in, nothing to report.
   const signedIn = status === 'ready';
-  // Audit capture and its Zones list use the space for the work itself. Sync keeps running
-  // underneath; its status remains available on Overview and the other signed-in screens.
-  const inAudit =
-    (segments[0] === 'audit' && segments[1] === '[auditZoneId]') || segments[0] === 'walk-by';
-  const inAuditZones = segments[0] === 'audit' && segments[1] === 'zones';
-  const showBar = signedIn && !inAudit && !inAuditZones;
+  const onTab = segments[0] === '(tabs)' || (segments[0] === 'kaizen' && segments[1] === '(tabs)');
+  const showBar = signedIn && onTab;
 
   return (
     <>
@@ -200,6 +214,7 @@ function AuthGate() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="kaizen/(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         </Stack>

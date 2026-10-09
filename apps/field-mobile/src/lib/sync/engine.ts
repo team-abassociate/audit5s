@@ -16,7 +16,7 @@ import {
 } from '@audit5s/domain';
 import type { LocalDatabase } from '../db/local-database';
 import { SYNC_META_KEYS } from '../db/schema';
-import { uuidv7 } from '../db/audit.repository';
+import { enqueue, uuidv7 } from '../db/audit.repository';
 import { setSyncMeta } from '../db/catalogue.repository';
 import {
   evidenceById,
@@ -41,6 +41,14 @@ import {
   recordUploadAttempt,
 } from '../db/evidence.repository';
 import { confirmLocalSubmission, settleLocalSubmission } from '../db/corrective-action.repository';
+import {
+  confirmLocalKaizenSubmission,
+  getKaizenPhotoById,
+  markKaizenPhotoIntentIssued,
+  markKaizenPhotoUploaded,
+  queueKaizenPhotoCommit,
+  settleLocalKaizenSubmission,
+} from '../db/kaizen.repository';
 import type { SyncTransport } from './transport';
 
 /**
@@ -121,11 +129,16 @@ export async function runSync(
 
   await recoverStaleWork(database, transport, now());
 
-  const structure = await drainDataQueue(database, transport, options, now, STRUCTURE_OPERATIONS);
+  // 5S and Kaizen never share a batch: a server that refuses one module's items (a server
+  // rolled back to before Kaizen refuses the whole batch) must not take the other's with it.
+  const structure = await drainDataQueue(database, transport, options, now, 'five-s', STRUCTURE_OPERATIONS);
+  const kaizenStructure = await drainDataQueue(database, transport, options, now, 'kaizen', STRUCTURE_OPERATIONS);
   const media = await drainMediaQueue(database, transport, now);
-  const rest = await drainDataQueue(database, transport, options, now);
+  const rest = await drainDataQueue(database, transport, options, now, 'five-s');
+  const kaizenRest = await drainDataQueue(database, transport, options, now, 'kaizen');
 
-  const passes = [structure, rest];
+  const passes = [structure, kaizenStructure, rest, kaizenRest];
+  const error = passes.find((pass) => pass.error !== undefined)?.error;
 
   return {
     accepted: sum(passes, 'accepted'),
@@ -135,7 +148,7 @@ export async function runSync(
     photosUploaded: media.uploaded,
     idle:
       passes.every((pass) => pass.idle) && media.uploaded === 0 && media.failed === 0,
-    ...(structure.error ?? rest.error ? { error: structure.error ?? rest.error } : {}),
+    ...(error !== undefined ? { error } : {}),
   };
 }
 
@@ -146,6 +159,8 @@ export async function runSync(
  * in the third pass.
  */
 const STRUCTURE_OPERATIONS: readonly SyncOperation[] = ['upsert', 'delete'];
+
+const KAIZEN_ENTITY_TYPES = new Set<string>(['kaizen', 'kaizen_photo', 'kaizen_submission']);
 
 function sum(passes: SyncResult[], key: 'accepted' | 'conflicted' | 'failed' | 'deferred'): number {
   return passes.reduce((total, pass) => total + pass[key], 0);
@@ -215,6 +230,13 @@ async function drainMediaQueue(
   let failed = 0;
 
   for (const item of ready) {
+    if (item.entityType === 'kaizen_photo') {
+      const sent = await uploadKaizenPhoto(database, transport, item, now);
+      if (sent === true) uploaded += 1;
+      if (sent === false) failed += 1;
+      continue;
+    }
+
     const [row] = await evidenceById(database, item.entityId);
 
     // The photo was deleted before it ever went up; the queued metadata is moot.
@@ -248,6 +270,46 @@ async function drainMediaQueue(
   return { uploaded, failed };
 }
 
+/**
+ * One Kaizen photo (R-48): the evidence flow on the Kaizen's own route and table.
+ * `null` ⇒ the photo was removed before it went, and its item with it.
+ */
+async function uploadKaizenPhoto(
+  database: LocalDatabase,
+  transport: SyncTransport,
+  item: OutboxRow,
+  now: () => number,
+): Promise<boolean | null> {
+  const photo = await getKaizenPhotoById(database, item.entityId);
+  if (!photo || photo.deletedAt || !photo.localFileUri) {
+    await removeItem(database, item.id);
+    return null;
+  }
+
+  await markSyncing(database, item.id, new Date(now()).toISOString());
+  try {
+    const intent = await transport.kaizenPhotoUploadIntent(
+      photo.kaizenId,
+      JSON.parse(item.payload) as Record<string, unknown>,
+    );
+    await markKaizenPhotoIntentIssued(database, photo.id, intent.objectKey);
+    if (!intent.alreadyExists) {
+      await transport.uploadObject(intent, photo.localFileUri, photo.contentType);
+    }
+    // Removed while it was in flight: the server now holds it, so delete it there instead.
+    if ((await getKaizenPhotoById(database, photo.id))?.deletedAt) {
+      await enqueue(database, 'kaizen_photo', photo.id, 'delete', { kaizenId: photo.kaizenId });
+    } else {
+      await queueKaizenPhotoCommit(database, photo);
+    }
+    await removeItem(database, item.id);
+    return true;
+  } catch (error) {
+    await recordFailure(database, item, error, now());
+    return false;
+  }
+}
+
 // ------------------------------------------------------------------------ data queue
 
 async function drainDataQueue(
@@ -255,10 +317,13 @@ async function drainDataQueue(
   transport: SyncTransport,
   options: { deviceId: string; appVersion?: string },
   now: () => number,
+  module: 'five-s' | 'kaizen',
   /** When given, only these operations are sent — the pass structure above. */
   operations?: readonly SyncOperation[],
 ): Promise<SyncResult> {
-  const all = await readyItems(database, 'data', new Date(now()).toISOString());
+  const all = (await readyItems(database, 'data', new Date(now()).toISOString())).filter(
+    (row) => KAIZEN_ENTITY_TYPES.has(row.entityType) === (module === 'kaizen'),
+  );
   // An audit's `complete` waits for its photographs (see `auditsAwaitingPhotos`). It stays
   // PENDING and goes in the first cycle after the last photo is up.
   const holding = await auditsAwaitingPhotos(database);
@@ -364,6 +429,12 @@ async function applyVerdict(
       if (row.entityType === 'corrective_action_submission') {
         await confirmLocalSubmission(database, row.entityId);
       }
+      if (row.entityType === 'kaizen_photo' && row.operation === 'commit') {
+        await markKaizenPhotoUploaded(database, row.entityId);
+      }
+      if (row.entityType === 'kaizen_submission') {
+        await confirmLocalKaizenSubmission(database, row.entityId);
+      }
       await removeItem(database, row.id);
       result.accepted += 1;
       return;
@@ -387,6 +458,9 @@ async function applyVerdict(
       if (row.entityType === 'corrective_action_submission') {
         await settleLocalSubmission(database, row.entityId);
       }
+      if (row.entityType === 'kaizen_submission') {
+        await settleLocalKaizenSubmission(database, row.entityId);
+      }
       await markSettled(database, row.id, `Held for review: ${verdict.reason ?? 'conflict'}`);
       result.conflicted += 1;
       return;
@@ -396,6 +470,10 @@ async function applyVerdict(
       // A malformed payload. Retrying it changes nothing — the server will refuse it
       // identically — so it goes straight to DEAD_LETTER and a visible banner rather than
       // burning eight attempts to arrive at the same place.
+      if (row.entityType === 'kaizen_submission') {
+        // Back to its own status (draft or sent back), so the leader can fix and resubmit it.
+        await settleLocalKaizenSubmission(database, row.entityId);
+      }
       await markDeadLetter(database, row.id, {
         attempts: MAX_SYNC_ATTEMPTS,
         lastError: (verdict.errors ?? ['Rejected by the server']).join('; '),

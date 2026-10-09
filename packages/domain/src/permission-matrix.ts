@@ -794,6 +794,38 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
       ZONE_LEADER: { resolver: 'own_audits', condition: 'intersected with own_unit' },
     },
   },
+
+  // ------------------------------------------------------------------- Kaizen (R-48)
+  // A Zone Leader's Kaizens are their own and nobody else's (owner, 2026-10-07): `own_record`
+  // here means the actor is the author. The Coordinator reviews the Unit's; a Consultant
+  // reads the Units they can reach. Migration 0044's policies say the same in SQL.
+  {
+    resource: 'kaizen',
+    action: 'create',
+    description: 'Create, edit and submit a Kaizen',
+    grants: {
+      ZONE_LEADER: {
+        resolver: 'own_unit',
+        condition: 'author only; edits while DRAFT or SENT_BACK',
+      },
+    },
+  },
+  {
+    resource: 'kaizen',
+    action: 'read',
+    description: 'Read Kaizens, their dashboard, analysis and export',
+    grants: {
+      CONSULTANT: assignedUnits,
+      COORDINATOR: ownUnit,
+      ZONE_LEADER: { resolver: 'own_record', condition: 'Kaizens they authored' },
+    },
+  },
+  {
+    resource: 'kaizen',
+    action: 'review',
+    description: 'Approve, send back or reject a submitted Kaizen',
+    grants: { COORDINATOR: ownUnit },
+  },
 ] as const;
 
 /**

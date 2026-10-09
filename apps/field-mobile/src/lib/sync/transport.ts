@@ -1,4 +1,5 @@
 import type {
+  KaizenPhotoUploadIntentResponse,
   SyncBatchRequest,
   SyncBatchResponse,
   SyncStatus,
@@ -24,8 +25,13 @@ import type {
 export interface SyncTransport {
   pushBatch(request: SyncBatchRequest): Promise<SyncBatchResponse>;
   uploadIntent(payload: Record<string, unknown>): Promise<UploadIntentResponse>;
+  /** A Kaizen photo's intent (R-48): the same two-phase flow, on the Kaizen's own route. */
+  kaizenPhotoUploadIntent(
+    kaizenId: string,
+    payload: Record<string, unknown>,
+  ): Promise<KaizenPhotoUploadIntentResponse>;
   uploadObject(
-    intent: UploadIntentResponse,
+    intent: Pick<UploadIntentResponse, 'uploadUrl' | 'requiredHeaders'>,
     localFileUri: string,
     contentType: string,
   ): Promise<void>;

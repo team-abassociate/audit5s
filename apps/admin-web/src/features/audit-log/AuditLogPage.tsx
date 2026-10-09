@@ -88,6 +88,11 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'sync.batch_received': 'Uploaded from a phone',
   'sync.item_held': 'Upload held for review',
   'audit_zone.withdrawn': 'Withdrew a Zone from an audit',
+  'kaizen.created': 'Started a Kaizen',
+  'kaizen.submitted': 'Submitted a Kaizen',
+  'kaizen.approved': 'Approved a Kaizen',
+  'kaizen.sent_back': 'Sent a Kaizen back',
+  'kaizen.rejected': 'Rejected a Kaizen',
 };
 
 const RESOURCE_LABEL: Record<string, string> = {

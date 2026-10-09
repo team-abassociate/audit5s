@@ -1,0 +1,130 @@
+// Gemba Board primitives for React Native (docs/design/GEMBA-BOARD.md §8).
+// No radius, hard offset shadows (a backing view, since Android elevation always blurs).
+import { createContext, useContext } from 'react';
+import { View, Text, Pressable, TextInput } from 'react-native';
+
+export const gemba = {
+  light: { board: '#EEEBE1', tile: '#FCFBF7', tile2: '#F6F3EA', ink: '#1D1B16', ink2: '#5B5647', ink3: '#6B6556',
+    edge: '#1D1B16', edgeSoft: '#CFC9B8', hard: 'rgba(29,27,22,0.22)', tape: '#D9CF9A', tapeInk: '#33301F',
+    slip: '#E8E24B', slipInk: '#33301F', ok: '#2F6E3A', okBand: '#3E8E4B', warn: '#7E5C03', warnBand: '#D79A05',
+    crit: '#AB2F1C', critBand: '#B4321F', accent: '#0B6E77' },
+  dark: { board: '#151816', tile: '#1E2220', tile2: '#191D1B', ink: '#EDEAE0', ink2: '#A8A899', ink3: '#9A9C8F',
+    edge: '#3C423D', edgeSoft: '#2C312D', hard: 'rgba(0,0,0,0.55)', tape: '#57512F', tapeInk: '#EDE6C4',
+    slip: '#D2C92F', slipInk: '#33301F', ok: '#6FC27E', okBand: '#49A05A', warn: '#E7B03A', warnBand: '#D79A05',
+    crit: '#F27458', critBand: '#D94A2E', accent: '#4FD2D8' },
+};
+export const F = { r: 'Archivo_400Regular', s: 'Archivo_600SemiBold', b: 'Archivo_800ExtraBold', x: 'Archivo_900Black', m: 'DMMono_400Regular', mm: 'DMMono_500Medium' };
+
+export const Theme = createContext(gemba.light);
+export const useC = () => useContext(Theme);
+
+export function Tile({ children, style, selected, pending }) {
+  const c = useC(), off = selected ? 5 : pending ? 0 : 3;
+  return (
+    <View style={{ marginRight: off, marginBottom: off + 11 }}>
+      {off > 0 && <View style={{ position: 'absolute', left: off, top: off, right: -off, bottom: -off, backgroundColor: c.hard }} />}
+      <View style={[{ backgroundColor: pending || selected ? c.tile2 : c.tile, borderWidth: selected ? 2.5 : 1.5, borderColor: c.edge,
+        borderStyle: pending ? 'dashed' : 'solid', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }, style]}>{children}</View>
+    </View>
+  );
+}
+
+export function Btn({ title, onPress, primary, disabled, style }) {
+  const c = useC();
+  return (
+    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" style={[{ marginRight: 2, marginBottom: 2, opacity: disabled ? 0.5 : 1 }, style]}>
+      {({ pressed }) => (
+        <View>
+          {!pressed && <View style={{ position: 'absolute', left: 2, top: 2, right: -2, bottom: -2, backgroundColor: c.hard }} />}
+          <View style={{ transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }], backgroundColor: primary ? c.ink : c.tile,
+            borderWidth: 1.5, borderColor: c.edge, paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' }}>
+            <Text style={{ fontFamily: F.s, fontSize: 14, color: primary ? c.board : c.ink }}>{title}</Text>
+          </View>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+export const Label = ({ children, style }) => {
+  const c = useC();
+  return <Text style={[{ fontFamily: F.s, fontSize: 10.5, letterSpacing: 1.4, textTransform: 'uppercase', color: c.ink3 }, style]}>{children}</Text>;
+};
+export const H = ({ children, size = 19, style }) => {
+  const c = useC();
+  return <Text style={[{ fontFamily: F.b, fontSize: size, textTransform: 'uppercase', letterSpacing: 0.4, color: c.ink }, style]}>{children}</Text>;
+};
+export const Body = ({ children, style, dim }) => {
+  const c = useC();
+  return <Text style={[{ fontFamily: F.r, fontSize: 15, lineHeight: 22, color: dim ? c.ink2 : c.ink }, style]}>{children}</Text>;
+};
+export const Mono = ({ children, style }) => {
+  const c = useC();
+  return <Text style={[{ fontFamily: F.m, fontSize: 12.5, color: c.ink2, fontVariant: ['tabular-nums'] }, style]}>{children}</Text>;
+};
+export const Figure = ({ children, style }) => {
+  const c = useC();
+  return <Text style={[{ fontFamily: F.x, fontSize: 30, letterSpacing: -1.2, color: c.ink, fontVariant: ['tabular-nums'] }, style]}>{children}</Text>;
+};
+
+// Section heading: heading + 2px ink underline, content 14px below.
+export const Section = ({ title, right, children }) => {
+  const c = useC();
+  return (
+    <View style={{ marginBottom: 22 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', borderBottomWidth: 2, borderColor: c.ink, paddingBottom: 6, marginBottom: 14 }}>
+        <H size={16}>{title}</H>{right}
+      </View>
+      {children}
+    </View>
+  );
+};
+
+export const STATUS = {
+  pending: ['Pending', 'warn'], approved: ['Approved', 'ok'], rejected: ['Rejected', 'crit'], sent_back: ['Sent back', 'crit'],
+};
+export function Chip({ status }) {
+  const c = useC(), [label, tone] = STATUS[status];
+  return <Text style={{ fontFamily: F.b, fontSize: 10.5, letterSpacing: 1, textTransform: 'uppercase', color: c[tone], borderWidth: 1.5, borderColor: c[tone], paddingHorizontal: 7, paddingVertical: 2, alignSelf: 'flex-start' }}>{label}</Text>;
+}
+export const Band = ({ tone }) => {
+  const c = useC();
+  return <View style={{ height: 6, backgroundColor: tone ? c[tone + 'Band'] : c.edgeSoft, marginTop: 10 }} />;
+};
+
+export function Field({ label, optional, multiline, ...props }) {
+  const c = useC();
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Label style={{ marginBottom: 6 }}>{label}{optional ? ' · optional' : ''}</Label>
+      <TextInput placeholderTextColor={c.ink3} multiline={multiline} textAlignVertical={multiline ? 'top' : 'center'} {...props}
+        style={{ fontFamily: F.r, fontSize: 15, color: c.ink, backgroundColor: c.tile, borderWidth: 1.5, borderColor: c.edge, padding: 10, minHeight: multiline ? 96 : 44 }} />
+    </View>
+  );
+}
+
+export function Check({ label, checked, onPress, radio }) {
+  const c = useC();
+  return (
+    <Pressable onPress={onPress} accessibilityRole={radio ? 'radio' : 'checkbox'} accessibilityState={{ checked }}
+      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderColor: c.edgeSoft }}>
+      <View style={{ width: 22, height: 22, borderWidth: 1.5, borderColor: c.edge, backgroundColor: checked ? c.ink : c.tile, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+        {checked && <Text style={{ color: c.board, fontFamily: F.x, fontSize: 13 }}>✓</Text>}
+      </View>
+      <Body>{label}</Body>
+    </Pressable>
+  );
+}
+
+export function Slip({ title, children }) {
+  const c = useC();
+  return (
+    <View style={{ marginRight: 3, marginBottom: 17 }}>
+      <View style={{ position: 'absolute', left: 3, top: 3, right: -3, bottom: -3, backgroundColor: c.hard }} />
+      <View style={{ backgroundColor: c.slip, borderWidth: 1.5, borderColor: c.edge, padding: 12 }}>
+        <Text style={{ fontFamily: F.b, fontSize: 10.5, letterSpacing: 1.4, textTransform: 'uppercase', color: c.slipInk }}>{title}</Text>
+        <Text style={{ fontFamily: F.r, fontSize: 13, color: c.slipInk, marginTop: 6 }}>{children}</Text>
+      </View>
+    </View>
+  );
+}

@@ -1,4 +1,5 @@
 import type {
+  KaizenPhotoUploadIntentResponse,
   SyncBatchResponse,
   SyncStatus,
   UploadIntentResponse,
@@ -24,6 +25,17 @@ export function createSyncTransport(readFile: ReadLocalFile): SyncTransport {
     async uploadIntent(payload) {
       try {
         return await api.post<UploadIntentResponse>('/evidence/upload-intent', payload);
+      } catch (error) {
+        throw toTransportError(error);
+      }
+    },
+
+    async kaizenPhotoUploadIntent(kaizenId, payload) {
+      try {
+        return await api.post<KaizenPhotoUploadIntentResponse>(
+          `/kaizens/${encodeURIComponent(kaizenId)}/photos/upload-intent`,
+          payload,
+        );
       } catch (error) {
         throw toTransportError(error);
       }

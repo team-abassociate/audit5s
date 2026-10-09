@@ -45,6 +45,7 @@ export const RESOURCES = [
   'audit_log',
   'sync_conflict',
   'sync',
+  'kaizen',
 ] as const;
 export const resourceSchema = z.enum(RESOURCES);
 export type Resource = z.infer<typeof resourceSchema>;

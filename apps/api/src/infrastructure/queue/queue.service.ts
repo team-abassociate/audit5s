@@ -28,6 +28,15 @@ export const QUEUES = {
    * nightly rollup. Enqueued inside `complete`'s own transaction (R-2).
    */
   analyticsRollup: 'analytics.rollup',
+  /** A Kaizen photo's EXIF strip (R-48): the media worker's rule for Kaizen's own photo list. */
+  kaizenPhotoProcess: 'kaizen.photo.process',
+  /**
+   * The Kaizen Sheet PDF (plans/kaizen-module.md §4.6), printed by `worker-report`. The job
+   * id is the export's id:
+   * `GET /kaizens/{id}/export/{exportId}` reads its state back from pg-boss, so there is no
+   * export table.
+   */
+  kaizenExport: 'kaizen.export',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -210,6 +219,15 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   /** For jobs with no accompanying domain write (a scheduled sweep, say). */
   async send(queue: QueueName, data: object, options: PgBossTypes.SendOptions = {}): Promise<string | null> {
     return this.instance.send(queue, data, options);
+  }
+
+  /** One job, for a caller polling work it enqueued. Null once retention has deleted it. */
+  async findJob<T extends object>(
+    queue: QueueName,
+    id: string,
+  ): Promise<Pick<PgBossTypes.JobWithMetadata<T>, 'state' | 'data'> | null> {
+    const [job] = await this.instance.findJobs<T>(queue, { id });
+    return job ?? null;
   }
 
   async schedule(

@@ -118,6 +118,7 @@ const transport: SyncTransport = {
     return response.body as Awaited<ReturnType<SyncTransport['pushBatch']>>;
   },
 
+  kaizenPhotoUploadIntent: () => Promise.reject(new Error('Kaizen is not exercised here')),
   async uploadIntent(payload) {
     const response = await request('POST', `${base}/evidence/upload-intent`, {
       token: consultantToken,

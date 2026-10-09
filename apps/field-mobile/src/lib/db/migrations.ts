@@ -358,6 +358,41 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
       `DELETE FROM sync_meta WHERE key = 'catalogue_version'`,
     ],
   },
+  {
+    /*
+     * Kaizen (R-48, plans/kaizen-module.md step 4): the leader's own Kaizens, their two
+     * photos, and a submission not yet confirmed.
+     *
+     * `kaizen` holds both halves of §9.1 at once: a sheet written here, and the server's copy
+     * of it (number, status, the Coordinator's reason) pulled after each sync. The sheet is
+     * one JSON column of `KaizenFields` rather than seventeen, so a field added to the
+     * contract needs no step here. Which copy wins is decided by the outbox, not a
+     * `sync_state`: a pull never overwrites a Kaizen with anything still unsent.
+     */
+    version: 11,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS kaizen (
+         id TEXT PRIMARY KEY, unit_id TEXT NOT NULL, zone_id TEXT NOT NULL,
+         zone_code TEXT NOT NULL, zone_name TEXT NOT NULL, kaizen_no TEXT,
+         sheet TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'DRAFT',
+         submitted_at TEXT, review_decision TEXT, review_comment TEXT, reviewed_at TEXT,
+         created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_kaizen_updated ON kaizen (updated_at)`,
+      `CREATE TABLE IF NOT EXISTS kaizen_photo (
+         id TEXT PRIMARY KEY, kaizen_id TEXT NOT NULL, kind TEXT NOT NULL,
+         local_file_uri TEXT, object_key TEXT,
+         content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+         byte_size INTEGER NOT NULL DEFAULT 0, width INTEGER, height INTEGER,
+         checksum_sha256 TEXT NOT NULL, is_live_capture INTEGER NOT NULL DEFAULT 1,
+         captured_at TEXT NOT NULL, uploaded_at TEXT, deleted_at TEXT
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_kaizen_photo ON kaizen_photo (kaizen_id, kind)`,
+      `CREATE TABLE IF NOT EXISTS kaizen_submission (
+         id TEXT PRIMARY KEY, kaizen_id TEXT NOT NULL, created_at TEXT NOT NULL
+       )`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

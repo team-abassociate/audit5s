@@ -67,6 +67,12 @@ const IMAGE_PARALLELISM = 4;
 export class ReportRenderer implements OnModuleDestroy {
   private readonly logger = new Logger(ReportRenderer.name);
   private browser: Browser | null = null;
+  /**
+   * The print in progress. A Kaizen sheet and a 5S report come from separate queues, so they
+   * could print at once; each waits for the other instead, so this 1536 MB container never
+   * holds two pages in Chromium. A Kaizen sheet prints in about a second.
+   */
+  private printing: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly storage: ObjectStorage,
@@ -254,7 +260,14 @@ export class ReportRenderer implements OnModuleDestroy {
     return new Map(fetched.filter((entry) => entry !== null));
   }
 
-  private async printToPdf(html: string): Promise<Buffer> {
+  /** Self-contained HTML (no network, see above) to an A4 PDF, one at a time. Kaizen's sheet prints through it too. */
+  printToPdf(html: string): Promise<Buffer> {
+    const run = this.printing.then(() => this.print(html));
+    this.printing = run.catch(() => undefined);
+    return run;
+  }
+
+  private async print(html: string): Promise<Buffer> {
     const browser = await this.launch();
     const context = await browser.newContext({
       // Fixed viewport and scale factor: the print box comes from `@page`, but a

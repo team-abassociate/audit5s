@@ -78,6 +78,7 @@ const transport: SyncTransport = {
     if (response.status !== 200) throw new TransportError(JSON.stringify(response.body), response.status);
     return response.body as SyncBatchResponse;
   },
+  kaizenPhotoUploadIntent: () => Promise.reject(new Error('Kaizen is not exercised here')),
   async uploadIntent(payload): Promise<UploadIntentResponse> {
     const response = await call('POST', `${base}/evidence/upload-intent`, { body: payload });
     if (response.status !== 201) throw new TransportError(JSON.stringify(response.body), response.status);

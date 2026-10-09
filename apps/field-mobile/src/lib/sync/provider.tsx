@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { AppState } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { runSync, type SyncResult } from './engine';
 import { createSyncTransport } from './http-transport';
 import { readFileBytes } from '../capture/media';
 import { getDeviceId } from '../secure-storage';
 import { useOptionalLocalDatabase } from '../db/provider';
 import { useSession } from '../session';
+import { pullKaizens } from '../kaizen-sync';
 
 /**
  * The sync engine's triggers (§9.3).
@@ -42,10 +44,13 @@ const IDLE: SyncResult = { accepted: 0, conflicted: 0, failed: 0, deferred: 0, p
 
 export function SyncProvider({ children }: { children: ReactNode }) {
   const database = useOptionalLocalDatabase();
+  const queryClient = useQueryClient();
   const { status, can } = useSession();
   const allowed = status === 'ready' && can('sync', 'push') && database !== null;
   const allowedRef = useRef(allowed);
   allowedRef.current = allowed;
+  const kaizenRef = useRef(false);
+  kaizenRef.current = can('kaizen', 'create');
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState(true);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
@@ -68,6 +73,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       // `allowed` guarantees a database; the guard is for the type.
       if (!database) return IDLE;
       const result = await runSync(database, transport, { deviceId: await getDeviceId() });
+      // After the push, so the server has this phone's edits before it answers with its copy.
+      if (result.error === undefined && kaizenRef.current) {
+        await pullKaizens(database).catch(() => undefined);
+        // The pulled numbers, statuses and reviews show on screens already open.
+        for (const key of ['kaizen', 'kaizens', 'module-picker']) {
+          void queryClient.invalidateQueries({ queryKey: ['local', key] });
+        }
+      }
 
       // Connectivity is inferred from the attempt rather than from a listener: a device
       // that just pushed successfully is online, whatever a radio API claims.
@@ -95,7 +108,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         void latest.current();
       }
     }
-  }, [database]);
+  }, [database, queryClient]);
   latest.current = sync;
 
   useEffect(() => {

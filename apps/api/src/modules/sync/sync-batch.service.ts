@@ -8,6 +8,10 @@ import type {
 } from '@audit5s/contracts';
 import {
   commitEvidenceRequestSchema,
+  commitKaizenPhotoRequestSchema,
+  createKaizenRequestSchema,
+  kaizenPhotoUploadIntentRequestSchema,
+  kaizenSubmissionSyncPayloadSchema,
   completeAuditRequestSchema,
   completeAuditZoneRequestSchema,
   createAuditRequestSchema,
@@ -30,6 +34,7 @@ import { AuditZonesService } from '../audit-zones/audit-zones.service';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
 import { DevicesService } from '../devices/devices.service';
 import { EvidenceService } from '../evidence/evidence.service';
+import { KaizensService } from '../kaizens/kaizens.service';
 import { ResponsesService } from '../question-responses/responses.service';
 import { heldItemSentence, rawFailure } from './held-item-detail';
 import { SyncRepository } from './sync.repository';
@@ -76,6 +81,7 @@ export class SyncBatchService {
     private readonly responses: ResponsesService,
     private readonly evidence: EvidenceService,
     private readonly correctiveActions: CorrectiveActionsService,
+    private readonly kaizens: KaizensService,
     private readonly devices: DevicesService,
     private readonly events: SyncEventsService,
     @Inject(CONFIG) private readonly config: AppConfig,
@@ -485,6 +491,39 @@ export class SyncBatchService {
         return null;
       }
 
+      // Kaizen (R-48). The same service as the HTTP routes, so the same rules (AZ-5).
+      case 'kaizen:upsert': {
+        const body = createKaizenRequestSchema.parse({ ...item.payload, id: item.entityId });
+        await this.kaizens.create(scope, body);
+        return null;
+      }
+
+      case 'kaizen_photo:upsert': {
+        const body = kaizenPhotoUploadIntentRequestSchema.parse({ ...item.payload, id: item.entityId });
+        await this.kaizens.createPhotoIntent(scope, body);
+        return null;
+      }
+
+      case 'kaizen_photo:commit': {
+        const body = commitKaizenPhotoRequestSchema.parse(item.payload);
+        const kaizenId = this.requireString(item.payload, 'kaizenId');
+        await this.kaizens.commitPhoto(scope, kaizenId, item.entityId, body);
+        return null;
+      }
+
+      case 'kaizen_photo:delete': {
+        const kaizenId = this.requireString(item.payload, 'kaizenId');
+        await this.kaizens.removePhoto(scope, kaizenId, item.entityId);
+        return null;
+      }
+
+      case 'kaizen_submission:submit': {
+        // The entity id is the submission the device minted, so a replay is recognised.
+        const body = kaizenSubmissionSyncPayloadSchema.parse({ ...item.payload, submissionId: item.entityId });
+        await this.kaizens.submit(scope, body.kaizenId, { submissionId: body.submissionId });
+        return null;
+      }
+
       default:
         throw AppError.validation(
           `No sync handler for ${item.entityType}:${item.operation}`,
@@ -516,6 +555,8 @@ export class SyncBatchService {
           return this.repository.responseExists(scope, id);
         case 'evidence':
           return this.repository.evidenceExists(scope, id);
+        case 'kaizen':
+          return this.kaizens.exists(scope, id);
         default:
           return true;
       }
@@ -546,6 +587,9 @@ export class SyncBatchService {
       // the same row for the same reason, and a device whose queue is torn between the
       // two must be asked to come back rather than have the flag quarantined.
       parents.push(['evidence', item.entityId]);
+    }
+    if (item.entityType === 'kaizen_photo' || item.entityType === 'kaizen_submission') {
+      parents.push(['kaizen', this.optionalString(item.payload, 'kaizenId')]);
     }
     if (item.entityType === 'corrective_action_submission') {
       // Option A cites an after-photo that rides the media queue. Until its commit has

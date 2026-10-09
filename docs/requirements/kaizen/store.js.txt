@@ -1,0 +1,46 @@
+// Local-only data for the prototype: one JSON blob in AsyncStorage, photos in the document dir.
+// ponytail: single device holds every user (coordinator + zone leaders); swap for a backend
+// (Supabase/Firebase) when real people log in from their own phones. Passwords are plaintext here.
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { buildKaizenXlsx } from './xlsx';
+
+const KEY = 'kaizen-db-v1';
+const SEED = {
+  users: [
+    { id: 'u-coord', role: 'coordinator', name: 'Unit Coordinator', username: 'coordinator', password: '1234' },
+    { id: 'u-zl1', role: 'leader', name: 'Ravi Kumar', username: 'zl1', password: '1234', zone: 'Zone A', department: 'Assembly' },
+  ],
+  kaizens: [],
+};
+
+export async function load() {
+  try { return JSON.parse(await AsyncStorage.getItem(KEY)) ?? SEED; } catch { return SEED; }
+}
+export const save = (db) => AsyncStorage.setItem(KEY, JSON.stringify(db));
+
+export const MONTH = 30 * 24 * 3600 * 1000;
+export const lastMonth = (ks) => ks.filter((k) => Date.now() - k.submittedAt < MONTH);
+export const top3 = (ks) => ks.filter((k) => k.status === 'approved').sort((a, b) => (b.savings || 0) - (a.savings || 0)).slice(0, 3);
+export const rupees = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
+
+// Picker/camera URIs live in cache and can vanish; keep our own copy.
+export function keepPhoto(uri) {
+  const dest = new File(Paths.document, `photo-${Date.now()}.jpg`);
+  new File(uri).copySync(dest);
+  return dest.uri;
+}
+
+export async function exportKaizen(k) {
+  const read = async (uri) => (uri ? new File(uri).base64() : undefined);
+  const b64 = await buildKaizenXlsx(k, { before: await read(k.beforeUri), after: await read(k.afterUri) });
+  const out = new File(Paths.cache, `Kaizen-${k.no.replace(/[^\w-]/g, '_')}.xlsx`);
+  if (out.exists) out.delete();
+  out.create();
+  out.write(b64, { encoding: 'base64' });
+  await Sharing.shareAsync(out.uri, {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    dialogTitle: `Kaizen ${k.no}`, UTI: 'org.openxmlformats.spreadsheetml.sheet',
+  });
+}

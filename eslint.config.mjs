@@ -77,7 +77,7 @@ export default tseslint.config(
       '**/*.test.ts',
       '**/*.spec.ts',
       '**/test/**/*.ts',
-      '**/seed.ts',
+      '**/seed*.ts',
       '**/smoke*.mjs',
     ],
     rules: { 'no-restricted-syntax': 'off', 'no-console': 'off' },

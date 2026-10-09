@@ -18,3 +18,4 @@ export * from './device';
 export * from './audit-log';
 export * from './health';
 export * from './analytics';
+export * from './kaizen';

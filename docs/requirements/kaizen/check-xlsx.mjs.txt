@@ -1,0 +1,25 @@
+// Smoke check for the Excel export: node check-xlsx.mjs  → writes /tmp-ish out.xlsx and asserts content.
+import { writeFileSync } from 'node:fs';
+import JSZip from 'jszip';
+import { buildKaizenXlsx } from './xlsx.js';
+
+const png1x1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const b64 = await buildKaizenXlsx({
+  no: 'KZ-A-001', machine: 'CNC-4', line: 'Line 2', date: '2026-10-06', team: 'Ravi, Asha',
+  theme: 'Reduce <setup> & time', problem: 'Long changeover', countermeasure: 'Quick clamps',
+  wastes: ['Defects', 'Motion'], params: ['Cost', 'Safety'], horizontal: 'Yes', benefits: 'Saved 20 min',
+  savings: 120000, rootCause: 'Method', ideaBy: 'Ravi', implementedBy: 'Asha',
+}, { before: png1x1, after: png1x1 });
+writeFileSync(process.argv[2] || 'out.xlsx', Buffer.from(b64, 'base64'));
+const z = await JSZip.loadAsync(b64, { base64: true });
+const s = await z.file('xl/worksheets/sheet1.xml').async('string');
+const ok = (c, m) => { if (!c) throw new Error(m); };
+ok(s.includes('Kaizen No.: KZ-A-001'), 'kaizen no');
+ok(s.includes('Reduce &lt;setup&gt; &amp; time'), 'escaping');
+ok(s.includes('<c r="U24" s="40" t="inlineStr"><is><t xml:space="preserve">✓'), 'Cost tick');
+ok(!s.includes('<c r="U22" s="40" t="inlineStr">'), 'Productivity unticked');
+const cp = async (n) => (await z.file(`xl/ctrlProps/ctrlProp${n}.xml`).async('string')).includes('checked="Checked"');
+ok(await cp(1) && await cp(7) && !(await cp(2)) && await cp(9) && !(await cp(10)), 'checkboxes');
+ok((await z.file('xl/drawings/vmlDrawing1.vml').async('string')).match(/<x:Checked>1/g).length === 3, 'vml ticks');
+ok(z.file('xl/media/before.jpeg') && z.file('xl/media/after.jpeg'), 'photos');
+console.log('xlsx ok');

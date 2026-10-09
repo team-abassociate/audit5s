@@ -1,5 +1,12 @@
 # AGENTS.md — brief for any coding agent working in this repository
 
+> **⛔ Kaizen work: `feat/kaizen` is the main branch for Kaizen.** Never commit, push, merge
+> or open a PR to `main`: `main` deploys to the production VPS that clients use for 5S. Work
+> only on your device branch (`kaizen/krxna` on Device A, `kaizen/geetahuja` on Device B), and PR
+> it into `feat/kaizen`. Only the owner
+> merges `feat/kaizen` → `main`, by hand, on release day. Plan:
+> [`plans/kaizen-module.md`](plans/kaizen-module.md) (BRANCH RULE).
+
 This file is the entry point for Claude Code, Codex, and every other CLI agent.
 Read it before touching anything. It is short on purpose: it tells you which documents
 bind you, which rules you may not break, and how to behave when several agents are
@@ -9,6 +16,9 @@ working on this repository at once.
 
 `audit5s` — a 5S audit platform for industrial facilities in India: an admin web portal,
 an offline-first Android field app, and a NestJS/PostgreSQL backend.
+
+The product is **Leanstack**: two modules, 5S and Kaizen, on one database, API, field app and
+portal (DECISIONS.md R-48). The repository, packages and app keep the `audit5s` name.
 
 **Stage: implementation.** The API, web portal, Android field app and infrastructure
 scaffolding are present. Read the current tree rather than assuming a build step is empty.

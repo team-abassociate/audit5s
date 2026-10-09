@@ -28,7 +28,7 @@ export function reportFileName(payload: ReportPayload): string {
   }
 
   parts.push(dateOf(payload), `v${payload.version}`);
-  return `${sanitize(parts.join(' - '))}.pdf`;
+  return `${sanitizeFileName(parts.join(' - '), 'report')}.pdf`;
 }
 
 /** The audit's own date; a summary over several audits names the span it covers. */
@@ -44,10 +44,11 @@ function dateOf(payload: ReportPayload): string {
   return formatDate(audited);
 }
 
-/** The longest a name may be before `.pdf`; several file systems stop at 255 bytes. */
+/** The longest a name may be before its extension; several file systems stop at 255 bytes. */
 const MAX_NAME_LENGTH = 150;
 
-function sanitize(name: string): string {
+/** Safe on Windows, macOS and in mail clients; `fallback` when nothing is left. Kaizen's export uses it too. */
+export function sanitizeFileName(name: string, fallback: string): string {
   const cleaned = name
     .replace(/[–—]/g, '-')
     // Reserved on Windows or macOS, plus control characters.
@@ -57,5 +58,5 @@ function sanitize(name: string): string {
     .trim()
     // Windows refuses a name ending in a dot or a space.
     .replace(/[. ]+$/, '');
-  return (cleaned.length > MAX_NAME_LENGTH ? cleaned.slice(0, MAX_NAME_LENGTH).trimEnd() : cleaned) || 'report';
+  return (cleaned.length > MAX_NAME_LENGTH ? cleaned.slice(0, MAX_NAME_LENGTH).trimEnd() : cleaned) || fallback;
 }

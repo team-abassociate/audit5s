@@ -1,0 +1,88 @@
+// Fills the original Kaizen Sheet Format.xlsx (embedded in template.js) so the export keeps
+// its exact borders, merges, logo and checkboxes. Pure JS (JSZip) — no Expo imports, so it
+// runs under plain node too (see check-xlsx.mjs).
+import JSZip from 'jszip';
+import TEMPLATE from './template.js';
+
+export const WASTES = ['Defects', 'Overproduction', 'Waiting Time', 'Non-utilized talent',
+  'Transportation', 'Inventory', 'Motion', 'Extraprocessing'];
+export const PARAMS = ['Productivity', 'Quality', 'Cost', 'Delivery', 'Safety', 'Morale'];
+
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function setCell(xml, ref, text) {
+  const re = new RegExp(`<c r="${ref}"( s="\\d+")?(?: t="\\w+")?(?:/>|>.*?</c>)`);
+  if (!re.test(xml)) throw new Error(`template cell ${ref} missing`);
+  return xml.replace(re, `<c r="${ref}"$1 t="inlineStr"><is><t xml:space="preserve">${esc(text)}</t></is></c>`);
+}
+
+// cols/rows are 0-based, matching the drawing XML
+const pic = (rId, id, [c1, r1, c2, r2]) =>
+  `<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>${c1}</xdr:col><xdr:colOff>57150</xdr:colOff><xdr:row>${r1}</xdr:row><xdr:rowOff>57150</xdr:rowOff></xdr:from>` +
+  `<xdr:to><xdr:col>${c2}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${r2}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>` +
+  `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="Photo ${id}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>` +
+  `<xdr:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>` +
+  `<xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`;
+
+// photos: { before, after } as base64 JPEG strings (either may be missing). Returns base64 .xlsx.
+export async function buildKaizenXlsx(k, photos = {}) {
+  const zip = await JSZip.loadAsync(TEMPLATE, { base64: true });
+  const sheetPath = 'xl/worksheets/sheet1.xml';
+  let s = await zip.file(sheetPath).async('string');
+
+  const cells = {
+    Q3: `Kaizen No.: ${k.no}`,
+    Q4: `Machine: ${k.machine}`,
+    Q5: `Line/ Area: ${k.line}`,
+    Q6: `Date: ${k.date}`,
+    C8: `Team Members : ${k.team}     |     Idea given by: ${k.ideaBy}     |     Implemented by: ${k.implementedBy}`,
+    C9: `Kaizen Theme : ${k.theme}`,
+    L9: `Target & Target Date : ${k.target || ''}`,
+    C10: `Problem [5W1H] :\n${k.problem}`,
+    G10: `Counter Measure : ${k.countermeasure}`,
+    C25: `Analysis [7 QC Tools]: ${k.analysis || ''}`,
+    G33: `Benefits/ Results After Implementation :-\n${k.benefits}` +
+      (k.savings ? `\n\nEstimated annual saving: ₹${Number(k.savings).toLocaleString('en-IN')}` : ''),
+    C41: `Root Cause [4M] : ${k.rootCause}`,
+  };
+  PARAMS.forEach((p, i) => { if (k.params?.includes(p)) cells[`U${22 + i}`] = '✓'; });
+  for (const [ref, text] of Object.entries(cells)) s = setCell(s, ref, text);
+  zip.file(sheetPath, s);
+
+  // Check Box 1–8 = wastes, 9 = Yes, 10 = No (the template ships with "No" ticked).
+  const vmlPath = 'xl/drawings/vmlDrawing1.vml';
+  let vml = (await zip.file(vmlPath).async('string')).replace(/\s*<x:Checked>1<\/x:Checked>/g, '');
+  for (let n = 1; n <= 10; n++) {
+    const on = n <= 8 ? k.wastes?.includes(WASTES[n - 1]) : k.horizontal === (n === 9 ? 'Yes' : 'No');
+    const p = `xl/ctrlProps/ctrlProp${n}.xml`;
+    const x = (await zip.file(p).async('string')).replace(' checked="Checked"', '');
+    zip.file(p, on ? x.replace('objectType="CheckBox"', 'objectType="CheckBox" checked="Checked"') : x);
+    if (on) {
+      const id = `_x0000_s${1024 + n}"`;
+      const at = vml.indexOf('<x:NoThreeD/>', vml.indexOf(id));
+      vml = vml.slice(0, at) + '<x:Checked>1</x:Checked>' + vml.slice(at);
+    }
+  }
+  zip.file(vmlPath, vml);
+
+  // Photos go inside the Before (G13:L32) and After (M13:R32) boxes, under their labels.
+  const drawPath = 'xl/drawings/drawing1.xml', relPath = 'xl/drawings/_rels/drawing1.xml.rels';
+  let draw = await zip.file(drawPath).async('string');
+  let rels = await zip.file(relPath).async('string');
+  const boxes = { before: [6, 13, 12, 32], after: [12, 13, 18, 32] };
+  Object.entries(boxes).forEach(([key, box], i) => {
+    if (!photos[key]) return;
+    zip.file(`xl/media/${key}.jpeg`, photos[key], { base64: true });
+    rels = rels.replace('</Relationships>', `<Relationship Id="rIdK${i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${key}.jpeg"/></Relationships>`);
+    draw = draw.replace('</xdr:wsDr>', pic(`rIdK${i}`, 3000 + i, box) + '</xdr:wsDr>');
+  });
+  zip.file(drawPath, draw);
+  zip.file(relPath, rels);
+  let types = await zip.file('[Content_Types].xml').async('string');
+  if (!types.includes('Extension="jpeg"')) {
+    types = types.replace('<Default Extension="png"', '<Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png"');
+  }
+  zip.file('[Content_Types].xml', types);
+
+  return zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+}
