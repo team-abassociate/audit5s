@@ -1,5 +1,10 @@
 # Kaizen handoff: Device A → Device B (2026-10-07)
 
+> **Finished, 2026-10-09.** Device B did steps 4, 5, 6, 8 and 9, merged into `feat/kaizen` as
+> PR #96. The handover note is gone from [`kaizen-module.md`](kaizen-module.md), and the two
+> devices work in parallel again under its §11 ownership table. Kept for the local setup notes
+> and the release-day checks below.
+
 The owner moved all remaining Kaizen work to Device B (see the handover note in
 [`kaizen-module.md`](kaizen-module.md), under "Start every session"). Device B keeps working on
 **`kaizen/geetahuja`**, and PRs go into **`feat/kaizen`**, never `main`. The owner merges them.
@@ -12,9 +17,9 @@ The owner moved all remaining Kaizen work to Device B (see the handover note in
 | 2 domain: state machine, counting rules | Done | PR #93 |
 | 3 API module | Done | PR #94 |
 | 7 Kaizen Sheet export, **as a PDF** | Done | PR #95 |
-| 4, 5, 6 field app | Not started | Device B |
-| 8 admin web | Not started | now Device B |
-| 9 docs (R-48, ARCHITECTURE section), Maestro, cleanup | Not started | now Device B |
+| 4, 5, 6 field app | Done | PR #96 |
+| 8 admin web | Done | PR #96 |
+| 9 docs (R-48, ARCHITECTURE section), Maestro, cleanup | Done | PR #96 |
 
 **The step 7 decision (owner, 2026-10-07):** the export is a redesigned one-page A4 PDF, not the
 client's Excel filled in. Plan §4.6 says how it works. The theme is `apps/api/assets/kaizen-sheet.css`.
