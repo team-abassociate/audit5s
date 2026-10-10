@@ -59,7 +59,7 @@ export function KaizenPhotoViewer({
             <Tape>{uri ? label : `${label} · ${t.none}`}</Tape>
           </View>
         </View>
-        <Button title={t.close} variant="secondary" onPress={onClose} />
+        <Button title={t.close} icon="close" variant="secondary" onPress={onClose} />
       </View>
     </Modal>
   );

@@ -1,4 +1,5 @@
-import { Children, memo, useState, type ReactNode, type Ref } from 'react';
+import { Children, memo, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {
   ActivityIndicator,
   Image,
@@ -30,6 +31,14 @@ import {
   useTheme,
   type Band,
 } from '../lib/theme';
+
+/** A Material icon's name: the one icon set, so a symbol means the same thing on every screen. */
+export type IconName = ComponentProps<typeof MaterialIcons>['name'];
+
+/** An icon in the text's colour, sized to sit beside a label. Decorative: the label says it. */
+export function Icon({ name, color, size = 18 }: { name: IconName; color: string; size?: number }) {
+  return <MaterialIcons name={name} size={size} color={color} accessibilityElementsHidden importantForAccessibility="no" />;
+}
 
 /**
  * The shared controls, built from the Gemba Board primitives
@@ -249,16 +258,20 @@ export function Figure({
 /** `gb-chip`: an outlined status word. The colour is the outline and the text, never a fill. */
 export function Chip({
   tone = 'muted',
+  icon,
   children,
 }: {
-  tone?: Band | 'muted';
+  /** `accent`: waiting on someone, a colour no decision uses. */
+  tone?: Band | 'muted' | 'accent';
+  icon?: IconName;
   children: ReactNode;
 }) {
   const styles = useStyles();
   const theme = useTheme();
-  const color = tone === 'muted' ? theme.color.ink2 : bandInk(tone, theme.color);
+  const color = tone === 'muted' ? theme.color.ink2 : tone === 'accent' ? theme.color.accent : bandInk(tone, theme.color);
   return (
-    <View style={[styles.chip, { borderColor: color }]}>
+    <View style={[styles.chip, icon && styles.chipWithIcon, { borderColor: color }]}>
+      {icon ? <Icon name={icon} color={color} size={13} /> : null}
       <Text style={[styles.chipText, { color }]}>{children}</Text>
     </View>
   );
@@ -563,11 +576,17 @@ export function Button({
   accessibilityLabel,
   testID,
   compact,
+  icon,
+  tone,
 }: {
   title: string;
   onPress: () => void;
   busy?: boolean;
   disabled?: boolean;
+  /** The symbol software puts on this action (delete, download, camera…), before the word. */
+  icon?: IconName;
+  /** An outline in a decision's colour: Approve `ok`, Send back `warn`, Reject `crit`. */
+  tone?: Exclude<Band, 'none'>;
   /** 26dp tall on screen, still a 48dp target (hitSlop), for a bar that must stay slim. */
   compact?: boolean;
   /** `danger` is an outline, never a red fill: red is a score band (non-negotiable 6). */
@@ -577,8 +596,15 @@ export function Button({
 }) {
   const styles = useStyles();
   const theme = useTheme();
-  const isPrimary = variant === 'primary';
+  const isPrimary = variant === 'primary' && !tone;
   const inert = busy || disabled;
+  const ink = tone
+    ? bandInk(tone, theme.color)
+    : variant === 'danger'
+      ? theme.color.crit
+      : isPrimary
+        ? theme.color.board
+        : theme.color.ink;
   return (
     <Magnet offset={2} style={inert && styles.inert}>
       <Pressable
@@ -593,22 +619,25 @@ export function Button({
           styles.button,
           compact && styles.buttonCompact,
           isPrimary ? styles.buttonPrimary : styles.buttonSecondary,
-          variant === 'danger' && styles.buttonDanger,
+          (variant === 'danger' || tone) && { borderColor: ink },
           (pressed || busy) && styles.buttonPressed,
         ]}
       >
         {busy ? (
-          <ActivityIndicator color={isPrimary ? theme.color.board : theme.color.ink} />
+          <ActivityIndicator color={ink} />
         ) : (
-          <Text
-            style={[
-              isPrimary ? styles.buttonPrimaryText : styles.buttonSecondaryText,
-              variant === 'danger' && styles.buttonDangerText,
-              compact && styles.buttonCompactText,
-            ]}
-          >
-            {title}
-          </Text>
+          <View style={styles.buttonRow}>
+            {icon ? <Icon name={icon} color={ink} size={compact ? 14 : 18} /> : null}
+            <Text
+              style={[
+                isPrimary ? styles.buttonPrimaryText : styles.buttonSecondaryText,
+                { color: ink },
+                compact && styles.buttonCompactText,
+              ]}
+            >
+              {title}
+            </Text>
+          </View>
         )}
       </Pressable>
     </Magnet>
@@ -799,12 +828,14 @@ export function ChoiceList<T extends string>({
   onChange,
   empty,
 }: {
-  options: ReadonlyArray<{ value: T; label: string; detail?: string | null }>;
+  /** `tone` and `icon`: a choice that is a decision wears that decision's colour and symbol. */
+  options: ReadonlyArray<{ value: T; label: string; detail?: string | null; tone?: Exclude<Band, 'none'>; icon?: IconName }>;
   value: T | null;
   onChange: (value: T) => void;
   empty?: string;
 }) {
   const styles = useStyles();
+  const theme = useTheme();
   if (options.length === 0) return empty ? <Muted>{empty}</Muted> : null;
   return (
     <View style={styles.choices} accessibilityRole="radiogroup">
@@ -816,9 +847,18 @@ export function ChoiceList<T extends string>({
             accessibilityRole="radio"
             accessibilityState={{ checked: selected }}
             onPress={() => onChange(option.value)}
-            style={[styles.choice, selected && styles.choiceSelected]}
+            style={[
+              styles.choice,
+              selected && styles.choiceSelected,
+              option.tone && { borderLeftWidth: 6, borderLeftColor: bandFill(option.tone, theme.color) },
+              // The band's fill at ~15% over the tile: the chosen decision tinted in its own colour.
+              option.tone && selected && { borderColor: bandInk(option.tone, theme.color), backgroundColor: `${bandFill(option.tone, theme.color)}26` },
+            ]}
           >
-            <Text style={styles.choiceLabel}>{option.label}</Text>
+            <View style={styles.buttonRow}>
+              {option.icon ? <Icon name={option.icon} color={option.tone ? bandInk(option.tone, theme.color) : theme.color.ink} /> : null}
+              <Text style={[styles.choiceLabel, styles.flexText, option.tone && { color: bandInk(option.tone, theme.color) }]}>{option.label}</Text>
+            </View>
             {option.detail ? <Text style={styles.choiceDetail}>{option.detail}</Text> : null}
           </Pressable>
         );
@@ -1030,9 +1070,11 @@ export function ConfirmAction({
   busy,
   compact,
   keepLabel = 'Keep',
+  icon,
   onConfirm,
 }: {
   title: string;
+  icon?: IconName;
   question: string;
   confirmLabel: string;
   busy?: boolean;
@@ -1043,6 +1085,7 @@ export function ConfirmAction({
   onConfirm: () => void;
 }) {
   const styles = useStyles();
+  const theme = useTheme();
   const [asking, setAsking] = useState(false);
   if (!asking && compact) {
     return (
@@ -1051,13 +1094,14 @@ export function ConfirmAction({
         accessibilityLabel={question}
         onPress={() => setAsking(true)}
         hitSlop={6}
-        style={({ pressed }) => [styles.headerAction, styles.compactDanger, pressed && styles.headerActionPressed]}
+        style={({ pressed }) => [styles.headerAction, styles.compactDanger, icon && styles.buttonRow, pressed && styles.headerActionPressed]}
       >
+        {icon ? <Icon name={icon} color={theme.color.crit} size={14} /> : null}
         <Text style={[styles.headerActionText, styles.compactDangerText]}>{title}</Text>
       </Pressable>
     );
   }
-  if (!asking) return <Button title={title} variant="danger" onPress={() => setAsking(true)} />;
+  if (!asking) return <Button title={title} variant="danger" icon={icon} onPress={() => setAsking(true)} />;
   return (
     <View style={styles.confirm} accessibilityLiveRegion="polite">
       <Text style={styles.noticeText}>{question}</Text>
@@ -1066,7 +1110,7 @@ export function ConfirmAction({
           <Button title={keepLabel} variant="secondary" onPress={() => setAsking(false)} />
         </View>
         <View style={styles.confirmItem}>
-          <Button title={confirmLabel} variant="danger" busy={busy} onPress={onConfirm} />
+          <Button title={confirmLabel} variant="danger" icon={icon} busy={busy} onPress={onConfirm} />
         </View>
       </View>
     </View>
@@ -1161,6 +1205,7 @@ const useStyles = createThemedStyles((theme) => ({
     fontVariant: ['tabular-nums'],
   },
   chip: { borderWidth: 1.5, paddingHorizontal: 7, paddingVertical: 2, alignSelf: 'flex-start' },
+  chipWithIcon: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   chipText: {
     fontFamily: theme.family.bold,
     fontSize: 10.5,
@@ -1321,11 +1366,10 @@ const useStyles = createThemedStyles((theme) => ({
   buttonCompactText: { fontSize: 12 },
   buttonPrimary: { backgroundColor: theme.color.ink },
   buttonSecondary: { backgroundColor: theme.color.tile },
-  buttonDanger: { borderColor: theme.color.crit },
+  buttonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   buttonPressed: { transform: [{ translateX: 2 }, { translateY: 2 }], shadowOpacity: 0 },
   buttonPrimaryText: { color: theme.color.board, fontFamily: theme.family.medium, fontSize: theme.font.sm },
   buttonSecondaryText: { color: theme.color.ink, fontFamily: theme.family.medium, fontSize: theme.font.sm },
-  buttonDangerText: { color: theme.color.crit },
   notice: {
     backgroundColor: theme.color.tile2,
     borderWidth: 1.5,
@@ -1460,6 +1504,7 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.space.md,
   },
   choiceSelected: { borderColor: theme.color.accent, borderLeftWidth: 6, backgroundColor: theme.color.accentSoft },
+  flexText: { flex: 1 },
   choiceLabel: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
   choiceDetail: { fontFamily: theme.family.regular, fontSize: 12.5, color: theme.color.ink2, marginTop: 2 },
   select: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },

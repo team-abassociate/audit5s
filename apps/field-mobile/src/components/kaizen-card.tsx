@@ -2,7 +2,7 @@ import { Image, Text, View } from 'react-native';
 import { formatDayMonth, formatRupees } from '@audit5s/domain';
 import type { Kaizen } from '@audit5s/contracts';
 import type { LocalKaizen } from '../lib/db/kaizen.repository';
-import { KAIZEN_STATUS_TONE, KAIZEN_STRINGS } from '../lib/kaizen-strings';
+import { KAIZEN_STATUS_ICON, KAIZEN_STATUS_TONE, KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
 import { createThemedStyles } from '../lib/theme';
 import { Card, Chip, Data, Figure, Hatch } from './ui';
@@ -85,7 +85,7 @@ export function KaizenCard({
       <View style={styles.body}>
         <View style={styles.row}>
           <Text style={[styles.no, !kaizen.kaizenNo && styles.noPending]}>{no}</Text>
-          <Chip tone={KAIZEN_STATUS_TONE[kaizen.status]}>{t.status[kaizen.status]}</Chip>
+          <Chip tone={KAIZEN_STATUS_TONE[kaizen.status]} icon={KAIZEN_STATUS_ICON[kaizen.status]}>{t.status[kaizen.status]}</Chip>
         </View>
         <Text style={styles.theme} numberOfLines={2}>
           {sheet.theme || '—'}
@@ -159,8 +159,10 @@ const useStyles = createThemedStyles((theme) => ({
     borderTopColor: theme.color.edge,
     paddingHorizontal: theme.space.md,
     paddingVertical: 10,
+    borderLeftWidth: 6,
+    borderLeftColor: theme.color.warnBand,
   },
-  slipRejected: { backgroundColor: theme.color.tile2 },
+  slipRejected: { backgroundColor: theme.color.tile2, borderLeftColor: theme.color.critBand },
   slipTitle: {
     fontFamily: theme.family.bold,
     fontSize: 10.5,

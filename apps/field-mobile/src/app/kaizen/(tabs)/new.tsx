@@ -49,7 +49,7 @@ export default function NewKaizen() {
     // One draft: carrying it on is the likely job. Several: starting afresh leads, above the list.
     const one = drafts.length === 1;
     const startNew = (
-      <Button testID="kaizen-start-new" title={t.startNew} variant={one ? 'secondary' : 'primary'} onPress={() => setStarting(true)} />
+      <Button testID="kaizen-start-new" title={t.startNew} icon="add" variant={one ? 'secondary' : 'primary'} onPress={() => setStarting(true)} />
     );
     return (
       <Screen bare>
@@ -65,13 +65,14 @@ export default function NewKaizen() {
                 <View style={styles.flex}>
                   <Button
                     title={t.continueDraft}
+                    icon="edit"
                     variant={one ? 'primary' : 'secondary'}
                     onPress={() => router.push({ pathname: '/kaizen/edit/[kaizenId]', params: { kaizenId: draft.id } })}
                   />
                 </View>
                 <ConfirmAction
-                  compact
                   title={t.deleteDraft}
+                  icon="delete"
                   question={t.deleteDraftQuestion}
                   confirmLabel={t.deleteDraft}
                   keepLabel={t.keep}

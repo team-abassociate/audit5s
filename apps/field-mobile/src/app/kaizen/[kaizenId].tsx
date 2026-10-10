@@ -9,7 +9,7 @@ import { Button, Card, CardHeader, ChoiceList, Chip, Data, ErrorBanner, Field, H
 import { api, problemMessage } from '../../lib/api';
 import { getLocalKaizen, sheetOf } from '../../lib/db/kaizen.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { KAIZEN_STATUS_TONE, KAIZEN_STRINGS, type KaizenTextField } from '../../lib/kaizen-strings';
+import { DECISION_TONE, KAIZEN_STATUS_ICON, KAIZEN_STATUS_TONE, KAIZEN_STRINGS, type KaizenTextField } from '../../lib/kaizen-strings';
 import { useLanguage } from '../../lib/language-provider';
 import { useSession } from '../../lib/session';
 import { createThemedStyles } from '../../lib/theme';
@@ -162,13 +162,14 @@ export default function KaizenDetailScreen() {
           <Button
             testID="kaizen-edit"
             title={view.status === 'SENT_BACK' ? t.editResubmit : t.continueDraft}
+            icon="edit"
             onPress={() => router.push({ pathname: '/kaizen/edit/[kaizenId]', params: { kaizenId: view.id } })}
           />
         ) : null}
 
         <Card>
           <View style={styles.head}>
-            <Chip tone={KAIZEN_STATUS_TONE[view.status]}>{t.status[view.status]}</Chip>
+            <Chip tone={KAIZEN_STATUS_TONE[view.status]} icon={KAIZEN_STATUS_ICON[view.status]}>{t.status[view.status]}</Chip>
             <Data>{view.zone}</Data>
           </View>
           <Text style={styles.theme}>{sheet.theme || '—'}</Text>
@@ -204,7 +205,12 @@ export default function KaizenDetailScreen() {
             <CardHeader title={t.reviewTitle} />
             {/* A choice, then one button named for what it does (S6): Reject never looks like Approve. */}
             <ChoiceList<KaizenReviewDecision>
-              options={(['APPROVED', 'SENT_BACK', 'REJECTED'] as const).map((choice) => ({ value: choice, label: t.decision[choice] }))}
+              options={(['APPROVED', 'SENT_BACK', 'REJECTED'] as const).map((choice) => ({
+                value: choice,
+                label: t.decision[choice],
+                tone: DECISION_TONE[choice],
+                icon: KAIZEN_STATUS_ICON[choice],
+              }))}
               value={decision}
               onChange={(choice) => {
                 setDecision(choice);
@@ -225,7 +231,8 @@ export default function KaizenDetailScreen() {
                 <Button
                   testID="kaizen-review-confirm"
                   title={t.confirm[decision]}
-                  variant={decision === 'REJECTED' ? 'danger' : 'primary'}
+                  tone={DECISION_TONE[decision]}
+                  icon={KAIZEN_STATUS_ICON[decision]}
                   busy={review.isPending}
                   onPress={() => {
                     if (needsReason && !comment.trim()) setReasonMissing(true);
@@ -244,6 +251,7 @@ export default function KaizenDetailScreen() {
               testID="kaizen-export"
               title={exportPdf.isPending ? t.exporting : t.exportPdf}
               variant="secondary"
+              icon="file-download"
               busy={exportPdf.isPending}
               onPress={() => exportPdf.mutate()}
             />

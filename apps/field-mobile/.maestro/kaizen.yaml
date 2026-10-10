@@ -132,8 +132,11 @@ env:
 - assertVisible:
     id: kaizen-ideaBy
     text: "Sunita Kale"
-# Submit is in the footer, always on screen once the keyboard is down (plan 2.2).
+# Progress is pinned at the top; Submit is the last thing on the form (owner, 2026-10-10).
 - assertVisible: "12 of 12 · Ready to submit|11 of 12 · Ready to submit|10 of 12 · Ready to submit"
+- scrollUntilVisible:
+    element:
+      id: kaizen-submit
 - tapOn:
     id: kaizen-submit
 - extendedWaitUntil:
@@ -222,6 +225,9 @@ env:
     id: kaizen-benefits
 - inputText: " Logbook: 42 → 18 min, 30 changeovers a month."
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: kaizen-submit
 - tapOn:
     id: kaizen-submit
 - extendedWaitUntil:

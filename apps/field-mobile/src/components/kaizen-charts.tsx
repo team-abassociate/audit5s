@@ -11,7 +11,7 @@ import type {
 import { formatKaizenRatio as ratio, formatRupees, formatYearMonth as monthLabel, textOn } from '@audit5s/domain';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
-import { createThemedStyles, useTheme } from '../lib/theme';
+import { createThemedStyles, useTheme, type Band } from '../lib/theme';
 import { Card, CardHeader, Data, Figure, Hatch, Muted, Segmented } from './ui';
 
 /** GEMBA's ease-out (`--motion`), the curve every motion in the app uses. */
@@ -43,27 +43,30 @@ export function KpiCard({ kpi, period, onPeriod }: { kpi: KaizenKpi; period: Kai
   const styles = useStyles();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
-  const cells: [string, string][] = [
+  // Submitted is the whole, across the top; under it, where they went. Approved green, sent
+  // back amber and rejected red, as their chips are everywhere else.
+  const cells: [string, string, Band?][] = [
     [t.submitted, String(kpi.submitted)],
     [t.awaitingSection, String(kpi.awaitingReview)],
-    [t.status.SENT_BACK, String(kpi.sentBack)],
-    [t.status.REJECTED, String(kpi.rejected)],
-    [t.rejectionRatio, ratio(kpi.rejectionRatioPct)],
+    [t.status.APPROVED, String(kpi.approved), 'ok'],
+    [t.status.SENT_BACK, String(kpi.sentBack), 'warn'],
+    [t.status.REJECTED, String(kpi.rejected), 'crit'],
     [t.acceptanceRatio, ratio(kpi.acceptanceRatioPct)],
+    [t.rejectionRatio, ratio(kpi.rejectionRatioPct)],
   ];
   return (
     <Card>
       <CardHeader title={t.atAGlance} />
       <PeriodControl value={period} onChange={onPeriod} />
       <View style={styles.grid}>
-        {cells.map(([label, value], index) => (
+        {cells.map(([label, value, band], index) => (
           <View
             key={label}
-            style={[styles.cell, index % 2 === 1 && styles.cellRight, index >= 2 && styles.cellBelow]}
+            style={[styles.cell, index === 0 && styles.cellWhole, index > 0 && index % 2 === 0 && styles.cellRight, index > 0 && styles.cellBelow]}
             accessible
             accessibilityLabel={`${label}: ${value}`}
           >
-            <Figure size={27}>{value}</Figure>
+            <Figure size={27} band={band}>{value}</Figure>
             <Text style={styles.cellLabel}>{label}</Text>
           </View>
         ))}
@@ -401,6 +404,7 @@ function Bar({
 const useStyles = createThemedStyles((theme) => ({
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.space.md },
   cell: { width: '50%', paddingVertical: theme.space.sm, paddingRight: theme.space.sm },
+  cellWhole: { width: '100%' },
   cellRight: { borderLeftWidth: 1, borderLeftColor: theme.color.edgeSoft, paddingLeft: theme.space.md },
   cellBelow: { borderTopWidth: 1, borderTopColor: theme.color.edgeSoft },
   cellLabel: {

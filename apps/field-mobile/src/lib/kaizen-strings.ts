@@ -5,6 +5,7 @@ import type {
   KaizenStatus,
   KaizenWaste,
 } from '@audit5s/contracts';
+import type { IconName } from '../components/ui';
 import type { AppLanguage } from './language';
 
 /**
@@ -804,11 +805,27 @@ const MR: KaizenStrings = {
 
 export const KAIZEN_STRINGS: Record<AppLanguage, KaizenStrings> = { en: EN, hi: HI, mr: MR };
 
-/** A status's colour. Green is Approved and nothing else in Kaizen (owner, 2026-10-07). */
-export const KAIZEN_STATUS_TONE: Record<KaizenStatus, 'ok' | 'warn' | 'crit' | 'muted'> = {
+/**
+ * A status's colour. The three decisions never share one, on every screen (owner,
+ * 2026-10-10): Approved green, Sent back amber, Rejected red. Waiting is teal, a colour no
+ * decision uses. Green is Approved and nothing else in Kaizen (owner, 2026-10-07).
+ */
+export const KAIZEN_STATUS_TONE: Record<KaizenStatus, 'ok' | 'warn' | 'crit' | 'muted' | 'accent'> = {
   DRAFT: 'muted',
-  SUBMITTED: 'warn',
+  SUBMITTED: 'accent',
   APPROVED: 'ok',
-  SENT_BACK: 'crit',
+  SENT_BACK: 'warn',
   REJECTED: 'crit',
+};
+
+/** A review decision's colour, on its choice and its button: the same as the status it makes. */
+export const DECISION_TONE = { APPROVED: 'ok', SENT_BACK: 'warn', REJECTED: 'crit' } as const;
+
+/** A status's symbol, beside its word on every chip. */
+export const KAIZEN_STATUS_ICON: Record<KaizenStatus, IconName> = {
+  DRAFT: 'edit',
+  SUBMITTED: 'schedule',
+  APPROVED: 'check-circle',
+  SENT_BACK: 'undo',
+  REJECTED: 'cancel',
 };

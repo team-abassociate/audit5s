@@ -160,7 +160,7 @@ function LeaderOverview() {
         {kaizens.isLoading ? null : all.length === 0 ? (
           <>
             <View style={styles.action}>
-              <Button testID="kaizen-new" title={t.newButton} onPress={() => router.navigate('/kaizen/new')} />
+              <Button testID="kaizen-new" title={t.newButton} icon="add" onPress={() => router.navigate('/kaizen/new')} />
             </View>
             <EmptyState title={t.firstKaizenTitle} detail={t.firstKaizenDetail} />
           </>
@@ -177,7 +177,7 @@ function LeaderOverview() {
               <KpiTile label={t.needsFix} value={needsFix.length} context={t.sentBackToYou} band="crit" />
             </View>
             <View style={styles.action}>
-              <Button testID="kaizen-new" title={t.newButton} onPress={() => router.navigate('/kaizen/new')} />
+              <Button testID="kaizen-new" title={t.newButton} icon="add" onPress={() => router.navigate('/kaizen/new')} />
             </View>
 
             {/* An action list, not a report: there only when something is the leader's to fix. */}

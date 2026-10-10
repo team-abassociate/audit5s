@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Image, Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
+import { AppState, BackHandler, Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useNavigation } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -39,7 +39,6 @@ import { createThemedStyles, tabBarStyle, useTheme } from '../lib/theme';
 import { CameraCapture } from './camera-capture';
 import { KaizenPhotoViewer } from './kaizen-photo-viewer';
 import {
-  ActionBar,
   Button,
   Card,
   CheckRow,
@@ -63,8 +62,8 @@ import {
  * form closes; a tick or a photo the moment it changes. The draft itself is created by the
  * first save, so opening the tab and leaving it creates nothing.
  *
- * **Submit** sits in a footer above the tab bar with the form's progress, so the end is always
- * in view (plans/kaizen-ux-plan.md 2.2). Pressed with something missing, it opens the first
+ * **Progress** is a strip pinned above the steps, so how far along it is is always in view;
+ * **Submit** is the last thing on the form, after every step (owner, 2026-10-10). Pressed with something missing, it opens the first
  * step with a gap, marks every missing box red, scrolls to it and focuses it, the way every
  * other form in the app does (`useRequiredFields`), and names them all in a banner. The list
  * is `missingKaizenItems`: the boxes the server requires, and a before and an after photo.
@@ -129,7 +128,6 @@ export function KaizenForm({
   const [attempted, setAttempted] = useState(false);
   const [fieldError, setFieldError] = useState<Partial<Record<KaizenTextField, string>>>({});
   const [camera, setCamera] = useState<KaizenPhotoKind | null>(null);
-  const [keyboard, setKeyboard] = useState(false);
   const [viewing, setViewing] = useState<KaizenPhotoKind | null>(null);
   const required = useRequiredFields<KaizenMissingItem>();
   // What waits for a step to lay out after it opens: Next's scroll, or a refused Submit's reveal.
@@ -191,16 +189,6 @@ export function KaizenForm({
     });
     return () => subscription.remove();
   }, [camera]);
-
-  // The footer would sit on the keyboard and cover the box being typed in.
-  useEffect(() => {
-    const shown = Keyboard.addListener('keyboardDidShow', () => setKeyboard(true));
-    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboard(false));
-    return () => {
-      shown.remove();
-      hidden.remove();
-    };
-  }, []);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['local'] });
 
@@ -466,15 +454,21 @@ export function KaizenForm({
         {/* Camera or gallery, side by side, always: either is fine for a Kaizen (R-48). */}
         <View style={styles.buttons}>
           <View style={styles.flex}>
-            <Button title={shown ? t.retakePhoto : t.takePhoto} variant={shown ? 'secondary' : 'primary'} onPress={() => setCamera(kind)} />
+            <Button
+              title={shown ? t.retakePhoto : t.takePhoto}
+              icon="photo-camera"
+              variant={shown ? 'secondary' : 'primary'}
+              onPress={() => setCamera(kind)}
+            />
           </View>
           <View style={styles.flex}>
-            <Button title={t.fromGallery} variant="secondary" busy={gallery.isPending} onPress={() => gallery.mutate(kind)} />
+            <Button title={t.fromGallery} icon="photo-library" variant="secondary" busy={gallery.isPending} onPress={() => gallery.mutate(kind)} />
           </View>
         </View>
         {shown ? (
           <ConfirmAction
             title={t.removePhoto}
+            icon="delete"
             question={t.removePhotoQuestion(kind)}
             confirmLabel={t.removePhoto}
             keepLabel={t.keep}
@@ -581,6 +575,14 @@ export function KaizenForm({
 
   return (
     <View style={styles.column}>
+      <View style={styles.progressStrip}>
+        <Text style={styles.progressText}>
+          {t.progress(progress.done, progress.total)} · {ready ? t.readyToSubmit : t.requiredLeft(progress.requiredLeft)}
+        </Text>
+        <View style={styles.meter} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <View style={[styles.meterFill, { transform: [{ scaleX: progress.done / progress.total }] }]} />
+        </View>
+      </View>
       <ScrollView
         ref={(node) => {
           scroller.current = node;
@@ -638,6 +640,7 @@ export function KaizenForm({
                     {index < KAIZEN_STEPS.length - 1 ? (
                       <Button
                         title={t.next}
+                        icon="arrow-downward"
                         variant="secondary"
                         onPress={() => {
                           // Scroll once the next step has opened and laid out: its header to the top.
@@ -656,12 +659,12 @@ export function KaizenForm({
           );
         })}
 
-        <ErrorBanner message={error?.message ?? null} />
-        {/* Destructive, so away from Submit and at the very end (plan 2.3). */}
+        {/* Destructive, so after every step and well apart from Submit, and it asks first (plan 2.3). */}
         {current?.status === 'DRAFT' ? (
           <View style={styles.discard}>
             <ConfirmAction
               title={t.deleteDraft}
+              icon="delete"
               question={t.deleteDraftQuestion}
               confirmLabel={t.deleteDraft}
               keepLabel={t.keep}
@@ -670,23 +673,11 @@ export function KaizenForm({
             />
           </View>
         ) : null}
+        <ErrorBanner message={error?.message ?? null} />
+        <View style={styles.submit}>
+          <Button testID="kaizen-submit" title={submitTitle} icon="send" busy={submit.isPending} onPress={() => submit.mutate()} />
+        </View>
       </ScrollView>
-
-      {keyboard ? null : (
-        <ActionBar>
-          <View style={styles.meter} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <View style={[styles.meterFill, { transform: [{ scaleX: progress.done / progress.total }] }]} />
-          </View>
-          <View style={styles.footRow}>
-            <Text style={styles.footText}>
-              {t.progress(progress.done, progress.total)} · {ready ? t.readyToSubmit : t.requiredLeft(progress.requiredLeft)}
-            </Text>
-            <View style={styles.footButton}>
-              <Button testID="kaizen-submit" title={submitTitle} busy={submit.isPending} onPress={() => submit.mutate()} />
-            </View>
-          </View>
-        </ActionBar>
-      )}
       <KaizenPhotoViewer
         photos={{ BEFORE: photoUri(current?.before), AFTER: photoUri(current?.after) }}
         kind={viewing}
@@ -741,10 +732,10 @@ const useStyles = createThemedStyles((theme) => ({
   buttons: { flexDirection: 'row', gap: theme.space.sm },
   flex: { flex: 1 },
   discard: { marginTop: theme.space.lg },
+  submit: { marginTop: theme.space.lg },
+  progressStrip: { gap: 6, paddingBottom: theme.space.sm, marginBottom: theme.space.sm, borderBottomWidth: 1.5, borderBottomColor: theme.color.edge },
+  progressText: { fontFamily: theme.family.medium, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.ink },
   meter: { height: 4, backgroundColor: theme.color.edgeSoft, overflow: 'hidden' },
   // scaleX from the left edge, never width (plans/001-meter-scalex.md).
   meterFill: { height: 4, width: '100%', backgroundColor: theme.color.ink, transformOrigin: 'left' },
-  footRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
-  footText: { flex: 1, fontFamily: theme.family.medium, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.ink },
-  footButton: { flexShrink: 0 },
 }));
