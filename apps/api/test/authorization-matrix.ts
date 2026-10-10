@@ -1482,6 +1482,18 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'POST',
+    path: '/api/v1/kaizens/:kaizenId/discard',
+    description:
+      'kaizen:create — the author deletes their own DRAFT (R-49): soft, it leaves every list; ' +
+      'Idempotency-Key required; already discarded is a no-op',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
     path: '/api/v1/kaizens/:kaizenId/review',
     description:
       'kaizen:review — approve, send back or reject (a reason for the last two); Idempotency-Key ' +

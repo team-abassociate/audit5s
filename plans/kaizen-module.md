@@ -5,39 +5,27 @@
 
 ---
 
-## ⛔ BRANCH RULE: read before anything else
+## BRANCH RULE: read before anything else
 
-**`feat/kaizen` is the main branch for all Kaizen work.** It lives in the
-`team-abassociate/audit5s` GitHub repo, but it is **not** the repo's `main`.
+**Changed by the owner, 2026-10-10:** "we can now open PRs into main directly instead of
+feat/kaizen." `feat/kaizen` is retired as the integration branch.
 
-- The repo's **`main` is production.** Every commit on it deploys automatically to the VPS
-  that client plants use for 5S. **No Kaizen commit, branch, merge, rebase or PR ever targets
-  `main`.** No exceptions, no "small fix", no "just docs".
-- **Each device works on its own branch, cut from `feat/kaizen`:**
-  - **Device A (krxna): `kaizen/krxna`**
-  - **Device B (geetahuja): `kaizen/geetahuja`**
+- **Each device works on its own branch:** **Device A (krxna): `kaizen/krxna`**, **Device B
+  (geetahuja): `kaizen/geetahuja`**. Commit only on your own branch, never on the other
+  device's, never directly on `main`.
+- **PRs go from your device branch straight into `main`:** `--head kaizen/<you> --base main`.
+  Merge with a **merge commit**, never squash or rebase-merge.
+- **`main` is production.** Every green commit on it deploys to the VPS that client plants use
+  for 5S, migrations included. So merging a PR into `main` is a release: CI green first, and
+  only with the owner's go. An agent never merges into `main` on its own initiative.
+- **Keep your branch current by merging `origin/main`, never rebasing** (the branch is shared on
+  GitHub, so a rebase would need a force-push, which is forbidden).
+- A change the phones must not get yet (a native change before its APK, or the server half of
+  a rule old phones would trip over) waits as an open PR until its release day.
+- Agents never change repo settings, and never use `--no-verify` or force-push.
 
-  All commits go to your own device branch, never to the other device's branch, never
-  directly to `feat/kaizen`, and never to `main`. Changes reach `feat/kaizen` only through a PR
-  **from your device branch, base `feat/kaizen`**. Before `gh pr create`, check that
-  `--head kaizen/<you> --base feat/kaizen` is set.
-- One PR per build step (or slice of one), titled with the step, e.g.
-  `Kaizen step 3: API module`. Merge with a **merge commit** (the repo's existing style),
-  never squash or rebase-merge, so your branch and `feat/kaizen` keep the same commits.
-- **Keep your branch current by merging, never rebasing:** at the start of every session and
-  before every PR, `git fetch origin && git merge origin/feat/kaizen`. Your branch is shared on
-  GitHub, so a rebase would need a force-push, which is forbidden. This overrides the
-  "rebase on `main`" line in `AGENTS.md`, which is about 5S work.
-- The only flow into `main` is **one** PR, `feat/kaizen` → `main`, opened and merged **by the
-  owner, by hand, on release day** (§12). No agent opens or merges that PR.
-- 5S fixes for clients are a separate track: they go to `main` as before, and are then
-  merged *into* `feat/kaizen` (main → feat/kaizen, never the reverse).
-- Before every commit and every push, run `git branch --show-current`. If it prints `main`,
-  **stop**: do not commit, and tell the owner.
-- **Nothing on GitHub blocks a push to `main`.** The owner chose written rules only (this
-  section, `CLAUDE.md`, `AGENTS.md`, the device guides). So the branch check before every
-  commit and push is mandatory. Agents never change repo settings, and never use
-  `--no-verify` or force-push.
+The sections below were written for the old `feat/kaizen` flow. Where they say `feat/kaizen`,
+read `main`, and where they say "release day", read "the day the owner merges the PR".
 
 ---
 

@@ -97,6 +97,8 @@ export const AUDIT_LOG_ACTIONS = [
   'kaizen.approved',
   'kaizen.sent_back',
   'kaizen.rejected',
+  /** The author discarded their draft (R-49). The row stays, marked `discarded_at`. */
+  'kaizen.discarded',
 ] as const;
 export const auditLogActionSchema = z.enum(AUDIT_LOG_ACTIONS);
 export type AuditLogAction = z.infer<typeof auditLogActionSchema>;

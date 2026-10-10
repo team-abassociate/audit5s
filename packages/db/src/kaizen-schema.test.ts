@@ -329,3 +329,54 @@ describe('photos', () => {
     expect(seen.rowCount).toBe(0);
   });
 });
+
+describe('a discarded draft (0045, R-49)', () => {
+  function discard(id: string) {
+    return asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () =>
+      app.query(`UPDATE kaizen SET discarded_at = now() WHERE id = $1`, [id]),
+    );
+  }
+
+  beforeEach(async () => {
+    await create(K.kaizen1, IDS.zoneA);
+  });
+
+  it('is a DRAFT only', async () => {
+    await submit(K.kaizen1);
+    await expect(
+      owner.query(`UPDATE kaizen SET discarded_at = now() WHERE id = $1`, [K.kaizen1]),
+    ).rejects.toThrow(/only a draft can be discarded/);
+  });
+
+  it('never changes again: not edited, not submitted, not un-discarded, not deleted', async () => {
+    expect((await discard(K.kaizen1)).rowCount).toBe(1);
+    await expect(
+      owner.query(`UPDATE kaizen SET machine = 'Press 5' WHERE id = $1`, [K.kaizen1]),
+    ).rejects.toThrow(/was discarded/);
+    await expect(submit(K.kaizen1)).rejects.toThrow(/was discarded/);
+    await expect(
+      owner.query(`UPDATE kaizen SET discarded_at = NULL WHERE id = $1`, [K.kaizen1]),
+    ).rejects.toThrow(/was discarded/);
+    await expect(owner.query(`DELETE FROM kaizen WHERE id = $1`, [K.kaizen1])).rejects.toThrow();
+  });
+
+  it('takes no new photo and loses none, but its upload may still be confirmed', async () => {
+    const photo = (id: string, kind: string) =>
+      asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () =>
+        app.query(
+          `INSERT INTO kaizen_photo (id, kaizen_id, kind, object_key, content_type, byte_size,
+                                     checksum_sha256, captured_at, created_by_user_id)
+           VALUES ($1, $2, $3, $4, 'image/jpeg', 1000, $5, now(), $6)`,
+          [id, K.kaizen1, kind, `unit/x/kaizen/${id}.jpg`, 'a'.repeat(64), IDS.zoneLeaderA],
+        ),
+      );
+    await photo(K.photo1, 'BEFORE');
+    await discard(K.kaizen1);
+    await expect(photo(K.photo2, 'AFTER')).rejects.toThrow(/discarded draft/);
+    await expect(
+      owner.query(`UPDATE kaizen_photo SET deleted_at = now() WHERE id = $1`, [K.photo1]),
+    ).rejects.toThrow(/discarded draft/);
+    const committed = await owner.query(`UPDATE kaizen_photo SET uploaded_at = now() WHERE id = $1`, [K.photo1]);
+    expect(committed.rowCount).toBe(1);
+  });
+});

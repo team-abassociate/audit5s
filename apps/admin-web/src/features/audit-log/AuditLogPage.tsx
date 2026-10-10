@@ -93,6 +93,7 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'kaizen.approved': 'Approved a Kaizen',
   'kaizen.sent_back': 'Sent a Kaizen back',
   'kaizen.rejected': 'Rejected a Kaizen',
+  'kaizen.discarded': 'Deleted a draft Kaizen',
 };
 
 const RESOURCE_LABEL: Record<string, string> = {

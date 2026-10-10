@@ -1,5 +1,9 @@
 # Kaizen handoff: Device A → Device B (2026-10-07)
 
+> **Branch rule changed 2026-10-10:** PRs now go from the device branch straight into `main`;
+> `feat/kaizen` is retired. See [`kaizen-module.md`](kaizen-module.md) (BRANCH RULE). Where this
+> guide says `feat/kaizen`, read `main`.
+
 > **Finished, 2026-10-09.** Device B did steps 4, 5, 6, 8 and 9, merged into `feat/kaizen` as
 > PR #96. The handover note is gone from [`kaizen-module.md`](kaizen-module.md), and the two
 > devices work in parallel again under its §11 ownership table. Kept for the local setup notes

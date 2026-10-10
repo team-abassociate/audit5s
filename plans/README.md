@@ -1,10 +1,9 @@
 # Motion plans — UX audit 2026-10-03 (report §10.2, M1–M5)
 
-> **⛔ Kaizen work: `feat/kaizen` is the main branch for Kaizen.** Never commit, push, merge
-> or open a PR to `main`: `main` deploys to the production VPS that clients use for 5S. Work
-> only on your device branch (`kaizen/krxna` on Device A, `kaizen/geetahuja` on Device B), and PR
-> it into `feat/kaizen`. Only the owner
-> merges `feat/kaizen` → `main`, by hand, on release day. Plan:
+> **Kaizen branch rule (changed by the owner, 2026-10-10):** open Kaizen PRs from your device
+> branch (`kaizen/krxna` on Device A, `kaizen/geetahuja` on Device B) **straight into `main`**.
+> `feat/kaizen` is retired. `main` still deploys to the production VPS that clients use for 5S,
+> so merging into `main` is a release: green CI first, and only with the owner's go. Plan:
 > [`plans/kaizen-module.md`](kaizen-module.md) (BRANCH RULE).
 
 Written by session S1 with `improve-animations` in plan mode (the report had already vetted
