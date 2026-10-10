@@ -152,7 +152,6 @@ export interface KaizenStrings {
   readyToSubmit: string;
   savedAsYouGo: string;
   noZone: string;
-  badDate: string;
   badSaving: string;
   submittedNote: string;
 
@@ -301,7 +300,6 @@ const EN: KaizenStrings = {
     implementedBy: 'Implemented by',
   },
   hint: {
-    implementedOn: 'As YYYY-MM-DD, e.g. 2026-10-09',
     teamMembers: 'Names, separated by commas',
     theme: 'One line: what you improved. e.g. Quick-release clamps on the P-04 die',
     problem5w1h: 'What, where, when, who, which and how. e.g. Die change on P-04 takes 40 min because…',
@@ -354,7 +352,6 @@ const EN: KaizenStrings = {
   readyToSubmit: 'Ready to submit',
   savedAsYouGo: 'Each field is saved on this phone as you go, and sent when there is signal.',
   noZone: 'No Zone of yours is on this phone yet. Sync, or ask your Coordinator.',
-  badDate: 'Enter the date as YYYY-MM-DD.',
   badSaving: 'Enter the saving in rupees, digits only.',
   submittedNote: 'Submitted. It reaches your Coordinator when there is signal.',
 
@@ -501,7 +498,6 @@ const HI: KaizenStrings = {
     implementedBy: 'किसने लागू किया',
   },
   hint: {
-    implementedOn: 'YYYY-MM-DD के रूप में, जैसे 2026-10-09',
     teamMembers: 'नाम, अल्पविराम से अलग',
     theme: 'एक पंक्ति: आपने क्या सुधारा। जैसे P-04 डाई पर क्विक-रिलीज़ क्लैंप',
     problem5w1h: 'क्या, कहाँ, कब, कौन, कौन-सा और कैसे। जैसे P-04 पर डाई बदलने में 40 मिनट लगते हैं क्योंकि…',
@@ -554,7 +550,6 @@ const HI: KaizenStrings = {
   readyToSubmit: 'जमा करने के लिए तैयार',
   savedAsYouGo: 'हर जानकारी इसी फ़ोन पर तुरंत सहेजी जाती है और सिग्नल मिलने पर भेजी जाती है।',
   noZone: 'आपका कोई ज़ोन अभी इस फ़ोन पर नहीं है। सिंक करें, या कोऑर्डिनेटर से पूछें।',
-  badDate: 'तारीख YYYY-MM-DD के रूप में लिखें।',
   badSaving: 'बचत रुपयों में लिखें, केवल अंक।',
   submittedNote: 'जमा हो गया। सिग्नल मिलने पर यह आपके कोऑर्डिनेटर तक पहुँचेगा।',
 
@@ -701,7 +696,6 @@ const MR: KaizenStrings = {
     implementedBy: 'अंमलबजावणी कोणी केली',
   },
   hint: {
-    implementedOn: 'YYYY-MM-DD असे, उदा. 2026-10-09',
     teamMembers: 'नावे, स्वल्पविरामाने वेगळी',
     theme: 'एका ओळीत: तुम्ही काय सुधारले. उदा. P-04 डायवर क्विक-रिलीज क्लॅम्प',
     problem5w1h: 'काय, कुठे, केव्हा, कोण, कोणते आणि कसे. उदा. P-04 वर डाय बदलायला 40 मिनिटे लागतात कारण…',
@@ -754,7 +748,6 @@ const MR: KaizenStrings = {
   readyToSubmit: 'सादर करण्यास तयार',
   savedAsYouGo: 'प्रत्येक माहिती याच फोनवर लगेच जतन होते आणि सिग्नल मिळाल्यावर पाठवली जाते.',
   noZone: 'तुमचा कोणताही झोन अजून या फोनवर नाही. सिंक करा, किंवा कोऑर्डिनेटरला विचारा.',
-  badDate: 'तारीख YYYY-MM-DD अशी लिहा.',
   badSaving: 'बचत रुपयांत लिहा, फक्त अंक.',
   submittedNote: 'सादर झाले. सिग्नल मिळाल्यावर ते तुमच्या कोऑर्डिनेटरकडे पोहोचेल.',
 

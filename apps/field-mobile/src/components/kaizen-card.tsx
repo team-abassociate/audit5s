@@ -52,9 +52,12 @@ export function kaizenHref(kaizen: Pick<LocalKaizen, 'id' | 'status'>) {
 export function KaizenCard({
   kaizen,
   author,
+  arrived,
   onPress,
 }: {
   kaizen: KaizenCardData;
+  /** Just submitted from this phone: the card lights up where it landed (plan M4). */
+  arrived?: boolean;
   /** "{author} · {zone code}", leading the meta line on a Coordinator's list. */
   author?: string;
   onPress: () => void;
@@ -71,6 +74,7 @@ export function KaizenCard({
   return (
     <Card
       style={styles.card}
+      arrived={arrived}
       accessibilityRole="button"
       accessibilityLabel={[no, t.status[kaizen.status], sheet.theme, saving ? `${formatRupees(saving)} ${t.perYear}` : null]
         .filter(Boolean)
