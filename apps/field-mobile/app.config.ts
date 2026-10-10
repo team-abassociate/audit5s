@@ -27,7 +27,7 @@ const config: ExpoConfig = {
   owner: 'abassociates',
   name: 'Leanstack',
   slug: 'audit5s-field',
-  version: '0.1.0',
+  version: '0.2.0',
   icon: './assets/audit5s-logo.png',
   orientation: 'portrait',
   scheme: 'audit5s',
@@ -57,6 +57,9 @@ const config: ExpoConfig = {
       'android.permission.READ_MEDIA_VIDEO',
       'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
       'android.permission.RECORD_AUDIO',
+      // expo-haptics asks for it for its vibrator calls; the app uses Android's haptic
+      // feedback instead (src/lib/haptics.ts), which needs no permission.
+      'android.permission.VIBRATE',
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.ACCESS_COARSE_LOCATION',
       'android.permission.ACCESS_BACKGROUND_LOCATION',

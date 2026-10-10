@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
+import { create } from 'zustand';
 import { Button } from './ui';
 import { MAX_LONG_EDGE_PX, processCapturedPhoto, type ProcessedImage } from '../lib/capture/media';
 import { ZONE_PHOTO_LIMIT_MESSAGE } from '../lib/db/photo-limit';
@@ -24,6 +25,12 @@ export async function requestPermissionsAtLaunch(): Promise<void> {
     // The camera screen asks again when it is opened; a failure here costs nothing.
   }
 }
+
+/**
+ * Whether a camera is on screen. It is the whole screen, so the root layout hides the sync
+ * bar while it is: the Kaizen form opens it on the New tab, which otherwise shows the bar.
+ */
+export const useCameraOpen = create<{ open: boolean }>(() => ({ open: false }));
 
 /**
  * The live-capture camera (§12.10).
@@ -62,6 +69,10 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
   const taking = useRef(false);
   const camera = useRef<CameraView>(null);
   const [pictureSize, setPictureSize] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    useCameraOpen.setState({ open: true });
+    return () => useCameraOpen.setState({ open: false });
+  }, []);
 
   // The smallest frame the sensor offers that still covers §9.4's 1920 px long edge. The
   // default is the full sensor — 12 MP and up — which is several times more to encode,
