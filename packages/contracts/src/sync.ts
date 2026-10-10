@@ -140,6 +140,11 @@ export const SYNC_OPERATIONS = [
    * the Finish-audit guard and releases its R-29 lock.
    */
   'withdraw',
+  /**
+   * A Zone Leader's draft Kaizen discarded on the phone (R-49). Soft: the row stays, marked
+   * `discarded_at`, and leaves every list. Sent only for a draft the server may hold.
+   */
+  'discard',
 ] as const;
 export const syncOperationSchema = z.enum(SYNC_OPERATIONS);
 export type SyncOperation = z.infer<typeof syncOperationSchema>;

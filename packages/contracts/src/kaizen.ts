@@ -84,6 +84,12 @@ export const KAIZEN_REQUIRED_FIELDS = [
 ] as const;
 export type KaizenRequiredField = (typeof KAIZEN_REQUIRED_FIELDS)[number];
 
+/**
+ * What can stop a submit: a required field, or a missing before or after photo (owner,
+ * 2026-10-10, R-49). `missingKaizenItems` lists them, so the form and the server agree.
+ */
+export type KaizenMissingItem = KaizenRequiredField | 'beforePhoto' | 'afterPhoto';
+
 // ------------------------------------------------------------------- the record
 
 /** `YYYY-MM-DD`, a calendar date with no time or zone: the day it was implemented. */

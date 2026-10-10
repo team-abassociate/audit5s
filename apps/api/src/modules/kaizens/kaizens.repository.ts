@@ -88,6 +88,8 @@ export class KaizensRepository extends BaseRepository {
         query.unitId ? eq(kaizens.unitId, query.unitId) : undefined,
         query.zoneId ? eq(kaizens.zoneId, query.zoneId) : undefined,
         query.status ? eq(kaizens.status, query.status) : undefined,
+        // A discarded draft is not there (R-49), for its author or anyone else.
+        isNull(kaizens.discardedAt),
         query.mine ? eq(kaizens.authorUserId, scope.actor.userId) : undefined,
         query.submittedFrom ? gte(kaizens.submittedAt, new Date(query.submittedFrom)) : undefined,
         // Ids are UUIDv7, so id order is creation order and the cursor is the last id.
@@ -178,6 +180,8 @@ export class KaizensRepository extends BaseRepository {
             scope,
             scopeColumns,
             sql`${kaizens.status} <> 'DRAFT'`,
+            // Only a DRAFT is ever discarded (0045), so this is already true; said for the reader.
+            isNull(kaizens.discardedAt),
             unitId ? eq(kaizens.unitId, unitId) : undefined,
           ),
         );
@@ -239,6 +243,16 @@ export class KaizensRepository extends BaseRepository {
         lastSubmissionId: submissionId,
       })
       .where(and(eq(kaizens.id, kaizenId), inArray(kaizens.status, ['DRAFT', 'SENT_BACK'])))
+      .returning({ id: kaizens.id });
+    return updated.length > 0;
+  }
+
+  /** Discards a DRAFT (R-49). False ⇒ it was no longer a live draft by the time the lock came. */
+  async discard(tx: Transaction, kaizenId: string): Promise<boolean> {
+    const updated = await tx
+      .update(kaizens)
+      .set({ discardedAt: new Date() })
+      .where(and(eq(kaizens.id, kaizenId), eq(kaizens.status, 'DRAFT'), isNull(kaizens.discardedAt)))
       .returning({ id: kaizens.id });
     return updated.length > 0;
   }

@@ -80,6 +80,8 @@ export const kaizens = pgTable(
     /** First submission; a resubmission does not move it. Dashboard periods count by it. */
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     lastSubmissionId: uuid('last_submission_id'),
+    /** Set when the author discards the DRAFT (R-49, 0045). Left out of every list; never deleted. */
+    discardedAt: timestamp('discarded_at', { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
