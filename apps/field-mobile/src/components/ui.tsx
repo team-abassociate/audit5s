@@ -1,4 +1,4 @@
-import { Children, memo, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { Children, memo, useEffect, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {
   ActivityIndicator,
@@ -18,6 +18,7 @@ import {
   type ViewProps,
   type ViewStyle,
 } from 'react-native';
+import Animated, { FadeInDown, useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SSection } from '@audit5s/contracts';
 import logo from '../../assets/audit5s-logo.png';
@@ -31,6 +32,7 @@ import {
   useTheme,
   type Band,
 } from '../lib/theme';
+import { EASE_OUT, fadeIn, transition } from '../lib/motion';
 
 /** A Material icon's name: the one icon set, so a symbol means the same thing on every screen. */
 export type IconName = ComponentProps<typeof MaterialIcons>['name'];
@@ -91,10 +93,13 @@ export function Screen({
 /** The hard offset shadow. Android's `elevation` is always blurred, so it is a second view. */
 export function Magnet({
   offset = 3,
+  pressed,
   style,
   children,
 }: {
   offset?: number;
+  /** The face is pressed onto it: the shadow goes, which is all a press is under reduced motion. */
+  pressed?: boolean;
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
@@ -102,7 +107,7 @@ export function Magnet({
   return (
     <View style={[{ position: 'relative', marginRight: offset, marginBottom: offset }, style]}>
       {Platform.OS === 'android' ? (
-        <View
+        <Animated.View
           pointerEvents="none"
           style={{
             position: 'absolute',
@@ -111,12 +116,64 @@ export function Magnet({
             right: -offset,
             bottom: -offset,
             backgroundColor: theme.color.hard,
+            opacity: pressed ? 0 : 1,
+            transitionProperty: 'opacity',
+            ...transition,
           }}
         />
       ) : null}
       {children}
     </View>
   );
+}
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+/**
+ * The house press (GEMBA §2.2, plan M1): on press-in the face sinks onto its shadow and the
+ * shadow goes, over the one 143 ms ease-out, and comes back the same way. Held in state, not
+ * Pressable's style function, so the change can be a transition; two renders a press, none a
+ * frame. Under reduced motion the face stays put and only the shadow goes (plan 002).
+ */
+function usePress(offset: number, rest: Pick<PressableProps, 'onPressIn' | 'onPressOut'>, held = false) {
+  const [down, setPressed] = useState(false);
+  const pressed = down || held;
+  const travel = useReducedMotion() ? 0 : offset;
+  return {
+    pressed,
+    sink: {
+      transform: [{ translateX: pressed ? travel : 0 }, { translateY: pressed ? travel : 0 }],
+      ...(pressed ? { shadowOpacity: 0 } : null),
+      transitionProperty: 'transform',
+      ...transition,
+    },
+    handlers: {
+      onPressIn: (event: Parameters<NonNullable<PressableProps['onPressIn']>>[0]) => {
+        setPressed(true);
+        rest.onPressIn?.(event);
+      },
+      onPressOut: (event: Parameters<NonNullable<PressableProps['onPressOut']>>[0]) => {
+        setPressed(false);
+        rest.onPressOut?.(event);
+      },
+    },
+  };
+}
+
+/**
+ * Plays once as it mounts: back to its own colour after it was lit, the admin web's arrival
+ * highlight (plans/005-arrival-transition.md, plan M4): held 0.9 s, then 0.7 s ease-out. A
+ * colour change, so it plays under reduced motion too.
+ */
+function useArrival(arrived: boolean | undefined) {
+  const [lit, setLit] = useState(Boolean(arrived));
+  useEffect(() => {
+    if (!lit) return;
+    const frame = requestAnimationFrame(() => setLit(false));
+    return () => cancelAnimationFrame(frame);
+    // Once, on mount: the first frame draws it lit, the next starts the fade.
+  }, []);
+  return lit;
 }
 
 /**
@@ -127,30 +184,43 @@ export function Card({
   children,
   style,
   rail,
+  arrived,
   ...rest
 }: Omit<PressableProps, 'style'> & {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   rail?: Band;
+  /** The one just sent from this phone: lit in the selection colour, then fading to its own. */
+  arrived?: boolean;
 }) {
   const styles = useStyles();
   const theme = useTheme();
   const tappable = rest.onPress !== undefined;
+  const press = usePress(theme.press, rest);
+  const lit = useArrival(arrived);
   return (
-    <Magnet style={styles.cardGap}>
+    <Magnet style={styles.cardGap} pressed={tappable && press.pressed}>
       {/* Only a Link card is one a11y element; otherwise TalkBack must reach the inputs inside. */}
-      <Pressable
+      <AnimatedPressable
         accessible={tappable}
-        style={({ pressed }) => [
+        {...rest}
+        // Only a tappable card presses: a form step must not re-render under a passing scroll.
+        {...(tappable ? press.handlers : null)}
+        style={[
           styles.card,
           rail && rail !== 'none' && { borderLeftWidth: 4, borderLeftColor: bandFill(rail, theme.color) },
-          tappable && pressed && styles.pressed,
           style,
+          tappable && press.sink,
+          arrived && {
+            backgroundColor: lit ? theme.color.accentSoft : theme.color.tile,
+            transitionProperty: ['transform', 'backgroundColor'],
+            transitionDuration: [theme.motion, 700],
+            transitionDelay: [0, lit ? 0 : 900],
+          },
         ]}
-        {...rest}
       >
         {children}
-      </Pressable>
+      </AnimatedPressable>
     </Magnet>
   );
 }
@@ -605,9 +675,11 @@ export function Button({
       : isPrimary
         ? theme.color.board
         : theme.color.ink;
+  // A busy button stays down, so the press reads as taken while it works.
+  const press = usePress(2, {}, Boolean(busy));
   return (
-    <Magnet offset={2} style={inert && styles.inert}>
-      <Pressable
+    <Magnet offset={2} pressed={press.pressed} style={inert && styles.inert}>
+      <AnimatedPressable
         testID={testID}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? title}
@@ -615,12 +687,13 @@ export function Button({
         disabled={inert}
         onPress={onPress}
         hitSlop={compact ? 11 : undefined}
-        style={({ pressed }) => [
+        {...press.handlers}
+        style={[
           styles.button,
           compact && styles.buttonCompact,
           isPrimary ? styles.buttonPrimary : styles.buttonSecondary,
           (variant === 'danger' || tone) && { borderColor: ink },
-          (pressed || busy) && styles.buttonPressed,
+          press.sink,
         ]}
       >
         {busy ? (
@@ -639,7 +712,7 @@ export function Button({
             </Text>
           </View>
         )}
-      </Pressable>
+      </AnimatedPressable>
     </Magnet>
   );
 }
@@ -663,26 +736,42 @@ export function Slip({
   title,
   children,
   style,
+  arriving,
   ...rest
 }: Omit<PressableProps, 'style' | 'children'> & {
   title: string;
   children?: ReactNode;
   style?: StyleProp<ViewStyle>;
+  /**
+   * It says what was just done (a submit, a review): it drops 6px into place as it appears
+   * (plan M3), not from the edge. Under reduced motion it only fades in.
+   */
+  arriving?: boolean;
 }) {
   const styles = useStyles();
+  const theme = useTheme();
   const tappable = rest.onPress !== undefined;
-  return (
-    <Magnet style={styles.cardGap}>
-      <Pressable
+  const press = usePress(theme.press, rest);
+  const reduced = useReducedMotion();
+  const slip = (
+    <Magnet style={styles.cardGap} pressed={tappable && press.pressed}>
+      <AnimatedPressable
         accessible={tappable}
-        style={({ pressed }) => [styles.slip, tappable && pressed && styles.pressed, style]}
         {...rest}
+        {...(tappable ? press.handlers : null)}
+        style={[styles.slip, style, tappable && press.sink]}
       >
         <Text style={styles.slipTitle}>{title}</Text>
         {children}
-      </Pressable>
+      </AnimatedPressable>
     </Magnet>
   );
+  if (!arriving) return slip;
+  // Reduced motion keeps the fade (opacity is not movement) and drops the drop.
+  const entering = reduced
+    ? fadeIn
+    : FadeInDown.withInitialValues({ transform: [{ translateY: -6 }] }).duration(theme.motion).easing(EASE_OUT);
+  return <Animated.View entering={entering}>{slip}</Animated.View>;
 }
 
 export function SlipText({ children }: { children: ReactNode }) {
@@ -1367,7 +1456,6 @@ const useStyles = createThemedStyles((theme) => ({
   buttonPrimary: { backgroundColor: theme.color.ink },
   buttonSecondary: { backgroundColor: theme.color.tile },
   buttonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  buttonPressed: { transform: [{ translateX: 2 }, { translateY: 2 }], shadowOpacity: 0 },
   buttonPrimaryText: { color: theme.color.board, fontFamily: theme.family.medium, fontSize: theme.font.sm },
   buttonSecondaryText: { color: theme.color.ink, fontFamily: theme.family.medium, fontSize: theme.font.sm },
   notice: {

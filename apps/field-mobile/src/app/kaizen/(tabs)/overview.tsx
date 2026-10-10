@@ -102,7 +102,7 @@ function CoordinatorOverview() {
         {dashboard.data ? <KpiCard kpi={dashboard.data.kpi} period={period} onPeriod={setPeriod} /> : null}
         {/* The one slip: what a review just did, or else that a review waits on this person. */}
         {reviewed.reviewedNo && reviewed.reviewedDecision ? (
-          <Slip title={t.reviewed(reviewed.reviewedDecision, reviewed.reviewedNo, reviewed.reviewedAuthor ?? '')}>
+          <Slip arriving title={t.reviewed(reviewed.reviewedDecision, reviewed.reviewedNo, reviewed.reviewedAuthor ?? '')}>
             <SlipText>{t.moreWaiting(waiting.length)}</SlipText>
           </Slip>
         ) : can('kaizen', 'review') && waiting.length > 0 ? (
@@ -135,7 +135,9 @@ function LeaderOverview() {
   const all = kaizens.data ?? [];
   const { recent, approved, needsFix, drafts, waiting } = groupLeaderKaizens(all, Date.now());
   const list = (items: LocalKaizen[]) =>
-    items.map((kaizen) => <KaizenCard key={kaizen.id} kaizen={kaizen} onPress={() => router.push(kaizenHref(kaizen))} />);
+    items.map((kaizen) => (
+      <KaizenCard key={kaizen.id} kaizen={kaizen} arrived={kaizen.id === submitted} onPress={() => router.push(kaizenHref(kaizen))} />
+    ));
 
   return (
     <Screen>
@@ -152,7 +154,7 @@ function LeaderOverview() {
         }
       >
         {submitted ? (
-          <Slip title={resubmitted ? t.resubmittedTitle : t.submittedTitle}>
+          <Slip arriving title={resubmitted ? t.resubmittedTitle : t.submittedTitle}>
             <SlipText>{t.submittedNote}</SlipText>
           </Slip>
         ) : null}

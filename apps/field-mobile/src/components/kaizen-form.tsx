@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useNavigation } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   KAIZEN_PARAMETERS,
@@ -14,7 +16,7 @@ import {
   type KaizenPhotoKind,
   type KaizenWaste,
 } from '@audit5s/contracts';
-import { istDateKey } from '@audit5s/domain';
+import { formatDate, istDateKey } from '@audit5s/domain';
 import type { ProcessedImage } from '../lib/capture/media';
 import { pickFromGallery } from '../lib/capture/gallery';
 import {
@@ -30,8 +32,10 @@ import {
 } from '../lib/db/kaizen.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import { KAIZEN_STEPS, KAIZEN_STRINGS, type KaizenStep, type KaizenTextField } from '../lib/kaizen-strings';
+import { haptic } from '../lib/haptics';
 import { formProgress, stepOf } from '../lib/kaizen-steps';
 import { useLanguage } from '../lib/language-provider';
+import { fadeIn, transition } from '../lib/motion';
 import { useRequiredFields } from '../lib/required-fields';
 import { useSession } from '../lib/session';
 import { useSync } from '../lib/sync/provider';
@@ -133,6 +137,7 @@ export function KaizenForm({
   // What waits for a step to lay out after it opens: Next's scroll, or a refused Submit's reveal.
   const afterOpen = useRef<{ index: number; run: (y: number) => void } | null>(null);
   const scroller = useRef<ScrollView | null>(null);
+  const reduced = useReducedMotion();
 
   const zones = useQuery({
     queryKey: ['local', 'leader-zones', user?.id],
@@ -306,6 +311,7 @@ export function KaizenForm({
     },
     onSuccess: (done) => {
       if (!done) return;
+      haptic.submitted();
       void refresh();
       void sync();
       onSubmitted(done.kaizenId, done.resubmitted);
@@ -314,6 +320,7 @@ export function KaizenForm({
 
   /** A refused Submit: open the first step with a gap, then show and focus its first box. */
   function refuse(missing: KaizenMissingItem[]) {
+    haptic.refused();
     setAttempted(true);
     const index = KAIZEN_STEPS.indexOf(stepOf(missing[0]!));
     const reveal = () => required.check(missing.map((item) => [item, false] as const));
@@ -359,7 +366,7 @@ export function KaizenForm({
     if (raw === undefined) return;
     const value = parse(field, raw);
     if (value === undefined) {
-      if (!quiet) setFieldError((errors) => ({ ...errors, [field]: field === 'implementedOn' ? t.badDate : t.badSaving }));
+      if (!quiet) setFieldError((errors) => ({ ...errors, [field]: t.badSaving }));
       return;
     }
     setFieldError((errors) => ({ ...errors, [field]: undefined }));
@@ -373,7 +380,10 @@ export function KaizenForm({
     return (
       <CameraCapture
         prompt={t.cameraPrompt(camera)}
-        onCaptured={(image) => photo.mutateAsync({ kind: camera, image, live: true })}
+        onCaptured={(image) => {
+          haptic.captured();
+          return photo.mutateAsync({ kind: camera, image, live: true });
+        }}
         onCancel={() => setCamera(null)}
       />
     );
@@ -417,7 +427,7 @@ export function KaizenForm({
         label={t.field[field]}
         value={texts[field]}
         multiline={MULTILINE.has(field)}
-        keyboardType={field === 'annualSaving' ? 'decimal-pad' : field === 'implementedOn' ? 'numbers-and-punctuation' : 'default'}
+        keyboardType={field === 'annualSaving' ? 'decimal-pad' : 'default'}
         {...(isRequired ? { inputRef: required.input(item) } : {})}
         {...(hint ? { hint } : {})}
         {...(error ? { error } : {})}
@@ -429,6 +439,41 @@ export function KaizenForm({
         }}
         onBlur={() => commitText(field)}
       />
+    );
+  };
+
+  /**
+   * The date from Android's own calendar (#10), never typed: it cannot be in the future or
+   * malformed. Stored as before, `YYYY-MM-DD` in IST. Saved the moment it is set, like a tick.
+   */
+  const dateField = () => {
+    const value = texts.implementedOn;
+    const label = t.field.implementedOn;
+    return (
+      <Pressable
+        testID="kaizen-implementedOn"
+        accessibilityRole="button"
+        accessibilityLabel={value ? `${label}: ${formatDate(value)}` : label}
+        onPress={() =>
+          DateTimePickerAndroid.open({
+            // Noon in IST, so the day it shows is the day stored, whatever the phone's zone.
+            value: value ? new Date(`${value}T12:00:00+05:30`) : new Date(),
+            mode: 'date',
+            maximumDate: new Date(),
+            onChange: (event, date) => {
+              const key = event.type === 'set' && date ? istDateKey(date) : null;
+              if (!key) return;
+              setTexts((all) => (all ? { ...all, implementedOn: key } : all));
+              if (key !== (savedRef.current.implementedOn ?? null)) save.mutate({ implementedOn: key });
+            },
+          })
+        }
+      >
+        {/* The text box's own look, so it reads as one more box on the form. */}
+        <View pointerEvents="none">
+          <Field label={label} value={value ? formatDate(value) : ''} editable={false} />
+        </View>
+      </Pressable>
     );
   };
 
@@ -473,7 +518,10 @@ export function KaizenForm({
             confirmLabel={t.removePhoto}
             keepLabel={t.keep}
             busy={removePhoto.isPending}
-            onConfirm={() => removePhoto.mutate(shown.id)}
+            onConfirm={() => {
+              haptic.destroyed();
+              removePhoto.mutate(shown.id);
+            }}
           />
         ) : null}
       </View>
@@ -495,7 +543,7 @@ export function KaizenForm({
             ) : null}
             {textField('machine')}
             {textField('lineArea')}
-            {textField('implementedOn')}
+            {dateField()}
           </>
         );
       case 'team':
@@ -580,7 +628,14 @@ export function KaizenForm({
           {t.progress(progress.done, progress.total)} · {ready ? t.readyToSubmit : t.requiredLeft(progress.requiredLeft)}
         </Text>
         <View style={styles.meter} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <View style={[styles.meterFill, { transform: [{ scaleX: progress.done / progress.total }] }]} />
+          {/* M5: the step it gains slides in over the one motion; reduced motion makes it instant. */}
+          <Animated.View
+            style={[
+              styles.meterFill,
+              { transform: [{ scaleX: progress.done / progress.total }], transitionProperty: 'transform', ...transition },
+              reduced && { transitionDuration: 0 },
+            ]}
+          />
         </View>
       </View>
       <ScrollView
@@ -635,7 +690,8 @@ export function KaizenForm({
                   </Text>
                 </Pressable>
                 {isOpen ? (
-                  <View style={styles.stepBody}>
+                  // Fades in as it opens (M2): no height animation, which fights the keyboard.
+                  <Animated.View entering={fadeIn} style={styles.stepBody}>
                     {body(step)}
                     {index < KAIZEN_STEPS.length - 1 ? (
                       <Button
@@ -652,7 +708,7 @@ export function KaizenForm({
                         }}
                       />
                     ) : null}
-                  </View>
+                  </Animated.View>
                 ) : null}
               </Card>
             </View>
@@ -669,7 +725,10 @@ export function KaizenForm({
               confirmLabel={t.deleteDraft}
               keepLabel={t.keep}
               busy={discard.isPending}
-              onConfirm={() => discard.mutate()}
+              onConfirm={() => {
+                haptic.destroyed();
+                discard.mutate();
+              }}
             />
           </View>
         ) : null}

@@ -7,6 +7,7 @@ import { formatDate, formatRupees } from '@audit5s/domain';
 import { KaizenPhotoViewer } from '../../components/kaizen-photo-viewer';
 import { Button, Card, CardHeader, ChoiceList, Chip, Data, ErrorBanner, Field, Hatch, Label, Muted, Screen, Slip, SlipText } from '../../components/ui';
 import { api, problemMessage } from '../../lib/api';
+import { haptic } from '../../lib/haptics';
 import { getLocalKaizen, sheetOf } from '../../lib/db/kaizen.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { DECISION_TONE, KAIZEN_STATUS_ICON, KAIZEN_STATUS_TONE, KAIZEN_STRINGS, type KaizenTextField } from '../../lib/kaizen-strings';
@@ -72,6 +73,9 @@ export default function KaizenDetailScreen() {
     mutationFn: () =>
       api.post(`/kaizens/${encodeURIComponent(kaizenId)}/review`, { decision, comment: comment.trim() || null }),
     onSuccess: () => {
+      // One haptic for the one action: Reject is the destructive one (plan 4.4).
+      if (decision === 'REJECTED') haptic.destroyed();
+      else haptic.reviewed();
       // Say what happened, then move on to the next Kaizen waiting (plan 3.2), read from the
       // queue Overview already holds, before it is invalidated.
       const queue = queryClient.getQueryData<Page<Kaizen>>(['kaizens', 'SUBMITTED'])?.data ?? [];
@@ -143,7 +147,7 @@ export default function KaizenDetailScreen() {
       <Stack.Screen options={{ title: view.kaizenNo ?? t.numberOnSync }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {reviewedNo && reviewedDecision ? (
-          <Slip title={t.reviewed(reviewedDecision, reviewedNo, reviewedAuthor ?? '')}>
+          <Slip arriving title={t.reviewed(reviewedDecision, reviewedNo, reviewedAuthor ?? '')}>
             <SlipText>{t.moreWaiting(Number(reviewedLeft ?? 0))}</SlipText>
           </Slip>
         ) : view.status === 'SENT_BACK' || view.status === 'REJECTED' ? (
