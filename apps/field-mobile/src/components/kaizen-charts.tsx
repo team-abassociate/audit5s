@@ -11,8 +11,11 @@ import type {
 import { formatKaizenRatio as ratio, formatRupees, formatYearMonth as monthLabel, textOn } from '@audit5s/domain';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
-import { createThemedStyles, useTheme } from '../lib/theme';
+import { createThemedStyles, useTheme, type Band } from '../lib/theme';
 import { Card, CardHeader, Data, Figure, Hatch, Muted, Segmented } from './ui';
+
+/** GEMBA's ease-out (`--motion`), the curve every motion in the app uses. */
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 /**
  * Kaizen's four dashboard visuals for the phone (plans/kaizen-module.md §4.7), from plain
@@ -40,27 +43,30 @@ export function KpiCard({ kpi, period, onPeriod }: { kpi: KaizenKpi; period: Kai
   const styles = useStyles();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
-  const cells: [string, string][] = [
+  // Submitted is the whole, across the top; under it, where they went. Approved green, sent
+  // back amber and rejected red, as their chips are everywhere else.
+  const cells: [string, string, Band?][] = [
     [t.submitted, String(kpi.submitted)],
     [t.awaitingSection, String(kpi.awaitingReview)],
-    [t.status.SENT_BACK, String(kpi.sentBack)],
-    [t.status.REJECTED, String(kpi.rejected)],
-    [t.rejectionRatio, ratio(kpi.rejectionRatioPct)],
+    [t.status.APPROVED, String(kpi.approved), 'ok'],
+    [t.status.SENT_BACK, String(kpi.sentBack), 'warn'],
+    [t.status.REJECTED, String(kpi.rejected), 'crit'],
     [t.acceptanceRatio, ratio(kpi.acceptanceRatioPct)],
+    [t.rejectionRatio, ratio(kpi.rejectionRatioPct)],
   ];
   return (
     <Card>
       <CardHeader title={t.atAGlance} />
       <PeriodControl value={period} onChange={onPeriod} />
       <View style={styles.grid}>
-        {cells.map(([label, value], index) => (
+        {cells.map(([label, value, band], index) => (
           <View
             key={label}
-            style={[styles.cell, index % 2 === 1 && styles.cellRight, index >= 2 && styles.cellBelow]}
+            style={[styles.cell, index === 0 && styles.cellWhole, index > 0 && index % 2 === 0 && styles.cellRight, index > 0 && styles.cellBelow]}
             accessible
             accessibilityLabel={`${label}: ${value}`}
           >
-            <Figure size={27}>{value}</Figure>
+            <Figure size={27} band={band}>{value}</Figure>
             <Text style={styles.cellLabel}>{label}</Text>
           </View>
         ))}
@@ -116,23 +122,24 @@ export function FunnelCard({ funnel, period, onPeriod }: { funnel: KaizenFunnel;
 
 /**
  * A centred bar whose width follows the numbers, eased when the period changes (strong
- * ease-out, 220 ms, restarted from wherever it is if changed again) and instant under
+ * ease-out, the one duration (`theme.motion`), restarted from wherever it is if changed again) and instant under
  * reduced motion. Width is not a transform, so this runs on the JS thread: four bars, once
  * per tap, which the phone does not notice.
  */
 function AnimatedWidth({ share, children }: { share: number; children: React.ReactNode }) {
+  const { motion } = useTheme();
   const value = useRef(new Animated.Value(share)).current;
   useEffect(() => {
     let cancelled = false;
     void AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
       if (cancelled) return;
       if (reduce) value.setValue(share);
-      else Animated.timing(value, { toValue: share, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+      else Animated.timing(value, { toValue: share, duration: motion, easing: EASE_OUT, useNativeDriver: false }).start();
     });
     return () => {
       cancelled = true;
     };
-  }, [share, value]);
+  }, [share, value, motion]);
   const width = value.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
   return <Animated.View style={{ width, alignSelf: 'center' }}>{children}</Animated.View>;
 }
@@ -397,6 +404,7 @@ function Bar({
 const useStyles = createThemedStyles((theme) => ({
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.space.md },
   cell: { width: '50%', paddingVertical: theme.space.sm, paddingRight: theme.space.sm },
+  cellWhole: { width: '100%' },
   cellRight: { borderLeftWidth: 1, borderLeftColor: theme.color.edgeSoft, paddingLeft: theme.space.md },
   cellBelow: { borderTopWidth: 1, borderTopColor: theme.color.edgeSoft },
   cellLabel: {

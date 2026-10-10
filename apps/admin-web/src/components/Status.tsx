@@ -90,6 +90,19 @@ const KAIZEN: Record<KaizenStatus, StatusShape> = {
   REJECTED: 'ended',
 };
 
+/**
+ * Kaizen's exception to "ink, never a band colour": its three decisions are told apart by
+ * colour on every screen (owner, 2026-10-10) — Approved green, Sent back amber, Rejected red,
+ * and waiting teal, a colour no decision uses. The same as the phone's `KAIZEN_STATUS_TONE`.
+ */
+export const KAIZEN_TONE: Record<KaizenStatus, 'ok' | 'warn' | 'crit' | 'accent' | null> = {
+  DRAFT: null,
+  SUBMITTED: 'accent',
+  APPROVED: 'ok',
+  SENT_BACK: 'warn',
+  REJECTED: 'crit',
+};
+
 type StatusChipProps =
   | { kind: 'audit'; status: AuditStatus }
   | { kind: 'zone'; status: AuditZoneStatus }
@@ -133,7 +146,13 @@ function resolve(props: StatusChipProps): { shape: StatusShape; label: ReactNode
 export function StatusChip(props: StatusChipProps) {
   const { shape, label } = resolve(props);
   return (
-    <span className={cn('gb-chip gb-status', `gb-status--${shape}`)}>
+    <span
+      className={cn(
+        'gb-chip gb-status',
+        `gb-status--${shape}`,
+        'kind' in props && props.kind === 'kaizen' && KAIZEN_TONE[props.status] && `gb-tone--${KAIZEN_TONE[props.status]}`,
+      )}
+    >
       <StatusGlyph shape={shape} />
       {label}
     </span>

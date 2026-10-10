@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Image, Linking, ScrollView, Text, View } from 'react-native';
+import { Image, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { KaizenDetail, KaizenExport, KaizenFields, KaizenReviewDecision, KaizenStatus } from '@audit5s/contracts';
+import type { Kaizen, KaizenDetail, KaizenExport, KaizenFields, KaizenPhotoKind, KaizenReviewDecision, KaizenStatus, Page } from '@audit5s/contracts';
 import { formatDate, formatRupees } from '@audit5s/domain';
-import { Button, Card, CardHeader, Chip, Data, ErrorBanner, Field, Hatch, Label, Muted, Screen, Slip, SlipText } from '../../components/ui';
+import { KaizenPhotoViewer } from '../../components/kaizen-photo-viewer';
+import { Button, Card, CardHeader, ChoiceList, Chip, Data, ErrorBanner, Field, Hatch, Label, Muted, Screen, Slip, SlipText } from '../../components/ui';
 import { api, problemMessage } from '../../lib/api';
 import { getLocalKaizen, sheetOf } from '../../lib/db/kaizen.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { KAIZEN_STATUS_TONE, KAIZEN_STRINGS, type KaizenTextField } from '../../lib/kaizen-strings';
+import { DECISION_TONE, KAIZEN_STATUS_ICON, KAIZEN_STATUS_TONE, KAIZEN_STRINGS, type KaizenTextField } from '../../lib/kaizen-strings';
 import { useLanguage } from '../../lib/language-provider';
 import { useSession } from '../../lib/session';
 import { createThemedStyles } from '../../lib/theme';
@@ -44,7 +45,13 @@ export default function KaizenDetailScreen() {
   const styles = useStyles();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { kaizenId } = useLocalSearchParams<{ kaizenId: string }>();
+  const { kaizenId, reviewedNo, reviewedDecision, reviewedAuthor, reviewedLeft } = useLocalSearchParams<{
+    kaizenId: string;
+    reviewedNo?: string;
+    reviewedDecision?: KaizenReviewDecision;
+    reviewedAuthor?: string;
+    reviewedLeft?: string;
+  }>();
   const database = useLocalDatabase();
   const { can } = useSession();
   const { language } = useLanguage();
@@ -60,14 +67,31 @@ export default function KaizenDetailScreen() {
   const [decision, setDecision] = useState<KaizenReviewDecision | null>(null);
   const [comment, setComment] = useState('');
   const [reasonMissing, setReasonMissing] = useState(false);
+  const [viewing, setViewing] = useState<KaizenPhotoKind | null>(null);
   const review = useMutation({
     mutationFn: () =>
       api.post(`/kaizens/${encodeURIComponent(kaizenId)}/review`, { decision, comment: comment.trim() || null }),
     onSuccess: () => {
+      // Say what happened, then move on to the next Kaizen waiting (plan 3.2), read from the
+      // queue Overview already holds, before it is invalidated.
+      const queue = queryClient.getQueryData<Page<Kaizen>>(['kaizens', 'SUBMITTED'])?.data ?? [];
+      const rest = queue.filter((kaizen) => kaizen.id !== kaizenId);
+      const said = {
+        reviewedNo: view?.kaizenNo ?? '',
+        reviewedDecision: decision!,
+        reviewedAuthor: view?.authorName ?? '',
+      };
       void queryClient.invalidateQueries({ queryKey: ['kaizen', kaizenId] });
       void queryClient.invalidateQueries({ queryKey: ['kaizens'] });
       void queryClient.invalidateQueries({ queryKey: ['kaizen-dashboard'] });
-      router.back();
+      if (rest[0]) {
+        router.replace({
+          pathname: '/kaizen/[kaizenId]',
+          params: { kaizenId: rest[0].id, ...said, reviewedLeft: String(rest.length) },
+        });
+      } else {
+        router.navigate({ pathname: '/kaizen/overview', params: said });
+      }
     },
   });
 
@@ -90,7 +114,7 @@ export default function KaizenDetailScreen() {
   if (!view) {
     return (
       <Screen>
-        <Muted>{online.isError ? t.needsConnection : t.notOnPhone}</Muted>
+        <Muted>{online.isError ? t.kaizenNeedsConnection : t.notOnPhone}</Muted>
       </Screen>
     );
   }
@@ -118,7 +142,11 @@ export default function KaizenDetailScreen() {
     <Screen>
       <Stack.Screen options={{ title: view.kaizenNo ?? t.numberOnSync }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {view.status === 'SENT_BACK' || view.status === 'REJECTED' ? (
+        {reviewedNo && reviewedDecision ? (
+          <Slip title={t.reviewed(reviewedDecision, reviewedNo, reviewedAuthor ?? '')}>
+            <SlipText>{t.moreWaiting(Number(reviewedLeft ?? 0))}</SlipText>
+          </Slip>
+        ) : view.status === 'SENT_BACK' || view.status === 'REJECTED' ? (
           <Slip title={`${t.status[view.status]} · ${t.coordinator}`}>
             {reviews.length
               ? reviews.map((entry) => (
@@ -130,17 +158,26 @@ export default function KaizenDetailScreen() {
           </Slip>
         ) : null}
 
+        {local.data && (view.status === 'SENT_BACK' || view.status === 'DRAFT') ? (
+          <Button
+            testID="kaizen-edit"
+            title={view.status === 'SENT_BACK' ? t.editResubmit : t.continueDraft}
+            icon="edit"
+            onPress={() => router.push({ pathname: '/kaizen/edit/[kaizenId]', params: { kaizenId: view.id } })}
+          />
+        ) : null}
+
         <Card>
           <View style={styles.head}>
-            <Chip tone={KAIZEN_STATUS_TONE[view.status]}>{t.status[view.status]}</Chip>
+            <Chip tone={KAIZEN_STATUS_TONE[view.status]} icon={KAIZEN_STATUS_ICON[view.status]}>{t.status[view.status]}</Chip>
             <Data>{view.zone}</Data>
           </View>
           <Text style={styles.theme}>{sheet.theme || '—'}</Text>
           {view.authorName ? <Muted>{t.by(view.authorName)}</Muted> : null}
 
           <View style={styles.pair}>
-            <PhotoBox label={t.before} none={t.none} photo={view.before} />
-            <PhotoBox label={t.after} none={t.none} photo={view.after} />
+            <PhotoBox label={t.before} open={t.openPhoto('BEFORE')} none={t.none} photo={view.before} onOpen={() => setViewing('BEFORE')} />
+            <PhotoBox label={t.after} open={t.openPhoto('AFTER')} none={t.none} photo={view.after} onOpen={() => setViewing('AFTER')} />
           </View>
 
           {row('machine', [sheet.machine, sheet.lineArea].filter(Boolean).join(' · '))}
@@ -163,31 +200,23 @@ export default function KaizenDetailScreen() {
           {row('implementedBy', sheet.implementedBy)}
         </Card>
 
-        {local.data && (view.status === 'SENT_BACK' || view.status === 'DRAFT') ? (
-          <Button
-            testID="kaizen-edit"
-            title={view.status === 'SENT_BACK' ? t.editResubmit : t.continueDraft}
-            onPress={() => router.push({ pathname: '/kaizen/edit/[kaizenId]', params: { kaizenId: view.id } })}
-          />
-        ) : null}
-
         {reviewing ? (
           <Card>
             <CardHeader title={t.reviewTitle} />
-            <View style={styles.decisions}>
-              {(['APPROVED', 'SENT_BACK', 'REJECTED'] as const).map((choice) => (
-                <View key={choice} style={styles.flex}>
-                  <Button
-                    title={t.decision[choice]}
-                    variant={decision === choice ? 'primary' : 'secondary'}
-                    onPress={() => {
-                      setDecision(choice);
-                      setReasonMissing(false);
-                    }}
-                  />
-                </View>
-              ))}
-            </View>
+            {/* A choice, then one button named for what it does (S6): Reject never looks like Approve. */}
+            <ChoiceList<KaizenReviewDecision>
+              options={(['APPROVED', 'SENT_BACK', 'REJECTED'] as const).map((choice) => ({
+                value: choice,
+                label: t.decision[choice],
+                tone: DECISION_TONE[choice],
+                icon: KAIZEN_STATUS_ICON[choice],
+              }))}
+              value={decision}
+              onChange={(choice) => {
+                setDecision(choice);
+                setReasonMissing(false);
+              }}
+            />
             {decision ? (
               <>
                 <Field
@@ -201,7 +230,9 @@ export default function KaizenDetailScreen() {
                 <ErrorBanner message={problemMessage(review.error)} />
                 <Button
                   testID="kaizen-review-confirm"
-                  title={t.confirm(t.decision[decision])}
+                  title={t.confirm[decision]}
+                  tone={DECISION_TONE[decision]}
+                  icon={KAIZEN_STATUS_ICON[decision]}
                   busy={review.isPending}
                   onPress={() => {
                     if (needsReason && !comment.trim()) setReasonMissing(true);
@@ -220,12 +251,18 @@ export default function KaizenDetailScreen() {
               testID="kaizen-export"
               title={exportPdf.isPending ? t.exporting : t.exportPdf}
               variant="secondary"
+              icon="file-download"
               busy={exportPdf.isPending}
               onPress={() => exportPdf.mutate()}
             />
           </>
         ) : null}
       </ScrollView>
+      <KaizenPhotoViewer
+        photos={{ BEFORE: photoUri(view.before), AFTER: photoUri(view.after) }}
+        kind={viewing}
+        onClose={() => setViewing(null)}
+      />
     </Screen>
   );
 }
@@ -261,29 +298,42 @@ function sheetView(local: Awaited<ReturnType<typeof getLocalKaizen>>, online: Ka
   };
 }
 
-/** One of the pair: the photo, a plain ground while it is only on the server, or the hatch. */
-function PhotoBox({ label, none, photo }: { label: string; none: string; photo: Photo | null }) {
+/** For the viewer: the address, `undefined` while only the server has it, `null` for none. */
+function photoUri(photo: Photo | null): string | null | undefined {
+  return photo ? (photo.uri ?? undefined) : null;
+}
+
+/**
+ * One of the pair: the photo, a plain ground while it is only on the server, or the hatch.
+ * A photo opens full screen (plan 3.1); "none" has nothing to open.
+ */
+function PhotoBox({ label, open, none, photo, onOpen }: { label: string; open: string; none: string; photo: Photo | null; onOpen: () => void }) {
   const styles = useStyles();
   return (
     <View style={styles.photoBox}>
       <Label>{photo ? label : `${label} · ${none}`}</Label>
-      <View style={styles.photo}>
-        {photo?.uri ? <Image source={{ uri: photo.uri }} style={styles.image} accessibilityLabel={label} /> : photo ? null : <Hatch />}
-      </View>
+      <Pressable
+        disabled={!photo}
+        accessibilityRole="imagebutton"
+        accessibilityLabel={open}
+        onPress={onOpen}
+        style={({ pressed }) => [styles.photo, pressed && styles.photoPressed]}
+      >
+        {photo?.uri ? <Image source={{ uri: photo.uri }} style={styles.image} /> : photo ? null : <Hatch />}
+      </Pressable>
     </View>
   );
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  content: { padding: theme.space.lg, paddingBottom: theme.space.xl * 2, gap: theme.space.md },
+  content: { paddingBottom: theme.space.xl, gap: theme.space.md },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm, marginBottom: theme.space.sm },
   theme: { fontFamily: theme.family.bold, fontSize: theme.font.heading, lineHeight: 24, color: theme.color.ink, marginBottom: theme.space.xs },
   pair: { flexDirection: 'row', gap: theme.space.sm, marginVertical: theme.space.md },
   photoBox: { flex: 1 },
   photo: { aspectRatio: 1, borderWidth: 1.5, borderColor: theme.color.edge, backgroundColor: theme.color.tile2, overflow: 'hidden' },
   image: { width: '100%', height: '100%' },
+  photoPressed: { borderColor: theme.color.ink, opacity: 0.85 },
   row: { paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.color.edgeSoft },
   value: { fontFamily: theme.family.regular, fontSize: theme.font.base, lineHeight: 22, color: theme.color.ink },
-  decisions: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.md },
-  flex: { flex: 1 },
 }));

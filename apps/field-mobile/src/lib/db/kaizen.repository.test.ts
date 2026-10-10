@@ -6,6 +6,7 @@ import { enqueue, listOutbox } from './audit.repository';
 import {
   addLocalKaizenPhoto,
   createLocalKaizen,
+  discardLocalKaizen,
   getLocalKaizen,
   getLocalKaizenPhoto,
   localKaizenCounts,
@@ -13,6 +14,7 @@ import {
   removeLocalKaizenPhoto,
   saveLocalKaizenFields,
   submitLocalKaizen,
+  listLocalKaizens,
 } from './kaizen.repository';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
 import { createNodeExecutor } from './node-executor';
@@ -55,6 +57,14 @@ function newKaizen(sheet?: KaizenFields) {
   return createLocalKaizen(database, { unitId: FIXTURE_UNIT, zone: ZONE, ...(sheet ? { sheet } : {}) });
 }
 
+/** A Kaizen ready to submit: every required box, and both photos (R-49). */
+async function readyKaizen() {
+  const id = await newKaizen(COMPLETE);
+  await photo(id, 'BEFORE');
+  await photo(id, 'AFTER');
+  return id;
+}
+
 function photo(kaizenId: string, kind: 'BEFORE' | 'AFTER' = 'BEFORE') {
   return addLocalKaizenPhoto(database, {
     kaizenId,
@@ -80,11 +90,15 @@ describe('a draft, offline', () => {
     expect((await getLocalKaizen(database, id))?.kaizenNo).toBeNull();
   });
 
-  it('refuses Submit until every required step is filled, then locks the sheet', async () => {
+  it('refuses Submit until every required step and both photos are there, then locks the sheet', async () => {
     const id = await newKaizen({ theme: 'Half done' });
     await expect(submitLocalKaizen(database, id)).rejects.toThrow(/required/);
 
     await saveLocalKaizenFields(database, id, COMPLETE);
+    await photo(id, 'BEFORE');
+    // Every box filled, the after photo missing: still refused (owner, 2026-10-10).
+    await expect(submitLocalKaizen(database, id)).rejects.toThrow(/1 left/);
+    await photo(id, 'AFTER');
     await submitLocalKaizen(database, id);
 
     expect((await getLocalKaizen(database, id))?.status).toBe('SUBMITTED');
@@ -120,7 +134,7 @@ describe('photos', () => {
 
 describe('sync', () => {
   it('a refused Submit hands the Kaizen back to the leader to fix', async () => {
-    const id = await newKaizen(COMPLETE);
+    const id = await readyKaizen();
     await submitLocalKaizen(database, id);
 
     await runSync(database, fakeServer({ reject: 'kaizen_submission:submit' }).transport, { deviceId: 'device' });
@@ -151,19 +165,92 @@ describe('sync', () => {
     expect((await listOutbox(database)).map((row) => row.entityType)).toEqual(['kaizen']);
   });
 
-  it('sends the sheet, uploads the photo, commits it, then the submission, in that order', async () => {
-    const id = await newKaizen(COMPLETE);
-    const photoId = await photo(id);
+  it('sends the sheet, uploads the photos, commits them, then the submission, in one cycle', async () => {
+    const id = await readyKaizen();
     await submitLocalKaizen(database, id);
     const server = fakeServer();
 
     await runSync(database, server.transport, { deviceId: 'device' });
 
-    expect(server.sent).toEqual(['kaizen:upsert', 'intent', 'put', 'kaizen_photo:commit', 'kaizen_submission:submit']);
+    expect(server.sent).toEqual([
+      'kaizen:upsert',
+      'intent',
+      'put',
+      'intent',
+      'put',
+      'kaizen_photo:commit',
+      'kaizen_photo:commit',
+      'kaizen_submission:submit',
+    ]);
     expect(await listOutbox(database)).toEqual([]);
     expect((await getLocalKaizenPhoto(database, id, 'BEFORE'))?.uploadedAt).not.toBeNull();
     expect((await getLocalKaizen(database, id))).toMatchObject({ status: 'SUBMITTED', pendingSubmissionId: null });
-    void photoId;
+  });
+
+  it('a photo upload that fails holds the submission, and never dead-letters it', async () => {
+    const id = await readyKaizen();
+    await submitLocalKaizen(database, id);
+
+    const down = fakeServer({ failPut: true });
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      await runSync(database, down.transport, { deviceId: 'device', now: () => Date.now() + cycle * 3_600_000 });
+    }
+
+    expect(down.sent).not.toContain('kaizen_submission:submit');
+    const submit = (await listOutbox(database)).find((row) => row.entityType === 'kaizen_submission');
+    expect(submit).toMatchObject({ state: 'PENDING', attempts: 0 });
+    expect(await getLocalKaizen(database, id)).toMatchObject({ status: 'SUBMITTED' });
+
+    // Storage is back: the photos go up, then the submission, in the same cycle.
+    const up = fakeServer();
+    await runSync(database, up.transport, { deviceId: 'device', now: () => Date.now() + 86_400_000 });
+    expect(up.sent.slice(-1)).toEqual(['kaizen_submission:submit']);
+    expect(await listOutbox(database)).toEqual([]);
+  });
+});
+
+describe('delete a draft (R-49)', () => {
+  it('one the server never heard of just goes: nothing is queued for it', async () => {
+    const id = await newKaizen({ theme: 'Opened by mistake' });
+    await photo(id);
+
+    await discardLocalKaizen(database, id);
+
+    expect(await listOutbox(database)).toEqual([]);
+    expect(await getLocalKaizen(database, id)).toBeNull();
+    expect(await localKaizenCounts(database)).toEqual({ sentBack: 0, drafts: 0 });
+  });
+
+  it('one the server holds is discarded there too, after any edit it still needs', async () => {
+    const id = await newKaizen({ theme: 'Sent once' });
+    await runSync(database, fakeServer().transport, { deviceId: 'device' });
+    await saveLocalKaizenFields(database, id, { machine: 'Edited after' });
+    await photo(id);
+
+    await discardLocalKaizen(database, id);
+
+    const items = await listOutbox(database);
+    expect(items.map((row) => `${row.entityType}:${row.operation}`)).toEqual(['kaizen:discard']);
+    const server = fakeServer();
+    await runSync(database, server.transport, { deviceId: 'device' });
+    expect(server.sent).toEqual(['kaizen:discard']);
+  });
+
+  it('a submitted Kaizen cannot be deleted', async () => {
+    const id = await readyKaizen();
+    await submitLocalKaizen(database, id);
+    await expect(discardLocalKaizen(database, id)).rejects.toThrow(/draft/);
+  });
+
+  it('a pull never brings a deleted draft back', async () => {
+    const id = await newKaizen({ theme: 'Gone' });
+    await runSync(database, fakeServer().transport, { deviceId: 'device' });
+    await discardLocalKaizen(database, id);
+    await runSync(database, fakeServer().transport, { deviceId: 'device' });
+
+    await refreshLocalKaizens(database, [server(id, { status: 'DRAFT', kaizenNo: 'KZ-Z07-020' })]);
+
+    expect(await listLocalKaizens(database)).toEqual([]);
   });
 });
 
@@ -205,7 +292,9 @@ describe('the pull', () => {
 // ---------------------------------------------------------------------------- helpers
 
 /** A server that accepts everything but `reject`, and records what arrived in what order. */
-function fakeServer(options: { reject?: string; duringPut?: () => Promise<void>; beforeKaizen?: boolean } = {}) {
+function fakeServer(
+  options: { reject?: string; duringPut?: () => Promise<void>; beforeKaizen?: boolean; failPut?: boolean } = {},
+) {
   const sent: string[] = [];
   const transport: SyncTransport = {
     async pushBatch(request: SyncBatchRequest) {
@@ -238,6 +327,7 @@ function fakeServer(options: { reject?: string; duringPut?: () => Promise<void>;
       };
     },
     async uploadObject() {
+      if (options.failPut) throw Object.assign(new Error('Storage unreachable'), { status: 503 });
       sent.push('put');
       await options.duringPut?.();
     },

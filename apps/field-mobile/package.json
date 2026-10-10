@@ -25,6 +25,7 @@
     "@audit5s/domain": "workspace:*",
     "@expo-google-fonts/archivo": "^0.4.2",
     "@expo-google-fonts/dm-mono": "^0.4.2",
+    "@expo/vector-icons": "^15.1.1",
     "@tanstack/react-query": "^5.64.1",
     "drizzle-orm": "^0.45.2",
     "expo": "~57.0.22",

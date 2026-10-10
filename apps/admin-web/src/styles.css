@@ -2838,3 +2838,31 @@ li:has(> .gb-menu-item--danger) {
   object-fit: cover;
   display: block;
 }
+
+/* Kaizen's decisions, told apart by colour on every screen (owner, 2026-10-10): the one
+   exception to StatusChip's ink. A chosen decision is also tinted, not only outlined. */
+.gb-tone--ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.gb-tone--warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.gb-tone--crit {
+  color: var(--crit);
+  border-color: var(--crit);
+}
+.gb-tone--accent {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.gb-btn.gb-tone--ok[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--ok-band) 20%, var(--tile));
+}
+.gb-btn.gb-tone--warn[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--warn-band) 22%, var(--tile));
+}
+.gb-btn.gb-tone--crit[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--crit-band) 22%, var(--tile));
+}
