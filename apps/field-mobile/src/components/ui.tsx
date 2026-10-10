@@ -741,19 +741,26 @@ export function SearchField({
   );
 }
 
-/** One of a few views of the same list. Selected is ink, like a pressed button. */
+/**
+ * One of a few views of the same list. Selected is ink, like a pressed button.
+ *
+ * `scrolls`: each option is as wide as its word (at least 88) and the strip scrolls sideways
+ * when they do not fit, rather than truncating a label to "वापस …".
+ */
 export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  scrolls,
 }: {
   options: ReadonlyArray<{ value: T; label: string }>;
   value: T;
   onChange: (value: T) => void;
+  scrolls?: boolean;
 }) {
   const styles = useStyles();
-  return (
-    <View style={styles.segmented} accessibilityRole="tablist">
+  const strip = (
+    <View style={[styles.segmented, scrolls && styles.segmentedScrolls]} accessibilityRole="tablist">
       {options.map((option, index) => {
         const selected = option.value === value;
         return (
@@ -762,7 +769,12 @@ export function Segmented<T extends string>({
             accessibilityRole="tab"
             accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
-            style={[styles.segment, index > 0 && styles.segmentDivider, selected && styles.segmentSelected]}
+            style={[
+              styles.segment,
+              scrolls && styles.segmentScrolls,
+              index > 0 && styles.segmentDivider,
+              selected && styles.segmentSelected,
+            ]}
           >
             <Text numberOfLines={1} style={[styles.segmentText, selected && styles.segmentTextSelected]}>
               {option.label}
@@ -771,6 +783,12 @@ export function Segmented<T extends string>({
         );
       })}
     </View>
+  );
+  if (!scrolls) return strip;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.segmentScroller}>
+      {strip}
+    </ScrollView>
   );
 }
 
@@ -1011,12 +1029,15 @@ export function ConfirmAction({
   confirmLabel,
   busy,
   compact,
+  keepLabel = 'Keep',
   onConfirm,
 }: {
   title: string;
   question: string;
   confirmLabel: string;
   busy?: boolean;
+  /** The way out, in the screen's language. */
+  keepLabel?: string;
   /** A small outline trigger for a row in a list, so a list of people is not a wall of red. */
   compact?: boolean;
   onConfirm: () => void;
@@ -1042,7 +1063,7 @@ export function ConfirmAction({
       <Text style={styles.noticeText}>{question}</Text>
       <View style={styles.confirmRow}>
         <View style={styles.confirmItem}>
-          <Button title="Keep" variant="secondary" onPress={() => setAsking(false)} />
+          <Button title={keepLabel} variant="secondary" onPress={() => setAsking(false)} />
         </View>
         <View style={styles.confirmItem}>
           <Button title={confirmLabel} variant="danger" busy={busy} onPress={onConfirm} />
@@ -1421,6 +1442,9 @@ const useStyles = createThemedStyles((theme) => ({
     marginBottom: theme.space.md,
   },
   segment: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  segmentScroller: { flexGrow: 1 },
+  segmentedScrolls: { flexGrow: 1 },
+  segmentScrolls: { flex: 0, flexGrow: 1, flexBasis: 'auto', minWidth: 88, paddingHorizontal: 12 },
   segmentDivider: { borderLeftWidth: 1.5, borderLeftColor: theme.color.edge },
   segmentSelected: { backgroundColor: theme.color.ink },
   segmentText: { fontFamily: theme.family.medium, fontSize: 12.5, color: theme.color.ink2 },

@@ -63,5 +63,5 @@ export default function KaizenAnalysisScreen() {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  content: { padding: theme.space.lg, paddingBottom: theme.space.xl * 2, gap: theme.space.sm },
+  content: { paddingBottom: theme.space.xl, gap: theme.space.sm },
 }));

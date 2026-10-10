@@ -77,6 +77,9 @@ export interface KaizenStrings {
   editResubmit: string;
   continueDraft: string;
   notOnPhone: string;
+  keep: string;
+  close: string;
+  openPhoto: (kind: 'BEFORE' | 'AFTER') => string;
   yes: string;
   no: string;
 
@@ -90,18 +93,39 @@ export interface KaizenStrings {
   pending: string;
   returned: string;
   newButton: string;
-  returnedSection: string;
+  now: string;
+  waiting: string;
+  needsFix: string;
+  byYou: string;
+  byCoordinator: string;
+  forReview: string;
+  sentBackToYou: string;
+  needsFixSection: string;
   draftsSection: string;
   awaitingSection: string;
   approvedSection: string;
-  nothingReturned: string;
   noneApproved: string;
   historyEmpty: string;
   kaizenCount: (count: number) => string;
+  firstKaizenTitle: string;
+  firstKaizenDetail: string;
+  submittedTitle: string;
+  resubmittedTitle: string;
+  /** New Kaizen with drafts on the phone: carry one on, or start a new one. */
+  draftChoiceTitle: (count: number) => string;
+  draftFrom: (date: string, title: string) => string;
+  untitled: string;
+  startNew: string;
+  deleteDraft: string;
+  deleteDraftQuestion: string;
 
   // the form
   step: Record<KaizenStep, string>;
   field: Record<KaizenTextField, string>;
+  /** Under a box: what to write, in the leader's words. An error replaces it. */
+  hint: Partial<Record<KaizenTextField, string>>;
+  beforeHint: string;
+  afterHint: string;
   zone: string;
   waste: Record<KaizenWaste, string>;
   parameter: Record<KaizenParameter, string>;
@@ -116,8 +140,15 @@ export interface KaizenStrings {
   retakePhoto: string;
   fromGallery: string;
   removePhoto: string;
+  removePhotoQuestion: (kind: 'BEFORE' | 'AFTER') => string;
   cameraPrompt: (kind: 'BEFORE' | 'AFTER') => string;
-  fillThese: string;
+  requiredError: string;
+  photoRequired: string;
+  /** The refused Submit, naming every empty box: "3 required items are empty: …". */
+  missingBanner: (count: number, list: string) => string;
+  progress: (done: number, total: number) => string;
+  requiredLeft: (count: number) => string;
+  readyToSubmit: string;
   savedAsYouGo: string;
   noZone: string;
   badDate: string;
@@ -152,12 +183,19 @@ export interface KaizenStrings {
   top3Empty: string;
   queueEmpty: string;
   needsConnection: string;
+  listNeedsConnection: string;
+  kaizenNeedsConnection: string;
   reviewTitle: string;
   decision: Record<'APPROVED' | 'SENT_BACK' | 'REJECTED', string>;
   comment: string;
   reason: string;
   reasonRequired: string;
-  confirm: (decision: string) => string;
+  /** The confirm button: the action's own name (S6). */
+  confirm: Record<'APPROVED' | 'SENT_BACK' | 'REJECTED', string>;
+  /** The slip after a review: what happened, then what is next. */
+  reviewed: (decision: 'APPROVED' | 'SENT_BACK' | 'REJECTED', kaizenNo: string, author: string) => string;
+  moreWaiting: (count: number) => string;
+  switchHint: string;
   exportPdf: string;
   exporting: string;
   exportFailed: string;
@@ -175,22 +213,25 @@ const EN: KaizenStrings = {
   nonconformitiesOwed: (n) => `${n} ${n === 1 ? 'nonconformity' : 'nonconformities'} owed`,
   sentBack: (n) => (n === 1 ? 'Kaizen sent back to you' : 'Kaizens sent back to you'),
   drafts: (n) => `${n} ${n === 1 ? 'draft' : 'drafts'} not submitted`,
-  awaitingReview: () => 'awaiting your review',
+  awaitingReview: () => 'waiting for your review',
   nothingWaiting: 'Nothing waiting on you',
   open: (module) => `Open ${module}`,
 
-  status: { DRAFT: 'Draft', SUBMITTED: 'Pending', APPROVED: 'Approved', SENT_BACK: 'Sent back', REJECTED: 'Rejected' },
-  numberOnSync: 'Number on sync',
+  status: { DRAFT: 'Draft', SUBMITTED: 'Waiting', APPROVED: 'Approved', SENT_BACK: 'Sent back', REJECTED: 'Rejected' },
+  numberOnSync: 'Not sent yet',
   before: 'Before',
   after: 'After',
   none: 'none',
-  photoOnline: 'Shown online',
+  photoOnline: "Photo loads when you're online",
   fixAndResubmit: 'Fix and resubmit',
   perYear: 'a year',
   coordinator: 'Coordinator',
   editResubmit: 'Edit & resubmit',
   continueDraft: 'Continue draft',
   notOnPhone: 'This Kaizen is not on this phone.',
+  keep: 'Keep',
+  close: 'Close',
+  openPhoto: (kind) => (kind === 'BEFORE' ? 'Open the before photo' : 'Open the after photo'),
   yes: 'Yes',
   no: 'No',
 
@@ -200,17 +241,33 @@ const EN: KaizenStrings = {
   last30Days: 'Last 30 days',
   submitted: 'Submitted',
   approved: 'Approved',
-  pending: 'Pending',
+  pending: 'Waiting',
   returned: 'Returned',
   newButton: '+ New Kaizen',
-  returnedSection: 'Sent back / rejected',
+  now: 'Now',
+  waiting: 'Waiting',
+  needsFix: 'Needs your fix',
+  byYou: 'by you',
+  byCoordinator: 'by your Coordinator',
+  forReview: 'with your Coordinator',
+  sentBackToYou: 'sent back to you',
+  needsFixSection: 'Needs your fix',
   draftsSection: 'Drafts',
-  awaitingSection: 'Awaiting review',
+  awaitingSection: 'Waiting for review',
   approvedSection: 'Approved · last 30 days',
-  nothingReturned: 'Nothing returned by the Coordinator.',
   noneApproved: 'No approved Kaizens in the last 30 days.',
-  historyEmpty: 'Your Kaizens will appear here.',
+  historyEmpty: 'No Kaizens yet. Record your first from New Kaizen.',
   kaizenCount: (n) => `${n} ${n === 1 ? 'Kaizen' : 'Kaizens'}`,
+  firstKaizenTitle: 'Record your first Kaizen',
+  firstKaizenDetail: 'One improvement: the problem, what you changed, and photos before and after. Your Coordinator reviews it.',
+  submittedTitle: 'Kaizen submitted',
+  resubmittedTitle: 'Kaizen resubmitted',
+  draftChoiceTitle: (n) => (n === 1 ? 'You have a draft' : `You have ${n} drafts`),
+  draftFrom: (date, title) => `Draft from ${date}: ${title}`,
+  untitled: 'untitled',
+  startNew: 'Start a new one',
+  deleteDraft: 'Delete draft',
+  deleteDraftQuestion: 'Delete this draft? It is removed from this phone and from your Drafts. This cannot be undone.',
 
   step: {
     details: 'Kaizen details',
@@ -222,15 +279,15 @@ const EN: KaizenStrings = {
     after: 'After countermeasure',
     wastes: 'Waste attacked',
     parameters: 'Parameters',
-    horizontal: 'Horizontal deployment',
+    horizontal: 'Use on other machines?',
     benefits: 'Benefits / saving',
     people: 'Root cause & people',
   },
   field: {
     machine: 'Machine',
     lineArea: 'Line / area',
-    implementedOn: 'Date of implementation (YYYY-MM-DD)',
-    teamMembers: 'Names, comma separated',
+    implementedOn: 'Date of implementation',
+    teamMembers: 'Team members',
     theme: 'Theme',
     target: 'Target & target date (optional)',
     problem5w1h: 'Problem [5W1H]',
@@ -242,6 +299,17 @@ const EN: KaizenStrings = {
     ideaBy: 'Idea given by',
     implementedBy: 'Implemented by',
   },
+  hint: {
+    implementedOn: 'As YYYY-MM-DD, e.g. 2026-10-09',
+    teamMembers: 'Names, separated by commas',
+    theme: 'One line: what you improved. e.g. Quick-release clamps on the P-04 die',
+    problem5w1h: 'What, where, when, who, which and how. e.g. Die change on P-04 takes 40 min because…',
+    rootCause4m: 'Man, machine, method or material: which one caused it, and why?',
+    analysis7qc: 'Optional. e.g. Pareto chart, fishbone, check sheet',
+    benefits: 'What changed, in numbers if you have them. e.g. Changeover 40 → 12 min',
+  },
+  beforeHint: 'Required. Take one now or pick one from the gallery: an earlier photo is fine if the problem was already fixed.',
+  afterHint: 'Required. The same view as the before photo, after the fix. Take one now or pick one from the gallery.',
   zone: 'Zone',
   waste: {
     DEFECTS: 'Defects',
@@ -272,8 +340,17 @@ const EN: KaizenStrings = {
   retakePhoto: 'Retake photo',
   fromGallery: 'From gallery',
   removePhoto: 'Remove photo',
+  removePhotoQuestion: (kind) =>
+    kind === 'BEFORE'
+      ? 'Remove the before photo? If the problem is already fixed, it cannot be photographed again.'
+      : 'Remove the after photo?',
   cameraPrompt: (kind) => (kind === 'BEFORE' ? 'Photograph the condition before' : 'Photograph the condition after'),
-  fillThese: 'Fill these before submitting',
+  requiredError: 'Fill this in.',
+  photoRequired: 'Add a photo.',
+  missingBanner: (n, list) => `${n} required ${n === 1 ? 'item is' : 'items are'} empty: ${list}.`,
+  progress: (done, total) => `${done} of ${total}`,
+  requiredLeft: (n) => `${n} required left`,
+  readyToSubmit: 'Ready to submit',
   savedAsYouGo: 'Each field is saved on this phone as you go, and sent when there is signal.',
   noZone: 'No Zone of yours is on this phone yet. Sync, or ask your Coordinator.',
   badDate: 'Enter the date as YYYY-MM-DD.',
@@ -307,12 +384,18 @@ const EN: KaizenStrings = {
   top3Empty: 'No approved Kaizens in the last 30 days. Top 3 ranks them by annual saving.',
   queueEmpty: 'Nothing waiting for review.',
   needsConnection: 'These figures need a connection. Pull down to try again.',
+  listNeedsConnection: 'This list needs a connection. Pull down to try again.',
+  kaizenNeedsConnection: 'This Kaizen needs a connection to open.',
   reviewTitle: 'Review',
   decision: { APPROVED: 'Approve', SENT_BACK: 'Send back', REJECTED: 'Reject' },
   comment: 'Comment (optional)',
   reason: 'Reason (required)',
   reasonRequired: 'A reason is required to send back or reject a Kaizen.',
-  confirm: (decision) => `Confirm: ${decision}`,
+  confirm: { APPROVED: 'Approve Kaizen', SENT_BACK: 'Send back', REJECTED: 'Reject Kaizen' },
+  reviewed: (decision, no, author) =>
+    decision === 'APPROVED' ? `Approved ${no}` : decision === 'SENT_BACK' ? `Sent back ${no} to ${author}` : `Rejected ${no}`,
+  moreWaiting: (n) => (n === 0 ? 'Nothing else is waiting for review.' : `${n} more waiting for review.`),
+  switchHint: 'Switch any time from your initials, top left.',
   exportPdf: 'Download Kaizen Sheet (PDF)',
   exporting: 'Preparing the PDF…',
   exportFailed: 'The PDF could not be made. Try again.',
@@ -330,22 +413,25 @@ const HI: KaizenStrings = {
   nonconformitiesOwed: (n) => `${n} कमियाँ बाकी`,
   sentBack: () => 'काइज़ेन आपको वापस भेजे गए',
   drafts: (n) => `${n} मसौदे जमा नहीं हुए`,
-  awaitingReview: () => 'आपकी समीक्षा बाकी',
+  awaitingReview: () => 'आपकी समीक्षा की प्रतीक्षा',
   nothingWaiting: 'आपके लिए कुछ बाकी नहीं',
   open: (module) => `${module} खोलें`,
 
-  status: { DRAFT: 'मसौदा', SUBMITTED: 'लंबित', APPROVED: 'स्वीकृत', SENT_BACK: 'वापस भेजा', REJECTED: 'अस्वीकृत' },
-  numberOnSync: 'नंबर सिंक होने पर',
+  status: { DRAFT: 'मसौदा', SUBMITTED: 'प्रतीक्षा', APPROVED: 'स्वीकृत', SENT_BACK: 'वापस भेजा', REJECTED: 'अस्वीकृत' },
+  numberOnSync: 'अभी भेजा नहीं',
   before: 'पहले',
   after: 'बाद में',
   none: 'नहीं',
-  photoOnline: 'ऑनलाइन दिखेगा',
+  photoOnline: 'ऑनलाइन होने पर फ़ोटो दिखेगी',
   fixAndResubmit: 'सुधारें और फिर से जमा करें',
   perYear: 'प्रति वर्ष',
   coordinator: 'कोऑर्डिनेटर',
   editResubmit: 'सुधारें और फिर से जमा करें',
   continueDraft: 'मसौदा जारी रखें',
   notOnPhone: 'यह काइज़ेन इस फ़ोन पर नहीं है।',
+  keep: 'रहने दें',
+  close: 'बंद करें',
+  openPhoto: (kind) => (kind === 'BEFORE' ? 'पहले वाली फ़ोटो खोलें' : 'बाद वाली फ़ोटो खोलें'),
   yes: 'हाँ',
   no: 'नहीं',
 
@@ -355,17 +441,33 @@ const HI: KaizenStrings = {
   last30Days: 'पिछले 30 दिन',
   submitted: 'जमा',
   approved: 'स्वीकृत',
-  pending: 'लंबित',
+  pending: 'प्रतीक्षा',
   returned: 'लौटाए गए',
   newButton: '+ नया काइज़ेन',
-  returnedSection: 'वापस भेजे / अस्वीकृत',
+  now: 'अभी',
+  waiting: 'प्रतीक्षा',
+  needsFix: 'आपका सुधार बाकी',
+  byYou: 'आपने',
+  byCoordinator: 'कोऑर्डिनेटर ने',
+  forReview: 'कोऑर्डिनेटर के पास',
+  sentBackToYou: 'आपको वापस भेजे',
+  needsFixSection: 'आपका सुधार बाकी',
   draftsSection: 'मसौदे',
-  awaitingSection: 'समीक्षा बाकी',
+  awaitingSection: 'समीक्षा की प्रतीक्षा',
   approvedSection: 'स्वीकृत · पिछले 30 दिन',
-  nothingReturned: 'कोऑर्डिनेटर ने कुछ वापस नहीं भेजा।',
   noneApproved: 'पिछले 30 दिनों में कोई काइज़ेन स्वीकृत नहीं हुआ।',
-  historyEmpty: 'आपके काइज़ेन यहाँ दिखेंगे।',
+  historyEmpty: 'अभी कोई काइज़ेन नहीं। नया काइज़ेन से पहला दर्ज करें।',
   kaizenCount: (n) => `${n} काइज़ेन`,
+  firstKaizenTitle: 'अपना पहला काइज़ेन दर्ज करें',
+  firstKaizenDetail: 'एक सुधार: समस्या, आपने क्या बदला, और पहले व बाद की फ़ोटो। आपके कोऑर्डिनेटर इसकी समीक्षा करेंगे।',
+  submittedTitle: 'काइज़ेन जमा हुआ',
+  resubmittedTitle: 'काइज़ेन फिर से जमा हुआ',
+  draftChoiceTitle: (n) => (n === 1 ? 'आपका एक मसौदा बाकी है' : `आपके ${n} मसौदे बाकी हैं`),
+  draftFrom: (date, title) => `${date} का मसौदा: ${title}`,
+  untitled: 'बिना शीर्षक',
+  startNew: 'नया शुरू करें',
+  deleteDraft: 'मसौदा हटाएँ',
+  deleteDraftQuestion: 'यह मसौदा हटाएँ? यह इस फ़ोन से और आपके मसौदों से हट जाएगा। इसे वापस नहीं लाया जा सकता।',
 
   step: {
     details: 'काइज़ेन विवरण',
@@ -377,15 +479,15 @@ const HI: KaizenStrings = {
     after: 'उपाय के बाद',
     wastes: 'कौन-सी बर्बादी घटी',
     parameters: 'मापदंड',
-    horizontal: 'हॉरिज़ॉन्टल डिप्लॉयमेंट',
+    horizontal: 'दूसरी मशीनों पर लागू करें?',
     benefits: 'लाभ / बचत',
     people: 'मूल कारण और लोग',
   },
   field: {
     machine: 'मशीन',
     lineArea: 'लाइन / क्षेत्र',
-    implementedOn: 'लागू करने की तारीख (YYYY-MM-DD)',
-    teamMembers: 'नाम, अल्पविराम से अलग',
+    implementedOn: 'लागू करने की तारीख',
+    teamMembers: 'टीम सदस्य',
     theme: 'विषय',
     target: 'लक्ष्य और लक्ष्य तारीख (वैकल्पिक)',
     problem5w1h: 'समस्या [5W1H]',
@@ -397,6 +499,17 @@ const HI: KaizenStrings = {
     ideaBy: 'विचार किसका था',
     implementedBy: 'किसने लागू किया',
   },
+  hint: {
+    implementedOn: 'YYYY-MM-DD के रूप में, जैसे 2026-10-09',
+    teamMembers: 'नाम, अल्पविराम से अलग',
+    theme: 'एक पंक्ति: आपने क्या सुधारा। जैसे P-04 डाई पर क्विक-रिलीज़ क्लैंप',
+    problem5w1h: 'क्या, कहाँ, कब, कौन, कौन-सा और कैसे। जैसे P-04 पर डाई बदलने में 40 मिनट लगते हैं क्योंकि…',
+    rootCause4m: 'मैन, मशीन, मेथड या मटीरियल: किससे हुआ, और क्यों?',
+    analysis7qc: 'वैकल्पिक। जैसे पैरेटो चार्ट, फ़िशबोन, चेक शीट',
+    benefits: 'क्या बदला, हो सके तो अंकों में। जैसे चेंजओवर 40 → 12 मिनट',
+  },
+  beforeHint: 'आवश्यक। अभी फ़ोटो लें या गैलरी से चुनें: समस्या पहले ही ठीक हो गई हो तो पुरानी फ़ोटो भी चलेगी।',
+  afterHint: 'आवश्यक। सुधार के बाद वही दृश्य। अभी फ़ोटो लें या गैलरी से चुनें।',
   zone: 'ज़ोन',
   waste: {
     DEFECTS: 'दोष',
@@ -427,8 +540,17 @@ const HI: KaizenStrings = {
   retakePhoto: 'फिर से फ़ोटो लें',
   fromGallery: 'गैलरी से',
   removePhoto: 'फ़ोटो हटाएँ',
+  removePhotoQuestion: (kind) =>
+    kind === 'BEFORE'
+      ? 'पहले वाली फ़ोटो हटाएँ? समस्या ठीक हो चुकी है तो इसकी फ़ोटो दोबारा नहीं ली जा सकती।'
+      : 'बाद वाली फ़ोटो हटाएँ?',
   cameraPrompt: (kind) => (kind === 'BEFORE' ? 'उपाय से पहले की स्थिति की फ़ोटो लें' : 'उपाय के बाद की स्थिति की फ़ोटो लें'),
-  fillThese: 'जमा करने से पहले ये भरें',
+  requiredError: 'इसे भरें।',
+  photoRequired: 'फ़ोटो जोड़ें।',
+  missingBanner: (n, list) => `${n} आवश्यक जानकारी बाकी: ${list}।`,
+  progress: (done, total) => `${total} में से ${done}`,
+  requiredLeft: (n) => `${n} आवश्यक बाकी`,
+  readyToSubmit: 'जमा करने के लिए तैयार',
   savedAsYouGo: 'हर जानकारी इसी फ़ोन पर तुरंत सहेजी जाती है और सिग्नल मिलने पर भेजी जाती है।',
   noZone: 'आपका कोई ज़ोन अभी इस फ़ोन पर नहीं है। सिंक करें, या कोऑर्डिनेटर से पूछें।',
   badDate: 'तारीख YYYY-MM-DD के रूप में लिखें।',
@@ -462,12 +584,18 @@ const HI: KaizenStrings = {
   top3Empty: 'पिछले 30 दिनों में कोई काइज़ेन स्वीकृत नहीं हुआ। टॉप 3 वार्षिक बचत के क्रम में दिखते हैं।',
   queueEmpty: 'समीक्षा के लिए कुछ नहीं।',
   needsConnection: 'इन आँकड़ों के लिए इंटरनेट चाहिए। फिर से कोशिश के लिए नीचे खींचें।',
+  listNeedsConnection: 'इस सूची के लिए इंटरनेट चाहिए। फिर से कोशिश के लिए नीचे खींचें।',
+  kaizenNeedsConnection: 'यह काइज़ेन खोलने के लिए इंटरनेट चाहिए।',
   reviewTitle: 'समीक्षा',
   decision: { APPROVED: 'स्वीकार करें', SENT_BACK: 'वापस भेजें', REJECTED: 'अस्वीकार करें' },
   comment: 'टिप्पणी (वैकल्पिक)',
   reason: 'कारण (आवश्यक)',
   reasonRequired: 'वापस भेजने या अस्वीकार करने के लिए कारण ज़रूरी है।',
-  confirm: (decision) => `पुष्टि करें: ${decision}`,
+  confirm: { APPROVED: 'काइज़ेन स्वीकार करें', SENT_BACK: 'वापस भेजें', REJECTED: 'काइज़ेन अस्वीकार करें' },
+  reviewed: (decision, no, author) =>
+    decision === 'APPROVED' ? `${no} स्वीकृत किया` : decision === 'SENT_BACK' ? `${no} ${author} को वापस भेजा` : `${no} अस्वीकृत किया`,
+  moreWaiting: (n) => (n === 0 ? 'समीक्षा के लिए और कुछ नहीं।' : `${n} और समीक्षा की प्रतीक्षा में।`),
+  switchHint: 'मॉड्यूल कभी भी बदलें: ऊपर बाईं ओर अपने नाम के अक्षरों से।',
   exportPdf: 'काइज़ेन शीट डाउनलोड करें (PDF)',
   exporting: 'PDF तैयार हो रहा है…',
   exportFailed: 'PDF नहीं बन सका। फिर से कोशिश करें।',
@@ -485,22 +613,25 @@ const MR: KaizenStrings = {
   nonconformitiesOwed: (n) => `${n} त्रुटी बाकी`,
   sentBack: () => 'कायझेन तुम्हाला परत पाठवले',
   drafts: (n) => `${n} मसुदे सादर केलेले नाहीत`,
-  awaitingReview: () => 'तुमच्या पुनरावलोकनाची वाट',
+  awaitingReview: () => 'तुमच्या पुनरावलोकनाच्या प्रतीक्षेत',
   nothingWaiting: 'तुमच्यासाठी काहीही बाकी नाही',
   open: (module) => `${module} उघडा`,
 
-  status: { DRAFT: 'मसुदा', SUBMITTED: 'प्रलंबित', APPROVED: 'मंजूर', SENT_BACK: 'परत पाठवले', REJECTED: 'नाकारले' },
-  numberOnSync: 'क्रमांक सिंकनंतर',
+  status: { DRAFT: 'मसुदा', SUBMITTED: 'प्रतीक्षेत', APPROVED: 'मंजूर', SENT_BACK: 'परत पाठवले', REJECTED: 'नाकारले' },
+  numberOnSync: 'अजून पाठवले नाही',
   before: 'आधी',
   after: 'नंतर',
   none: 'नाही',
-  photoOnline: 'ऑनलाइन दिसेल',
+  photoOnline: 'ऑनलाइन असताना फोटो दिसेल',
   fixAndResubmit: 'दुरुस्त करा आणि पुन्हा सादर करा',
   perYear: 'दरवर्षी',
   coordinator: 'कोऑर्डिनेटर',
   editResubmit: 'दुरुस्त करा आणि पुन्हा सादर करा',
   continueDraft: 'मसुदा पुढे भरा',
   notOnPhone: 'हे कायझेन या फोनवर नाही.',
+  keep: 'राहू द्या',
+  close: 'बंद करा',
+  openPhoto: (kind) => (kind === 'BEFORE' ? 'आधीचा फोटो उघडा' : 'नंतरचा फोटो उघडा'),
   yes: 'होय',
   no: 'नाही',
 
@@ -510,17 +641,33 @@ const MR: KaizenStrings = {
   last30Days: 'मागील 30 दिवस',
   submitted: 'सादर',
   approved: 'मंजूर',
-  pending: 'प्रलंबित',
+  pending: 'प्रतीक्षेत',
   returned: 'परत आलेले',
   newButton: '+ नवीन कायझेन',
-  returnedSection: 'परत पाठवलेले / नाकारलेले',
+  now: 'आत्ता',
+  waiting: 'प्रतीक्षेत',
+  needsFix: 'तुमची दुरुस्ती बाकी',
+  byYou: 'तुम्ही',
+  byCoordinator: 'कोऑर्डिनेटरने',
+  forReview: 'कोऑर्डिनेटरकडे',
+  sentBackToYou: 'तुम्हाला परत पाठवले',
+  needsFixSection: 'तुमची दुरुस्ती बाकी',
   draftsSection: 'मसुदे',
-  awaitingSection: 'पुनरावलोकन बाकी',
+  awaitingSection: 'पुनरावलोकनाच्या प्रतीक्षेत',
   approvedSection: 'मंजूर · मागील 30 दिवस',
-  nothingReturned: 'कोऑर्डिनेटरने काहीही परत पाठवले नाही.',
   noneApproved: 'मागील 30 दिवसांत एकही कायझेन मंजूर झाले नाही.',
-  historyEmpty: 'तुमचे कायझेन येथे दिसतील.',
+  historyEmpty: 'अजून एकही कायझेन नाही. नवीन कायझेनमधून पहिले नोंदवा.',
   kaizenCount: (n) => `${n} कायझेन`,
+  firstKaizenTitle: 'तुमचे पहिले कायझेन नोंदवा',
+  firstKaizenDetail: 'एक सुधारणा: समस्या, तुम्ही काय बदलले, आणि आधी व नंतरचे फोटो. तुमचे कोऑर्डिनेटर त्याचे पुनरावलोकन करतील.',
+  submittedTitle: 'कायझेन सादर झाले',
+  resubmittedTitle: 'कायझेन पुन्हा सादर झाले',
+  draftChoiceTitle: (n) => (n === 1 ? 'तुमचा एक मसुदा बाकी आहे' : `तुमचे ${n} मसुदे बाकी आहेत`),
+  draftFrom: (date, title) => `${date} चा मसुदा: ${title}`,
+  untitled: 'शीर्षक नाही',
+  startNew: 'नवीन सुरू करा',
+  deleteDraft: 'मसुदा हटवा',
+  deleteDraftQuestion: 'हा मसुदा हटवायचा? तो या फोनवरून आणि तुमच्या मसुद्यांतून काढला जाईल. हे परत आणता येणार नाही.',
 
   step: {
     details: 'कायझेन तपशील',
@@ -532,15 +679,15 @@ const MR: KaizenStrings = {
     after: 'उपायानंतर',
     wastes: 'कोणता अपव्यय कमी केला',
     parameters: 'निकष',
-    horizontal: 'हॉरिझॉन्टल डिप्लॉयमेंट',
+    horizontal: 'इतर मशीनवर वापरता येईल?',
     benefits: 'फायदे / बचत',
     people: 'मूळ कारण आणि लोक',
   },
   field: {
     machine: 'मशीन',
     lineArea: 'लाइन / विभाग',
-    implementedOn: 'अंमलबजावणीची तारीख (YYYY-MM-DD)',
-    teamMembers: 'नावे, स्वल्पविरामाने वेगळी',
+    implementedOn: 'अंमलबजावणीची तारीख',
+    teamMembers: 'टीम सदस्य',
     theme: 'विषय',
     target: 'लक्ष्य आणि लक्ष्य तारीख (ऐच्छिक)',
     problem5w1h: 'समस्या [5W1H]',
@@ -552,6 +699,17 @@ const MR: KaizenStrings = {
     ideaBy: 'कल्पना कोणाची',
     implementedBy: 'अंमलबजावणी कोणी केली',
   },
+  hint: {
+    implementedOn: 'YYYY-MM-DD असे, उदा. 2026-10-09',
+    teamMembers: 'नावे, स्वल्पविरामाने वेगळी',
+    theme: 'एका ओळीत: तुम्ही काय सुधारले. उदा. P-04 डायवर क्विक-रिलीज क्लॅम्प',
+    problem5w1h: 'काय, कुठे, केव्हा, कोण, कोणते आणि कसे. उदा. P-04 वर डाय बदलायला 40 मिनिटे लागतात कारण…',
+    rootCause4m: 'मनुष्य, मशीन, पद्धत की साहित्य: कशामुळे झाले, आणि का?',
+    analysis7qc: 'ऐच्छिक. उदा. पॅरेटो चार्ट, फिशबोन, चेक शीट',
+    benefits: 'काय बदलले, शक्य असल्यास आकड्यांत. उदा. चेंजओव्हर 40 → 12 मिनिटे',
+  },
+  beforeHint: 'आवश्यक. आत्ता फोटो काढा किंवा गॅलरीतून निवडा: समस्या आधीच दूर झाली असेल तर जुना फोटोही चालेल.',
+  afterHint: 'आवश्यक. सुधारणेनंतरचे तेच दृश्य. आत्ता फोटो काढा किंवा गॅलरीतून निवडा.',
   zone: 'झोन',
   waste: {
     DEFECTS: 'दोष',
@@ -582,8 +740,17 @@ const MR: KaizenStrings = {
   retakePhoto: 'पुन्हा फोटो काढा',
   fromGallery: 'गॅलरीतून',
   removePhoto: 'फोटो काढून टाका',
+  removePhotoQuestion: (kind) =>
+    kind === 'BEFORE'
+      ? 'आधीचा फोटो काढून टाकायचा? समस्या दूर झाली असेल तर त्याचा फोटो पुन्हा काढता येणार नाही.'
+      : 'नंतरचा फोटो काढून टाकायचा?',
   cameraPrompt: (kind) => (kind === 'BEFORE' ? 'उपायापूर्वीच्या स्थितीचा फोटो काढा' : 'उपायानंतरच्या स्थितीचा फोटो काढा'),
-  fillThese: 'सादर करण्यापूर्वी हे भरा',
+  requiredError: 'हे भरा.',
+  photoRequired: 'फोटो जोडा.',
+  missingBanner: (n, list) => `${n} आवश्यक माहिती बाकी: ${list}.`,
+  progress: (done, total) => `${total} पैकी ${done}`,
+  requiredLeft: (n) => `${n} आवश्यक बाकी`,
+  readyToSubmit: 'सादर करण्यास तयार',
   savedAsYouGo: 'प्रत्येक माहिती याच फोनवर लगेच जतन होते आणि सिग्नल मिळाल्यावर पाठवली जाते.',
   noZone: 'तुमचा कोणताही झोन अजून या फोनवर नाही. सिंक करा, किंवा कोऑर्डिनेटरला विचारा.',
   badDate: 'तारीख YYYY-MM-DD अशी लिहा.',
@@ -617,12 +784,18 @@ const MR: KaizenStrings = {
   top3Empty: 'मागील 30 दिवसांत एकही कायझेन मंजूर झाले नाही. टॉप 3 वार्षिक बचतीनुसार दिसतात.',
   queueEmpty: 'पुनरावलोकनासाठी काहीही नाही.',
   needsConnection: 'या आकड्यांसाठी इंटरनेट लागते. पुन्हा प्रयत्नासाठी खाली ओढा.',
+  listNeedsConnection: 'या यादीसाठी इंटरनेट लागते. पुन्हा प्रयत्नासाठी खाली ओढा.',
+  kaizenNeedsConnection: 'हे कायझेन उघडण्यासाठी इंटरनेट लागते.',
   reviewTitle: 'पुनरावलोकन',
   decision: { APPROVED: 'मंजूर करा', SENT_BACK: 'परत पाठवा', REJECTED: 'नाकारा' },
   comment: 'टिप्पणी (ऐच्छिक)',
   reason: 'कारण (आवश्यक)',
   reasonRequired: 'परत पाठवण्यासाठी किंवा नाकारण्यासाठी कारण आवश्यक आहे.',
-  confirm: (decision) => `निश्चित करा: ${decision}`,
+  confirm: { APPROVED: 'कायझेन मंजूर करा', SENT_BACK: 'परत पाठवा', REJECTED: 'कायझेन नाकारा' },
+  reviewed: (decision, no, author) =>
+    decision === 'APPROVED' ? `${no} मंजूर केले` : decision === 'SENT_BACK' ? `${no} ${author} यांना परत पाठवले` : `${no} नाकारले`,
+  moreWaiting: (n) => (n === 0 ? 'पुनरावलोकनासाठी आणखी काहीही नाही.' : `आणखी ${n} पुनरावलोकनाच्या प्रतीक्षेत.`),
+  switchHint: 'मॉड्यूल कधीही बदला: वर डावीकडील तुमच्या आद्याक्षरांतून.',
   exportPdf: 'कायझेन शीट डाउनलोड करा (PDF)',
   exporting: 'PDF तयार होत आहे…',
   exportFailed: 'PDF तयार झाले नाही. पुन्हा प्रयत्न करा.',

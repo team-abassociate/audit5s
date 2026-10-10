@@ -241,6 +241,8 @@ export const OUTBOX_OPERATIONS = [
    * `(entity_type, entity_id, operation)` means two taps are one restart, not two.
    */
   'restart',
+  /** A Zone Leader's draft Kaizen deleted on the phone (R-49): a soft discard on the server. */
+  'discard',
 ] as const;
 export type OutboxOperation = (typeof OUTBOX_OPERATIONS)[number];
 
@@ -365,6 +367,12 @@ export const localKaizens = sqliteTable('kaizen', {
   reviewedAt: text('reviewed_at'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
+});
+
+/** A draft the leader deleted (R-49): its `kaizen` row stays, out of every list, never pulled back. */
+export const localKaizenDiscards = sqliteTable('kaizen_discard', {
+  kaizenId: text('kaizen_id').primaryKey(),
+  discardedAt: text('discarded_at').notNull(),
 });
 
 /**

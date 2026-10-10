@@ -41,7 +41,8 @@ export default function TabsLayout() {
   const zoneLeader = scope?.role === 'ZONE_LEADER';
   const icon = (glyph: string) =>
     function TabIcon({ color }: { color: ColorValue }) {
-      return <Text style={{ color, fontFamily: theme.family.bold, fontSize: 18 }}>{glyph}</Text>;
+      // A fixed, centred box in the mono face, so the glyphs line up the same on every phone.
+      return <Text style={{ color, fontFamily: theme.family.mono, fontSize: 18, width: 24, textAlign: 'center' }}>{glyph}</Text>;
     };
   const shownTo = (show: boolean) => (show ? {} : { href: null });
   const tabLabel = (text: string, color: ColorValue, focused: boolean) => (

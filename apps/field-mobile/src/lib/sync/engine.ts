@@ -44,6 +44,8 @@ import { confirmLocalSubmission, settleLocalSubmission } from '../db/corrective-
 import {
   confirmLocalKaizenSubmission,
   getKaizenPhotoById,
+  isLocalKaizenDiscarded,
+  kaizensAwaitingPhotos,
   markKaizenPhotoIntentIssued,
   markKaizenPhotoUploaded,
   queueKaizenPhotoCommit,
@@ -136,8 +138,11 @@ export async function runSync(
   const media = await drainMediaQueue(database, transport, now);
   const rest = await drainDataQueue(database, transport, options, now, 'five-s');
   const kaizenRest = await drainDataQueue(database, transport, options, now, 'kaizen');
+  // A submission held for its photos goes as soon as their commits land: here, in this
+  // cycle, rather than on the next tick. Nothing is ready (and nothing is sent) otherwise.
+  const kaizenHeld = await drainDataQueue(database, transport, options, now, 'kaizen');
 
-  const passes = [structure, kaizenStructure, rest, kaizenRest];
+  const passes = [structure, kaizenStructure, rest, kaizenRest, kaizenHeld];
   const error = passes.find((pass) => pass.error !== undefined)?.error;
 
   return {
@@ -296,6 +301,11 @@ async function uploadKaizenPhoto(
     if (!intent.alreadyExists) {
       await transport.uploadObject(intent, photo.localFileUri, photo.contentType);
     }
+    // Its draft deleted meanwhile: nothing follows, since a discarded draft takes no photo change.
+    if (await isLocalKaizenDiscarded(database, photo.kaizenId)) {
+      await removeItem(database, item.id);
+      return true;
+    }
     // Removed while it was in flight: the server now holds it, so delete it there instead.
     if ((await getKaizenPhotoById(database, photo.id))?.deletedAt) {
       await enqueue(database, 'kaizen_photo', photo.id, 'delete', { kaizenId: photo.kaizenId });
@@ -324,14 +334,21 @@ async function drainDataQueue(
   const all = (await readyItems(database, 'data', new Date(now()).toISOString())).filter(
     (row) => KAIZEN_ENTITY_TYPES.has(row.entityType) === (module === 'kaizen'),
   );
-  // An audit's `complete` waits for its photographs (see `auditsAwaitingPhotos`). It stays
-  // PENDING and goes in the first cycle after the last photo is up.
+  // An audit's `complete` waits for its photographs (see `auditsAwaitingPhotos`), and a
+  // Kaizen's submission for its before and after (`kaizensAwaitingPhotos`). Each stays
+  // PENDING and goes in the first cycle after the last photo is committed.
   const holding = await auditsAwaitingPhotos(database);
+  const kaizensHolding = await kaizensAwaitingPhotos(database);
   const ready = (operations
     ? all.filter((row) => operations.includes(row.operation as SyncOperation))
     : all
   ).filter(
-    (row) => !(row.entityType === 'audit' && row.operation === 'complete' && holding.has(row.entityId)),
+    (row) =>
+      !(row.entityType === 'audit' && row.operation === 'complete' && holding.has(row.entityId)) &&
+      !(
+        row.entityType === 'kaizen_submission' &&
+        kaizensHolding.has((JSON.parse(row.payload) as { kaizenId: string }).kaizenId)
+      ),
   );
 
   if (ready.length === 0) {

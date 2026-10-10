@@ -29,9 +29,13 @@ export function cardFromServer(kaizen: Kaizen): KaizenCardData {
   };
 }
 
-/** Where a tap on a Kaizen goes: a draft straight back into the form, anything else its sheet. */
+/**
+ * Where a tap on the leader's own Kaizen goes: one they can still change (a draft, or one sent
+ * back, whose reason the form shows on top) straight into the form; anything else its sheet.
+ * Only the leader's lists use this; a Coordinator's open the sheet.
+ */
 export function kaizenHref(kaizen: Pick<LocalKaizen, 'id' | 'status'>) {
-  return kaizen.status === 'DRAFT'
+  return kaizen.status === 'DRAFT' || kaizen.status === 'SENT_BACK'
     ? ({ pathname: '/kaizen/edit/[kaizenId]', params: { kaizenId: kaizen.id } } as const)
     : ({ pathname: '/kaizen/[kaizenId]', params: { kaizenId: kaizen.id } } as const);
 }
@@ -137,8 +141,8 @@ const useStyles = createThemedStyles((theme) => ({
   },
   tagText: {
     fontFamily: theme.family.bold,
-    fontSize: 9,
-    letterSpacing: 1.2,
+    fontSize: theme.font.label,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
     color: theme.color.tapeInk,
   },

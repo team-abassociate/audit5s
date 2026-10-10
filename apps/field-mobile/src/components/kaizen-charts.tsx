@@ -14,6 +14,9 @@ import { useLanguage } from '../lib/language-provider';
 import { createThemedStyles, useTheme } from '../lib/theme';
 import { Card, CardHeader, Data, Figure, Hatch, Muted, Segmented } from './ui';
 
+/** GEMBA's ease-out (`--motion`), the curve every motion in the app uses. */
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+
 /**
  * Kaizen's four dashboard visuals for the phone (plans/kaizen-module.md §4.7), from plain
  * `View`s: the field app has no chart or SVG library, and adding one is a native change.
@@ -116,23 +119,24 @@ export function FunnelCard({ funnel, period, onPeriod }: { funnel: KaizenFunnel;
 
 /**
  * A centred bar whose width follows the numbers, eased when the period changes (strong
- * ease-out, 220 ms, restarted from wherever it is if changed again) and instant under
+ * ease-out, the one duration (`theme.motion`), restarted from wherever it is if changed again) and instant under
  * reduced motion. Width is not a transform, so this runs on the JS thread: four bars, once
  * per tap, which the phone does not notice.
  */
 function AnimatedWidth({ share, children }: { share: number; children: React.ReactNode }) {
+  const { motion } = useTheme();
   const value = useRef(new Animated.Value(share)).current;
   useEffect(() => {
     let cancelled = false;
     void AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
       if (cancelled) return;
       if (reduce) value.setValue(share);
-      else Animated.timing(value, { toValue: share, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+      else Animated.timing(value, { toValue: share, duration: motion, easing: EASE_OUT, useNativeDriver: false }).start();
     });
     return () => {
       cancelled = true;
     };
-  }, [share, value]);
+  }, [share, value, motion]);
   const width = value.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
   return <Animated.View style={{ width, alignSelf: 'center' }}>{children}</Animated.View>;
 }

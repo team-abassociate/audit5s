@@ -1,7 +1,7 @@
-# Kaizen end to end (plans/kaizen-module.md §7, Definition of done):
-# a Zone Leader records a Kaizen offline with two photos → it syncs and gets its number →
-# the Coordinator sends it back with a reason → the leader fixes and resubmits → the
-# Coordinator approves → it is in Top 3 → the Kaizen Sheet PDF opens.
+# Kaizen end to end (plans/kaizen-module.md §7, Definition of done; kaizen-ux-plan.md Phase 5):
+# a Zone Leader records a Kaizen offline with two photos → "Kaizen submitted", "Not sent yet" →
+# it syncs and gets its number → the Coordinator sends it back with a reason → the leader
+# fixes and resubmits → the Coordinator approves → it is in Top 3 → the Kaizen Sheet PDF opens.
 #
 # Needs the local stack (pnpm dev:up && pnpm db:migrate && pnpm seed), a Zone Leader and the
 # Coordinator of the same Unit, both past their first-password reset, and an emulator whose
@@ -30,6 +30,11 @@ env:
 - setAirplaneMode: enabled
 # The button in the page, not the tab: a debug build's LogBox toast covers the tab bar.
 - tapOn: "\\+ New Kaizen"
+- waitForAnimationToEnd
+# The sample leader has drafts, so New Kaizen first offers them.
+- tapOn:
+    id: kaizen-start-new
+    optional: true
 - waitForAnimationToEnd
 
 # 01 Kaizen details (the date is today's already)
@@ -77,6 +82,13 @@ env:
 - scrollUntilVisible:
     element: "Retake photo"
     timeout: 20000
+# Remove asks first; Keep leaves the photo where it is (plan 1.4).
+- scrollUntilVisible:
+    element: "Remove photo"
+- tapOn: "Remove photo"
+- assertVisible: "Remove the before photo\\? .*"
+- tapOn: "Keep"
+- assertVisible: "Retake photo"
 - tapOn: "Next"
 - waitForAnimationToEnd
 - tapOn: "Take photo"
@@ -113,30 +125,27 @@ env:
     id: kaizen-rootCause4m
 - inputText: "Method: bolted clamps"
 - hideKeyboard
-- scrollUntilVisible:
-    element:
-      id: kaizen-ideaBy
-- tapOn:
-    id: kaizen-ideaBy
-- inputText: Sunita Kale
-- hideKeyboard
+# Idea by and Implemented by start as the leader (plan 1.6).
 - scrollUntilVisible:
     element:
       id: kaizen-implementedBy
-- tapOn:
-    id: kaizen-implementedBy
-- inputText: Maintenance
-- hideKeyboard
-- scrollUntilVisible:
-    element:
-      id: kaizen-submit
+- assertVisible:
+    id: kaizen-ideaBy
+    text: "Sunita Kale"
+# Submit is in the footer, always on screen once the keyboard is down (plan 2.2).
+- assertVisible: "12 of 12 · Ready to submit|11 of 12 · Ready to submit|10 of 12 · Ready to submit"
 - tapOn:
     id: kaizen-submit
-# Its card is below the counts and the sent-back list: scroll to it.
-- scrollUntilVisible:
-    element: "Number on sync"
+- extendedWaitUntil:
+    visible: "Kaizen submitted"
     timeout: 15000
-- takeScreenshot: kaizen-offline-number-on-sync
+- takeScreenshot: kaizen-submitted-slip
+# History lists newest first: the Kaizen just submitted, numbered only once it is sent.
+- tapOn: "HISTORY"
+- waitForAnimationToEnd
+- assertVisible: "Not sent yet"
+- assertVisible: "WAITING"
+- takeScreenshot: kaizen-offline-not-sent-yet
 
 # --- back online: it syncs and gets its number -------------------------------------------
 - setAirplaneMode: disabled
@@ -166,6 +175,9 @@ env:
 - scrollUntilVisible:
     element: "Send back"
 - tapOn: "Send back"
+- scrollUntilVisible:
+    element:
+      id: kaizen-review-confirm
 - tapOn:
     id: kaizen-review-confirm
 - assertVisible: "A reason is required to send back or reject a Kaizen."
@@ -175,7 +187,11 @@ env:
 - hideKeyboard
 - tapOn:
     id: kaizen-review-confirm
-- waitForAnimationToEnd
+# Says what happened, on the next Kaizen waiting or back on Overview (plan 3.2).
+- extendedWaitUntil:
+    visible: "Sent back KZ-.* to .*"
+    timeout: 15000
+- takeScreenshot: kaizen-reviewed-slip
 
 # --- the leader fixes it and resubmits -----------------------------------------------------
 - runFlow:
@@ -183,19 +199,18 @@ env:
     env:
       LOGIN_ID: ${LEADER_ID}
       PASSWORD: ${LEADER_PASSWORD}
-- extendedWaitUntil:
-    visible: "Add the logbook changeover times, not estimates."
+# First under "Needs your fix", just below the tiles: the reason is on its card.
+- scrollUntilVisible:
+    element: "Add the logbook changeover times, not estimates."
     timeout: 60000
+    visibilityPercentage: 50
 - takeScreenshot: kaizen-sent-back
+# A sent-back card opens the form, with the reason on top (plan 1.2).
 - scrollUntilVisible:
     element: ${output.theme}
 - tapOn: ${output.theme}
 - waitForAnimationToEnd
-- scrollUntilVisible:
-    element:
-      id: kaizen-edit
-- tapOn:
-    id: kaizen-edit
+- assertVisible: "Add the logbook changeover times, not estimates."
 - scrollUntilVisible:
     element: "Benefits / saving"
 - tapOn: "Benefits / saving"
@@ -207,11 +222,11 @@ env:
     id: kaizen-benefits
 - inputText: " Logbook: 42 → 18 min, 30 changeovers a month."
 - hideKeyboard
-- scrollUntilVisible:
-    element:
-      id: kaizen-submit
 - tapOn:
     id: kaizen-submit
+- extendedWaitUntil:
+    visible: "Kaizen resubmitted"
+    timeout: 15000
 - repeat:
     while:
       notVisible: "All synced"
@@ -235,14 +250,27 @@ env:
 - scrollUntilVisible:
     element: "Approve"
 - tapOn: "Approve"
+- scrollUntilVisible:
+    element:
+      id: kaizen-review-confirm
 - tapOn:
     id: kaizen-review-confirm
+- extendedWaitUntil:
+    visible: "Approved KZ-.*"
+    timeout: 15000
+# The next Kaizen waiting opened in its place (no tab bar there): back to Overview.
+- runFlow:
+    when:
+      notVisible: "Analysis"
+    commands:
+      - back
 - waitForAnimationToEnd
 - swipe:
     direction: DOWN
 - scrollUntilVisible:
     element: "Top 3 approved by saving · last 30 days"
-- assertVisible: ${output.theme}
+- scrollUntilVisible:
+    element: ${output.theme}
 - takeScreenshot: kaizen-top3
 - scrollUntilVisible:
     element: ${output.theme}
