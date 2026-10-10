@@ -1,5 +1,9 @@
 # Kaizen: Device A guide (krxna · macOS · backend + admin web)
 
+> **Branch rule changed 2026-10-10:** PRs now go from the device branch straight into `main`;
+> `feat/kaizen` is retired. See [`kaizen-module.md`](kaizen-module.md) (BRANCH RULE). Where this
+> guide says `feat/kaizen`, read `main`.
+
 This guide is for **krxna**, working on **Device A** (the MacBook). The other person is
 **geetahuja** on **Device B** (Windows), who builds the Android field app. Their guide is
 `plans/kaizen-device-b.md`. Read it once too, so you know exactly what they will and won't do.

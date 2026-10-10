@@ -5,15 +5,15 @@ Run one block per fresh Claude Code session, **in this order**. Each session sto
 | Order | Session | Device | When |
 |---|---|---|---|
 | 1 | **A1**: shared "what is missing" + discard endpoint | A (`kaizen/krxna`) | now |
-| 2 | **1**: Phases 0–3 on the phone, incl. delete draft + required photos | A (`kaizen/krxna`) | after A1 merges into feat/kaizen |
-| — | Release N | owner | merge feat/kaizen → main |
+| 2 | **1**: Phases 0–3 on the phone, incl. delete draft + required photos | A (`kaizen/krxna`) | after A1 merges into main |
+| — | Release N | owner | the go to merge Session 1's PR into main |
 | 3 | **A2**: the server enforces photos | A | open any time; **merge only a week after Release N** |
 | 4 | **2**: Phase 4 native (motion, haptics, date picker) | A (`kaizen/krxna`) | after Session 1 merges; to main only with the APK |
 
 All four run on **Device A** (this Mac), field app included. The owner decided this on
 2026-10-10, overriding the §11 device lanes for this work only. Work from the
 `/Users/krxna/main/kaizen` worktree on `kaizen/krxna`. Each session opens its own PR, after
-the previous one has merged into `feat/kaizen` (`git pull` first).
+the previous one has merged into `main` (`git merge origin/main` first).
 
 ---
 
@@ -50,11 +50,12 @@ SKILLS: load these and apply them inside GEMBA-BOARD (GEMBA wins on any conflict
   pattern, Card rail); smallest diff that is correct.
 
 HARD RULES:
-- Branch: kaizen/krxna (Device A runs this whole plan, field app included: owner, 2026-10-10). Never commit to, push to, merge to or open a PR against
-  main. The PR goes into feat/kaizen.
+- Branch: kaizen/krxna (Device A runs this whole plan, field app included: owner, 2026-10-10).
+  The PR goes into main (owner, 2026-10-10). Never commit on main and never merge the PR
+  yourself: merging deploys to production, so the owner gives the go.
 - This session does not touch packages/contracts, packages/db, packages/domain or apps/api;
   that work is PR A1. PR A1 (missingKaizenItems in @audit5s/domain, the discard endpoint
-  and its sync op) must already be merged into feat/kaizen. Check `git log origin/feat/kaizen`
+  and its sync op) must already be merged into main. Check `git log origin/main`
   for it before you start. If it is not there, stop and say so.
 - Owner decisions, 2026-10-10, both in scope: before AND after photos are required to
   submit (plan 2.6), and a leader can delete their own draft (plan 2.3). The server does NOT
@@ -85,7 +86,7 @@ PROCESS:
 3. Phase 5 steps 1–5 for this PR: unit tests for the new pure helpers, Maestro
    .maestro/kaizen.yaml updated and passing end to end, the full CI gate, "after" screenshots
    (light/dark, EN/MR), and the GEMBA acceptance checklist on every touched screen.
-4. Open ONE PR into feat/kaizen. Title: "feat(kaizen): UX pass: guided form, honest overview,
+4. Open ONE PR into main. Title: "feat(kaizen): UX pass: guided form, honest overview,
    review flow". Body: the findings table with each row's outcome (fixed / no change needed /
    deferred + why), before/after screenshot pairs, the Phase 0 evidence, the native-changed
    output, the HI/MR strings for review, and anything you chose not to do and why.
@@ -98,11 +99,11 @@ surprised you, and the PR link.
 
 ## Session 2: Phase 4 (native: motion, haptics, date picker; needs a new APK)
 
-Run only after Session 1's PR has merged into `feat/kaizen`.
+Run only after Session 1's PR has merged into `main`.
 
 ```text
 You are the field-app engineer for Leanstack's Kaizen module. Execute
-plans/kaizen-ux-plan.md Phase 4 (and Phase 5 steps 6–7), on top of feat/kaizen with the
+plans/kaizen-ux-plan.md Phase 4 (and Phase 5 steps 6–7), on top of main with the
 Phase 1–3 PR already merged.
 
 OWNER APPROVAL: on 2026-10-10 the owner approved adding react-native-reanimated,
@@ -138,7 +139,7 @@ HARD RULES:
   regression.
 - Every Phase 4 behaviour must be an enhancement: the screen already works without it
   (Phase 1–3). Nothing may depend on a haptic or an animation finishing.
-- Branch rules as always: never main; PR into feat/kaizen. No Prettier. Verify on device and
+- Branch rules as always: PR into main, never merged by you. No Prettier. Verify on device and
   run the full CI gate before committing.
 
 PROCESS:
@@ -150,7 +151,7 @@ PROCESS:
    "Remove animations" setting on and off.
 3. Phase 5 step 7 feel checks, written up item by item (what you tried, what you changed).
    Maestro kaizen.yaml updated for the date picker and passing; 5S flows passing; full CI gate.
-4. Open ONE PR into feat/kaizen titled "feat(kaizen): motion, haptics and date picker
+4. Open ONE PR into main titled "feat(kaizen): motion, haptics and date picker
    (NEEDS NEW APK)". First line of the body, bold: "This PR changes the native layer. Merge
    to main only on the day the 0.2.0 APK is handed out; until then old phones get no OTA
    updates." Then: the native-changed output, the package list with versions, the motion
@@ -198,7 +199,7 @@ BUILD:
 - One DECISIONS.md entry recording both owner decisions, including the two-release rollout
   for the photo rule.
 
-RULES: branch kaizen/krxna → PR into feat/kaizen; never main. Never define a shared type
+RULES: branch kaizen/krxna → PR into main; never merge it yourself. Never define a shared type
 twice. Idempotency on the new endpoint. Nothing hard-deleted. No Prettier. Full CI gate from
 the repo root before committing; commit only your own files.
 
@@ -210,7 +211,7 @@ session will import.
 
 ## Session A2: the server enforces the photos (Release N+1)
 
-Open any time after A1. **Merge into `feat/kaizen` only once Release N has been on phones
+Open any time after A1. **Merge into `main` only once Release N has been on phones
 for a week.**
 
 ```text
@@ -228,7 +229,7 @@ SENT_BACK→SUBMITTED; a DB trigger enforcing it on that transition only (existi
 SUBMITTED/APPROVED/REJECTED rows without photos stay valid); the seed gives every non-DRAFT
 sample Kaizen both photos. Tests for each.
 
-RULES: kaizen/krxna → PR into feat/kaizen, never main. First line of the PR body, bold:
-"Merge into feat/kaizen only after Release N (the phone-side photo rule) has been on phones
+RULES: kaizen/krxna → PR into main, never merged by you. First line of the PR body, bold:
+"Merge into main only after Release N (the phone-side photo rule) has been on phones
 for at least a week." Full CI gate before committing. Stop at the PR.
 ```

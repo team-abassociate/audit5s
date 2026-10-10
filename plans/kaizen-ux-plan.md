@@ -1,7 +1,7 @@
 # Kaizen field app — UX plan (2026-10-10)
 
-> **⛔ Kaizen work: `feat/kaizen` is the main branch for Kaizen.** Never commit, push, merge
-> or open a PR to `main`. Work on your device branch and PR it into `feat/kaizen`
+> **Branch rule (owner, 2026-10-10):** PRs go from `kaizen/krxna` straight into `main`.
+> Merging into `main` is a release (it deploys), so it happens only with the owner's go
 > ([`kaizen-module.md`](kaizen-module.md), BRANCH RULE).
 
 The prompt that runs this plan is [`kaizen-ux-prompt.md`](kaizen-ux-prompt.md). This file is
@@ -208,7 +208,7 @@ So:
   valid. A SENT_BACK one without photos needs them on resubmit, as intended.
 - `apps/api/src/seed-sample-kaizens.ts`: give every seeded non-DRAFT Kaizen both photos, or the
   seed breaks.
-- PR body: "Merge into feat/kaizen only after Release N has been on phones for a week."
+- PR body: "Merge into main only after Release N has been on phones for a week."
 
 ---
 
@@ -518,7 +518,7 @@ comments explain the save serialisation (`saving` ref, `idRef`), and nothing her
 
 ## Phase 4 — native: motion, haptics, date picker (one PR, new APK)
 
-**Owner-approved 2026-10-10.** One PR, after Phases 1–3 have merged into `feat/kaizen`.
+**Owner-approved 2026-10-10.** One PR, after Phases 1–3 have merged into `main`.
 
 ### 4.1 Packages and the version bump
 ```sh
@@ -621,17 +621,17 @@ change, not after the animation ends.
    alone); turn on Remove animations in Android settings and repeat everything (opacity only, no travel).
 
 ### PR shape and order
-1. **PR A1 (X.1 + X.2)**, `kaizen/krxna` → `feat/kaizen`. Shared `missingKaizenItems`, discard
+1. **PR A1 (X.1 + X.2)**, `kaizen/krxna` → `main` (#102). Shared `missingKaizenItems`, discard
    endpoint, migration, contracts. Merges **first**.
 2. **PR B1 (Phases 1–3, incl. 2.3 Delete draft and 2.6 required photos)**, `kaizen/krxna` →
-   `feat/kaizen`, built on A1. OTA-safe: `native-changed.mjs` reports **no** native change.
-3. **Release N**: owner merges `feat/kaizen` → `main`. `deploy.yml` deploys the server (A1)
-   before it publishes the OTA (B1), so the discard endpoint exists before any phone calls it.
-4. **PR A2 (X.3, server enforces photos)**, `kaizen/krxna`. Opened any time, **merged into
-   `feat/kaizen` only once Release N has been on phones for a week.** Ships as Release N+1.
-5. **PR B2 (Phase 4, native)**, `kaizen/krxna` → `feat/kaizen`, after B1. Version 0.2.0; bold
-   release warning; merged to `main` only on the day the APK is handed out. It can travel
-   with Release N+1 or later.
+   `main`, after A1 has merged. OTA-safe: `native-changed.mjs` reports **no** native change.
+3. **Release N** is the owner's go to merge B1 into `main`. A1 is already deployed by then, so
+   the discard endpoint exists before any phone calls it.
+4. **PR A2 (X.3, server enforces photos)**, `kaizen/krxna` → `main`. Opened any time, **merged
+   only once Release N has been on phones for a week.** Ships as Release N+1.
+5. **PR B2 (Phase 4, native)**, `kaizen/krxna` → `main`, after B1. Version 0.2.0; bold
+   release warning; merged only on the day the APK is handed out. It can travel with
+   Release N+1 or later.
 
 ## Definition of done
 - [ ] Every finding row above is fixed, or marked "no change needed" with the Phase 0 evidence,
