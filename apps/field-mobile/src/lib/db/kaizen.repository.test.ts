@@ -165,6 +165,23 @@ describe('sync', () => {
     expect((await getLocalKaizen(database, id))).toMatchObject({ status: 'SUBMITTED', pendingSubmissionId: null });
     void photoId;
   });
+
+  it('holds the Submit while its photo waits out a retry, then sends it after the photo', async () => {
+    const id = await newKaizen(COMPLETE);
+    await photo(id);
+    await submitLocalKaizen(database, id);
+
+    const weak = fakeServer({ intentFails: true });
+    await runSync(database, weak.transport, { deviceId: 'device' });
+    // Sent first, the Submit froze the Kaizen and the photo was refused for good.
+    expect(weak.sent).toEqual(['kaizen:upsert', 'intent']);
+
+    const later = Date.now() + 24 * 60 * 60 * 1000;
+    const strong = fakeServer();
+    await runSync(database, strong.transport, { deviceId: 'device', now: () => later });
+    expect(strong.sent).toEqual(['intent', 'put', 'kaizen_photo:commit', 'kaizen_submission:submit']);
+    expect(await listOutbox(database)).toEqual([]);
+  });
 });
 
 describe('the pull', () => {
@@ -205,7 +222,9 @@ describe('the pull', () => {
 // ---------------------------------------------------------------------------- helpers
 
 /** A server that accepts everything but `reject`, and records what arrived in what order. */
-function fakeServer(options: { reject?: string; duringPut?: () => Promise<void>; beforeKaizen?: boolean } = {}) {
+function fakeServer(
+  options: { reject?: string; duringPut?: () => Promise<void>; beforeKaizen?: boolean; intentFails?: boolean } = {},
+) {
   const sent: string[] = [];
   const transport: SyncTransport = {
     async pushBatch(request: SyncBatchRequest) {
@@ -228,6 +247,8 @@ function fakeServer(options: { reject?: string; duringPut?: () => Promise<void>;
     uploadIntent: () => Promise.reject(new Error('No 5S photos here')),
     async kaizenPhotoUploadIntent(_kaizenId, payload) {
       sent.push('intent');
+      // A weak connection: retryable, so the photo waits out a backoff.
+      if (options.intentFails) throw Object.assign(new Error('Service Unavailable'), { status: 503 });
       return {
         photoId: payload.id as string,
         objectKey: `kaizen/${String(payload.id)}.jpg`,

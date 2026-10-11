@@ -394,7 +394,8 @@ export function StatGrid({
     <View style={styles.stats}>
       {items.map((item) => (
         <View key={item.label} style={styles.stat} accessible accessibilityLabel={`${item.label}: ${item.value}`}>
-          <Label>{item.label}</Label>
+          {/* Four cells leave too little width for a tracked uppercase label: shrink, never break mid-word. */}
+          <Label fit>{item.label}</Label>
           <Figure size={27} band={item.band}>
             {item.value}
           </Figure>

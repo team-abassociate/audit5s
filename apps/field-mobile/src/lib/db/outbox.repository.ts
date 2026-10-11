@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { LocalDatabase } from './local-database';
-import { localEvidence, outbox } from './schema';
+import { localEvidence, localKaizenPhotos, outbox } from './schema';
 
 /**
  * Every query against the outbox, in one place.
@@ -249,4 +249,28 @@ export async function auditsAwaitingPhotos(database: LocalDatabase): Promise<Set
       ),
     );
   return new Set(rows.map((row) => row.auditId));
+}
+
+/**
+ * Kaizens that still have a photograph on its way up — `auditsAwaitingPhotos` for R-48.
+ *
+ * A Kaizen recorded offline queues its photos and its Submit together. When retries put
+ * the photos behind the Submit, the server froze the Kaizen at SUBMITTED and refused the
+ * photos as INVALID_STATE_TRANSITION (never retried): dead-lettered, and a submitted
+ * Kaizen with no before/after. The engine holds such a Kaizen's `submit` until they are up.
+ * A dead-lettered photo does not hold it, for the same reason as above.
+ */
+export async function kaizensAwaitingPhotos(database: LocalDatabase): Promise<Set<string>> {
+  const rows = await database
+    .select({ kaizenId: localKaizenPhotos.kaizenId })
+    .from(outbox)
+    .innerJoin(localKaizenPhotos, eq(localKaizenPhotos.id, outbox.entityId))
+    .where(
+      and(
+        eq(outbox.queue, 'media'),
+        inArray(outbox.state, ['PENDING', 'SYNCING', 'FAILED']),
+        isNull(localKaizenPhotos.deletedAt),
+      ),
+    );
+  return new Set(rows.map((row) => row.kaizenId));
 }
