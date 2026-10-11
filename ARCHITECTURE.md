@@ -3647,9 +3647,8 @@ reject. Every transition writes `kaizen_review` (decisions only) and `audit_log`
 transaction. Only DRAFT and SENT_BACK may be edited, by their author.
 
 Discarding a DRAFT (R-49) is not a transition: the status stays DRAFT and `discarded_at` is
-set, which takes it out of every list, read and count. A submit also needs a before and an
-after photo (`missingKaizenItems`); the phone enforces it from Release N, the server from
-Release N+1 (R-49).
+set, which takes it out of every list, read and count. Before and after photos are optional,
+on the phone and the server (R-50).
 
 ## 17.3 Authorization (rows added to §6.3)
 

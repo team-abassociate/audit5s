@@ -57,7 +57,7 @@ function newKaizen(sheet?: KaizenFields) {
   return createLocalKaizen(database, { unitId: FIXTURE_UNIT, zone: ZONE, ...(sheet ? { sheet } : {}) });
 }
 
-/** A Kaizen ready to submit: every required box, and both photos (R-49). */
+/** A Kaizen ready to submit, with both photos. */
 async function readyKaizen() {
   const id = await newKaizen(COMPLETE);
   await photo(id, 'BEFORE');
@@ -90,15 +90,12 @@ describe('a draft, offline', () => {
     expect((await getLocalKaizen(database, id))?.kaizenNo).toBeNull();
   });
 
-  it('refuses Submit until every required step and both photos are there, then locks the sheet', async () => {
+  it('refuses Submit until every required step is there, photos optional, then locks the sheet', async () => {
     const id = await newKaizen({ theme: 'Half done' });
     await expect(submitLocalKaizen(database, id)).rejects.toThrow(/required/);
 
     await saveLocalKaizenFields(database, id, COMPLETE);
-    await photo(id, 'BEFORE');
-    // Every box filled, the after photo missing: still refused (owner, 2026-10-10).
-    await expect(submitLocalKaizen(database, id)).rejects.toThrow(/1 left/);
-    await photo(id, 'AFTER');
+    // Every box filled and no photo: accepted (owner, 2026-10-11).
     await submitLocalKaizen(database, id);
 
     expect((await getLocalKaizen(database, id))?.status).toBe('SUBMITTED');

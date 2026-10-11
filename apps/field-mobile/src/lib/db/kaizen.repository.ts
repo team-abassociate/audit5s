@@ -9,7 +9,7 @@ import {
   type KaizenPhotoKind,
   type KaizenStatus,
 } from '@audit5s/contracts';
-import { missingKaizenItems } from '@audit5s/domain';
+import { missingKaizenFields } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import { enqueue, uuidv7 } from './audit.repository';
 import { UNSETTLED_STATES } from './outbox.repository';
@@ -253,10 +253,9 @@ export async function removeLocalKaizenPhoto(
 }
 
 /**
- * Submit, refused here for a missing required field or a missing before or after photo
- * (owner, 2026-10-10, R-49). The server does not refuse a photo-less submit until the
- * release after this one, so until then this is the only guard; the engine also holds the
- * submit until both photos are up (`kaizensAwaitingPhotos`).
+ * Submit, refused here for a missing required field, as the server refuses it. Photos are
+ * optional (owner, 2026-10-11); one that was added goes up before the submit
+ * (`kaizensAwaitingPhotos`).
  */
 export async function submitLocalKaizen(
   database: LocalDatabase,
@@ -264,7 +263,7 @@ export async function submitLocalKaizen(
   now: string = new Date().toISOString(),
 ): Promise<string> {
   const kaizen = await editableKaizen(database, kaizenId);
-  const missing = missingKaizenItems(kaizen.sheet, { before: kaizen.before !== null, after: kaizen.after !== null });
+  const missing = missingKaizenFields(kaizen.sheet);
   if (missing.length > 0) {
     throw new Error(`Fill in every required step first (${missing.length} left).`);
   }
@@ -331,9 +330,8 @@ export async function isLocalKaizenDiscarded(database: LocalDatabase, kaizenId: 
 
 /**
  * Kaizens with a live before or after photo not yet committed on the server. Their
- * submission waits: sent ahead of its photos it would reach the server photo-less, which
- * the next release refuses, and a refused submit is dead-lettered (plans/kaizen-ux-plan.md
- * "Why required photos ship in two releases").
+ * submission waits, so the Coordinator reviews the sheet with the photos the leader added.
+ * Photos are optional (owner, 2026-10-11): a Kaizen with none is never held.
  */
 export async function kaizensAwaitingPhotos(database: LocalDatabase): Promise<Set<string>> {
   const rows = await database

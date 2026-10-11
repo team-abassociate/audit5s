@@ -9,9 +9,9 @@ import {
   KAIZEN_WASTES,
   isoDateSchema,
   type KaizenFields,
-  type KaizenMissingItem,
   type KaizenParameter,
   type KaizenPhotoKind,
+  type KaizenRequiredField,
   type KaizenWaste,
 } from '@audit5s/contracts';
 import { istDateKey } from '@audit5s/domain';
@@ -66,7 +66,7 @@ import {
  * **Submit** is the last thing on the form, after every step (owner, 2026-10-10). Pressed with something missing, it opens the first
  * step with a gap, marks every missing box red, scrolls to it and focuses it, the way every
  * other form in the app does (`useRequiredFields`), and names them all in a banner. The list
- * is `missingKaizenItems`: the boxes the server requires, and a before and an after photo.
+ * is `missingKaizenFields`: the boxes the server requires. Photos are optional (owner, 2026-10-11).
  *
  * Photos come from the camera or, for Kaizen, the gallery (R-48): a "before" is often
  * already on the phone, taken before anyone thought of a Kaizen.
@@ -129,7 +129,7 @@ export function KaizenForm({
   const [fieldError, setFieldError] = useState<Partial<Record<KaizenTextField, string>>>({});
   const [camera, setCamera] = useState<KaizenPhotoKind | null>(null);
   const [viewing, setViewing] = useState<KaizenPhotoKind | null>(null);
-  const required = useRequiredFields<KaizenMissingItem>();
+  const required = useRequiredFields<KaizenRequiredField>();
   // What waits for a step to lay out after it opens: Next's scroll, or a refused Submit's reveal.
   const afterOpen = useRef<{ index: number; run: (y: number) => void } | null>(null);
   const scroller = useRef<ScrollView | null>(null);
@@ -298,7 +298,7 @@ export function KaizenForm({
       const saved = await getLocalKaizen(database, kaizenId);
       const { missing } = formProgress(saved?.sheet ?? {}, { before: Boolean(saved?.before), after: Boolean(saved?.after) });
       if (missing.size > 0) {
-        refuse([...missing] as KaizenMissingItem[]);
+        refuse([...missing] as KaizenRequiredField[]);
         return null;
       }
       await submitLocalKaizen(database, kaizenId);
@@ -313,7 +313,7 @@ export function KaizenForm({
   });
 
   /** A refused Submit: open the first step with a gap, then show and focus its first box. */
-  function refuse(missing: KaizenMissingItem[]) {
+  function refuse(missing: KaizenRequiredField[]) {
     setAttempted(true);
     const index = KAIZEN_STEPS.indexOf(stepOf(missing[0]!));
     const reveal = () => required.check(missing.map((item) => [item, false] as const));
@@ -389,13 +389,7 @@ export function KaizenForm({
   const progress = formProgress(sheet, { before: Boolean(current?.before), after: Boolean(current?.after) });
   const { missing } = progress;
   const missingNames = [...missing].map((item) =>
-    item === 'beforePhoto'
-      ? t.step.before
-      : item === 'afterPhoto'
-        ? t.step.after
-        : item === 'horizontalDeployment'
-          ? t.step.horizontal
-          : t.field[item as KaizenTextField],
+    item === 'horizontalDeployment' ? t.step.horizontal : t.field[item as KaizenTextField],
   );
 
   const toggle = <T extends string>(field: 'wastes' | 'parameters', value: T) => {
@@ -406,7 +400,7 @@ export function KaizenForm({
   };
 
   const textField = (field: KaizenTextField) => {
-    const item = field as KaizenMissingItem;
+    const item = field as KaizenRequiredField;
     const isRequired = REQUIRED_TEXT.has(field);
     const hint = t.hint[field];
     const error = fieldError[field] ?? (isRequired ? required.error(item, t.requiredError, !missing.has(item)) : undefined);
@@ -434,10 +428,8 @@ export function KaizenForm({
 
   const photoStep = (kind: KaizenPhotoKind) => {
     const shown = kind === 'BEFORE' ? current?.before : current?.after;
-    const item = kind === 'BEFORE' ? 'beforePhoto' : 'afterPhoto';
-    const flagged = required.flagged(item, Boolean(shown));
     return (
-      <View ref={required.anchor(item)} collapsable={false} style={styles.photoStep}>
+      <View style={styles.photoStep}>
         {shown?.localFileUri ? (
           <Pressable accessibilityRole="imagebutton" accessibilityLabel={t.openPhoto(kind)} onPress={() => setViewing(kind)}>
             <Image source={{ uri: shown.localFileUri }} style={styles.photo} />
@@ -447,9 +439,7 @@ export function KaizenForm({
             <Muted>{t.photoOnline}</Muted>
           </View>
         ) : (
-          <Text style={[styles.photoHint, flagged && styles.missingNote]}>
-            {flagged ? t.photoRequired : kind === 'BEFORE' ? t.beforeHint : t.afterHint}
-          </Text>
+          <Text style={styles.photoHint}>{kind === 'BEFORE' ? t.beforeHint : t.afterHint}</Text>
         )}
         {/* Camera or gallery, side by side, always: either is fine for a Kaizen (R-48). */}
         <View style={styles.buttons}>

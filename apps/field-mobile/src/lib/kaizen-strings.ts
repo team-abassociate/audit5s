@@ -144,7 +144,6 @@ export interface KaizenStrings {
   removePhotoQuestion: (kind: 'BEFORE' | 'AFTER') => string;
   cameraPrompt: (kind: 'BEFORE' | 'AFTER') => string;
   requiredError: string;
-  photoRequired: string;
   /** The refused Submit, naming every empty box: "3 required items are empty: …". */
   missingBanner: (count: number, list: string) => string;
   progress: (done: number, total: number) => string;
@@ -309,8 +308,8 @@ const EN: KaizenStrings = {
     analysis7qc: 'Optional. e.g. Pareto chart, fishbone, check sheet',
     benefits: 'What changed, in numbers if you have them. e.g. Changeover 40 → 12 min',
   },
-  beforeHint: 'Required. Take one now or pick one from the gallery: an earlier photo is fine if the problem was already fixed.',
-  afterHint: 'Required. The same view as the before photo, after the fix. Take one now or pick one from the gallery.',
+  beforeHint: 'Optional. Take one now or pick one from the gallery: an earlier photo is fine if the problem was already fixed.',
+  afterHint: 'Optional. The same view as the before photo, after the fix. Take one now or pick one from the gallery.',
   zone: 'Zone',
   waste: {
     DEFECTS: 'Defects',
@@ -347,7 +346,6 @@ const EN: KaizenStrings = {
       : 'Remove the after photo?',
   cameraPrompt: (kind) => (kind === 'BEFORE' ? 'Photograph the condition before' : 'Photograph the condition after'),
   requiredError: 'Fill this in.',
-  photoRequired: 'Add a photo.',
   missingBanner: (n, list) => `${n} required ${n === 1 ? 'item is' : 'items are'} empty: ${list}.`,
   progress: (done, total) => `${done} of ${total}`,
   requiredLeft: (n) => `${n} required left`,
@@ -509,8 +507,8 @@ const HI: KaizenStrings = {
     analysis7qc: 'वैकल्पिक। जैसे पैरेटो चार्ट, फ़िशबोन, चेक शीट',
     benefits: 'क्या बदला, हो सके तो अंकों में। जैसे चेंजओवर 40 → 12 मिनट',
   },
-  beforeHint: 'आवश्यक। अभी फ़ोटो लें या गैलरी से चुनें: समस्या पहले ही ठीक हो गई हो तो पुरानी फ़ोटो भी चलेगी।',
-  afterHint: 'आवश्यक। सुधार के बाद वही दृश्य। अभी फ़ोटो लें या गैलरी से चुनें।',
+  beforeHint: 'वैकल्पिक। अभी फ़ोटो लें या गैलरी से चुनें: समस्या पहले ही ठीक हो गई हो तो पुरानी फ़ोटो भी चलेगी।',
+  afterHint: 'वैकल्पिक। सुधार के बाद वही दृश्य। अभी फ़ोटो लें या गैलरी से चुनें।',
   zone: 'ज़ोन',
   waste: {
     DEFECTS: 'दोष',
@@ -547,7 +545,6 @@ const HI: KaizenStrings = {
       : 'बाद वाली फ़ोटो हटाएँ?',
   cameraPrompt: (kind) => (kind === 'BEFORE' ? 'उपाय से पहले की स्थिति की फ़ोटो लें' : 'उपाय के बाद की स्थिति की फ़ोटो लें'),
   requiredError: 'इसे भरें।',
-  photoRequired: 'फ़ोटो जोड़ें।',
   missingBanner: (n, list) => `${n} आवश्यक जानकारी बाकी: ${list}।`,
   progress: (done, total) => `${total} में से ${done}`,
   requiredLeft: (n) => `${n} आवश्यक बाकी`,
@@ -709,8 +706,8 @@ const MR: KaizenStrings = {
     analysis7qc: 'ऐच्छिक. उदा. पॅरेटो चार्ट, फिशबोन, चेक शीट',
     benefits: 'काय बदलले, शक्य असल्यास आकड्यांत. उदा. चेंजओव्हर 40 → 12 मिनिटे',
   },
-  beforeHint: 'आवश्यक. आत्ता फोटो काढा किंवा गॅलरीतून निवडा: समस्या आधीच दूर झाली असेल तर जुना फोटोही चालेल.',
-  afterHint: 'आवश्यक. सुधारणेनंतरचे तेच दृश्य. आत्ता फोटो काढा किंवा गॅलरीतून निवडा.',
+  beforeHint: 'ऐच्छिक. आत्ता फोटो काढा किंवा गॅलरीतून निवडा: समस्या आधीच दूर झाली असेल तर जुना फोटोही चालेल.',
+  afterHint: 'ऐच्छिक. सुधारणेनंतरचे तेच दृश्य. आत्ता फोटो काढा किंवा गॅलरीतून निवडा.',
   zone: 'झोन',
   waste: {
     DEFECTS: 'दोष',
@@ -747,7 +744,6 @@ const MR: KaizenStrings = {
       : 'नंतरचा फोटो काढून टाकायचा?',
   cameraPrompt: (kind) => (kind === 'BEFORE' ? 'उपायापूर्वीच्या स्थितीचा फोटो काढा' : 'उपायानंतरच्या स्थितीचा फोटो काढा'),
   requiredError: 'हे भरा.',
-  photoRequired: 'फोटो जोडा.',
   missingBanner: (n, list) => `${n} आवश्यक माहिती बाकी: ${list}.`,
   progress: (done, total) => `${total} पैकी ${done}`,
   requiredLeft: (n) => `${n} आवश्यक बाकी`,
