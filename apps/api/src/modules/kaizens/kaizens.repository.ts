@@ -46,12 +46,12 @@ export type KaizenPhotoRow = typeof kaizenPhotos.$inferSelect;
 export type KaizenColumns = Partial<typeof kaizens.$inferInsert>;
 
 export function kaizenColumnsOf(fields: KaizenFields): KaizenColumns {
-  const { annualSaving, ...rest } = fields;
+  const { annualSaving, implementationCost, ...rest } = fields;
+  const money = (value: number | null) => (value === null ? null : value.toFixed(2));
   return {
     ...rest,
-    ...(annualSaving !== undefined
-      ? { annualSaving: annualSaving === null ? null : annualSaving.toFixed(2) }
-      : {}),
+    ...(annualSaving !== undefined ? { annualSaving: money(annualSaving) } : {}),
+    ...(implementationCost !== undefined ? { implementationCost: money(implementationCost) } : {}),
   };
 }
 

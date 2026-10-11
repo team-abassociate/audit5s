@@ -78,11 +78,13 @@ import {
 
 const TEXT_FIELDS: readonly KaizenTextField[] = [
   'machine', 'lineArea', 'implementedOn', 'teamMembers', 'theme', 'target', 'problem5w1h',
-  'countermeasure', 'benefits', 'annualSaving', 'rootCause4m', 'analysis7qc', 'ideaBy', 'implementedBy',
+  'countermeasure', 'benefits', 'annualSaving', 'implementationCost', 'rootCause4m', 'analysis7qc', 'ideaBy', 'implementedBy',
 ];
 const MULTILINE: ReadonlySet<KaizenTextField> = new Set([
   'teamMembers', 'problem5w1h', 'countermeasure', 'benefits', 'rootCause4m', 'analysis7qc',
 ]);
+/** Rupee boxes: a number pad, and 0 is a real answer. */
+const RUPEES: ReadonlySet<KaizenTextField> = new Set(['annualSaving', 'implementationCost']);
 /** Text boxes the server requires: these carry `useRequiredFields`' ref and red state. */
 const REQUIRED_TEXT: ReadonlySet<string> = new Set(KAIZEN_REQUIRED_FIELDS);
 /** Quiet time after the last keystroke before a box is saved (plan 2.4). */
@@ -338,7 +340,7 @@ export function KaizenForm({
     const value = raw.trim();
     if (value === '') return null;
     if (field === 'implementedOn') return isoDateSchema.safeParse(value).success ? value : undefined;
-    if (field === 'annualSaving') {
+    if (RUPEES.has(field)) {
       const rupees = Number(value.replace(/[₹,\s]/g, ''));
       return Number.isFinite(rupees) && rupees >= 0 ? rupees : undefined;
     }
@@ -421,7 +423,7 @@ export function KaizenForm({
         label={t.field[field]}
         value={texts[field]}
         multiline={MULTILINE.has(field)}
-        keyboardType={field === 'annualSaving' ? 'decimal-pad' : 'default'}
+        keyboardType={RUPEES.has(field) ? 'decimal-pad' : 'default'}
         {...(isRequired ? { inputRef: required.input(item) } : {})}
         {...(hint ? { hint } : {})}
         {...(error ? { error } : {})}
@@ -593,6 +595,7 @@ export function KaizenForm({
           <>
             {textField('benefits')}
             {textField('annualSaving')}
+            {textField('implementationCost')}
           </>
         );
       case 'people':

@@ -364,6 +364,7 @@ function server(
     horizontalDeployment: null,
     benefits: null,
     annualSaving: null,
+    implementationCost: null,
     ideaBy: null,
     implementedBy: null,
     status: input.status,

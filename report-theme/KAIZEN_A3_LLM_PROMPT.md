@@ -30,7 +30,7 @@ You generate a one-page Kaizen Sheet (A4) as a single HTML document. The page de
 | `teamMembers` | Names joined with ` · `; the lead's name followed by ` (lead)` | 90 chars |
 | `theme` | Kaizen theme, one phrase | 70 chars |
 | `target` | Target + ` by ` + target date (DD-MM-YYYY), e.g. `≤ 20 min by 30-11-2026` | 45 chars |
-| `problem.what/where/when/who/why/how` | 5W1H, one short phrase each | 60 chars each |
+| `problem` | The problem as one short description: what, where, when, who, why and how, as the input gives them, in plain sentences (no headings) | 300 chars |
 | `analysis.tool` | QC tool used, in CAPITALS: PARETO, FISHBONE, HISTOGRAM, CHECK SHEET, CONTROL CHART, SCATTER, FLOWCHART | — |
 | `analysis.isBars` / `isImage` / `isText` | Exactly one is true. **Bars** when you have numeric categories (Pareto / check sheet counts). **Image** when a chart image URL is given. **Text** otherwise | — |
 | `analysis.items` | Bars: sort by value, largest first, 3–6 items. Each item has `label` (≤ 20 chars), `value` (number as given), `pct` = round(value ÷ largest value × 100), `shade` = empty for items 1–2, `s2` for item 3, `s3` for items 4+ | — |
@@ -43,10 +43,12 @@ You generate a one-page Kaizen Sheet (A4) as a single HTML document. The page de
 | `before.description`, `after.description` | What the situation was / is | 90 chars |
 | `before.value`, `after.value` | The headline measure, e.g. `48 min` / `18 min` | 10 chars |
 | `wastes` | Always all 8 items, in this order: Defects, Overproduction, Waiting time, Non-utilized talent, Transportation, Inventory, Motion, Extra-processing. Each item has `label` and `on` (true if that waste was attacked) | — |
-| `impact` | Always all 6 items, in this order: Productivity, Quality, Cost, Delivery, Safety, Morale. Each item has `label`, `on` (true if improved) and `mark`: `▲` when improved, except Cost, which uses `▼`; `–` when not improved | — |
+| `impact` | Always all 6 items. Only the improved ones (`on`) print green; the rest stay grey, meaning neutral (not affected), in this order: Productivity, Quality, Cost, Delivery, Safety, Morale. Each item has `label`, `on` (true if improved) and `mark`: `▲` when improved, except Cost, which uses `▼`; `–` when not improved | — |
 | `horizontalDeployment.yes` / `.no` | Exactly one true when known; both false when unknown | — |
 | `horizontalDeployment.plan` | Where and when it will be rolled out | 110 chars |
-| `benefits.metrics` | Exactly 4 cards. Each has `label` (≤ 16 chars, e.g. CHANGEOVER), `value` (≤ 6 chars, e.g. `−62%`, `+3 h`, `₹4.2L`) and `note` (≤ 22 chars, e.g. `48 → 18 min`). Fewer than 4 real results → fill the rest with `label` as given or empty, `value` `—` | — |
+| `benefits.metrics` | Exactly 3 cards (the fourth is always Cost to implement, below). Each has `label` (≤ 16 chars, e.g. CHANGEOVER), `value` (≤ 6 chars, e.g. `−62%`, `+3 h`, `₹4.2L`) and `note` (≤ 22 chars, e.g. `48 → 18 min`). Fewer than 3 real results → fill the rest with `label` as given or empty, `value` `—` | — |
+| `implementationCost.value` | What the Kaizen cost to put in, short: `₹0`, `₹35K`, `₹4.2L`, `₹1.2Cr`. Any amount from 0 up. `—` when not given | 6 chars |
+| `implementationCost.note` | The full amount, e.g. `₹35,000`. `no cost` when it is 0 (0 is a real answer, never leave it empty). `not stated` when not given | 22 chars |
 | `benefits.summary` | 1–2 sentences on the results | 220 chars |
 | `signatures.preparedBy/checkedBy/approvedBy` | Names, if known | 16 chars |
 | `footerNote` | Form number / revision, e.g. `Form KZ-01 · Rev 0` | 30 chars |
@@ -73,14 +75,7 @@ Shorten wording to fit the limits, but keep every number and unit exactly as giv
   "theme": "Reduce die changeover time on Press P-3",
   "target": "≤ 20 min per changeover",
   "targetDate": "2026-11-30",
-  "problem": {
-    "what": "Die changeover takes 48 min on average (4.8 h of press time lost daily)",
-    "where": "Press P-3, Line 3",
-    "when": "Every die change, 6 times a day",
-    "who": "2 setters per shift",
-    "why": "Tools fetched from a far crib, hand bolting, trial runs",
-    "how": "Setters walk to the crib, tighten 8 bolts, adjust height by trial"
-  },
+  "problem": "Die changeover on Press P-3, Line 3 takes 48 min on average, 6 times a day: 4.8 h of press time lost daily. The 2 setters per shift walk to a far crib for tools, hand-tighten 8 bolts and set the height by trial runs.",
   "analysis": {
     "tool": "Pareto",
     "type": "pareto",
@@ -137,12 +132,12 @@ Shorten wording to fit the limits, but keep every number and unit exactly as giv
     "applicable": true,
     "plan": "Lines 4 and 5 (same die family) by Dec 2026; owner S. Patil."
   },
+  "implementationCost": 35000,
   "benefits": {
     "metrics": [
       { "label": "Changeover", "value": "−62%", "note": "48 → 18 min" },
       { "label": "Press time", "value": "+3 h", "note": "recovered daily" },
-      { "label": "First-off scrap", "value": "1.5%", "note": "was 6.0%" },
-      { "label": "Savings / yr", "value": "₹[ ]", "note": "[basis]" }
+      { "label": "First-off scrap", "value": "1.5%", "note": "was 6.0%" }
     ],
     "summary": "OEE 61% → 72%. Setters no longer leave the press; SOP SW-P3-012 posted and 12 operators trained."
   },
@@ -233,7 +228,7 @@ width:210mm;height:297mm;margin:24px auto;box-sizing:border-box;padding:26px 28p
 .kz-check.on{color:var(--ink);font-weight:800}
 .kz-check.on::before{width:10px;height:10px;border:0;background:var(--green)}
 .kz-imp{display:flex;justify-content:space-between}
-.kz-imp b{color:var(--green)}.kz-imp.off{color:#6B6E74}.kz-imp.off b{color:#9AA0A8;font-weight:400}
+.kz-imp b{color:var(--green)}.kz-imp:not(.off){color:var(--green);font-weight:800}.kz-imp.off{color:#6B6E74}.kz-imp.off b{color:#9AA0A8;font-weight:400}
 .kz-hz{flex-direction:row;align-items:center;gap:8px}
 .kz-hz-text{flex:1;min-width:0}
 .kz-hz-text div:last-child{font-size:10.5px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -280,14 +275,7 @@ width:210mm;height:297mm;margin:24px auto;box-sizing:border-box;padding:26px 28p
 <div class="kz-col">
 <section class="kz-box blue">
 <div class="kz-h">Problem <span class="kz-tag">5W1H</span></div>
-<div class="kz-kv">
-<b>What</b><span>{{problem.what}}</span>
-<b>Where</b><span>{{problem.where}}</span>
-<b>When</b><span>{{problem.when}}</span>
-<b>Who</b><span>{{problem.who}}</span>
-<b>Why</b><span>{{problem.why}}</span>
-<b>How</b><span>{{problem.how}}</span>
-</div>
+<div class="kz-ana-text">{{problem}}</div>
 </section>
 
 <section class="kz-box blue kz-fill">
@@ -351,7 +339,8 @@ width:210mm;height:297mm;margin:24px auto;box-sizing:border-box;padding:26px 28p
 <div class="kz-h">Benefits / Results After Implementation</div>
 <div class="kz-metrics">
 {{#benefits.metrics}}<div class="kz-metric"><div class="kz-label">{{label}}</div><div class="kz-metric-v">{{value}}</div><div class="kz-metric-n">{{note}}</div></div>
-{{/benefits.metrics}}</div>
+{{/benefits.metrics}}<div class="kz-metric"><div class="kz-label">Cost to implement</div><div class="kz-metric-v">{{implementationCost.value}}</div><div class="kz-metric-n">{{implementationCost.note}}</div></div>
+</div>
 <div class="kz-summary">{{benefits.summary}}</div>
 </section>
 </div>

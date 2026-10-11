@@ -163,6 +163,8 @@ export const kaizenSchema = z.object({
   horizontalDeployment: z.boolean().nullable(),
   benefits: z.string().nullable(),
   annualSaving: rupeesSchema.nullable(),
+  /** What it cost to put in, ₹. 0 is an answer (it cost nothing); null is "not stated". */
+  implementationCost: rupeesSchema.nullable(),
   ideaBy: z.string().nullable(),
   implementedBy: z.string().nullable(),
 
@@ -203,6 +205,7 @@ export const kaizenFieldsSchema = z.object({
   horizontalDeployment: z.boolean().nullable().optional(),
   benefits: clearable(longText),
   annualSaving: rupeesSchema.nullable().optional(),
+  implementationCost: rupeesSchema.nullable().optional(),
   ideaBy: clearable(shortText),
   implementedBy: clearable(shortText),
 });

@@ -73,6 +73,8 @@ export const kaizens = pgTable(
     horizontalDeployment: boolean('horizontal_deployment'),
     benefits: text('benefits'),
     annualSaving: numeric('annual_saving', { precision: 14, scale: 2 }),
+    /** Owner, 2026-10-11 (0046). Zero is an answer; NULL is "not stated". */
+    implementationCost: numeric('implementation_cost', { precision: 14, scale: 2 }),
     ideaBy: text('idea_by'),
     implementedBy: text('implemented_by'),
 

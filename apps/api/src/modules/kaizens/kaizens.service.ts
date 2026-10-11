@@ -588,7 +588,11 @@ const REVIEW_ACTIONS = {
 /** The row's sheet in request terms: money as a number, as the contract carries it. */
 function sheetOf(row: KaizenRow): KaizenFields {
   const sheet = Object.fromEntries(FIELD_KEYS.map((key) => [key, row[key]])) as KaizenFields;
-  return { ...sheet, annualSaving: row.annualSaving === null ? null : Number(row.annualSaving) };
+  return {
+    ...sheet,
+    annualSaving: row.annualSaving === null ? null : Number(row.annualSaving),
+    implementationCost: row.implementationCost === null ? null : Number(row.implementationCost),
+  };
 }
 
 /** Whether every field a copy carries already holds that value. */
@@ -666,6 +670,7 @@ function toKaizen(
     horizontalDeployment: row.horizontalDeployment,
     benefits: row.benefits,
     annualSaving: row.annualSaving === null ? null : Number(row.annualSaving),
+    implementationCost: row.implementationCost === null ? null : Number(row.implementationCost),
     ideaBy: row.ideaBy,
     implementedBy: row.implementedBy,
     status: row.status,
