@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kaizen K-047 · Reduce die changeover time on Press P-3</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+@page{size:A4;margin:0}
+html,body{margin:0;padding:0;background:#E9EAEC}
+@media print{html,body{background:#FFFFFF}.kz-page{margin:0!important;box-shadow:none!important}}
+.kz-page{--ink:#17181A;--muted:#474A50;--faint:#5A5E66;--line:#C9CCD1;--surface:#F4F5F7;--blue:#1F5AA6;--blue-bg:#F1F5FA;--blue2:#6E90C2;--blue3:#A9BEDD;--amber:#A35A12;--amber-bar:#C9701C;--amber-bg:#FCF4EA;--green:#1E7A46;--green-bg:#EEF6F1;--green-line:#CFE3D6;--purple:#6A4E9C;--purple-bg:#F3F0F8;
+width:210mm;height:297mm;margin:24px auto;box-sizing:border-box;padding:26px 28px;background:#FFFFFF;color:var(--ink);font-family:'Archivo','Helvetica Neue',sans-serif;font-size:10.5px;line-height:1.3;display:flex;flex-direction:column;gap:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.12);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.kz-page *{box-sizing:border-box}
+.kz-label{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:8.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+.kz-header{display:flex;align-items:stretch;gap:10px;border-bottom:3px solid var(--ink);padding-bottom:10px}
+.kz-logo{width:92px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;font-size:11px;overflow:hidden}
+.kz-logo img{max-width:100%;max-height:56px;object-fit:contain}
+.kz-titleblock{flex:1;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.kz-kicker{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:.14em;color:var(--blue)}
+.kz-title{margin:2px 0 0;font-size:30px;font-weight:900;letter-spacing:.02em;line-height:1.1}
+.kz-meta{width:240px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--line)}
+.kz-meta>div{padding:4px 8px;min-width:0}
+.kz-meta>div:nth-child(odd){border-right:1px solid var(--line)}
+.kz-meta>div:nth-child(-n+2){border-bottom:1px solid var(--line)}
+.kz-meta .kz-label{font-size:8px}
+.kz-meta .kz-value{font-size:12px;font-weight:800;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kz-team{display:flex;gap:10px;align-items:baseline;background:var(--surface);padding:7px 10px;font-size:12px}
+.kz-team .kz-label{white-space:nowrap;color:#4D5056}
+.kz-team span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kz-row{display:flex;gap:8px}
+.kz-callout{border-left:4px solid;padding:7px 10px;min-width:0}
+.kz-callout .kz-value{font-size:14px;font-weight:800;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kz-callout.blue{flex:1;border-color:var(--blue);background:var(--blue-bg)}.kz-callout.blue .kz-label{color:var(--blue)}
+.kz-callout.green{width:250px;border-color:var(--green);background:var(--green-bg)}.kz-callout.green .kz-label{color:var(--green)}
+.kz-main{display:grid;grid-template-columns:228px minmax(0,1fr);gap:8px;flex:1;min-height:0}
+.kz-col{display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0}
+.kz-box{padding:8px 10px;border-top:3px solid;display:flex;flex-direction:column;gap:5px;flex-shrink:0;min-width:0}
+.kz-box.blue{background:var(--blue-bg);border-color:var(--blue)}
+.kz-box.amber{background:var(--amber-bg);border-color:var(--amber-bar)}
+.kz-box.green{background:var(--green-bg);border-color:var(--green)}
+.kz-box.purple{background:var(--purple-bg);border-color:var(--purple)}
+.kz-fill{flex:1 1 0;min-height:0;overflow:hidden}
+.kz-h{font-size:12px;font-weight:900}
+.kz-tag{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:9px;font-weight:600;margin-left:2px}
+.blue .kz-tag{color:var(--blue)}.amber .kz-tag{color:var(--amber)}
+.kz-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 6px;font-size:10.5px;line-height:1.3}
+.kz-kv>span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.blue .kz-kv b{color:var(--blue)}.amber .kz-kv b{color:var(--amber)}
+.kz-bars{display:flex;flex-direction:column;gap:8px;font-size:10.5px}
+.kz-bar-lbl{display:flex;justify-content:space-between;gap:6px}
+.kz-bar{height:13px;margin-top:2px;background:var(--blue)}.kz-bar.s2{background:var(--blue2)}.kz-bar.s3{background:var(--blue3)}
+.kz-ana-img{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#FFFFFF}
+.kz-ana-img img{max-width:100%;max-height:100%;object-fit:contain}
+.kz-ana-text{white-space:pre-line}
+.kz-note{font-size:9.5px;color:var(--muted);margin-top:auto}
+.kz-cm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 14px;font-size:10.5px}
+.kz-cm span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kz-ba{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 140px;gap:8px;flex:1 1 0;min-height:0}
+.kz-ba-col{display:flex;flex-direction:column;gap:4px;min-width:0}
+.kz-ba-h{font-size:11px;font-weight:900}
+.kz-before .kz-ba-h{color:#6B6E74}.kz-after .kz-ba-h{color:var(--green)}
+.kz-photo{flex:1 1 0;min-height:200px;display:flex;align-items:center;justify-content:center;overflow:hidden;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:9px}
+.kz-photo img{width:100%;height:100%;object-fit:cover}
+.kz-before .kz-photo{background:#E3E4E7;color:#5A5E66}.kz-after .kz-photo{background:#D6EADD;color:#2E5A3E}
+.kz-desc{font-size:10.5px;padding:6px 8px;line-height:1.35}
+.kz-desc>span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.kz-before .kz-desc{background:var(--surface)}.kz-after .kz-desc{background:var(--green-bg)}.kz-after .kz-desc b{color:var(--green)}
+.kz-side{display:flex;flex-direction:column;gap:6px}
+.kz-list{border:1px solid var(--line);padding:6px 8px;display:flex;flex-direction:column;gap:2px;font-size:10px}
+.kz-list .kz-label{color:#4D5056;margin-bottom:2px}
+.kz-check{display:flex;gap:5px;align-items:center;color:#6B6E74}
+.kz-check::before{content:"";width:8px;height:8px;border:1px solid #9AA0A8;flex-shrink:0}
+.kz-check.on{color:var(--ink);font-weight:800}
+.kz-check.on::before{width:10px;height:10px;border:0;background:var(--green)}
+.kz-imp{display:flex;justify-content:space-between}
+.kz-imp b{color:var(--green)}.kz-imp.off{color:#6B6E74}.kz-imp.off b{color:#9AA0A8;font-weight:400}
+.kz-hz{flex-direction:row;align-items:center;gap:8px}
+.kz-hz-text{flex:1;min-width:0}
+.kz-hz-text div:last-child{font-size:10.5px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kz-pills{display:flex;gap:6px;align-items:center}
+.kz-pill{border:1px solid #9AA0A8;color:#6B6E74;font-size:11px;font-weight:800;padding:4px 12px}
+.kz-pill.on{background:var(--purple);border-color:var(--purple);color:#FFFFFF;font-weight:900}
+.kz-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.kz-metric{background:#FFFFFF;border:1px solid var(--green-line);padding:6px 8px;min-width:0}
+.kz-metric .kz-label{color:var(--muted)}
+.kz-metric-v{font-size:22px;font-weight:900;color:var(--green);letter-spacing:-.02em;white-space:nowrap;overflow:hidden}
+.kz-metric-n{font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kz-summary{font-size:10.5px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.kz-footer{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding-top:4px;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:9px;color:var(--faint)}
+.kz-signs{display:flex;gap:14px}
+.kz-sign i{font-style:normal;display:inline-block;min-width:96px;border-bottom:1px solid var(--ink);color:var(--ink);padding:0 2px;margin-left:4px}
+</style>
+</head>
+<body>
+<div class="kz-page">
+
+<header class="kz-header">
+<div class="kz-logo">[Company]</div>
+<div class="kz-titleblock">
+<div class="kz-kicker">CONTINUOUS IMPROVEMENT</div>
+<h1 class="kz-title">KAIZEN SHEET</h1>
+</div>
+<div class="kz-meta">
+<div><div class="kz-label">Kaizen No.</div><div class="kz-value">K-047</div></div>
+<div><div class="kz-label">Date</div><div class="kz-value">07-10-2026</div></div>
+<div><div class="kz-label">Machine</div><div class="kz-value">Press P-3</div></div>
+<div><div class="kz-label">Line / Area</div><div class="kz-value">Press shop · Line 3</div></div>
+</div>
+</header>
+
+<div class="kz-team"><span class="kz-label">Team members</span><span>R. Kumar (lead) · S. Patil · A. Singh · M. Das</span></div>
+
+<div class="kz-row">
+<div class="kz-callout blue"><div class="kz-label">Kaizen theme</div><div class="kz-value">Reduce die changeover time on Press P-3</div></div>
+<div class="kz-callout green"><div class="kz-label">Target &amp; target date</div><div class="kz-value">≤ 20 min per changeover by 30-11-2026</div></div>
+</div>
+
+<main class="kz-main">
+
+<div class="kz-col">
+<section class="kz-box blue">
+<div class="kz-h">Problem <span class="kz-tag">5W1H</span></div>
+<div class="kz-kv">
+<b>What</b><span>Die changeover takes 48 min on average (4.8 h of press time lost daily)</span>
+<b>Where</b><span>Press P-3, Line 3</span>
+<b>When</b><span>Every die change, 6 times a day</span>
+<b>Who</b><span>2 setters per shift</span>
+<b>Why</b><span>Tools fetched from a far crib, hand bolting, trial runs</span>
+<b>How</b><span>Setters walk to the crib, tighten 8 bolts, adjust height by trial</span>
+</div>
+</section>
+
+<section class="kz-box blue kz-fill">
+<div class="kz-h">Analysis <span class="kz-tag">7 QC TOOLS · PARETO</span></div>
+<div class="kz-bars">
+<div><div class="kz-bar-lbl"><span>Unbolt / bolt</span><b>14</b></div><div class="kz-bar " style="width:100%"></div></div>
+<div><div class="kz-bar-lbl"><span>Tool search</span><b>12</b></div><div class="kz-bar " style="width:86%"></div></div>
+<div><div class="kz-bar-lbl"><span>Trial &amp; adjust</span><b>12</b></div><div class="kz-bar s2" style="width:86%"></div></div>
+<div><div class="kz-bar-lbl"><span>Die fetch</span><b>10</b></div><div class="kz-bar s3" style="width:71%"></div></div>
+</div>
+
+
+<div class="kz-note">Minutes per changeover, average of 30 observations</div>
+</section>
+
+<section class="kz-box amber">
+<div class="kz-h">Root Cause <span class="kz-tag">4M</span></div>
+<div class="kz-kv">
+<b>Man</b><span>No standard changeover sequence</span>
+<b>Machine</b><span>8 bolts, no shut-height stop</span>
+<b>Method</b><span>Internal and external steps mixed</span>
+<b>Material</b><span>Tools kept in a crib 30 m away</span>
+</div>
+</section>
+</div>
+
+<div class="kz-col">
+<section class="kz-box amber">
+<div class="kz-h">Counter Measure</div>
+<div class="kz-cm">
+<span><b>1</b> Shadow board with the full tool set at the press</span>
+<span><b>2</b> Next die pre-staged on a cart while the press runs</span>
+<span><b>3</b> Quick clamps replace 8 hand-tightened bolts</span>
+<span><b>4</b> Shut-height stopper blocks end trial runs</span>
+</div>
+</section>
+
+<div class="kz-ba">
+<div class="kz-ba-col kz-before">
+<div class="kz-ba-h">Before Counter Measure</div>
+<div class="kz-photo">[photo / sketch]</div>
+<div class="kz-desc"><span>Tools fetched from a crib 30 m away; 8 bolts tightened by hand. <b>48 min</b></span></div>
+</div>
+<div class="kz-ba-col kz-after">
+<div class="kz-ba-h">After Counter Measure</div>
+<div class="kz-photo">[photo / sketch]</div>
+<div class="kz-desc"><span>Shadow board at the press; quick clamps; die waiting on a cart. <b>18 min</b></span></div>
+</div>
+<div class="kz-side">
+<div class="kz-list">
+<div class="kz-label">Waste attacked</div>
+<span class="kz-check on">Defects</span>
+<span class="kz-check">Overproduction</span>
+<span class="kz-check on">Waiting time</span>
+<span class="kz-check">Non-utilized talent</span>
+<span class="kz-check on">Transportation</span>
+<span class="kz-check">Inventory</span>
+<span class="kz-check on">Motion</span>
+<span class="kz-check">Extra-processing</span>
+</div>
+<div class="kz-list">
+<div class="kz-label">Impact · PQCDSM</div>
+<span class="kz-imp"><span>Productivity</span><b>▲</b></span>
+<span class="kz-imp"><span>Quality</span><b>▲</b></span>
+<span class="kz-imp"><span>Cost</span><b>▼</b></span>
+<span class="kz-imp"><span>Delivery</span><b>▲</b></span>
+<span class="kz-imp"><span>Safety</span><b>▲</b></span>
+<span class="kz-imp"><span>Morale</span><b>▲</b></span>
+</div>
+</div>
+</div>
+
+<section class="kz-box purple kz-hz">
+<div class="kz-hz-text"><div class="kz-h">Scope &amp; plan for horizontal deployment</div><div>Lines 4 and 5 (same die family) by Dec 2026; owner S. Patil.</div></div>
+<div class="kz-pills"><span class="kz-pill on">YES</span><span class="kz-pill">NO</span></div>
+</section>
+
+<section class="kz-box green">
+<div class="kz-h">Benefits / Results After Implementation</div>
+<div class="kz-metrics">
+<div class="kz-metric"><div class="kz-label">Changeover</div><div class="kz-metric-v">−62%</div><div class="kz-metric-n">48 → 18 min</div></div>
+<div class="kz-metric"><div class="kz-label">Press time</div><div class="kz-metric-v">+3 h</div><div class="kz-metric-n">recovered daily</div></div>
+<div class="kz-metric"><div class="kz-label">First-off scrap</div><div class="kz-metric-v">1.5%</div><div class="kz-metric-n">was 6.0%</div></div>
+<div class="kz-metric"><div class="kz-label">Savings / yr</div><div class="kz-metric-v">₹[ ]</div><div class="kz-metric-n">[basis]</div></div>
+</div>
+<div class="kz-summary">OEE 61% → 72%. Setters no longer leave the press; SOP SW-P3-012 posted and 12 operators trained.</div>
+</section>
+</div>
+
+</main>
+
+<footer class="kz-footer">
+<div class="kz-signs"><span class="kz-sign">PREPARED<i>R. Kumar</i></span><span class="kz-sign">CHECKED<i></i></span><span class="kz-sign">APPROVED<i></i></span></div>
+<span>Form KZ-01 · Rev 0</span>
+</footer>
+
+</div>
+</body>
+</html>
