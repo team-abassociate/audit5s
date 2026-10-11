@@ -2,13 +2,13 @@ import { Pressable, Text, View } from 'react-native';
 import { APP_LANGUAGES, LANGUAGE_ENGLISH_NAMES, LANGUAGE_NAMES } from '../lib/language';
 import { useLanguage } from '../lib/language-provider';
 import { createThemedStyles } from '../lib/theme';
-import { Label } from './ui';
 
 /**
- * The checklist language, as three side-by-side options: English · हिन्दी · मराठी.
+ * The app's language, as three side-by-side options: English · हिन्दी · मराठी. It sets every
+ * Kaizen screen and the 5S checklist questions (5S's own screens are English).
  *
- * It lives on Overview only. Profile carried a second copy until 2026-09-29, when it was
- * removed as redundant; the setting itself is per person either way.
+ * It lives on Profile, beside the theme (owner, 2026-10-10). It was on 5S's Overview as the
+ * "checklist language" until then, which read oddly once it also changed all of Kaizen.
  *
  * `Segmented`'s look — an ink-ruled strip, the chosen option filled in ink, shape as well
  * as colour — but a radio group rather than tabs, because this is a setting and not a view
@@ -22,37 +22,34 @@ export function LanguageSwitcher() {
   const { language, choose } = useLanguage();
 
   return (
-    <View>
-      <Label>Checklist language · भाषा</Label>
-      <View style={styles.strip} accessibilityRole="radiogroup" accessibilityLabel="Checklist language">
-        {APP_LANGUAGES.map((option, index) => {
-          const selected = option === language;
-          return (
-            <Pressable
-              key={option}
-              testID={`language-${option}`}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: selected }}
-              accessibilityLabel={
-                option === 'en'
-                  ? LANGUAGE_NAMES[option]
-                  : `${LANGUAGE_NAMES[option]}, ${LANGUAGE_ENGLISH_NAMES[option]}`
-              }
-              onPress={() => choose(option)}
-              style={({ pressed }) => [
-                styles.option,
-                index > 0 && styles.divider,
-                selected && styles.selected,
-                pressed && !selected && styles.pressed,
-              ]}
-            >
-              <Text numberOfLines={1} style={[styles.text, selected && styles.textSelected]}>
-                {LANGUAGE_NAMES[option]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+    <View style={styles.strip} accessibilityRole="radiogroup" accessibilityLabel="Language">
+      {APP_LANGUAGES.map((option, index) => {
+        const selected = option === language;
+        return (
+          <Pressable
+            key={option}
+            testID={`language-${option}`}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected }}
+            accessibilityLabel={
+              option === 'en'
+                ? LANGUAGE_NAMES[option]
+                : `${LANGUAGE_NAMES[option]}, ${LANGUAGE_ENGLISH_NAMES[option]}`
+            }
+            onPress={() => choose(option)}
+            style={({ pressed }) => [
+              styles.option,
+              index > 0 && styles.divider,
+              selected && styles.selected,
+              pressed && !selected && styles.pressed,
+            ]}
+          >
+            <Text numberOfLines={1} style={[styles.text, selected && styles.textSelected]}>
+              {LANGUAGE_NAMES[option]}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }

@@ -18,6 +18,8 @@ const shared = {
   space: { xs: 4, sm: 8, md: 14, lg: 22, xl: 28 },
   font: { label: 11, sm: 13, base: 15, panel: 16, heading: 19, figure: 29 },
   family: gembaFonts,
+  /** `--motion` in gemba-tokens.css: the one duration, always ease-out (GEMBA §8 ports it). */
+  motion: 143,
 } as const;
 
 export const themes = {

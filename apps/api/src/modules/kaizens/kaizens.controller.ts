@@ -134,6 +134,27 @@ export class KaizensController {
   }
 
   /**
+   * The author deletes their own DRAFT (R-49): soft, it leaves every list. Idempotency-Key
+   * required, as for a review: the body carries no id. Already discarded ⇒ 204 all the same.
+   */
+  @RequirePermission('kaizen', 'create')
+  @Scope({ param: 'kaizenId', intent: 'write' })
+  @Post(':kaizenId/discard')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  discard(
+    @CurrentScope() scope: ScopeContext,
+    @Param('kaizenId', ParseUUIDPipe) kaizenId: string,
+    @Headers(HEADER_IDEMPOTENCY_KEY) idempotencyKey: string | undefined,
+  ): Promise<void> {
+    if (!idempotencyKey) {
+      throw AppError.validation('This request needs an Idempotency-Key header', [
+        { field: HEADER_IDEMPOTENCY_KEY, message: 'Required' },
+      ]);
+    }
+    return this.kaizens.discard(scope, kaizenId);
+  }
+
+  /**
    * Approve, send back or reject. Idempotency-Key required: the body carries no id of its
    * own, so a retried approval is told apart from a second decision only by the key.
    */

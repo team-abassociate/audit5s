@@ -12,6 +12,7 @@ import {
   kaizenTrend,
   lastSixMonths,
   missingKaizenFields,
+  missingKaizenItems,
   topApprovedBySaving,
   type KaizenFact,
 } from './kaizen';
@@ -104,6 +105,36 @@ describe('missingKaizenFields', () => {
       'ideaBy',
       'implementedBy',
     ]);
+  });
+});
+
+describe('missingKaizenItems', () => {
+  const full = {
+    machine: 'Press 4',
+    lineArea: 'Line 2',
+    implementedOn: '2026-10-01',
+    teamMembers: 'Ravi',
+    theme: 'Faster changeover',
+    problem5w1h: 'Slow',
+    countermeasure: 'Clamps',
+    horizontalDeployment: false,
+    benefits: 'Fast',
+    rootCause4m: 'Method',
+    ideaBy: 'Ravi',
+    implementedBy: 'Sita',
+  };
+
+  it('adds the missing photos after the fields, before first', () => {
+    expect(missingKaizenItems({ ...full, machine: '' }, { before: false, after: false })).toEqual([
+      'machine',
+      'beforePhoto',
+      'afterPhoto',
+    ]);
+    expect(missingKaizenItems(full, { before: true, after: false })).toEqual(['afterPhoto']);
+  });
+
+  it('is empty for a full sheet with both photos', () => {
+    expect(missingKaizenItems(full, { before: true, after: true })).toEqual([]);
   });
 });
 

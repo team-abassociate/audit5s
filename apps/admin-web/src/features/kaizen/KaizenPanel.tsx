@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react';
+import { Check, Download, Undo2, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { KaizenDetail, KaizenExport, KaizenPhoto, KaizenReviewDecision } from '@audit5s/contracts';
 import { formatDate, formatDateTime, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
 import { Button, ErrorNotice, Field, SidePanel, Spinner, StatusChip } from '@/components/ui';
+import { KAIZEN_TONE } from '@/components/Status';
 import { api } from '@/lib/api';
 import { KAIZEN_PARAMETER_LABEL, KAIZEN_STATUS_LABEL, KAIZEN_WASTE_LABEL, roleLabel } from '@/lib/labels';
 import { useFollowItemUnit } from '@/lib/scope';
@@ -114,11 +116,12 @@ function PhotoBox({ label, photo }: { label: string; photo: KaizenPhoto | null }
   );
 }
 
-const DECISIONS: { value: KaizenReviewDecision; label: string }[] = [
-  { value: 'APPROVED', label: 'Approve' },
-  { value: 'SENT_BACK', label: 'Send back' },
-  { value: 'REJECTED', label: 'Reject' },
+const DECISIONS: { value: KaizenReviewDecision; label: string; Icon: typeof Check }[] = [
+  { value: 'APPROVED', label: 'Approve', Icon: Check },
+  { value: 'SENT_BACK', label: 'Send back', Icon: Undo2 },
+  { value: 'REJECTED', label: 'Reject', Icon: X },
 ];
+const ICON = { size: 15, strokeWidth: 2.25, 'aria-hidden': true } as const;
 
 /** A Coordinator's decision on a SUBMITTED Kaizen. A reason is required to send back or reject. */
 function Review({ kaizen }: { kaizen: KaizenDetail }) {
@@ -157,13 +160,15 @@ function Review({ kaizen }: { kaizen: KaizenDetail }) {
         {DECISIONS.map((option) => (
           <Button
             key={option.value}
-            variant={decision === option.value ? 'primary' : 'secondary'}
+            variant="secondary"
+            className={`inline-flex items-center gap-1.5 gb-tone--${KAIZEN_TONE[option.value]}`}
             aria-pressed={decision === option.value}
             onClick={() => {
               setDecision(option.value);
               setMissing(false);
             }}
           >
+            <option.Icon {...ICON} />
             {option.label}
           </Button>
         ))}
@@ -179,13 +184,18 @@ function Review({ kaizen }: { kaizen: KaizenDetail }) {
           </Field>
           <ErrorNotice error={review.error} />
           <Button
+            variant="secondary"
+            className={`inline-flex items-center gap-1.5 gb-tone--${KAIZEN_TONE[decision]}`}
             disabled={review.isPending}
             onClick={() => {
               if (needsReason && !comment.trim()) setMissing(true);
               else review.mutate();
             }}
           >
-            {review.isPending ? 'Saving…' : `Confirm: ${DECISIONS.find((option) => option.value === decision)!.label}`}
+            {(() => {
+              const chosen = DECISIONS.find((option) => option.value === decision)!;
+              return review.isPending ? 'Saving…' : <><chosen.Icon {...ICON} />Confirm: {chosen.label}</>;
+            })()}
           </Button>
         </>
       )}
@@ -213,7 +223,13 @@ function ExportButton({ kaizen }: { kaizen: KaizenDetail }) {
   return (
     <div className="space-y-2">
       <ErrorNotice error={exportPdf.error} />
-      <Button variant="secondary" disabled={exportPdf.isPending} onClick={() => exportPdf.mutate()}>
+      <Button
+        variant="secondary"
+        className="inline-flex items-center gap-1.5"
+        disabled={exportPdf.isPending}
+        onClick={() => exportPdf.mutate()}
+      >
+        <Download {...ICON} />
         {exportPdf.isPending ? 'Preparing the PDF…' : 'Download Kaizen Sheet (PDF)'}
       </Button>
     </div>

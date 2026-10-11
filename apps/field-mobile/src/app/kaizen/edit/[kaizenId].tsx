@@ -12,7 +12,13 @@ export default function EditKaizen() {
   return (
     <Screen bare>
       <Stack.Screen options={{ title: KAIZEN_STRINGS[language].kaizen }} />
-      <KaizenForm kaizenId={kaizenId} onSubmitted={() => router.navigate('/kaizen/overview')} />
+      <KaizenForm
+        kaizenId={kaizenId}
+        onSubmitted={(id, resubmitted) =>
+          router.navigate({ pathname: '/kaizen/overview', params: { submitted: id, ...(resubmitted ? { resubmitted: '1' } : {}) } })
+        }
+        onDiscarded={() => router.navigate('/kaizen/overview')}
+      />
     </Screen>
   );
 }

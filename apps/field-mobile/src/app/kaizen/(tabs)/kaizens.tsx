@@ -25,7 +25,9 @@ export default function KaizensScreen() {
   const [filter, setFilter] = useState<Filter>('SUBMITTED');
 
   const list = useInfiniteQuery({
-    queryKey: ['kaizens', filter],
+    // 'list' keeps this infinite query apart from Overview's plain ['kaizens', 'SUBMITTED']:
+    // one key holding both shapes crashed this screen (no `pages`).
+    queryKey: ['kaizens', 'list', filter],
     queryFn: ({ pageParam }) =>
       api.get<Page<Kaizen>>(
         `/kaizens?limit=50${filter === 'ALL' ? '' : `&status=${filter}`}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ''}`,
@@ -43,7 +45,9 @@ export default function KaizensScreen() {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={styles.head}>
+            {/* Five states do not fit 360dp in Hindi or Marathi (Phase 0.2): it scrolls instead. */}
             <Segmented
+              scrolls
               options={[
                 { value: 'ALL', label: t.all },
                 { value: 'SUBMITTED', label: t.status.SUBMITTED },
@@ -54,7 +58,7 @@ export default function KaizensScreen() {
               value={filter}
               onChange={setFilter}
             />
-            <ErrorBanner message={list.isError ? t.needsConnection : null} />
+            <ErrorBanner message={list.isError ? t.listNeedsConnection : null} />
           </View>
         }
         ListEmptyComponent={list.isLoading || list.isError ? null : <EmptyState title={t.queueEmpty} />}
@@ -75,6 +79,6 @@ export default function KaizensScreen() {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  content: { padding: theme.space.lg, paddingBottom: theme.space.xl * 2, gap: theme.space.sm },
+  content: { paddingBottom: theme.space.xl, gap: theme.space.sm },
   head: { gap: theme.space.sm, marginBottom: theme.space.sm },
 }));

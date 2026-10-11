@@ -2236,3 +2236,33 @@ EAS slug — because a rename breaks installed APKs and their signing.
   common spelling; Zones without one count under "No department". No department table.
 - **Not done here:** no new roles, no new extensions, no chart or SVG library on the phone (its
   charts are plain Views), and no change to the 5S module's behaviour.
+
+## R-49 — A Kaizen needs both photos to be submitted; a leader can delete their own draft
+
+**Settled 2026-10-10 by the product owner** (plans/kaizen-ux-plan.md, owner decisions #20 and
+#21). **Refines R-48(a) and (f).**
+
+- **(a) A before photo and an after photo are required to submit**, and to resubmit after a
+  send-back. Until now both were optional, though the card leads with the pair. What stops a
+  submit is `missingKaizenItems(sheet, { before, after })` in `packages/domain`: the required
+  fields, then `beforePhoto`, then `afterPhoto` (type `KaizenMissingItem`). The phone and the
+  server call this one function, so they cannot disagree. `missingKaizenFields` is unchanged:
+  0044's CHECK mirrors it, and photos are not columns.
+- **(b) The photo rule ships in two releases.** A submit is queued on the phone and can reach
+  the server before its photo's upload has committed. If the server refused photo-less
+  submits at once, phones still on the old JavaScript, and any submit that overtook its own
+  upload, would be refused and dead-lettered: "Pending" on the phone, a DRAFT on the server.
+  So **Release N**: the phone refuses to submit without both photos and holds a queued submit
+  until both are committed; the server is unchanged. **Release N+1**, at least a week later
+  once every phone has opened the app: the server (`kaizen_photos_complete` guard) and the
+  database refuse a move to SUBMITTED without both committed photos, on that move only, so
+  Kaizens already past it stay valid.
+- **(c) A Zone Leader can delete their own draft.** "Delete" on screen; `discard` in the code,
+  because nothing is hard-deleted. `kaizen.discarded_at` (0045) is set on the author's own
+  DRAFT only; the row, its number and its photos stay, and a discarded row never changes again
+  (database triggers). It leaves every list, read, count, dashboard and export, for every
+  role. `POST /kaizens/{id}/discard` and the sync op `kaizen:discard` (sorted after the
+  Kaizen's upsert) go through one service method; discarding twice is a no-op, and an upsert
+  that arrives after the discard is accepted and changes nothing, so an old queued edit never
+  dead-letters. The audit log records `kaizen.discarded`. A SUBMITTED, SENT_BACK, APPROVED or
+  REJECTED Kaizen cannot be deleted: the Coordinator has seen it.

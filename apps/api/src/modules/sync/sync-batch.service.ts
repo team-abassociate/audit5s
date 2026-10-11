@@ -498,6 +498,11 @@ export class SyncBatchService {
         return null;
       }
 
+      case 'kaizen:discard': {
+        await this.kaizens.discard(scope, item.entityId);
+        return null;
+      }
+
       case 'kaizen_photo:upsert': {
         const body = kaizenPhotoUploadIntentRequestSchema.parse({ ...item.payload, id: item.entityId });
         await this.kaizens.createPhotoIntent(scope, body);
@@ -590,6 +595,10 @@ export class SyncBatchService {
     }
     if (item.entityType === 'kaizen_photo' || item.entityType === 'kaizen_submission') {
       parents.push(['kaizen', this.optionalString(item.payload, 'kaizenId')]);
+    }
+    if (item.entityType === 'kaizen' && item.operation === 'discard') {
+      // Sent only for a draft the server may hold; a torn queue waits for its upsert.
+      parents.push(['kaizen', item.entityId]);
     }
     if (item.entityType === 'corrective_action_submission') {
       // Option A cites an after-photo that rides the media queue. Until its commit has

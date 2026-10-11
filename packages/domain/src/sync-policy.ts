@@ -65,6 +65,8 @@ const OPERATION_PHASE: Record<SyncOperation, number> = {
   // Finalize, beside `complete`: a Zone is withdrawn after whatever was answered in it
   // lands, and before the audit's own `complete`, which only counts the Zones left.
   withdraw: PHASE.FINALIZE,
+  // Structure, last for its Kaizen: a draft created and discarded in one batch is created first.
+  discard: PHASE.STRUCTURE,
 };
 
 /** Ordering within the structure phase, where two operations touch the same entity. */
@@ -88,6 +90,8 @@ const STRUCTURE_OPERATION_RANK: Record<SyncOperation, number> = {
   // belongs on the near side of the reopening, not the far one.
   restart: 2,
   withdraw: 0,
+  // After every other write to the same Kaizen, so an upsert queued before it lands first.
+  discard: 5,
 };
 
 export interface OrderableSyncItem {

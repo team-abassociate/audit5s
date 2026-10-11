@@ -7,6 +7,7 @@ import {
   type KaizenFields,
   type KaizenFunnel,
   type KaizenKpi,
+  type KaizenMissingItem,
   type KaizenRequiredField,
   type KaizenStatus,
   type KaizenTrendMonth,
@@ -43,6 +44,23 @@ export function missingKaizenFields(
     const value = sheet[field];
     return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
   });
+}
+
+/**
+ * `missingKaizenFields`, then the before and after photos (owner, 2026-10-10, R-49): what
+ * stops a submit, in form order. The phone and the server call this one, so they cannot
+ * disagree. `missingKaizenFields` stays as it is: 0044's CHECK mirrors it, and photos are
+ * not columns.
+ */
+export function missingKaizenItems(
+  sheet: Partial<Record<keyof KaizenFields, unknown>>,
+  photos: { before: boolean; after: boolean },
+): KaizenMissingItem[] {
+  return [
+    ...missingKaizenFields(sheet),
+    ...(photos.before ? [] : ['beforePhoto' as const]),
+    ...(photos.after ? [] : ['afterPhoto' as const]),
+  ];
 }
 
 // ------------------------------------------------------------------- the facts

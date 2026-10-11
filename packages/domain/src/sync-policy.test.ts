@@ -347,3 +347,16 @@ describe('the submit operation Phase 6 added', () => {
     ]);
   });
 });
+
+describe('the discard operation R-49 added', () => {
+  it("follows every other write to its Kaizen, and the Kaizen's own upsert first", () => {
+    const sorted = sortSyncItems([
+      { entityType: 'kaizen', operation: 'discard' },
+      { entityType: 'kaizen', operation: 'upsert' },
+    ]);
+    expect(sorted.map((entry) => `${entry.entityType}:${entry.operation}`)).toEqual([
+      'kaizen:upsert',
+      'kaizen:discard',
+    ]);
+  });
+});

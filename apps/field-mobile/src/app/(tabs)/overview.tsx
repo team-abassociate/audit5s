@@ -32,7 +32,6 @@ import { formatDate, formatPct } from '../../lib/format';
 import { isRunning } from '../../lib/labels';
 import { AuditCard } from '../../components/audit-card';
 import { FieldOverview } from '../../components/field-overview';
-import { LanguageSwitcher } from '../../components/language-switcher';
 import { managesOnPhone, useSession } from '../../lib/session';
 import { bandOf, createThemedStyles } from '../../lib/theme';
 
@@ -181,11 +180,6 @@ function ManagementOverview() {
           </Slip>
         ) : null}
 
-        {/* Profile hangs off this header for these roles, so the language lives here too. */}
-        <View style={styles.language}>
-          <LanguageSwitcher />
-        </View>
-
         <View style={styles.kpis}>
           <Kpi label={organizationWide ? 'Units' : 'Unit'} value={count(units.data)} onPress={() => router.push('/units')} />
           <Kpi label="Consultants" value={count(consultants.data)} onPress={() => router.push('/people')} />
@@ -279,7 +273,6 @@ function Kpi({ label, value, onPress }: { label: string; value: string; onPress:
 const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.xl },
   tools: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, marginRight: theme.space.md },
-  language: { marginBottom: theme.space.md },
   kpis: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.md },
   kpi: { flex: 1 },
   section: { marginTop: theme.space.lg },

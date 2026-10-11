@@ -3624,7 +3624,7 @@ database, API, field app and portal as 5S. The 5S parts above are unchanged.*
 
 | Table | Holds | Rules |
 | --- | --- | --- |
-| `kaizen` | One Kaizen Sheet: Unit, Zone, author, the sheet's fields (machine, line/area, implemented on, team, theme, target, problem [5W1H], root cause [4M], analysis [7 QC tools], countermeasure, wastes[], parameters[], horizontal deployment, benefits, `annual_saving numeric(14,2)`, idea by, implemented by), `status`, `submitted_at` (first submission), `kaizen_no` | The id is device-minted (UUIDv7). `kaizen_no` is `KZ-{zone code}-{NNN}`, assigned by trigger on insert under a per-Unit advisory lock, unique per Unit. Unit, Zone, author and number never change. Not DRAFT ⇒ every required field filled. No DELETE |
+| `kaizen` | One Kaizen Sheet: Unit, Zone, author, the sheet's fields (machine, line/area, implemented on, team, theme, target, problem [5W1H], root cause [4M], analysis [7 QC tools], countermeasure, wastes[], parameters[], horizontal deployment, benefits, `annual_saving numeric(14,2)`, idea by, implemented by), `status`, `submitted_at` (first submission), `kaizen_no` | The id is device-minted (UUIDv7). `kaizen_no` is `KZ-{zone code}-{NNN}`, assigned by trigger on insert under a per-Unit advisory lock, unique per Unit. Unit, Zone, author and number never change. Not DRAFT ⇒ every required field filled. No DELETE. `discarded_at` (0045, R-49): the author's own DRAFT only; the row then never changes and leaves every list |
 | `kaizen_review` | A Coordinator's decision: reviewer, role and name snapshotted, decision, comment | Append-only. A reason is required for SENT_BACK and REJECTED |
 | `kaizen_photo` | The BEFORE and AFTER photographs: content-addressed object key, checksum, size, `is_live_capture`, `uploaded_at` | One live photo per kind (partial unique index). Editable only while its Kaizen is. No DELETE (a removed photo is soft-deleted) |
 
@@ -3646,6 +3646,11 @@ Guards: `kaizen_sheet_complete` on submit (`missingKaizenFields`); a reason on s
 reject. Every transition writes `kaizen_review` (decisions only) and `audit_log` in one
 transaction. Only DRAFT and SENT_BACK may be edited, by their author.
 
+Discarding a DRAFT (R-49) is not a transition: the status stays DRAFT and `discarded_at` is
+set, which takes it out of every list, read and count. A submit also needs a before and an
+after photo (`missingKaizenItems`); the phone enforces it from Release N, the server from
+Release N+1 (R-49).
+
 ## 17.3 Authorization (rows added to §6.3)
 
 | Permission | ZONE_LEADER | COORDINATOR | CONSULTANT | SUPER_ADMIN |
@@ -3666,6 +3671,7 @@ transaction. Only DRAFT and SENT_BACK may be edited, by their author.
 | `PATCH /kaizens/{id}` | create | DRAFT or SENT_BACK, author only |
 | `POST /kaizens/{id}/submit` | create | `{ submissionId }`: a replay is a duplicate, a resubmission a new id |
 | `POST /kaizens/{id}/review` | review | `{ decision, comment }`, online only |
+| `POST /kaizens/{id}/discard` | create | The author's own DRAFT (R-49); 204, and 204 again when already discarded. Idempotency-Key required |
 | `POST /kaizens/{id}/photos/upload-intent` · `…/{photoId}/commit` · `DELETE …/{photoId}` | create | The evidence pipeline's two-phase upload (§9.4) |
 | `POST /kaizens/{id}/export` · `GET /kaizens/{id}/export/{exportId}` | read | 202 + poll; READY carries a presigned GET of the one-page PDF |
 
@@ -3674,7 +3680,8 @@ Every mutating route takes an Idempotency-Key, as everywhere (§8.1).
 ## 17.5 Sync (§9)
 
 Kaizen rides the one sync path. `SYNC_ENTITY_TYPES` gains, after 5S's types:
-`kaizen` (`upsert`, the whole sheet), `kaizen_photo` (`upsert` = the upload intent, on the
+`kaizen` (`upsert`, the whole sheet; `discard`, R-49, sorted after the upsert, and an
+upsert arriving after it accepted as a no-op), `kaizen_photo` (`upsert` = the upload intent, on the
 media queue; then `commit`; `delete`), and `kaizen_submission` (`submit`, `entityId` = the
 submission id). The device's own tables (local schema v11) are `kaizen` (the sheet as one
 JSON column), `kaizen_photo` and `kaizen_submission`, a Submit not yet confirmed. After each

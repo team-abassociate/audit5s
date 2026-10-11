@@ -1,5 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import type { KaizenDashboard } from '@audit5s/contracts';
 import { awaitsResponse } from '@audit5s/domain';
@@ -29,6 +30,7 @@ import { Figure, Label, Magnet, Muted, Screen } from '../components/ui';
 export default function ModulePicker() {
   const styles = useStyles();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const database = useLocalDatabase();
   const { user, scope, can } = useSession();
   const { language } = useLanguage();
@@ -88,13 +90,15 @@ export default function ModulePicker() {
             ) : null,
         }}
       />
-      <View style={styles.body}>
+      <View style={[styles.body, { paddingBottom: insets.bottom }]}>
         <View>
           <Label>{[scope && ROLE_LABELS[scope.role], counts?.unitName].filter(Boolean).join(' · ')}</Label>
           <Text style={styles.name}>{user?.fullName}</Text>
         </View>
         <Tile name={t.fiveS} line={t.fiveSLine} count={fiveSCount} empty={t.nothingWaiting} label={t.open(t.fiveS)} onPress={() => pick('five-s')} testID="module-five-s" />
         <Tile name={t.kaizen} line={t.kaizenLine} count={kaizenCount} empty={t.nothingWaiting} label={t.open(t.kaizen)} onPress={() => pick('kaizen')} testID="module-kaizen" />
+        {/* Where the choice is made, say how to change it later (#18; the switch stays on Profile). */}
+        <Muted>{t.switchHint}</Muted>
       </View>
     </Screen>
   );
@@ -162,7 +166,7 @@ function initials(fullName: string): string {
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  body: { flex: 1, padding: theme.space.lg, paddingTop: theme.space.md, gap: theme.space.md },
+  body: { flex: 1, gap: theme.space.md },
   name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink },
   chip: {
     minWidth: 40,
@@ -180,8 +184,8 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.color.tile,
     borderWidth: 1.5,
     borderColor: theme.color.edge,
-    padding: theme.space.lg,
-    paddingBottom: theme.space.lg + 8,
+    padding: theme.space.md,
+    paddingBottom: theme.space.md + 8,
     ...iosHardShadow(theme.color.hard),
   },
   pressed: { transform: [{ translateX: 3 }, { translateY: 3 }], shadowOpacity: 0 },

@@ -9,11 +9,11 @@ import {
   type KaizenPhotoKind,
   type KaizenStatus,
 } from '@audit5s/contracts';
-import { missingKaizenFields } from '@audit5s/domain';
+import { missingKaizenItems } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import { enqueue, uuidv7 } from './audit.repository';
 import { UNSETTLED_STATES } from './outbox.repository';
-import { localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox, zones } from './schema';
+import { localKaizenDiscards, localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox, zones } from './schema';
 
 /**
  * A Zone Leader's Kaizens on the device (R-48, plans/kaizen-module.md step 4).
@@ -24,7 +24,8 @@ import { localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox, zones 
  *     the server replaces an unsynced payload whole);
  *   - a photo → `kaizen_photo:upsert` on the media queue, then `commit` once the PUT lands;
  *   - Submit → `kaizen_submission:submit`, with a fresh id per submission so a late replay
- *     cannot resubmit a Kaizen the Coordinator has since sent back.
+ *     cannot resubmit a Kaizen the Coordinator has since sent back;
+ *   - Delete draft → `kaizen:discard`, unless the server never heard of the draft (R-49).
  *
  * Every payload names its `kaizenId`, which is how `refreshLocalKaizens` knows not to
  * overwrite a Kaizen that still has anything unsent.
@@ -48,10 +49,12 @@ const EDITABLE: readonly KaizenStatus[] = ['DRAFT', 'SENT_BACK'];
 
 export async function listLocalKaizens(database: LocalDatabase, kaizenId?: string): Promise<LocalKaizen[]> {
   const one = (column: SQLiteColumn) => (kaizenId === undefined ? undefined : eq(column, kaizenId));
+  // A deleted draft is in no list, no count and no screen (R-49).
+  const discarded = database.select({ id: localKaizenDiscards.kaizenId }).from(localKaizenDiscards);
   const rows = await database
     .select()
     .from(localKaizens)
-    .where(one(localKaizens.id))
+    .where(and(notInArray(localKaizens.id, discarded), one(localKaizens.id)))
     .orderBy(desc(localKaizens.updatedAt));
   const pending = await database.select().from(localKaizenSubmissions).where(one(localKaizenSubmissions.kaizenId));
   const byKaizen = new Map(pending.map((submission) => [submission.kaizenId, submission.id]));
@@ -249,14 +252,19 @@ export async function removeLocalKaizenPhoto(
   await touch(database, photo.kaizenId, now);
 }
 
-/** Submit, refused here for what the server would refuse: a missing required field. */
+/**
+ * Submit, refused here for a missing required field or a missing before or after photo
+ * (owner, 2026-10-10, R-49). The server does not refuse a photo-less submit until the
+ * release after this one, so until then this is the only guard; the engine also holds the
+ * submit until both photos are up (`kaizensAwaitingPhotos`).
+ */
 export async function submitLocalKaizen(
   database: LocalDatabase,
   kaizenId: string,
   now: string = new Date().toISOString(),
 ): Promise<string> {
   const kaizen = await editableKaizen(database, kaizenId);
-  const missing = missingKaizenFields(kaizen.sheet);
+  const missing = missingKaizenItems(kaizen.sheet, { before: kaizen.before !== null, after: kaizen.after !== null });
   if (missing.length > 0) {
     throw new Error(`Fill in every required step first (${missing.length} left).`);
   }
@@ -267,7 +275,73 @@ export async function submitLocalKaizen(
   return id;
 }
 
+/**
+ * Deletes a draft (R-49): the row stays, and a `kaizen_discard` row takes it out of every list. Its
+ * unsent photo work is dropped (the server takes no photo change on a discarded draft).
+ *
+ * The server hears of it only if it may hold the draft. It certainly does not when the
+ * draft's first upsert is still queued untried: that row is the one `createLocalKaizen`
+ * wrote (same `createdAt`), so it and everything else just go. Otherwise `kaizen:discard`
+ * is queued, sorted after an upsert the server may still need to see first.
+ *
+ * ponytail: a first upsert the server applied but whose reply was lost, then edited again,
+ * looks untried (a coalesced re-save resets `attempts`). The server keeps that draft; the
+ * phone never shows it again (its `kaizen_discard` row survives every pull). Record "accepted once"
+ * on the row if an orphan draft on the server ever matters.
+ */
+export async function discardLocalKaizen(
+  database: LocalDatabase,
+  kaizenId: string,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  const kaizen = await editableKaizen(database, kaizenId);
+  if (kaizen.status !== 'DRAFT') throw new Error('Only a draft can be deleted.');
+
+  const [upsert] = await database
+    .select()
+    .from(outbox)
+    .where(and(eq(outbox.entityType, 'kaizen'), eq(outbox.entityId, kaizenId), eq(outbox.operation, 'upsert')))
+    .limit(1);
+  const first = upsert?.createdAt === kaizen.createdAt;
+  const neverSent = first && upsert?.state === 'PENDING' && upsert.attempts === 0;
+
+  await database.insert(localKaizenDiscards).values({ kaizenId, discardedAt: now }).onConflictDoNothing();
+  const photoIds = (
+    await database.select({ id: localKaizenPhotos.id }).from(localKaizenPhotos).where(eq(localKaizenPhotos.kaizenId, kaizenId))
+  ).map((row) => row.id);
+  if (photoIds.length > 0) {
+    await database.delete(outbox).where(and(eq(outbox.entityType, 'kaizen_photo'), inArray(outbox.entityId, photoIds)));
+  }
+  // A later edit is moot; the first upsert stays when the server may not have the draft yet.
+  if (upsert && (neverSent || !first)) await database.delete(outbox).where(eq(outbox.id, upsert.id));
+  if (!neverSent) await enqueue(database, 'kaizen', kaizenId, 'discard', {}, now);
+}
+
 // ------------------------------------------------------------------ the sync engine's
+
+/** Whether the leader deleted this draft: the engine then drops its photo work. */
+export async function isLocalKaizenDiscarded(database: LocalDatabase, kaizenId: string): Promise<boolean> {
+  const [row] = await database
+    .select()
+    .from(localKaizenDiscards)
+    .where(eq(localKaizenDiscards.kaizenId, kaizenId))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Kaizens with a live before or after photo not yet committed on the server. Their
+ * submission waits: sent ahead of its photos it would reach the server photo-less, which
+ * the next release refuses, and a refused submit is dead-lettered (plans/kaizen-ux-plan.md
+ * "Why required photos ship in two releases").
+ */
+export async function kaizensAwaitingPhotos(database: LocalDatabase): Promise<Set<string>> {
+  const rows = await database
+    .select({ kaizenId: localKaizenPhotos.kaizenId })
+    .from(localKaizenPhotos)
+    .where(and(isNull(localKaizenPhotos.deletedAt), isNull(localKaizenPhotos.uploadedAt)));
+  return new Set(rows.map((row) => row.kaizenId));
+}
 
 export async function getKaizenPhotoById(database: LocalDatabase, photoId: string) {
   const [photo] = await database.select().from(localKaizenPhotos).where(eq(localKaizenPhotos.id, photoId)).limit(1);
@@ -331,6 +405,8 @@ export async function settleLocalKaizenSubmission(database: LocalDatabase, submi
  */
 export async function refreshLocalKaizens(database: LocalDatabase, kaizens: readonly Kaizen[]): Promise<void> {
   const busy = await kaizensWithUnsentWork(database);
+  // A draft deleted here never comes back, even while the server still lists it.
+  for (const row of await database.select().from(localKaizenDiscards)) busy.add(row.kaizenId);
 
   for (const kaizen of kaizens) {
     if (busy.has(kaizen.id)) continue;

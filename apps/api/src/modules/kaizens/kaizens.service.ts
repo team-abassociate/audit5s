@@ -53,6 +53,11 @@ import {
 
 const EDITABLE = new Set(['DRAFT', 'SENT_BACK']);
 
+/** The author may change it: DRAFT or SENT_BACK, and not discarded (R-49). */
+function editable(row: KaizenRow): boolean {
+  return EDITABLE.has(row.status) && !row.discardedAt;
+}
+
 
 export interface KaizenExportJobData {
   kaizenId: string;
@@ -104,13 +109,21 @@ export class KaizensService {
   async get(scope: ScopeContext, kaizenId: string): Promise<KaizenDetail> {
     const read = scopeFor(scope, 'kaizen:read');
     const row = await this.repository.findById(read, kaizenId);
-    if (!row) throw AppError.notFound('No such Kaizen');
+    // A discarded draft is not there (R-49), whoever asks.
+    if (!row || row.discardedAt) throw AppError.notFound('No such Kaizen');
+    return this.detail(read, row);
+  }
+
+  private async detail(read: ScopeContext, row: KaizenRow): Promise<KaizenDetail> {
     const reviews = await this.repository.reviewsFor(read, [row.id]);
     const [kaizen] = await this.withChildren(read, [row], true, reviews);
     return { ...kaizen!, reviews: reviews.map(toReview) };
   }
 
-  /** For sync's parent check: is this Kaizen on the server, as the caller sees it. */
+  /**
+   * For sync's parent check: is this Kaizen on the server, as the caller sees it. A
+   * discarded draft is: its photo or submission still in flight is refused, not kept waiting.
+   */
   async exists(scope: ScopeContext, kaizenId: string): Promise<boolean> {
     return (await this.repository.findById(scopeFor(scope, 'kaizen:read'), kaizenId)) !== null;
   }
@@ -144,10 +157,13 @@ export class KaizensService {
 
     if (existing) {
       this.assertAuthor(scope, existing);
+      // An edit queued before the discard arrives after it: accepted, and changes nothing
+      // (R-49), so it never dead-letters on the phone.
+      if (existing.discardedAt) return this.detail(scopeFor(scope, 'kaizen:read'), existing);
       if (existing.zoneId !== zoneId) {
         throw AppError.conflict('CONFLICT', 'A Kaizen keeps the Zone it was filed under: its number carries the code');
       }
-      if (!EDITABLE.has(existing.status)) {
+      if (!editable(existing)) {
         if (sameSheet(existing, fields)) return this.get(scope, id);
         throw this.notEditable(existing);
       }
@@ -194,7 +210,7 @@ export class KaizensService {
   async patch(scope: ScopeContext, kaizenId: string, request: PatchKaizenRequest): Promise<KaizenDetail> {
     const write = scopeFor(scope, 'kaizen:create');
     const existing = await this.mustFindOwn(write, scope, kaizenId);
-    if (!EDITABLE.has(existing.status)) throw this.notEditable(existing);
+    if (!editable(existing)) throw this.notEditable(existing);
     await this.repository.inTransaction(write, (tx) =>
       this.repository.update(tx, kaizenId, kaizenColumnsOf(request)),
     );
@@ -214,6 +230,7 @@ export class KaizensService {
         throw AppError.notFound('No such Kaizen');
       }
       if (current.lastSubmissionId === request.submissionId) return;
+      if (current.discardedAt) throw this.notEditable(current);
 
       // Named field by field first, so the form can mark the steps; the edge check after it
       // is then about the status alone.
@@ -242,6 +259,39 @@ export class KaizensService {
       );
     });
     return this.get(scope, kaizenId);
+  }
+
+  /**
+   * `POST /kaizens/{id}/discard` and `kaizen:discard` (R-49): the author deletes their own
+   * DRAFT. Soft: `discarded_at` takes it out of every list; the row, its number and its
+   * photos stay. Discarding one already discarded is a no-op, because the phone retries.
+   */
+  async discard(scope: ScopeContext, kaizenId: string): Promise<void> {
+    const write = scopeFor(scope, 'kaizen:create');
+    await this.repository.inTransaction(write, async (tx) => {
+      const current = await this.repository.findById(write, kaizenId, tx);
+      if (!current || current.authorUserId !== scope.actor.userId) {
+        throw AppError.notFound('No such Kaizen');
+      }
+      if (current.discardedAt) return;
+      if (current.status !== 'DRAFT' || !(await this.repository.discard(tx, kaizenId))) {
+        throw AppError.conflict(
+          'INVALID_STATE_TRANSITION',
+          `Kaizen ${current.kaizenNo} is ${current.status}: only a draft can be deleted`,
+        );
+      }
+      await insertAuditLog(
+        tx,
+        auditLogRow({
+          action: 'kaizen.discarded',
+          resourceType: 'kaizen',
+          resourceId: kaizenId,
+          unitId: current.unitId,
+          before: { status: current.status },
+          after: { discarded: true },
+        }),
+      );
+    });
   }
 
   // ------------------------------------------------------------ the reviewer's
@@ -296,7 +346,7 @@ export class KaizensService {
         }
         return this.intentResponse(existing, true);
       }
-      if (!EDITABLE.has(kaizen.status)) throw this.notEditable(kaizen);
+      if (!editable(kaizen)) throw this.notEditable(kaizen);
 
       // One live photo per box: a new one replaces the old (soft delete, D8).
       const [live] = (await this.repository.photosFor(write, [kaizen.id], tx)).filter(
@@ -380,7 +430,7 @@ export class KaizensService {
     const photo = await this.repository.findPhoto(write, photoId);
     if (!photo || photo.kaizenId !== kaizen.id) throw AppError.notFound('No such photo');
     if (photo.deletedAt) return;
-    if (!EDITABLE.has(kaizen.status)) throw this.notEditable(kaizen);
+    if (!editable(kaizen)) throw this.notEditable(kaizen);
     await this.repository.inTransaction(write, (tx) => this.repository.removePhoto(tx, write, photoId));
   }
 
@@ -520,7 +570,7 @@ export class KaizensService {
     }
   }
 
-  private notEditable(row: KaizenRow, what = `is ${row.status}`): AppError {
+  private notEditable(row: KaizenRow, what = row.discardedAt ? 'was deleted' : `is ${row.status}`): AppError {
     return AppError.conflict('INVALID_STATE_TRANSITION', `Kaizen ${row.kaizenNo} ${what}: it cannot be changed now`);
   }
 }

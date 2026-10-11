@@ -473,6 +473,87 @@ describe('the Kaizen Sheet export (§4.6): a PDF, printed by worker-report', () 
   });
 });
 
+describe('discarding a draft (R-49, owner 2026-10-10)', () => {
+  function discard(actor: TestActor, kaizenId: string, key: string | null = randomUUID()) {
+    return world.request('POST', `${base}/${kaizenId}/discard`, {
+      token: as(actor),
+      ...(key ? { headers: { 'idempotency-key': key } } : {}),
+    });
+  }
+
+  async function logged(kaizenId: string): Promise<number> {
+    const { rows } = await world.owner.query(
+      `SELECT count(*)::int AS n FROM audit_log WHERE resource_id = $1 AND action = 'kaizen.discarded'`,
+      [kaizenId],
+    );
+    return rows[0].n as number;
+  }
+
+  it('the author deletes their draft: it leaves every list and read, once, and a retry is a no-op', async () => {
+    const leader = world.actors.ZONE_LEADER;
+    const kaizen = await draft(leader);
+    expect((await discard(leader, kaizen.id, null)).status).toBe(422);
+
+    expect((await discard(leader, kaizen.id)).status).toBe(204);
+    expect((await discard(leader, kaizen.id)).status).toBe(204);
+    expect(await logged(kaizen.id)).toBe(1);
+
+    for (const actor of [leader, world.actors.COORDINATOR, world.actors.SUPER_ADMIN]) {
+      expect((await world.request('GET', `${base}/${kaizen.id}`, { token: as(actor) })).status).toBe(404);
+      const list = await world.request('GET', `${base}?limit=100`, { token: as(actor) });
+      expect((list.body as Page<Kaizen>).data.map((k) => k.id)).not.toContain(kaizen.id);
+    }
+    // The row stays: nothing is hard-deleted.
+    const { rows } = await world.owner.query('SELECT discarded_at FROM kaizen WHERE id = $1', [kaizen.id]);
+    expect(rows[0].discarded_at).not.toBeNull();
+
+    expect((await world.request('PATCH', `${base}/${kaizen.id}`, { token: as(leader), body: { machine: 'X' } })).status).toBe(409);
+    expect((await submit(leader, kaizen.id)).status).toBe(409);
+    expect((await photoIntent(leader, kaizen.id)).status).toBe(409);
+  });
+
+  it('only the author, and only a DRAFT', async () => {
+    const kaizen = await draft(world.actors.ZONE_LEADER);
+    expect((await discard(otherLeader, kaizen.id)).status).toBe(404);
+    expect((await discard(world.actors.COORDINATOR, kaizen.id)).status).toBe(403);
+
+    const sent = await submitted(world.actors.ZONE_LEADER);
+    expect((await discard(world.actors.ZONE_LEADER, sent.id)).status).toBe(409);
+    expect(await logged(sent.id)).toBe(0);
+  });
+
+  it('over sync: created and discarded in one batch, and an edit arriving later changes nothing', async () => {
+    const deviceId = randomUUID();
+    const token = await loginFromDevice(world, world.actors.ZONE_LEADER, deviceId);
+    const kaizenId = uuidv7();
+    const upsert = (machine: string) => ({
+      outboxId: randomUUID(),
+      entityType: 'kaizen',
+      entityId: kaizenId,
+      operation: 'upsert',
+      payload: { zoneId: world.zoneA, machine },
+    });
+    const push = async (items: unknown[]) => {
+      const response = await world.request('POST', '/api/v1/sync/batch', {
+        token,
+        headers: { 'x-device-id': deviceId },
+        body: { batchId: randomUUID(), deviceId, items },
+      });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      return (response.body as SyncBatchResponse).results.map((r) => r.status);
+    };
+
+    // Out of order on purpose: the server sorts the discard after the upsert.
+    const discardItem = { outboxId: randomUUID(), entityType: 'kaizen', entityId: kaizenId, operation: 'discard', payload: {} };
+    expect(await push([discardItem, upsert('Press 4')])).toEqual(['ACCEPTED', 'ACCEPTED']);
+    expect(await push([upsert('Press 9')])).toEqual(['ACCEPTED']);
+
+    const { rows } = await world.owner.query('SELECT machine, discarded_at FROM kaizen WHERE id = $1', [kaizenId]);
+    expect(rows[0]).toMatchObject({ machine: 'Press 4' });
+    expect(rows[0].discarded_at).not.toBeNull();
+  });
+});
+
 describe('sync: the outbox reaches the same service', () => {
   it('a Kaizen drafted, photographed and submitted offline lands in one batch, and a replay creates nothing', async () => {
     const deviceId = randomUUID();

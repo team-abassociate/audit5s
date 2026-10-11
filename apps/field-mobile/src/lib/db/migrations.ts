@@ -393,6 +393,17 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
        )`,
     ],
   },
+  {
+    // A leader deletes their own draft (R-49, plans/kaizen-ux-plan.md 2.3). Soft, like the
+    // server: the `kaizen` row stays, and a row here takes it out of every list. A table of
+    // its own rather than a column, so replaying this step is a no-op like every step since v7.
+    version: 12,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS kaizen_discard (
+         kaizen_id TEXT PRIMARY KEY, discarded_at TEXT NOT NULL
+       )`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

@@ -17,6 +17,7 @@ import {
   Screen,
   StatGrid,
 } from '../../components/ui';
+import { LanguageSwitcher } from '../../components/language-switcher';
 import { ModuleSwitch } from '../../components/module-switch';
 import { api } from '../../lib/api';
 import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
@@ -171,6 +172,12 @@ export default function ProfileScreen() {
             value={theme.preference}
             onChange={theme.choose}
           />
+        </Card>
+
+        {/* One language for the whole app (owner, 2026-10-10), beside the theme. */}
+        <Card>
+          <CardHeader title="Language · भाषा" description="Kaizen, and the 5S checklist questions." />
+          <LanguageSwitcher />
         </Card>
 
         <Card>
