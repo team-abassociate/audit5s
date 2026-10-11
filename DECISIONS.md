@@ -2237,7 +2237,7 @@ EAS slug — because a rename breaks installed APKs and their signing.
 - **Not done here:** no new roles, no new extensions, no chart or SVG library on the phone (its
   charts are plain Views), and no change to the 5S module's behaviour.
 
-## R-49 — A Kaizen needs both photos to be submitted; a leader can delete their own draft
+## R-49 — A leader can delete their own draft ((a) and (b), required photos, withdrawn by R-50)
 
 **Settled 2026-10-10 by the product owner** (plans/kaizen-ux-plan.md, owner decisions #20 and
 #21). **Refines R-48(a) and (f).**
@@ -2266,3 +2266,18 @@ EAS slug — because a rename breaks installed APKs and their signing.
   that arrives after the discard is accepted and changes nothing, so an old queued edit never
   dead-letters. The audit log records `kaizen.discarded`. A SUBMITTED, SENT_BACK, APPROVED or
   REJECTED Kaizen cannot be deleted: the Coordinator has seen it.
+
+## R-50 — Kaizen photos are optional, everywhere
+
+**Settled 2026-10-11 by the product owner**, withdrawing R-49(a) and (b): "remove all the
+compulsions of photos in kaizen … it's not required/mandatory. nowhere, neither on server
+side nor on mobile app."
+
+- A Kaizen is submitted, and resubmitted after a send-back, with or without a before or after
+  photo. What stops a submit is `missingKaizenFields` alone, on the phone and the server.
+  `missingKaizenItems` and `KaizenMissingItem` are deleted.
+- The server never had the photo check (R-49's Release N+1, `kaizen_photos_complete` and its
+  trigger, is not built). The phone's check, shipped in PR #103, is removed.
+- The form's photo steps say "Optional" and count as done once a photo is there. A photo the
+  leader did add still goes up before the submit it belongs to, so the Coordinator reviews
+  the sheet with it; a Kaizen with no photo is never held.

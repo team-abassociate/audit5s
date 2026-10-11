@@ -196,7 +196,7 @@ So:
 - DB trigger tests beside `kaizen-schema.test.ts`; API tests beside the module.
 - The admin portal never shows a discarded draft (it lists no DRAFTs today; confirm).
 
-### X.3 The server enforces the photos (Release N+1, separate PR, merged only after Release N is out)
+### X.3 The server enforces the photos — WITHDRAWN (owner, 2026-10-11, R-50: photos are optional everywhere; not built)
 - `kaizens.service.ts` submit: replace the `missingKaizenFields` check with
   `missingKaizenItems(sheet, { before, after })`, where a photo counts only if its row
   exists, is not deleted, and its upload is committed. Field errors `beforePhoto` / `afterPhoto`
@@ -415,7 +415,7 @@ comments explain the save serialisation (`saving` ref, `idRef`), and nothing her
   Delete draft removes it from Overview, History and the picker count, survives a pull-to-refresh,
   and the server stops listing it.
 
-### 2.6 Before and after photos are required (owner decision #20; needs X.1 merged first)
+### 2.6 Before and after photos are required — WITHDRAWN (owner, 2026-10-11, R-50: removed from the phone)
 - `kaizen-form.tsx`:
   - `stepState('before' | 'after')`: `done` when the photo exists, otherwise **`required`**.
   - Submit's check: `missingKaizenItems(sheet, { before: !!current?.before, after: !!current?.after })`
@@ -643,4 +643,4 @@ change, not after the animation ends.
 - [ ] No photo-less submission can reach the server from a new phone (engine test), and the
       server does not enforce photos until Release N+1 (PR A2 held).
 - [ ] `DECISIONS.md` records owner decisions #20 and #21.
-- [ ] Nothing committed to or merged into `main`.
+- [x] ~~Nothing committed to or merged into `main`.~~ Superseded 2026-10-10: Kaizen PRs go straight into `main`.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { KaizenFields } from '@audit5s/contracts';
-import { missingKaizenItems } from '@audit5s/domain';
+import { missingKaizenFields } from '@audit5s/domain';
 import { formProgress, stepOf } from './kaizen-steps';
 
 const COMPLETE: KaizenFields = {
@@ -19,20 +19,22 @@ const COMPLETE: KaizenFields = {
 };
 
 describe('formProgress', () => {
-  it('an empty form: nothing done, every required step open (the two photos included)', () => {
-    expect(formProgress({}, { before: false, after: false })).toMatchObject({ done: 0, total: 12, requiredLeft: 10 });
+  it('an empty form: nothing done, every required step open, the photo steps optional', () => {
+    const empty = formProgress({}, { before: false, after: false });
+    expect(empty).toMatchObject({ done: 0, total: 12, requiredLeft: 8 });
+    expect(empty.states[5]).toBe('optional');
+    expect(empty.states[6]).toBe('optional');
   });
 
-  it('says ready exactly when missingKaizenItems has nothing left', () => {
-    const noPhotos = formProgress(COMPLETE, { before: true, after: false });
-    expect(noPhotos.requiredLeft).toBe(1);
-    expect(missingKaizenItems(COMPLETE, { before: true, after: false })).toEqual(['afterPhoto']);
+  it('says ready exactly when missingKaizenFields has nothing left, with or without photos', () => {
+    const noPhotos = formProgress(COMPLETE, { before: false, after: false });
+    expect(noPhotos.requiredLeft).toBe(0);
+    expect(missingKaizenFields(COMPLETE)).toEqual([]);
+    // Wastes, parameters and both photos are optional and empty: 8 of 12.
+    expect(noPhotos.done).toBe(8);
 
-    const ready = formProgress(COMPLETE, { before: true, after: true });
-    expect(ready.requiredLeft).toBe(0);
-    expect(missingKaizenItems(COMPLETE, { before: true, after: true })).toEqual([]);
-    // Wastes and parameters are optional and empty: 10 of 12.
-    expect(ready.done).toBe(10);
+    // A photo counts its step done.
+    expect(formProgress(COMPLETE, { before: true, after: true }).done).toBe(10);
   });
 
   it('an optional step counts once something in it is filled', () => {
@@ -48,7 +50,6 @@ describe('formProgress', () => {
 describe('stepOf', () => {
   it('maps each missing item to the step that holds it', () => {
     expect(stepOf('problem5w1h')).toBe('problem');
-    expect(stepOf('beforePhoto')).toBe('before');
     expect(stepOf('horizontalDeployment')).toBe('horizontal');
     expect(stepOf('implementedBy')).toBe('people');
   });
