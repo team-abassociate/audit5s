@@ -37,7 +37,7 @@ env:
     optional: true
 - waitForAnimationToEnd
 
-# 01 Kaizen details (the date is today's already)
+# 01 Kaizen details (the date is today's already; the calendar confirms it)
 - tapOn:
     id: kaizen-machine
 - inputText: 250T Press P-04
@@ -45,6 +45,11 @@ env:
     id: kaizen-lineArea
 - inputText: Line 3
 - hideKeyboard
+# The date is Android's own calendar (#10), never typed: open it, keep today, OK.
+- tapOn:
+    id: kaizen-implementedOn
+- tapOn: "OK"
+- waitForAnimationToEnd
 - tapOn: "Next"
 - waitForAnimationToEnd
 # 02 Team members

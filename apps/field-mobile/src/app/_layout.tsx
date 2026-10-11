@@ -10,6 +10,7 @@ import { Archivo_800ExtraBold } from '@expo-google-fonts/archivo/800ExtraBold';
 import { Archivo_900Black } from '@expo-google-fonts/archivo/900Black';
 import { DMMono_400Regular } from '@expo-google-fonts/dm-mono/400Regular';
 import { DMMono_500Medium } from '@expo-google-fonts/dm-mono/500Medium';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack, useGlobalSearchParams, useRouter, useSegments, type Href } from 'expo-router';
 import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
@@ -25,7 +26,7 @@ import { useTheme } from '../lib/theme';
 import { RouteErrorBoundary } from '../components/route-error-boundary';
 import { leaveScreen } from '../lib/leave-screen';
 import { permissionPromptOpen } from '../lib/permission-prompt';
-import { requestPermissionsAtLaunch } from '../components/camera-capture';
+import { requestPermissionsAtLaunch, useCameraOpen } from '../components/camera-capture';
 import { loadModule } from '../lib/secure-storage';
 
 // Maestro runs (Metro started with EXPO_PUBLIC_E2E=1): the debug build's warning toast
@@ -57,6 +58,7 @@ function AuthGate() {
   const insets = useSafeAreaInsets();
   const { status, user, can } = useSession();
   const segments = useSegments() as string[];
+  const cameraOpen = useCameraOpen((state) => state.open);
   const { auditId, auditZoneId } = useGlobalSearchParams<{ auditId?: string; auditZoneId?: string }>();
   const router = useRouter();
   const database = useLocalDatabase();
@@ -190,10 +192,11 @@ function AuthGate() {
   // The sync bar (initials, status, Sync now) is on the main page of each 5S and Kaizen tab
   // only, as the owner ruled on 2026-10-09. Every screen pushed on top of a tab, the module
   // picker included, uses the space for its own work; sync keeps running underneath, and its
-  // status is one Back away. Nobody signed in, nothing to report.
+  // status is one Back away. Nobody signed in, nothing to report. A camera is the whole
+  // screen, even when it opens on a tab (a Kaizen photo, from New), so the bar steps aside.
   const signedIn = status === 'ready';
   const onTab = segments[0] === '(tabs)' || (segments[0] === 'kaizen' && segments[1] === '(tabs)');
-  const showBar = signedIn && onTab;
+  const showBar = signedIn && onTab && !cameraOpen;
 
   return (
     <>
@@ -241,25 +244,28 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
-      {/* Outermost of the app's own providers: every screen below reads the palette. */}
-      <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          {/* Session first: each person on a shared phone has their own database (0025). */}
-          <SessionProvider>
-            {/* Per person, like the database: a shared phone speaks each auditor's language. */}
-            <LanguageProvider>
-              <LocalDatabaseProvider>
-                <SyncProvider>
-                  <ThemedStatusBar />
-                  <AuthGate />
-                </SyncProvider>
-              </LocalDatabaseProvider>
-            </LanguageProvider>
-          </SessionProvider>
-        </QueryClientProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    // The photo viewer's pinch and swipe (plan M6): gestures do nothing without this root.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        {/* Outermost of the app's own providers: every screen below reads the palette. */}
+        <ThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            {/* Session first: each person on a shared phone has their own database (0025). */}
+            <SessionProvider>
+              {/* Per person, like the database: a shared phone speaks each auditor's language. */}
+              <LanguageProvider>
+                <LocalDatabaseProvider>
+                  <SyncProvider>
+                    <ThemedStatusBar />
+                    <AuthGate />
+                  </SyncProvider>
+                </LocalDatabaseProvider>
+              </LanguageProvider>
+            </SessionProvider>
+          </QueryClientProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -20,6 +20,8 @@ const shared = {
   family: gembaFonts,
   /** `--motion` in gemba-tokens.css: the one duration, always ease-out (GEMBA §8 ports it). */
   motion: 143,
+  /** `--press`: how far a pressed magnet sinks onto its shadow; 0 under reduced motion. */
+  press: 3,
 } as const;
 
 export const themes = {
