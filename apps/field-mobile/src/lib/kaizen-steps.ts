@@ -21,7 +21,7 @@ export const STEP_ITEMS: Record<KaizenStep, readonly (keyof KaizenFields | 'befo
   wastes: ['wastes'],
   parameters: ['parameters'],
   horizontal: ['horizontalDeployment'],
-  benefits: ['benefits', 'annualSaving'],
+  benefits: ['benefits', 'annualSaving', 'implementationCost'],
   people: ['rootCause4m', 'analysis7qc', 'ideaBy', 'implementedBy'],
 };
 

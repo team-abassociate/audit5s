@@ -14,12 +14,12 @@ import { sanitizeFileName } from '../reports/report-file-name';
 import { REPORT_LOGO } from '../reports/templates/logo';
 
 /**
- * The Kaizen Sheet as a PDF, in the "A3 Reimagined" theme (owner, 2026-10-07: a
- * redesigned sheet, no Excel). Rendered by `worker-report`'s Chromium like the 5S reports,
- * and like them with no network: the theme's fonts are embedded, photos arrive as data URIs.
+ * The Kaizen Sheet as a PDF, in the `report-theme/kaizen-a3-template.html` design (owner,
+ * 2026-10-11; no Excel, 2026-10-07). Rendered by `worker-report`'s Chromium like the 5S
+ * reports, and like them with no network: the fonts are embedded, photos arrive as data URIs.
  *
- * Colour follows PDCA: blue Plan (problem, analysis), amber Do (root cause, countermeasure),
- * green Check (results, wastes, PQCDSM), purple Act (horizontal deployment).
+ * The template's slots the Kaizen form does not collect (before/after notes, the deployment
+ * plan, checked-by) print empty, to be filled by hand, as the template intends.
  */
 
 /** `apps/api/assets`, from `src/modules/kaizens` under vitest and `dist/modules/kaizens` built. */
@@ -36,14 +36,6 @@ function sheetStyles(): string {
     `@font-face { font-family: 'IBM Plex Mono'; font-weight: 400; src: ${font('ibm-plex-mono-400-latin.woff2')}; }`,
     `@font-face { font-family: 'IBM Plex Mono'; font-weight: 600; src: ${font('ibm-plex-mono-600-latin.woff2')}; }`,
     readFileSync(resolve(ASSETS, 'kaizen-sheet.css'), 'utf8'),
-    // Long answers run onto a second page rather than being cut off at the A4 edge.
-    `body { margin: 0; } .kz-page { height: auto; min-height: var(--kz-page-h); }
-     .kz-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-     .kz-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: var(--kz-gap); }
-     .kz-logo { height: 34px; align-self: center; }
-     .kz-head-main { flex: 1; }
-     .kz-empty { color: var(--kz-faint); }
-     .kz-box, .kz-callout, .kz-photo { break-inside: avoid; }`,
   ].join('\n');
   return styles;
 }
@@ -103,7 +95,7 @@ export function renderKaizenSheetHtml(kaizen: KaizenDetail, photos: KaizenSheetP
     '<head>',
     '<meta charset="utf-8">',
     // React escapes the title's text; the stylesheet is ours.
-    renderToStaticMarkup(<title>{`Kaizen Sheet — ${kaizen.kaizenNo}`}</title>),
+    renderToStaticMarkup(<title>{`Kaizen ${kaizen.kaizenNo}${kaizen.theme ? ` · ${kaizen.theme}` : ''}`}</title>),
     `<style>${sheetStyles()}</style>`,
     '</head>',
     `<body>${body}</body>`,
@@ -116,10 +108,10 @@ function KaizenSheet({ kaizen, photos }: { kaizen: KaizenDetail; photos: KaizenS
   return (
     <div className="kz-page">
       <header className="kz-header">
-        <img className="kz-logo" src={REPORT_LOGO} alt="AB Associates" />
-        <div className="kz-head-main">
+        <div className="kz-logo"><img src={REPORT_LOGO} alt="AB Associates" /></div>
+        <div className="kz-titleblock">
           <div className="kz-kicker">
-            KAIZEN · {kaizen.unitName.toUpperCase()} · {zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName).toUpperCase()}
+            CONTINUOUS IMPROVEMENT · {kaizen.unitName.toUpperCase()} · {zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName).toUpperCase()}
           </div>
           <h1 className="kz-title">KAIZEN SHEET</h1>
         </div>
@@ -132,9 +124,14 @@ function KaizenSheet({ kaizen, photos }: { kaizen: KaizenDetail; photos: KaizenS
       </header>
 
       <div className="kz-team">
-        <span className="kz-label">Team</span> <Text value={kaizen.teamMembers} />
-        <span className="kz-label">Idea by</span> <Text value={kaizen.ideaBy} />
-        <span className="kz-label">Implemented by</span> <Text value={kaizen.implementedBy} />
+        <span className="kz-label">Team members</span>
+        <span>
+          {[
+            kaizen.teamMembers,
+            kaizen.ideaBy && `idea by ${kaizen.ideaBy}`,
+            kaizen.implementedBy && `implemented by ${kaizen.implementedBy}`,
+          ].filter(Boolean).join(' · ')}
+        </span>
       </div>
 
       <div className="kz-row">
@@ -148,61 +145,135 @@ function KaizenSheet({ kaizen, photos }: { kaizen: KaizenDetail; photos: KaizenS
         </div>
       </div>
 
-      <div className="kz-row">
-        <Box zone="blue" title="Problem" tag="5W1H · PLAN" value={kaizen.problem5w1h} />
-        <Box zone="blue" title="Analysis" tag="7 QC TOOLS" value={kaizen.analysis7qc} />
-      </div>
-      <div className="kz-row">
-        <Box zone="amber" title="Root cause" tag="4M · DO" value={kaizen.rootCause4m} />
-        <Box zone="amber" title="Countermeasure" tag="DO" value={kaizen.countermeasure} />
-      </div>
-
-      <div className="kz-row">
-        <Photo side="before" title="Before countermeasure" src={photos.before} />
-        <Photo side="after" title="After countermeasure" src={photos.after} />
-      </div>
-
-      <section className="kz-box green">
-        <div className="kz-h">Results <span className="kz-tag">CHECK</span></div>
-        <div className="kz-metrics">
-          <Metric value={formatRupees(kaizen.annualSaving)} name="Estimated annual saving" />
-          <Metric value={`${kaizen.wastes.length}/${KAIZEN_WASTES.length}`} name="Wastes attacked" />
-          <Metric value={`${kaizen.parameters.length}/${KAIZEN_PARAMETERS.length}`} name="PQCDSM improved" />
-          <Metric value={STATUS_LABELS[kaizen.status]} name="Status" />
+      <main className="kz-main">
+        <div className="kz-col">
+          <section className="kz-box blue">
+            <div className="kz-h">Problem <span className="kz-tag">5W1H</span></div>
+            <div className="kz-ana-text"><Text value={kaizen.problem5w1h} /></div>
+          </section>
+          <section className="kz-box blue kz-fill">
+            <div className="kz-h">Analysis <span className="kz-tag">7 QC TOOLS</span></div>
+            <Text value={kaizen.analysis7qc} />
+          </section>
+          <section className="kz-box amber">
+            <div className="kz-h">Root Cause <span className="kz-tag">4M</span></div>
+            <Text value={kaizen.rootCause4m} />
+          </section>
         </div>
-        <div className="kz-label">Benefits / results after implementation</div>
-        <Text value={kaizen.benefits} />
-        <div className="kz-row">
-          <Checklist title="Waste attacked" items={KAIZEN_WASTES.map((w) => [WASTE_LABELS[w], kaizen.wastes.includes(w)])} />
-          <Checklist
-            title="PQCDSM"
-            items={KAIZEN_PARAMETERS.map((p) => [PARAMETER_LABELS[p], kaizen.parameters.includes(p)])}
-          />
-        </div>
-      </section>
 
-      <section className="kz-box purple">
-        <div className="kz-h">Horizontal deployment <span className="kz-tag">ACT</span></div>
-        <div className="kz-team" style={{ background: 'transparent', padding: 0 }}>
-          <span className={kaizen.horizontalDeployment === true ? 'kz-pill on' : 'kz-pill'}>Yes</span>
-          <span className={kaizen.horizontalDeployment === false ? 'kz-pill on' : 'kz-pill'}>No</span>
+        <div className="kz-col">
+          <section className="kz-box amber">
+            <div className="kz-h">Counter Measure</div>
+            <div className="kz-cm">
+              {numberedLines(kaizen.countermeasure).map((text, index) => (
+                <span key={index} className="kz-text"><b>{index + 1}</b> {text}</span>
+              ))}
+            </div>
+          </section>
+
+          <div className="kz-ba">
+            <Photo side="before" title="Before Counter Measure" src={photos.before} />
+            <Photo side="after" title="After Counter Measure" src={photos.after} />
+            <div className="kz-side">
+              <div className="kz-list">
+                <div className="kz-label">Waste attacked</div>
+                {KAIZEN_WASTES.map((waste) => (
+                  <span key={waste} className={kaizen.wastes.includes(waste) ? 'kz-check on' : 'kz-check'}>
+                    {WASTE_LABELS[waste]}
+                  </span>
+                ))}
+              </div>
+              <div className="kz-list">
+                <div className="kz-label">Impact · PQCDSM</div>
+                {KAIZEN_PARAMETERS.map((parameter) => {
+                  const on = kaizen.parameters.includes(parameter);
+                  return (
+                    <span key={parameter} className={on ? 'kz-imp' : 'kz-imp off'}>
+                      <span>{PARAMETER_LABELS[parameter]}</span>
+                      {/* Cost improves by going down. */}
+                      <b>{on ? (parameter === 'COST' ? '▼' : '▲') : '–'}</b>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <section className="kz-box purple kz-hz">
+            <div className="kz-hz-text">
+              <div className="kz-h">Scope &amp; plan for horizontal deployment</div>
+              <div />
+            </div>
+            <div className="kz-pills">
+              <span className={kaizen.horizontalDeployment === true ? 'kz-pill on' : 'kz-pill'}>YES</span>
+              <span className={kaizen.horizontalDeployment === false ? 'kz-pill on' : 'kz-pill'}>NO</span>
+            </div>
+          </section>
+
+          <section className="kz-box green">
+            <div className="kz-h">Benefits / Results After Implementation</div>
+            <div className="kz-metrics">
+              <Metric
+                label="Annual saving"
+                value={compactRupees(kaizen.annualSaving)}
+                note={kaizen.annualSaving === null ? 'estimated' : `${formatRupees(kaizen.annualSaving)} a year`}
+              />
+              <Metric label="Wastes" value={`${kaizen.wastes.length}/${KAIZEN_WASTES.length}`} note="wastes attacked" />
+              <Metric
+                label="PQCDSM"
+                value={`${kaizen.parameters.length}/${KAIZEN_PARAMETERS.length}`}
+                note="parameters improved"
+              />
+              <Metric
+                label="Cost to implement"
+                value={compactRupees(kaizen.implementationCost)}
+                note={costNote(kaizen.implementationCost)}
+              />
+            </div>
+            <div className="kz-summary"><Text value={kaizen.benefits} /></div>
+          </section>
         </div>
-      </section>
+      </main>
 
       <footer className="kz-footer">
-        <span>{kaizen.kaizenNo} · by {kaizen.authorName}</span>
+        <div className="kz-signs">
+          <span className="kz-sign">PREPARED<i>{kaizen.authorName}</i></span>
+          <span className="kz-sign">CHECKED<i /></span>
+          <span className="kz-sign">APPROVED<i>{approval?.reviewerName ?? ''}</i></span>
+        </div>
         <span>
-          {approval
-            ? `Approved by ${approval.reviewerName}, ${formatDate(approval.createdAt)}`
-            : STATUS_LABELS[kaizen.status]}
+          {kaizen.kaizenNo} · {STATUS_LABELS[kaizen.status]}
+          {approval ? ` ${formatDate(approval.createdAt)}` : ''}
         </span>
       </footer>
     </div>
   );
 }
 
+/** The countermeasure as numbered steps: one per line, any numbering the writer typed dropped. */
+export function numberedLines(value: string | null): string[] {
+  return (value ?? '')
+    .split('\n')
+    .map((line) => line.replace(/^\s*(\d+[.)]|[-•*])\s*/, '').trim())
+    .filter(Boolean);
+}
+
+/** Zero is an answer (it cost nothing), kept apart from not stated. */
+export function costNote(value: number | null): string {
+  if (value === null) return 'not stated';
+  return value === 0 ? 'no cost' : formatRupees(value);
+}
+
+/** The metric card fits about seven characters at its size: ₹4.2L, not ₹4,20,000. */
+export function compactRupees(value: number | null): string {
+  if (value === null) return '—';
+  const abs = Math.abs(value);
+  const [unit, size] = abs >= 1e7 ? ['Cr', 1e7] : abs >= 1e5 ? ['L', 1e5] : abs >= 1e3 ? ['K', 1e3] : ['', 1];
+  return `${value < 0 ? '-' : ''}₹${Math.round((abs / size) * 10) / 10}${unit}`;
+}
+
 function Text({ value }: { value: string | null }) {
-  return value ? <span className="kz-text">{value}</span> : <span className="kz-empty">—</span>;
+  return value ? <span className="kz-text">{value}</span> : null;
 }
 
 function Meta({ label, value }: { label: string; value: string | null }) {
@@ -214,44 +285,22 @@ function Meta({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-function Box({ zone, title, tag, value }: { zone: string; title: string; tag: string; value: string | null }) {
-  return (
-    <section className={`kz-box ${zone}`}>
-      <div className="kz-h">
-        {title} <span className="kz-tag">{tag}</span>
-      </div>
-      <Text value={value} />
-    </section>
-  );
-}
-
 function Photo({ side, title, src }: { side: 'before' | 'after'; title: string; src: string | null }) {
   return (
-    <section className={`kz-${side}`}>
-      <div className="kz-h">{title}</div>
-      <div className="kz-photo">{src ? <img src={src} alt={title} /> : <span className="kz-empty">No photo</span>}</div>
-    </section>
-  );
-}
-
-function Metric({ value, name }: { value: string; name: string }) {
-  return (
-    <div className="kz-metric">
-      <div className="kz-metric-v">{value}</div>
-      <div className="kz-metric-n">{name}</div>
+    <div className={`kz-ba-col kz-${side}`}>
+      <div className="kz-ba-h">{title}</div>
+      <div className="kz-photo">{src ? <img src={src} alt="" /> : '[photo / sketch]'}</div>
+      <div className="kz-desc"><span /></div>
     </div>
   );
 }
 
-function Checklist({ title, items }: { title: string; items: [string, boolean][] }) {
+function Metric({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <div className="kz-checklist">
-      <div className="kz-label">{title}</div>
-      {items.map(([label, on]) => (
-        <div key={label} className={on ? 'kz-check on' : 'kz-check'}>
-          {label}
-        </div>
-      ))}
+    <div className="kz-metric">
+      <div className="kz-label">{label}</div>
+      <div className="kz-metric-v">{value}</div>
+      <div className="kz-metric-n">{note}</div>
     </div>
   );
 }

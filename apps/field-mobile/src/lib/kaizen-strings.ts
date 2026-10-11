@@ -27,6 +27,7 @@ export type KaizenTextField =
   | 'countermeasure'
   | 'benefits'
   | 'annualSaving'
+  | 'implementationCost'
   | 'rootCause4m'
   | 'analysis7qc'
   | 'ideaBy'
@@ -293,6 +294,7 @@ const EN: KaizenStrings = {
     countermeasure: 'Countermeasure',
     benefits: 'Benefits, results and saving calculation',
     annualSaving: 'Annual cost saving, ₹ (optional)',
+    implementationCost: 'Cost to implement, ₹ (optional)',
     rootCause4m: 'Root cause [4M]',
     analysis7qc: 'Analysis [7 QC tools] (optional)',
     ideaBy: 'Idea given by',
@@ -305,6 +307,7 @@ const EN: KaizenStrings = {
     rootCause4m: 'Man, machine, method or material: which one caused it, and why?',
     analysis7qc: 'Optional. e.g. Pareto chart, fishbone, check sheet',
     benefits: 'What changed, in numbers if you have them. e.g. Changeover 40 → 12 min',
+    implementationCost: 'What it cost to put in. Enter 0 if it cost nothing.',
   },
   beforeHint: 'Optional. Take one now or pick one from the gallery: an earlier photo is fine if the problem was already fixed.',
   afterHint: 'Optional. The same view as the before photo, after the fix. Take one now or pick one from the gallery.',
@@ -490,6 +493,7 @@ const HI: KaizenStrings = {
     countermeasure: 'उपाय',
     benefits: 'लाभ, परिणाम और बचत की गणना',
     annualSaving: 'वार्षिक बचत, ₹ (वैकल्पिक)',
+    implementationCost: 'लागू करने की लागत, ₹ (वैकल्पिक)',
     rootCause4m: 'मूल कारण [4M]',
     analysis7qc: 'विश्लेषण [7 QC tools] (वैकल्पिक)',
     ideaBy: 'विचार किसका था',
@@ -502,6 +506,7 @@ const HI: KaizenStrings = {
     rootCause4m: 'मैन, मशीन, मेथड या मटीरियल: किससे हुआ, और क्यों?',
     analysis7qc: 'वैकल्पिक। जैसे पैरेटो चार्ट, फ़िशबोन, चेक शीट',
     benefits: 'क्या बदला, हो सके तो अंकों में। जैसे चेंजओवर 40 → 12 मिनट',
+    implementationCost: 'इसे लागू करने में कितना खर्च हुआ। कोई खर्च नहीं हुआ तो 0 लिखें।',
   },
   beforeHint: 'वैकल्पिक। अभी फ़ोटो लें या गैलरी से चुनें: समस्या पहले ही ठीक हो गई हो तो पुरानी फ़ोटो भी चलेगी।',
   afterHint: 'वैकल्पिक। सुधार के बाद वही दृश्य। अभी फ़ोटो लें या गैलरी से चुनें।',
@@ -687,6 +692,7 @@ const MR: KaizenStrings = {
     countermeasure: 'उपाय',
     benefits: 'फायदे, परिणाम आणि बचतीची गणना',
     annualSaving: 'वार्षिक बचत, ₹ (ऐच्छिक)',
+    implementationCost: 'अंमलबजावणीचा खर्च, ₹ (ऐच्छिक)',
     rootCause4m: 'मूळ कारण [4M]',
     analysis7qc: 'विश्लेषण [7 QC tools] (ऐच्छिक)',
     ideaBy: 'कल्पना कोणाची',
@@ -699,6 +705,7 @@ const MR: KaizenStrings = {
     rootCause4m: 'मनुष्य, मशीन, पद्धत की साहित्य: कशामुळे झाले, आणि का?',
     analysis7qc: 'ऐच्छिक. उदा. पॅरेटो चार्ट, फिशबोन, चेक शीट',
     benefits: 'काय बदलले, शक्य असल्यास आकड्यांत. उदा. चेंजओव्हर 40 → 12 मिनिटे',
+    implementationCost: 'हे लागू करायला किती खर्च आला. काहीही खर्च आला नसेल तर 0 लिहा.',
   },
   beforeHint: 'ऐच्छिक. आत्ता फोटो काढा किंवा गॅलरीतून निवडा: समस्या आधीच दूर झाली असेल तर जुना फोटोही चालेल.',
   afterHint: 'ऐच्छिक. सुधारणेनंतरचे तेच दृश्य. आत्ता फोटो काढा किंवा गॅलरीतून निवडा.',

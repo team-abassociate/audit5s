@@ -16,14 +16,7 @@
   "theme": "Reduce die changeover time on Press P-3",
   "target": "≤ 20 min per changeover",
   "targetDate": "2026-11-30",
-  "problem": {
-    "what": "Die changeover takes 48 min on average (4.8 h of press time lost daily)",
-    "where": "Press P-3, Line 3",
-    "when": "Every die change, 6 times a day",
-    "who": "2 setters per shift",
-    "why": "Tools fetched from a far crib, hand bolting, trial runs",
-    "how": "Setters walk to the crib, tighten 8 bolts, adjust height by trial"
-  },
+  "problem": "Die changeover on Press P-3, Line 3 takes 48 min on average, 6 times a day: 4.8 h of press time lost daily. The 2 setters per shift walk to a far crib for tools, hand-tighten 8 bolts and set the height by trial runs.",
   "analysis": {
     "tool": "Pareto",
     "type": "pareto",
@@ -80,12 +73,12 @@
     "applicable": true,
     "plan": "Lines 4 and 5 (same die family) by Dec 2026; owner S. Patil."
   },
+  "implementationCost": 35000,
   "benefits": {
     "metrics": [
       { "label": "Changeover", "value": "−62%", "note": "48 → 18 min" },
       { "label": "Press time", "value": "+3 h", "note": "recovered daily" },
-      { "label": "First-off scrap", "value": "1.5%", "note": "was 6.0%" },
-      { "label": "Savings / yr", "value": "₹[ ]", "note": "[basis]" }
+      { "label": "First-off scrap", "value": "1.5%", "note": "was 6.0%" }
     ],
     "summary": "OEE 61% → 72%. Setters no longer leave the press; SOP SW-P3-012 posted and 12 operators trained."
   },

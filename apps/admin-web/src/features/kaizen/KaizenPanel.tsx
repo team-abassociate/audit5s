@@ -56,6 +56,7 @@ function KaizenSheet({ kaizen }: { kaizen: KaizenDetail }) {
     ['Horizontal deployment', kaizen.horizontalDeployment === null ? null : kaizen.horizontalDeployment ? 'Yes' : 'No'],
     ['Benefits / results', kaizen.benefits],
     ['Annual saving', kaizen.annualSaving === null ? null : formatRupees(kaizen.annualSaving)],
+    ['Cost to implement', kaizen.implementationCost === null ? null : formatRupees(kaizen.implementationCost)],
     ['Idea given by', kaizen.ideaBy],
     ['Implemented by', kaizen.implementedBy],
     ['Submitted', kaizen.submittedAt ? formatDateTime(kaizen.submittedAt) : null],
