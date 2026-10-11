@@ -1,0 +1,98 @@
+{
+  "title": "KAIZEN SHEET",
+  "subtitle": "CONTINUOUS IMPROVEMENT",
+  "company": "[Company]",
+  "logoUrl": "",
+  "kaizenNo": "K-047",
+  "date": "2026-10-07",
+  "machine": "Press P-3",
+  "lineArea": "Press shop · Line 3",
+  "teamMembers": [
+    { "name": "R. Kumar", "role": "lead" },
+    "S. Patil",
+    "A. Singh",
+    "M. Das"
+  ],
+  "theme": "Reduce die changeover time on Press P-3",
+  "target": "≤ 20 min per changeover",
+  "targetDate": "2026-11-30",
+  "problem": {
+    "what": "Die changeover takes 48 min on average (4.8 h of press time lost daily)",
+    "where": "Press P-3, Line 3",
+    "when": "Every die change, 6 times a day",
+    "who": "2 setters per shift",
+    "why": "Tools fetched from a far crib, hand bolting, trial runs",
+    "how": "Setters walk to the crib, tighten 8 bolts, adjust height by trial"
+  },
+  "analysis": {
+    "tool": "Pareto",
+    "type": "pareto",
+    "unit": "min",
+    "items": [
+      { "label": "Unbolt / bolt", "value": 14 },
+      { "label": "Tool search", "value": 12 },
+      { "label": "Trial & adjust", "value": 12 },
+      { "label": "Die fetch", "value": 10 }
+    ],
+    "note": "Minutes per changeover, average of 30 observations"
+  },
+  "rootCause": {
+    "man": "No standard changeover sequence",
+    "machine": "8 bolts, no shut-height stop",
+    "method": "Internal and external steps mixed",
+    "material": "Tools kept in a crib 30 m away"
+  },
+  "counterMeasures": [
+    "Shadow board with the full tool set at the press",
+    "Next die pre-staged on a cart while the press runs",
+    "Quick clamps replace 8 hand-tightened bolts",
+    "Shut-height stopper blocks end trial runs"
+  ],
+  "before": {
+    "imageUrl": "",
+    "description": "Tools fetched from a crib 30 m away; 8 bolts tightened by hand.",
+    "value": "48 min"
+  },
+  "after": {
+    "imageUrl": "",
+    "description": "Shadow board at the press; quick clamps; die waiting on a cart.",
+    "value": "18 min"
+  },
+  "wastes": {
+    "defects": true,
+    "overproduction": false,
+    "waitingTime": true,
+    "nonUtilizedTalent": false,
+    "transportation": true,
+    "inventory": false,
+    "motion": true,
+    "extraProcessing": false
+  },
+  "impact": {
+    "productivity": true,
+    "quality": true,
+    "cost": true,
+    "delivery": true,
+    "safety": true,
+    "morale": true
+  },
+  "horizontalDeployment": {
+    "applicable": true,
+    "plan": "Lines 4 and 5 (same die family) by Dec 2026; owner S. Patil."
+  },
+  "benefits": {
+    "metrics": [
+      { "label": "Changeover", "value": "−62%", "note": "48 → 18 min" },
+      { "label": "Press time", "value": "+3 h", "note": "recovered daily" },
+      { "label": "First-off scrap", "value": "1.5%", "note": "was 6.0%" },
+      { "label": "Savings / yr", "value": "₹[ ]", "note": "[basis]" }
+    ],
+    "summary": "OEE 61% → 72%. Setters no longer leave the press; SOP SW-P3-012 posted and 12 operators trained."
+  },
+  "signatures": {
+    "preparedBy": "R. Kumar",
+    "checkedBy": "",
+    "approvedBy": ""
+  },
+  "footerNote": "Form KZ-01 · Rev 0"
+}
