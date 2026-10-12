@@ -1426,6 +1426,33 @@ describe('cancellation retains everything (A-1, D8)', () => {
     expect((logged.body as Page<unknown>).data.length).toBeGreaterThan(0);
   });
 
+  it('lets the auditor abort their own audit, which leaves every list and frees the assignment', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-52', 'Aborted audit');
+    const { auditId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+
+    const aborted = await world.request('POST', `${base}/audits/${auditId}/cancel`, {
+      token: consultantToken,
+      body: { reason: 'Aborted by auditor' },
+    });
+    expect(aborted.status, JSON.stringify(aborted.body)).toBe(200);
+
+    for (const token of [consultantToken, asSuperAdmin()]) {
+      const listed = await world.request('GET', `${base}/audits?limit=200`, { token });
+      expect((listed.body as Page<Audit>).data.map((audit) => audit.id)).not.toContain(auditId);
+    }
+    const { rows } = await world.owner.query(
+      `SELECT status FROM audit_assignment WHERE id = $1`,
+      [assignment.id],
+    );
+    expect(rows[0].status).toBe('ACCEPTED');
+  });
+
   it('exposes no DELETE route for an audit, to anybody (D8)', () => {
     const instance = world.app.getHttpAdapter().getInstance() as {
       printRoutes: (options?: object) => string;

@@ -12,6 +12,7 @@ import {
   createKaizenRequestSchema,
   kaizenPhotoUploadIntentRequestSchema,
   kaizenSubmissionSyncPayloadSchema,
+  cancelAuditRequestSchema,
   completeAuditRequestSchema,
   completeAuditZoneRequestSchema,
   createAuditRequestSchema,
@@ -410,6 +411,13 @@ export class SyncBatchService {
        * `ensureStarted` is deliberately absent: the audit is finished, its device lock was
        * released on completion, and a correction is not a claim to conduct it again.
        */
+      /** The auditor's "Abort audit", queued: the audit is voided and leaves every list. */
+      case 'audit:discard': {
+        const body = cancelAuditRequestSchema.parse({ reason: 'Aborted by auditor', ...item.payload });
+        const audit = await this.audits.cancel(scope, item.entityId, body);
+        return audit.version;
+      }
+
       case 'audit:override': {
         const body = postCompletionOverrideRequestSchema.parse(item.payload);
         const audit = await this.audits.postCompletionOverride(scope, item.entityId, body);

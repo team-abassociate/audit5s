@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, notExists, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notExists, sql, type SQL } from 'drizzle-orm';
 import {
   auditAssignments,
   auditLogs,
@@ -236,6 +236,8 @@ export class AuditsRepository extends BaseRepository {
       const filters: Array<SQL | undefined> = [
         query.unitId ? eq(audits.unitId, query.unitId) : undefined,
         query.status ? eq(audits.status, query.status) : undefined,
+        // An aborted audit leaves every list (owner, 2026-10-12). Its rows stay (A-1).
+        ne(audits.status, 'CANCELLED'),
         query.type ? eq(audits.auditType, query.type) : undefined,
         query.auditorId ? eq(audits.auditorUserId, query.auditorId) : undefined,
         query.from ? gte(audits.createdAt, new Date(query.from)) : undefined,

@@ -62,7 +62,6 @@ const STATUS_FILTERS = [
   { id: 'active', label: 'Under way', statuses: ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'] },
   { id: 'actions', label: 'Actions open', statuses: ['CORRECTIVE_ACTION_OPEN', 'PARTIALLY_CLOSED'] },
   { id: 'done', label: 'Done', statuses: ['COMPLETED', 'CLOSED'] },
-  { id: 'cancelled', label: 'Cancelled', statuses: ['CANCELLED'] },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; statuses: readonly AuditStatus[] | null }>;
 
 export type StatusFilter = (typeof STATUS_FILTERS)[number]['id'];
@@ -81,7 +80,6 @@ const STATUS_MEANING: Array<[AuditStatus, string]> = [
   ['CORRECTIVE_ACTION_OPEN', 'Finished, with corrective actions still to be answered.'],
   ['PARTIALLY_CLOSED', 'Some corrective actions are closed, others still open.'],
   ['CLOSED', 'Every corrective action is closed, or there were none.'],
-  ['CANCELLED', 'Stopped by a Super Admin. Everything recorded is kept; it has no score.'],
 ];
 
 /*

@@ -24,6 +24,7 @@ import {
   SlipText,
 } from '../../../components/ui';
 import {
+  abortLocalAudit,
   addLocalZone,
   completeLocalAudit,
   editLocalZone,
@@ -251,6 +252,26 @@ export default function AuditZonesScreen() {
     },
   });
 
+  // Abort audit (owner, 2026-10-12): the whole audit goes, from this phone and every list.
+  const abort = useMutation({
+    mutationFn: () => abortLocalAudit(database, auditId),
+    onSuccess: () =>
+      leaveScreen(
+        () => router.navigate('/overview'),
+        () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
+      ),
+  });
+  const confirmAbort = () =>
+    Alert.alert(
+      'Abort this audit?',
+      'The whole audit is removed: its answers and photographs, from In progress and from ' +
+        'history. This cannot be undone.',
+      [
+        { text: 'Keep auditing', style: 'cancel' },
+        { text: 'Abort audit', style: 'destructive', onPress: () => abort.mutate() },
+      ],
+    );
+
   const withdraw = useMutation({
     mutationFn: (auditZoneId: string) => withdrawLocalZone(database, auditZoneId, 'Aborted by auditor'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
@@ -346,6 +367,7 @@ export default function AuditZonesScreen() {
   // Both ways of leaving need an audit that is actually running; a paused one has already
   // been left, and the Resume slip above is what it offers instead.
   const canPause = audit.data?.status === 'IN_PROGRESS';
+  const canAbort = ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'].includes(audit.data?.status ?? '');
   /*
    * R-33: the way back, for the two chances the product owner settled on.
    *
@@ -580,12 +602,26 @@ export default function AuditZonesScreen() {
                 disabled={restart.isPending}
                 onPress={() => setRestartReason('')}
               />
-            ) : canPause ? (
-              <HeaderAction
-                title="Save & pause"
-                disabled={leave.isPending}
-                onPress={() => leave.mutate(null)}
-              />
+            ) : canPause || canAbort ? (
+              <View style={styles.headerActions}>
+                {canPause ? (
+                  <HeaderAction
+                    title="Save & pause"
+                    disabled={leave.isPending || abort.isPending}
+                    onPress={() => leave.mutate(null)}
+                  />
+                ) : null}
+                {canAbort ? (
+                  <HeaderAction
+                    testID="abort-audit"
+                    title="Abort audit"
+                    variant="danger"
+                    accessibilityLabel="Abort audit. The whole audit is removed."
+                    disabled={abort.isPending}
+                    onPress={confirmAbort}
+                  />
+                ) : null}
+              </View>
             ) : null,
         }}
       />
@@ -1071,6 +1107,7 @@ function ZonePicker({
 }
 
 const useStyles = createThemedStyles((theme) => ({
+  headerActions: { flexDirection: 'row', gap: theme.space.sm },
   centered: { alignItems: 'center', justifyContent: 'center' },
   restartBody: { gap: theme.space.sm, paddingTop: theme.space.xs },
   zoneActions: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },

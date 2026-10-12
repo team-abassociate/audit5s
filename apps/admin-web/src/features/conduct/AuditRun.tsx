@@ -61,6 +61,7 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const [editing, setEditing] = useState<{ zone: AuditZone; description: string; leaderName: string } | null>(null);
   const [aborting, setAborting] = useState<AuditZone | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [restartReason, setRestartReason] = useState<string | null>(null);
 
   const locks = useQuery({
@@ -98,6 +99,16 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
       setFinishing(false);
       await refresh();
       await queryClient.invalidateQueries({ queryKey: ['audits'] });
+    },
+  });
+  // Abort audit (owner, 2026-10-12): voided on the server, and gone from every list.
+  const discard = useMutation({
+    mutationFn: () => client!.post(`/audits/${auditId}/cancel`, { reason: 'Aborted by auditor' }, uuidv7()),
+    onSuccess: async () => {
+      setDiscarding(false);
+      await queryClient.invalidateQueries({ queryKey: ['conduct'] });
+      await queryClient.invalidateQueries({ queryKey: ['audits'] });
+      void navigate({ to: '/conduct' });
     },
   });
   const restart = useMutation({
@@ -169,6 +180,9 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const elsewhere = (audit.status === 'IN_PROGRESS' || audit.status === 'PAUSED') && !mine;
   const canAddZone = running && (live.length === 0 || allComplete);
   const canFinish = running && allComplete;
+  // Anything not yet finished, the selfie still to take included, as on the phone — and
+  // from any device, so an audit stranded on a lost phone can still be cleared away.
+  const abortable = ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'].includes(audit.status);
   const restartsLeft = restartsRemaining(audit.restartCount);
   const finished = isAuditCompleted(audit.status);
   const canRestart = finished && restartsLeft > 0;
@@ -354,6 +368,11 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
               ) : null}
               {/* Submit on the Zone finishes the audit (R-52). This shows only for an older audit whose Zones are all in and that is somehow still open — never greyed out. */}
               {canFinish ? <Button onClick={() => setFinishing(true)}>Submit audit</Button> : null}
+              {abortable ? (
+                <Button variant="danger" onClick={() => setDiscarding(true)}>
+                  Abort audit
+                </Button>
+              ) : null}
               {canRestart ? (
                 <Button variant="secondary" onClick={() => setRestartReason('')}>
                   Restart ({restartsLeft})
@@ -421,6 +440,19 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
       >
         {live.length} Zone(s) will be submitted and scored. A finished audit cannot be reopened from here except by a restart, and any
         nonconformity photographs become corrective actions. Check you have audited every Zone you meant to.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={discarding}
+        title="Abort this audit?"
+        confirmLabel="Abort audit"
+        pending={discard.isPending}
+        error={discard.error}
+        onConfirm={() => discard.mutate()}
+        onCancel={() => setDiscarding(false)}
+      >
+        The whole audit is removed: its answers and photographs, from In progress and from history. This cannot be undone.
+        {mine ? null : ' It is open on another device; anything not yet synced from there is lost.'}
       </ConfirmDialog>
 
       <ConfirmDialog
