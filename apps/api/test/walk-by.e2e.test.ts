@@ -39,6 +39,7 @@ let world: TestWorld;
 const base = API_BASE_PATH;
 
 const DEVICE_ID = '01930000-0000-7000-8000-0000000ab001';
+const COORDINATOR_DEVICE = '01930000-0000-7000-8000-0000000ab002';
 
 let consultantToken: string;
 let versionId: string;
@@ -106,12 +107,12 @@ async function makeZone(description: string | null = null): Promise<string> {
 }
 
 /** §2.7 steps 1–2: the selfie, then an IN_PROGRESS walk-by with no Zones yet. */
-async function startWalkBy(): Promise<string> {
+async function startWalkBy(token = consultantToken, deviceId = DEVICE_ID): Promise<string> {
   const auditId = randomUUID();
 
   const created = await world.request('POST', `${base}/audits`, {
-    token: consultantToken,
-    body: { id: auditId, auditType: 'WALK_BY', unitId: world.unitA, deviceId: DEVICE_ID },
+    token,
+    body: { id: auditId, auditType: 'WALK_BY', unitId: world.unitA, deviceId },
   });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   // §2.7 step 1 is mandatory and has not happened yet, so §7.1 holds it at ASSIGNED.
@@ -119,16 +120,16 @@ async function startWalkBy(): Promise<string> {
   expect((created.body as Audit).scored).toBe(false);
 
   await captureEvidence(world, {
-    token: consultantToken,
+    token,
     evidenceId: randomUUID(),
     auditId,
     kind: 'AUDITOR_SELFIE',
-    deviceId: DEVICE_ID,
+    deviceId,
   });
 
   const started = await world.request('POST', `${base}/audits/${auditId}/start`, {
-    token: consultantToken,
-    body: { deviceId: DEVICE_ID },
+    token,
+    body: { deviceId },
   });
   expect(started.status, JSON.stringify(started.body)).toBe(200);
   return auditId;
@@ -312,49 +313,57 @@ describe('§2.7 — the ten steps, in order', () => {
   });
 });
 
-describe('R-19 — the auditor names the Zone by number', () => {
-  it('adds a Zone the Unit has never used, and snapshots what the auditor typed', async () => {
+describe('R-52 — a Consultant picks a Zone; a Coordinator may add one', () => {
+  it('refuses a Consultant a Zone the Unit does not have, and adds nothing', async () => {
     const auditId = await startWalkBy();
 
     const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${randomUUID()}`, {
       token: consultantToken,
+      body: { zoneNumber: 88, sequenceNo: 1, zoneLeaderName: 'Ravi Kumar' },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(403);
+    expect((response.body as { code: string }).code).toBe('ZONE_CREATE_FORBIDDEN');
+
+    const { rows } = await world.owner.query(
+      `SELECT 1 FROM zone WHERE unit_id = $1 AND code = 'Z-88'`,
+      [world.unitA],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('lets a Coordinator add Zone 88A by label and name, which a Consultant then picks', async () => {
+    const coordinatorToken = await loginFromDevice(world, world.actors.COORDINATOR, COORDINATOR_DEVICE);
+    const auditId = await startWalkBy(coordinatorToken, COORDINATOR_DEVICE);
+
+    const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${randomUUID()}`, {
+      token: coordinatorToken,
       body: {
-        zoneNumber: 88,
+        zoneCode: 'Z-88A',
+        zoneName: 'Scrap yard',
         sequenceNo: 1,
-        zoneDescription: 'Scrap yard behind the press shop',
+        zoneDescription: 'Behind the press shop',
         zoneLeaderName: 'Ravi Kumar',
       },
     });
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     const zone = response.body as AuditZone;
     expect(zone).toMatchObject({
-      zoneCodeSnapshot: 'Z-88',
-      zoneNameSnapshot: 'Zone 88',
-      zoneDescriptionSnapshot: 'Scrap yard behind the press shop',
+      zoneCodeSnapshot: 'Z-88A',
+      zoneNameSnapshot: 'Scrap yard',
+      zoneDescriptionSnapshot: 'Behind the press shop',
       zoneLeaderNameSnapshot: 'Ravi Kumar',
       // A typed name is not an account (C2).
       zoneLeaderUserIdSnapshot: null,
     });
 
-    // It is master data now — one row, logged like a Coordinator's — and the next audit
-    // naming Zone 88 reuses it, so the Zone's score history accumulates.
-    const { rows } = await world.owner.query(
-      `SELECT id, name, description FROM zone WHERE unit_id = $1 AND code = 'Z-88'`,
-      [world.unitA],
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].id).toBe(zone.zoneId);
-    expect(rows[0].description).toBe('Scrap yard behind the press shop');
-
+    // Master data now — one row, logged against the Coordinator who added it.
     const { rows: logged } = await world.owner.query(
       `SELECT actor_user_id FROM audit_log WHERE action = 'zone.created' AND resource_id = $1`,
       [zone.zoneId],
     );
-    expect(logged).toEqual([{ actor_user_id: world.actors.CONSULTANT.userId }]);
+    expect(logged).toEqual([{ actor_user_id: world.actors.COORDINATOR.userId }]);
 
-    // R-29 claims a Zone while the audit holding it is open, and what this test is about
-    // is the *master data*: the next audit naming Zone 88 finds the row rather than
-    // creating a second one. So the first walk-by lets go of it before the next one asks.
+    // R-29 claims a Zone while its audit is open; let go of it before the next one asks.
     const released = await world.request('POST', `${base}/audits/${auditId}/cancel`, {
       token: world.actors.SUPER_ADMIN.accessToken,
       body: { reason: 'Finished with this Zone for the purposes of the next audit' },
@@ -365,14 +374,11 @@ describe('R-19 — the auditor names the Zone by number', () => {
     const again = await world.request(
       'PUT',
       `${base}/audits/${secondAuditId}/zones/${randomUUID()}`,
-      { token: consultantToken, body: { zoneNumber: 88, sequenceNo: 1 } },
+      { token: consultantToken, body: { zoneCode: 'Z-88A', sequenceNo: 1 } },
     );
     expect(again.status, JSON.stringify(again.body)).toBe(200);
     expect((again.body as AuditZone).zoneId).toBe(zone.zoneId);
-    // Nothing typed this time, so the Zone's own description is what is snapshotted.
-    expect((again.body as AuditZone).zoneDescriptionSnapshot).toBe(
-      'Scrap yard behind the press shop',
-    );
+    expect((again.body as AuditZone).zoneDescriptionSnapshot).toBe('Behind the press shop');
   });
 
   it('refuses a Zone that names neither a number nor an id', async () => {

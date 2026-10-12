@@ -16,6 +16,7 @@ import {
   listResumableAudits,
   pauseLocalAudit,
   pendingOutboxCount,
+  renameLocalZone,
   restartLocalAudit,
   resumeCursor,
   resumeLocalAudit,
@@ -268,7 +269,7 @@ describe('starting an audit', () => {
     );
     const payload = JSON.parse(queued!.payload);
     expect(payload).toMatchObject({
-      zoneNumber: 1,
+      zoneCode: 'Z-01',
       zoneDescription: 'North bay during the night shift',
       zoneLeaderName: 'Ravi Kumar',
     });
@@ -279,7 +280,7 @@ describe('starting an audit', () => {
       (item) => item.entityType === 'audit_zone' && item.entityId === auditZoneId,
     );
     expect(JSON.parse(coalesced!.payload)).toMatchObject({
-      zoneNumber: 1,
+      zoneCode: 'Z-01',
       zoneDescription: 'North bay during the night shift',
       zoneLeaderName: 'Ravi Kumar',
       zoneRemark: 'Observed after cleanup',
@@ -314,7 +315,7 @@ describe('starting an audit', () => {
       (item) => item.entityType === 'audit_zone' && item.entityId === auditZoneId,
     );
     expect(JSON.parse(queued!.payload)).toMatchObject({
-      zoneNumber: 42,
+      zoneCode: 'Z-42',
       checklistVersionId: VERSION,
       zoneLeaderName: 'Anita Rao',
     });
@@ -693,12 +694,19 @@ describe('the Overview tab’s resumable audits', () => {
       resumeAuditZoneId: auditZoneId,
     });
 
+    // Submit on an audit's one Zone finishes the audit. A finished audit is History's, not
+    // Overview's: the screen answers "what am I in the middle of".
     await completeLocalZone(database, auditZoneId);
-    const midway = await listResumableAudits(database);
-    expect(midway[0]).toMatchObject({ zonesTotal: 1, zonesFinished: 1 });
+    expect(await listResumableAudits(database)).toEqual([]);
+    const queued = await listOutbox(database);
+    expect(queued.find((item) => item.entityId === auditId && item.operation === 'complete')).toBeDefined();
+  });
 
-    // A finished audit is History's, not Overview's: the screen answers "what am I in the
-    // middle of", and an audit that is over is not an answer to it.
+  it('keeps an audit with a second Zone still open running when the first is submitted', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await addLocalZone(database, { auditId, zoneNumber: 2, sequenceNo: 2, checklistVersionId: VERSION });
+    await completeLocalZone(database, auditZoneId);
+    expect((await listResumableAudits(database))[0]).toMatchObject({ zonesTotal: 2, zonesFinished: 1 });
     await completeLocalAudit(database, auditId);
     expect(await listResumableAudits(database)).toEqual([]);
   });
@@ -710,6 +718,14 @@ describe('the Overview tab’s resumable audits', () => {
     const open = await listResumableAudits(database);
     expect(open).toHaveLength(1);
     expect(open[0]).toMatchObject({ status: 'PAUSED', pauseReason: 'Aborted by auditor' });
+  });
+});
+
+describe('a Zone renamed on the server', () => {
+  it('shows its new name on this device’s audits', async () => {
+    const { auditZoneId } = await startAudit();
+    await renameLocalZone(database, { unitId: UNIT, code: 'Z-01', name: 'Paint line' });
+    expect((await getLocalAuditZone(database, auditZoneId))[0]!.zoneNameSnapshot).toBe('Paint line');
   });
 });
 
@@ -941,7 +957,7 @@ describe('overall corrective-action suggestions (R-38)', () => {
     ];
     expect(await getZoneSuggestions(database, auditZoneId)).toEqual(expected);
     expect(JSON.parse((await queuedUpsert(auditZoneId))!.payload)).toMatchObject({
-      zoneNumber: 1,
+      zoneCode: 'Z-01',
       zoneRemark: 'Smell near the pit',
       overallActionSuggestions: expected,
     });

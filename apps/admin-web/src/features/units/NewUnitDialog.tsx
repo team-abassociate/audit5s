@@ -11,7 +11,7 @@ import type {
   Zone,
 } from '@audit5s/contracts';
 import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from '@audit5s/contracts';
-import { formatDateTime, zoneCodeForNumber, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDateTime, zoneCodeForLabel, zoneDisplayLabel, zoneSortOrder } from '@audit5s/domain';
 import { api } from '@/lib/api';
 import { devGet } from '@/features/units/worst-case';
 import { newId } from '@/lib/photo';
@@ -155,13 +155,12 @@ function Stepper({
   // A row counts once it has a name; its number is filled in for it.
   const zoneRows = zones.filter((zone) => zone.name.trim());
   const zoneErrors = (zone: ZoneDraft): { number?: string; name?: string } => {
-    const parsed = Number(zone.number);
-    const number =
-      !Number.isInteger(parsed) || parsed < ZONE_NUMBER_MIN || parsed > ZONE_NUMBER_MAX || !zone.number.trim()
-        ? `${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`
-        : zoneRows.some((other) => other.id !== zone.id && Number(other.number) === parsed)
-          ? 'Used twice'
-          : undefined;
+    const code = zoneCodeForLabel(zone.number);
+    const number = !code
+      ? 'e.g. 7 or 1A'
+      : zoneRows.some((other) => other.id !== zone.id && zoneCodeForLabel(other.number) === code)
+        ? 'Used twice'
+        : undefined;
     return { number, name: zone.name.trim() ? undefined : 'Enter a name' };
   };
   const zonesValid = zoneRows.every((zone) => {
@@ -229,11 +228,10 @@ function Stepper({
       }
       for (const zone of zoneRows) {
         if (made.zones[zone.id]) continue;
-        const number = Number(zone.number);
         made.zones[zone.id] = await post<Zone>(zone.id, `/units/${made.unit.id}/zones`, {
-          code: zoneCodeForNumber(number),
+          code: zoneCodeForLabel(zone.number)!,
           name: zone.name.trim(),
-          sortOrder: number,
+          sortOrder: zoneSortOrder(zone.number),
           defaultChecklistTemplateId: template?.id,
         });
         setCreated({ ...made, zones: { ...made.zones } });
@@ -511,7 +509,7 @@ function Stepper({
                 ? zoneRows.map((zone) => (
                     <span key={zone.id} className="block">
                       {created.zones[zone.id] ? '✓ ' : ''}
-                      {zoneDisplayLabel(zoneCodeForNumber(Number(zone.number)), zone.name.trim())}
+                      {zoneDisplayLabel(zoneCodeForLabel(zone.number) ?? zone.number, zone.name.trim())}
                     </span>
                   ))
                 : 'None yet. An auditor can name them in the field.'}
@@ -665,12 +663,13 @@ function ZonesTable({
                   <Input
                     aria-label={`Zone ${index + 1} number`}
                     aria-invalid={Boolean(errors.number)}
-                    inputMode="numeric"
                     maxLength={3}
                     className="gb-data w-full"
                     value={zone.number}
                     disabled={made}
-                    onChange={(event) => update(zone.id, { number: event.target.value.replace(/\D/g, '').slice(0, 3) })}
+                    onChange={(event) =>
+                      update(zone.id, { number: event.target.value.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase() })
+                    }
                   />
                   {errors.number && <span className="gb-field-error block">{errors.number}</span>}
                 </td>

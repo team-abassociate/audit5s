@@ -528,16 +528,17 @@ export class AuditsRepository extends BaseRepository {
       description: string | null;
       sortOrder: number;
     },
-  ): Promise<{ zoneId: string; created: boolean } | null> {
+  ): Promise<{ zoneId: string | null; created: boolean } | null> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const result = await tx.execute(sql<{ ensured_zone_id: string; was_created: boolean }>`
+      // R-52: `zoneId` is null when the Zone is not in the Unit and the actor may not add it.
+      const result = await tx.execute(sql<{ ensured_zone_id: string | null; was_created: boolean }>`
         SELECT ensured_zone_id, was_created
         FROM app_ensure_zone_for_audit(
           ${input.auditId}::uuid, ${input.code}, ${input.name}, ${input.description}, ${input.sortOrder}::int
         )
       `);
-      const row = result.rows[0] as { ensured_zone_id: string; was_created: boolean } | undefined;
+      const row = result.rows[0] as { ensured_zone_id: string | null; was_created: boolean } | undefined;
       return row ? { zoneId: row.ensured_zone_id, created: row.was_created } : null;
     });
   }

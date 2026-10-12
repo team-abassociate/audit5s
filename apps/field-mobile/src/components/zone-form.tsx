@@ -1,9 +1,15 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Page, User, Zone } from '@audit5s/contracts';
-import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from '@audit5s/contracts';
-import { zoneCodeChoices, zoneCodeForNumber, zoneDisplayLabel } from '@audit5s/domain';
+import { ZONE_NUMBER_MIN } from '@audit5s/contracts';
+import {
+  zoneCodeChoices,
+  zoneCodeForLabel,
+  zoneDisplayLabel,
+  zoneLabelFromCode,
+  zoneSortOrder,
+} from '@audit5s/domain';
 import { api, problemMessage } from '../lib/api';
 import { createThemedStyles } from '../lib/theme';
 import { Button, ConfirmAction, ErrorBanner, Field, SelectField } from './ui';
@@ -12,8 +18,10 @@ const UNASSIGNED = '__none__';
 
 /**
  * Add or edit one Zone of a Unit — the web's Create / Edit Zone forms at phone width
- * (`UnitZones.tsx`). The number is typed and turned into the stored `Z-01` code by
- * `packages/domain`, so the phone, the web and the reports spell it the same way.
+ * (`UnitZones.tsx`). The Zone number — at most three letters or digits, `7` or `1A` (R-52)
+ * — sits on one line with the name, and is turned into the stored `Z-07` / `Z-1A` code by
+ * `packages/domain`, so the phone, the web and the reports spell it the same way. Changing
+ * it renames the Zone everywhere, its finished audits included (0048).
  *
  * The leader dropdown offers the Unit's Zone Leaders. A Zone with nobody to lead it yet is
  * created unassigned; adding a Zone Leader *with* this Zone (R-39) then points it at them.
@@ -35,7 +43,9 @@ export function ZoneForm({
   const styles = useStyles();
   const queryClient = useQueryClient();
   const taken = new Set(existing.filter((other) => other.id !== zone?.id).map((other) => other.code));
-  const [zoneNumber, setZoneNumber] = useState(zone ? '' : String(firstFreeNumber(taken)));
+  const [zoneNumber, setZoneNumber] = useState(
+    zone ? (zoneLabelFromCode(zone.code) ?? '') : String(firstFreeNumber(taken)),
+  );
   const [name, setName] = useState(zone?.name ?? '');
   const [description, setDescription] = useState(zone?.description ?? '');
   const [leaderId, setLeaderId] = useState<string>(zone?.zoneLeaderId ?? UNASSIGNED);
@@ -52,22 +62,25 @@ export function ZoneForm({
   const save = useMutation({
     mutationFn: () => {
       const leader = leaderId === UNASSIGNED ? null : leaderId;
+      const code = zoneCodeForLabel(zoneNumber);
+      const label = zoneLabelFromCode(code ?? '') ?? zoneNumber;
       if (zone) {
         return api.patch<Zone>(`/zones/${zone.id}`, {
+          // A code a Unit chose for itself (`BOILER`) is left alone unless a number is typed.
+          ...(code && code !== zone.code ? { code, sortOrder: zoneSortOrder(label) } : {}),
           // A Zone added by number is named just that (R-19); an emptied name goes back to it.
-          name: name.trim() || zone.name,
+          name: name.trim() || (code && code !== zone.code ? `Zone ${label}` : zone.name),
           description: description.trim() || null,
           zoneLeaderId: leader,
           version: zone.version,
         });
       }
-      const parsed = Number(zoneNumber);
       return api.post<Zone>(`/units/${unitId}/zones`, {
-        code: zoneCodeForNumber(parsed),
-        name: name.trim() || `Zone ${parsed}`,
+        code: code!,
+        name: name.trim() || `Zone ${label}`,
         ...(description.trim() ? { description: description.trim() } : {}),
         ...(leader ? { zoneLeaderId: leader } : {}),
-        sortOrder: parsed,
+        sortOrder: zoneSortOrder(label),
       });
     },
     onSuccess: async () => {
@@ -84,13 +97,15 @@ export function ZoneForm({
   });
 
   const submit = () => {
-    if (!zone) {
-      const parsed = Number(zoneNumber);
-      if (!Number.isInteger(parsed) || parsed < ZONE_NUMBER_MIN || parsed > ZONE_NUMBER_MAX) {
-        setNumberError(`Enter a number from ${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}.`);
+    // A custom code (`BOILER`) shows an empty number; left empty, it is kept.
+    const keepsCustomCode = zone !== undefined && zoneLabelFromCode(zone.code) === null && zoneNumber === '';
+    if (!keepsCustomCode) {
+      const code = zoneCodeForLabel(zoneNumber);
+      if (!code) {
+        setNumberError('1 to 3 letters or digits, e.g. 7 or 1A.');
         return;
       }
-      if (taken.has(zoneCodeForNumber(parsed))) {
+      if (taken.has(code)) {
         setNumberError('That Zone number is already used.');
         return;
       }
@@ -101,23 +116,26 @@ export function ZoneForm({
 
   return (
     <View style={styles.form}>
-      {zone ? null : (
+      <View style={styles.row}>
         <Field
-          label="Zone number"
+          label="Zone no."
           value={zoneNumber}
-          onChangeText={(text) => setZoneNumber(text.replace(/\D/g, '').slice(0, 3))}
-          keyboardType="number-pad"
+          onChangeText={(text) => setZoneNumber(text.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase())}
+          autoCapitalize="characters"
+          autoCorrect={false}
           maxLength={3}
-          error={numberError}
-          hint={`${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`}
+          placeholder="1A"
+          containerStyle={styles.number}
         />
-      )}
-      <Field
-        label="Name (optional)"
-        value={name}
-        onChangeText={setName}
-        placeholder={zone ? zoneDisplayLabel(zone.code, zone.name) : 'e.g. Press shop'}
-      />
+        <Field
+          label="Name (optional)"
+          value={name}
+          onChangeText={setName}
+          placeholder={zone ? zoneDisplayLabel(zone.code, zone.name) : 'e.g. Press shop'}
+          containerStyle={styles.name}
+        />
+      </View>
+      {numberError ? <Text style={styles.error}>{numberError}</Text> : null}
       <Field
         label="Description (optional)"
         value={description}
@@ -160,4 +178,8 @@ function firstFreeNumber(taken: Set<string>): number {
 
 const useStyles = createThemedStyles((theme) => ({
   form: { gap: theme.space.sm, paddingVertical: theme.space.sm },
+  row: { flexDirection: 'row', gap: theme.space.sm },
+  number: { width: 96 },
+  name: { flex: 1 },
+  error: { fontFamily: theme.family.medium, fontSize: 12.5, color: theme.color.critBand },
 }));

@@ -14,7 +14,6 @@ import {
 import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import {
   addLocalZone,
-  completeLocalAudit,
   completeLocalZone,
   createLocalAudit,
   listOutbox,
@@ -201,9 +200,10 @@ describe('Phase 5 acceptance', () => {
       });
 
       await saveZoneRemark(database, auditZoneId, `Walk-by Zone ${index + 1} remark`);
-      await completeLocalZone(database, auditZoneId);
     }
-    await completeLocalAudit(database, auditId);
+    // An audit begun with three Zones (before one-Zone-per-audit): Submit on the last open
+    // one finishes the audit, with no separate Finish.
+    for (const auditZoneId of auditZoneIds) await completeLocalZone(database, auditZoneId);
 
     // Every write above used SQLite only. Any HTTP attempt would have thrown through call().
     expect(await pendingOutboxCount(database)).toBeGreaterThan(0);
@@ -262,7 +262,8 @@ describe('Phase 5 acceptance', () => {
     await completeLocalZone(database, emptyZoneId);
     offline = false;
     const result = await sync();
-    expect(result.failed).toBe(1);
+    // The Zone's completion, and the audit's that its Submit queued behind it.
+    expect(result.failed).toBe(2);
     const refused = (await listOutbox(database)).find(
       (item) => item.entityId === emptyZoneId && item.operation === 'complete',
     );

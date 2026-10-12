@@ -132,13 +132,13 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     resource: 'device',
     action: 'list',
     description: 'List registered devices',
-    grants: { SUPER_ADMIN: org, CONSULTANT: ownRecord, ZONE_LEADER: ownRecord },
+    grants: { SUPER_ADMIN: org, CONSULTANT: ownRecord, COORDINATOR: ownRecord, ZONE_LEADER: ownRecord },
   },
   {
     resource: 'device',
     action: 'revoke',
     description: 'Revoke a device',
-    grants: { SUPER_ADMIN: org, CONSULTANT: ownRecord, ZONE_LEADER: ownRecord },
+    grants: { SUPER_ADMIN: org, CONSULTANT: ownRecord, COORDINATOR: ownRecord, ZONE_LEADER: ownRecord },
   },
 
   // ------------------------------------------------------------- Units & memberships
@@ -365,13 +365,15 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: {
       // R-20: access to the Unit is enough; an open assignment is linked when one exists.
       CONSULTANT: { resolver: 'assigned_units' },
+      // R-52: a Coordinator audits their own Unit as a Super Admin audits any.
+      COORDINATOR: ownUnit,
     },
   },
   {
     resource: 'audit',
     action: 'create_walk_by',
     description: 'Start a WALK_BY audit',
-    grants: { CONSULTANT: assignedUnits },
+    grants: { CONSULTANT: assignedUnits, COORDINATOR: ownUnit },
   },
   {
     resource: 'audit',
@@ -379,6 +381,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Start a CROSS_5S audit',
     grants: {
       // N4 + D9: any active Zone of the Unit, including one the leader owns. Not a bug.
+      COORDINATOR: ownUnit,
       ZONE_LEADER: { resolver: 'own_unit', condition: 'any active Zone; self-audit permitted (D9)' },
     },
   },
@@ -399,6 +402,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Update an in-progress audit',
     grants: {
       CONSULTANT: { resolver: 'own_audits', condition: 'owning_device_id must match the caller' },
+      COORDINATOR: { resolver: 'own_audits', condition: 'owning_device_id must match the caller' },
       ZONE_LEADER: { resolver: 'own_audits', condition: 'owning_device_id must match the caller' },
     },
   },
@@ -406,19 +410,19 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     resource: 'audit',
     action: 'pause',
     description: 'Pause (abort) an audit',
-    grants: { SUPER_ADMIN: org, CONSULTANT: ownAudits, ZONE_LEADER: ownAudits },
+    grants: { SUPER_ADMIN: org, CONSULTANT: ownAudits, COORDINATOR: ownAudits, ZONE_LEADER: ownAudits },
   },
   {
     resource: 'audit',
     action: 'resume',
     description: 'Resume a paused audit',
-    grants: { CONSULTANT: ownAudits, ZONE_LEADER: ownAudits },
+    grants: { CONSULTANT: ownAudits, COORDINATOR: ownAudits, ZONE_LEADER: ownAudits },
   },
   {
     resource: 'audit',
     action: 'complete',
     description: 'Complete an audit',
-    grants: { CONSULTANT: ownAudits, ZONE_LEADER: ownAudits },
+    grants: { CONSULTANT: ownAudits, COORDINATOR: ownAudits, ZONE_LEADER: ownAudits },
   },
   {
     resource: 'audit',
@@ -439,6 +443,10 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: {
       SUPER_ADMIN: org,
       CONSULTANT: {
+        resolver: 'own_audits',
+        condition: 'the actor conducted this audit; two restarts, justification logged (R-33)',
+      },
+      COORDINATOR: {
         resolver: 'own_audits',
         condition: 'the actor conducted this audit; two restarts, justification logged (R-33)',
       },
@@ -472,6 +480,10 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
         resolver: 'own_audits',
         condition: 'the actor conducted this audit; justification required and logged (R-30)',
       },
+      COORDINATOR: {
+        resolver: 'own_audits',
+        condition: 'the actor conducted this audit; justification required and logged (R-30)',
+      },
     },
   },
   {
@@ -488,6 +500,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Add a Zone to an audit, snapshotting its identity',
     grants: {
       CONSULTANT: { resolver: 'own_audits', condition: 'device owner' },
+      COORDINATOR: { resolver: 'own_audits', condition: 'device owner' },
       ZONE_LEADER: { resolver: 'own_audits', condition: 'device owner' },
     },
   },
@@ -497,6 +510,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Update an audit Zone',
     grants: {
       CONSULTANT: { resolver: 'own_audits', condition: 'device owner' },
+      COORDINATOR: { resolver: 'own_audits', condition: 'device owner' },
       ZONE_LEADER: { resolver: 'own_audits', condition: 'device owner' },
     },
   },
@@ -506,6 +520,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Complete an audit Zone',
     grants: {
       CONSULTANT: { resolver: 'own_audits', condition: 'device owner' },
+      COORDINATOR: { resolver: 'own_audits', condition: 'device owner' },
       ZONE_LEADER: { resolver: 'own_audits', condition: 'device owner' },
     },
   },
@@ -526,6 +541,10 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Record an answer',
     grants: {
       CONSULTANT: {
+        resolver: 'own_audits',
+        condition: 'device owner; audit must not be COMPLETED',
+      },
+      COORDINATOR: {
         resolver: 'own_audits',
         condition: 'device owner; audit must not be COMPLETED',
       },
@@ -554,6 +573,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Create an upload intent',
     grants: {
       CONSULTANT: ownAudits,
+      COORDINATOR: ownAudits,
       ZONE_LEADER: {
         resolver: 'own_audits',
         condition: 'or assigned_actions, for CORRECTIVE_AFTER evidence',
@@ -588,6 +608,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Remove evidence before completion (E-4)',
     grants: {
       CONSULTANT: { resolver: 'own_audits', condition: 'audit must not be COMPLETED' },
+      COORDINATOR: { resolver: 'own_audits', condition: 'audit must not be COMPLETED' },
       ZONE_LEADER: { resolver: 'own_audits', condition: 'audit must not be COMPLETED' },
     },
   },
@@ -595,7 +616,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     resource: 'evidence',
     action: 'set_summary_flag',
     description: 'Flag a photo for the report summary',
-    grants: { CONSULTANT: ownAudits, ZONE_LEADER: ownAudits },
+    grants: { CONSULTANT: ownAudits, COORDINATOR: ownAudits, ZONE_LEADER: ownAudits },
   },
   {
     // DECISIONS.md R-5. Erasure is redaction, never deletion: the object is overwritten,
@@ -782,6 +803,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Push a sync batch',
     grants: {
       CONSULTANT: { resolver: 'own_audits', condition: 'intersected with assigned_units' },
+      COORDINATOR: { resolver: 'own_audits', condition: 'intersected with own_unit' },
       ZONE_LEADER: { resolver: 'own_audits', condition: 'intersected with own_unit' },
     },
   },
@@ -791,6 +813,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Pull a sync batch',
     grants: {
       CONSULTANT: { resolver: 'own_audits', condition: 'intersected with assigned_units' },
+      COORDINATOR: { resolver: 'own_audits', condition: 'intersected with own_unit' },
       ZONE_LEADER: { resolver: 'own_audits', condition: 'intersected with own_unit' },
     },
   },

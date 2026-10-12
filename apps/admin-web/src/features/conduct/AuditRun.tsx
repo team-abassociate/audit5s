@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN, type AuditDetail, type ZoneLocksResponse } from '@audit5s/contracts';
-import { MAX_AUDIT_RESTARTS, isAuditCompleted, restartsRemaining, uuidv7, zoneCodeForNumber, zoneDisplayLabel } from '@audit5s/domain';
+import type { AuditDetail, ZoneLocksResponse } from '@audit5s/contracts';
+import { MAX_AUDIT_RESTARTS, isAuditCompleted, restartsRemaining, uuidv7, zoneCodeForLabel, zoneDisplayLabel } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
 import {
   Button,
@@ -21,6 +21,7 @@ import {
   StatusChip,
 } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useSession } from '@/lib/session';
 import { useWebDevice } from '@/lib/device';
 import { LiveCapture } from '@/lib/photo';
 import { uploadEvidence } from '@/lib/evidence';
@@ -30,8 +31,9 @@ type AuditZone = AuditDetail['zones'][number];
 
 /**
  * One audit being conducted on the web (R-51): the phone's Zones screen
- * (`audit/zones/[auditId].tsx`). The next Zone first — its number 1…100, an optional
- * description, the Zone Leader's name and, on a scored audit, the department — then the
+ * (`audit/zones/[auditId].tsx`). The next Zone first — one of the Unit's Zones (a Super Admin
+ * or Coordinator may add one, R-52), an optional description, the Zone Leader's name and, on
+ * a scored audit, the department — then the
  * Zones already in it, then Save & pause and Finish. A Zone another open audit holds is
  * refused before forty minutes of questions, not after (R-29).
  *
@@ -47,7 +49,11 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const audit = detail.data;
   useDocumentTitle(audit ? `${AUDIT_TYPE_LABEL[audit.auditType]} · ${audit.unitName}` : 'Audit');
 
-  const [zoneNumber, setZoneNumber] = useState<number | null>(null);
+  const { can } = useSession();
+  const mayAddZone = can('zone', 'create');
+  const [zoneCode, setZoneCode] = useState<string | null>(null);
+  // R-52: a Zone added here — its label (`1A`, at most 3) and name, on one line.
+  const [newZone, setNewZone] = useState<{ label: string; name: string } | null>(null);
   const [description, setDescription] = useState('');
   const [leaderName, setLeaderName] = useState('');
   const [versionId, setVersionId] = useState('');
@@ -107,7 +113,8 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
       await client!.put(
         `/audits/${auditId}/zones/${auditZoneId}`,
         {
-          zoneNumber,
+          zoneCode: pickedCode,
+          ...(newZone?.name.trim() ? { zoneName: newZone.name.trim() } : {}),
           sequenceNo: (audit?.zones.length ?? 0) + 1,
           ...(walkBy ? {} : { checklistVersionId: versionId }),
           zoneDescription: description.trim() || null,
@@ -171,18 +178,30 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const used = new Set(live.map((zone) => zone.zoneCodeSnapshot));
   const lockedByCode = new Map((locks.data?.locks ?? []).map((lock) => [lock.zoneCode, lock]));
   const versions = catalogue.data ? versionsForUnit(catalogue.data, audit.unitId) : [];
-  const lock = zoneNumber === null ? null : lockedByCode.get(zoneCodeForNumber(zoneNumber));
+  const newCode = newZone ? zoneCodeForLabel(newZone.label) : null;
+  const pickedCode = newZone ? newCode : zoneCode;
+  const lock = zoneCode === null || newZone ? null : lockedByCode.get(zoneCode);
   const errors = {
-    zone: zoneNumber === null ? 'Choose the Zone' : lock ? 'Another audit holds this Zone' : null,
+    zone: newZone
+      ? newCode === null
+        ? 'Enter 1 to 3 letters or digits'
+        : byCode.has(newCode) || used.has(newCode)
+          ? `Zone ${newZone.label} already exists. Choose it from the list.`
+          : null
+      : zoneCode === null
+        ? 'Choose the Zone'
+        : lock
+          ? 'Another audit holds this Zone'
+          : null,
     leader: leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
     department: !walkBy && !versionId ? 'Choose the department' : null,
   };
 
   // Choosing a Zone fills in what the Unit's catalogue knows about it (the phone's `chooseZone`).
-  const chooseZone = (number: number | null) => {
-    setZoneNumber(number);
+  const chooseZone = (code: string | null) => {
+    setZoneCode(code);
     setShowErrors(false);
-    const known = number === null ? undefined : byCode.get(zoneCodeForNumber(number));
+    const known = code === null ? undefined : byCode.get(code);
     if (!known) return;
     if (!description.trim()) setDescription(known.description ?? '');
     if (!leaderName.trim()) setLeaderName(known.zoneLeaderName ?? '');
@@ -229,28 +248,65 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
       {canAddZone ? (
         <Card>
           <CardHeader
-            title={audit.zones.length === 0 ? 'Create the Zone' : 'Add the next Zone'}
+            title={audit.zones.length === 0 ? 'Select Zone' : 'Select the next Zone'}
             description={walkBy ? 'Where the walk-by goes, and who leads it.' : 'Each Zone is its own questionnaire of the department you choose.'}
           />
           <div className="grid gap-4 p-4 sm:grid-cols-2">
-            <Field label="Zone" {...(showErrors && errors.zone ? { error: errors.zone } : {})}>
-              <Select value={zoneNumber ?? ''} onChange={(event) => chooseZone(event.target.value ? Number(event.target.value) : null)}>
-                <option value="">
-                  Choose Zone {ZONE_NUMBER_MIN} to {ZONE_NUMBER_MAX}
-                </option>
-                {Array.from({ length: ZONE_NUMBER_MAX - ZONE_NUMBER_MIN + 1 }, (_, i) => i + ZONE_NUMBER_MIN).map((number) => {
-                  const code = zoneCodeForNumber(number);
-                  const known = byCode.get(code);
-                  const held = lockedByCode.get(code);
-                  return (
-                    <option key={number} value={number} disabled={used.has(code) || Boolean(held)}>
-                      {known ? zoneDisplayLabel(code, known.name) : `Zone ${number} (new)`}
-                      {used.has(code) ? ' · in this audit' : held ? ` · ${held.auditorName} is auditing it` : ''}
-                    </option>
-                  );
-                })}
-              </Select>
-            </Field>
+            {newZone ? (
+              <Field label="New Zone" {...(showErrors && errors.zone ? { error: errors.zone } : {})}>
+                <div className="flex gap-2">
+                  <Input
+                    aria-label="Zone no."
+                    className="max-w-20 gb-data"
+                    value={newZone.label}
+                    maxLength={3}
+                    placeholder="1A"
+                    onChange={(event) =>
+                      setNewZone({ ...newZone, label: event.target.value.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase() })
+                    }
+                  />
+                  <Input
+                    aria-label="Zone name"
+                    value={newZone.name}
+                    maxLength={200}
+                    placeholder="Zone name"
+                    onChange={(event) => setNewZone({ ...newZone, name: event.target.value })}
+                  />
+                </div>
+                <button type="button" className="mt-1 text-sm underline" onClick={() => setNewZone(null)}>
+                  Choose one of the Unit’s Zones instead
+                </button>
+              </Field>
+            ) : (
+              <Field label="Zone" {...(showErrors && errors.zone ? { error: errors.zone } : {})}>
+                <Select value={zoneCode ?? ''} onChange={(event) => chooseZone(event.target.value || null)}>
+                  <option value="">{zones.length === 0 ? 'This Unit has no Zones yet' : 'Choose the Zone'}</option>
+                  {zones.map((zone) => {
+                    const held = lockedByCode.get(zone.code);
+                    return (
+                      <option key={zone.id} value={zone.code} disabled={used.has(zone.code) || Boolean(held)}>
+                        {zoneDisplayLabel(zone.code, zone.name)}
+                        {used.has(zone.code) ? ' · in this audit' : held ? ` · ${held.auditorName} is auditing it` : ''}
+                      </option>
+                    );
+                  })}
+                </Select>
+                {mayAddZone ? (
+                  <button
+                    type="button"
+                    className="mt-1 text-sm underline"
+                    onClick={() => {
+                      setNewZone({ label: '', name: '' });
+                      setShowErrors(false);
+                    }}
+                  >
+                    + New Zone
+                  </button>
+                ) : zones.length === 0 ? (
+                  <p className="mt-1 text-sm text-ink-2">Ask the Unit’s Coordinator to add its Zones.</p>
+                ) : null}
+              </Field>
+            )}
             <Field label="Zone Leader’s name" {...(showErrors && errors.leader ? { error: errors.leader } : {})}>
               <Input value={leaderName} maxLength={200} onChange={(event) => setLeaderName(event.target.value)} placeholder="Full name" />
             </Field>

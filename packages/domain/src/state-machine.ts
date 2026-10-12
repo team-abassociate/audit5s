@@ -101,38 +101,39 @@ export function restartsRemaining(restartCount: number): number {
   return Math.max(0, MAX_AUDIT_RESTARTS - restartCount);
 }
 
+// R-52: a Coordinator conducts audits of their own Unit, on every edge an auditor takes.
 export const AUDIT_TRANSITIONS: readonly Transition<AuditStatus>[] = [
   {
     from: 'ASSIGNED',
     to: 'READY',
-    actors: ['CONSULTANT', 'ZONE_LEADER'],
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'],
     guards: ['selfie_captured'],
     note: 'Auditor opens the assignment; selfie and location are captured first',
   },
   {
     from: 'READY',
     to: 'IN_PROGRESS',
-    actors: ['CONSULTANT', 'ZONE_LEADER'],
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'],
     guards: ['device_owns_audit', 'membership_active'],
     note: 'The device claims the single-writer lock (D7)',
   },
   {
     from: 'IN_PROGRESS',
     to: 'PAUSED',
-    actors: ['CONSULTANT', 'ZONE_LEADER', 'SUPER_ADMIN'],
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER', 'SUPER_ADMIN'],
     note: 'Abort: save + pause + notify + resume (N7). Nothing is discarded',
   },
   {
     from: 'PAUSED',
     to: 'IN_PROGRESS',
-    actors: ['CONSULTANT', 'ZONE_LEADER'],
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'],
     guards: ['device_owns_audit', 'membership_active'],
     note: 'Resume, from the persisted cursors',
   },
   {
     from: 'IN_PROGRESS',
     to: 'COMPLETED',
-    actors: ['CONSULTANT', 'ZONE_LEADER'],
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'],
     guards: ['all_zones_completed'],
     note: 'Server recomputes every score on this edge (D5)',
   },
@@ -178,7 +179,7 @@ export const AUDIT_TRANSITIONS: readonly Transition<AuditStatus>[] = [
     (from) => ({
       from,
       to: 'IN_PROGRESS' as const,
-      actors: ['CONSULTANT', 'ZONE_LEADER', 'SUPER_ADMIN'] as const,
+      actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER', 'SUPER_ADMIN'] as const,
       guards: ['restarts_remaining', 'reason_given'] as const,
       note: 'Restart after finishing (R-33). Capped at two, and logged with its reason',
     }),
@@ -203,14 +204,14 @@ export const AUDIT_ZONE_TRANSITIONS: readonly Transition<AuditZoneStatus>[] = [
   {
     from: 'DRAFT',
     to: 'IN_PROGRESS',
-    actors: ['CONSULTANT', 'ZONE_LEADER'],
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'],
     guards: ['device_owns_audit'],
     note: 'First response saved, or first photo captured on a walk-by',
   },
   {
     from: 'IN_PROGRESS',
     to: 'COMPLETED',
-    actors: ['CONSULTANT', 'ZONE_LEADER'],
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'],
     guards: ['all_questions_answered'],
     note: 'Finish a scored Zone (EXTERNAL_5S, CROSS_5S). Section scores are written here',
   },
@@ -226,7 +227,7 @@ export const AUDIT_ZONE_TRANSITIONS: readonly Transition<AuditZoneStatus>[] = [
     // guard the audit type makes applicable, so exactly one of these can ever be met.
     from: 'IN_PROGRESS',
     to: 'COMPLETED',
-    actors: ['CONSULTANT', 'ZONE_LEADER'],
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'],
     guards: ['has_evidence'],
     note: 'Finish a WALK_BY Zone: at least one photograph (§7.2)',
   },
@@ -245,17 +246,17 @@ export const AUDIT_ZONE_TRANSITIONS: readonly Transition<AuditZoneStatus>[] = [
   ...(['DRAFT', 'IN_PROGRESS'] as const).map((from) => ({
     from,
     to: 'WITHDRAWN' as const,
-    actors: ['CONSULTANT', 'ZONE_LEADER'] as const,
+    actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const,
     note: 'Abort this Zone: out of the score and the finish guard, lock released, rows kept',
   })),
 ];
 
 /** `audit_assignment`. AA-1: revoking the membership cancels rather than deletes. */
 export const ASSIGNMENT_TRANSITIONS: readonly Transition<AssignmentStatus>[] = [
-  { from: 'ASSIGNED', to: 'ACCEPTED', actors: ['CONSULTANT', 'ZONE_LEADER'] },
-  { from: 'ASSIGNED', to: 'IN_PROGRESS', actors: ['CONSULTANT', 'ZONE_LEADER'] },
-  { from: 'ACCEPTED', to: 'IN_PROGRESS', actors: ['CONSULTANT', 'ZONE_LEADER'] },
-  { from: 'IN_PROGRESS', to: 'COMPLETED', actors: ['CONSULTANT', 'ZONE_LEADER'] },
+  { from: 'ASSIGNED', to: 'ACCEPTED', actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] },
+  { from: 'ASSIGNED', to: 'IN_PROGRESS', actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] },
+  { from: 'ACCEPTED', to: 'IN_PROGRESS', actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] },
+  { from: 'IN_PROGRESS', to: 'COMPLETED', actors: ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] },
   {
     from: 'ASSIGNED',
     to: 'CANCELLED',

@@ -88,6 +88,13 @@ describe('changedZoneFields', () => {
     expect(body).not.toHaveProperty('zoneLeaderId');
   });
 
+  it('renumbers Zone 5 as 5A with its code and sort order (R-52)', () => {
+    const initial = editZoneDefaults(zone());
+    expect(initial.label).toBe('5');
+    const body = changedZoneFields({ ...initial, label: '5A' }, initial, { label: true });
+    expect(body).toEqual({ code: 'Z-5A', sortOrder: 5 });
+  });
+
   it('sends an explicit null when the user picks Unassigned', () => {
     const initial = editZoneDefaults(zone({ zoneLeaderId: LEADER_ID }));
     const body = changedZoneFields({ ...initial, zoneLeaderId: '' }, initial, {

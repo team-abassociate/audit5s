@@ -99,7 +99,7 @@ export default function AuditsScreen() {
     newAudit.push({ label: 'Assign to a consultant', detail: 'They run it on their phone', onPress: () => router.push('/manage/assign') });
   }
   if (can('audit', 'create_external')) {
-    newAudit.push({ label: 'Start one myself', detail: 'Pick the Unit, then take the selfie', onPress: () => router.push('/units') });
+    newAudit.push({ label: 'Start one myself', detail: 'Pick the Unit, then take the selfie', onPress: () => router.push('/audit/start') });
   }
 
   // The same query as My Unit's, so the name is usually cached already.

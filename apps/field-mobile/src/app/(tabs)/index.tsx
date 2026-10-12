@@ -53,17 +53,6 @@ export default function UnitsScreen() {
     },
   });
 
-  // One catalogue pull on open. It is fire-and-forget: the screen has already rendered
-  // from the cache by the time it resolves, and a failure changes nothing on screen.
-  useQuery({
-    queryKey: ['catalogue', 'bootstrap'],
-    queryFn: async () => {
-      await sync.mutateAsync().catch(() => undefined);
-      return true;
-    },
-    staleTime: 60_000,
-  });
-
   // §2.4 step 5: a Zone Leader's nonconformities, from the device's own copy.
   const actions = useQuery({
     queryKey: ['local', 'corrective-actions'],

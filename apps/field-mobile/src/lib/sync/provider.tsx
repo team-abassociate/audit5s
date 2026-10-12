@@ -9,6 +9,7 @@ import { getDeviceId } from '../secure-storage';
 import { useOptionalLocalDatabase } from '../db/provider';
 import { useSession } from '../session';
 import { pullKaizens } from '../kaizen-sync';
+import { syncCatalogue } from '../catalogue';
 
 /**
  * The sync engine's triggers (§9.3).
@@ -73,6 +74,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       // `allowed` guarantees a database; the guard is for the type.
       if (!database) return IDLE;
       const result = await runSync(database, transport, { deviceId: await getDeviceId() });
+      // The catalogue rides every cycle — app open, foreground, the tick and Sync now — so
+      // nobody has to pull it by hand. An unchanged one costs one small response.
+      if (result.error === undefined) {
+        const catalogue = await syncCatalogue(database).catch(() => null);
+        if (catalogue?.changed) void queryClient.invalidateQueries({ queryKey: ['local'] });
+      }
       // After the push, so the server has this phone's edits before it answers with its copy.
       if (result.error === undefined && kaizenRef.current) {
         await pullKaizens(database).catch(() => undefined);

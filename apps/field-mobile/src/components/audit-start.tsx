@@ -16,6 +16,7 @@ import {
   SectionHead,
   Segmented,
   Slip,
+  SelectField,
   SlipText,
 } from './ui';
 import { CameraCapture } from './camera-capture';
@@ -24,7 +25,8 @@ import {
   listResumableAudits,
   resumeLocalAudit,
 } from '../lib/db/audit.repository';
-import { getLocalUnit } from '../lib/db/catalogue.repository';
+import { getLocalUnit, listLocalUnits } from '../lib/db/catalogue.repository';
+import { syncCatalogue } from '../lib/catalogue';
 import { captureLocalEvidence } from '../lib/db/evidence.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import type { ProcessedImage } from '../lib/capture/media';
@@ -38,12 +40,13 @@ const AUDIT_TYPE_LABELS: Record<AuditType, string> = {
   CROSS_5S: 'Cross audit',
 };
 
-/** What each role may start here (PART 6). R-18: a Super Admin may start every type. */
-function auditTypesFor(role: string | undefined): AuditType[] {
-  if (role === 'CONSULTANT') return ['EXTERNAL_5S', 'WALK_BY'];
-  if (role === 'ZONE_LEADER') return ['CROSS_5S'];
-  if (role === 'SUPER_ADMIN') return ['EXTERNAL_5S', 'WALK_BY', 'CROSS_5S'];
-  return [];
+/** What the signed-in person may start here (PART 6), read from their grants as the web does. */
+function auditTypesFor(can: (resource: string, action: string) => boolean): AuditType[] {
+  const types: AuditType[] = [];
+  if (can('audit', 'create_external')) types.push('EXTERNAL_5S');
+  if (can('audit', 'create_walk_by')) types.push('WALK_BY');
+  if (can('audit', 'create_cross')) types.push('CROSS_5S');
+  return types;
 }
 
 /**
@@ -51,25 +54,56 @@ function auditTypesFor(role: string | undefined): AuditType[] {
  *
  * Starting one writes a row locally and nothing else: no request is made, and none is
  * waited for. The server hears about the audit when the outbox drains, and arbitrates
- * device ownership then (D7). The Zone is created on the next screen, after the selfie —
- * the Zone number, its description, the leader's name and the department.
+ * device ownership then (D7). The Zone is chosen on the next screen, after the selfie —
+ * one of the Unit's Zones, its description, the leader's name and the department.
  *
- * Two routes show it: `/unit/[unitId]`, pushed from a Units list, and a Zone Leader's Audit
- * tab (`tab`), which holds their one Unit. A tab is not pushed, so the way on to the Zones is
+ * Three routes show it: `/unit/[unitId]`, pushed from a Units list; `/audit/start`, the + menu's
+ * "Start one myself", which picks the Unit from a dropdown right here (no `unitId`) rather than
+ * sending the Super Admin through the Units tab; and a Zone Leader's Audit tab (`tab`), which
+ * holds their one Unit. A tab is not pushed, so the way on to the Zones is
  * a push rather than a replace — replacing would swap out the whole tab bar, and Back from
  * the Zones would leave the app.
  */
-export function AuditStart({ unitId, tab = false }: { unitId: string; tab?: boolean }) {
+export function AuditStart({ unitId: fixedUnitId, tab = false }: { unitId?: string; tab?: boolean }) {
   const styles = useStyles();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const router = useRouter();
   const leaveTo = (href: Href) => (tab ? router.push(href) : router.replace(href));
-  const { scope } = useSession();
+  const { can } = useSession();
+
+  /*
+   * The offline catalogue — this Unit, its Zones, the departments — pulled on the way in,
+   * as the Units tab does. A Coordinator or Super Admin reaches this screen from the
+   * management Overview, which never pulls it, and their Zone step was left with no Zones
+   * and no departments (R-52). The same key as the Units tab, so it runs once either way.
+   */
+  useQuery({
+    queryKey: ['catalogue', 'bootstrap'],
+    queryFn: async () => {
+      await syncCatalogue(database)
+        .then(() => queryClient.invalidateQueries({ queryKey: ['local'] }))
+        .catch(() => undefined);
+      return true;
+    },
+    staleTime: 60_000,
+  });
+
+  const units = useQuery({
+    queryKey: ['local', 'units'],
+    queryFn: () => listLocalUnits(database),
+    enabled: !fixedUnitId,
+  });
+  const [pickedUnitId, setPickedUnitId] = useState<string | null>(null);
+  const [unitMissing, setUnitMissing] = useState(false);
+  // One Unit on the device is the pick already made.
+  const onlyUnitId = units.data?.length === 1 ? units.data[0]!.id : null;
+  const unitId = fixedUnitId ?? pickedUnitId ?? onlyUnitId;
 
   const unit = useQuery({
     queryKey: ['local', 'unit', unitId],
-    queryFn: () => getLocalUnit(database, unitId),
+    queryFn: () => getLocalUnit(database, unitId!),
+    enabled: unitId !== null,
   });
 
   /*
@@ -97,7 +131,7 @@ export function AuditStart({ unitId, tab = false }: { unitId: string; tab?: bool
       ),
   });
 
-  const types = auditTypesFor(scope?.role);
+  const types = auditTypesFor(can);
   const [picked, setPicked] = useState<AuditType | null>(null);
   const auditType = picked ?? types[0] ?? null;
   const walkBy = auditType === 'WALK_BY';
@@ -121,7 +155,7 @@ export function AuditStart({ unitId, tab = false }: { unitId: string; tab?: bool
     mutationFn: (type: AuditType) =>
       // No audit-level checklist: the department is chosen per Zone, and that is the
       // version each Zone pins (QR-2).
-      createLocalAudit(database, { unitId, auditType: type, checklistVersionId: null }),
+      createLocalAudit(database, { unitId: unitId!, auditType: type, checklistVersionId: null }),
     onSuccess: async (auditId) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       setPendingAuditId(auditId);
@@ -178,7 +212,14 @@ export function AuditStart({ unitId, tab = false }: { unitId: string; tab?: bool
     );
   }
 
-  const title = unit.data?.[0]?.name ?? 'Unit';
+  const title = fixedUnitId ? (unit.data?.[0]?.name ?? 'Unit') : 'Start an audit';
+  const start = (type: AuditType) => {
+    if (!unitId) {
+      setUnitMissing(true);
+      return;
+    }
+    startAudit.mutate(type);
+  };
 
   return (
     <Screen>
@@ -187,18 +228,32 @@ export function AuditStart({ unitId, tab = false }: { unitId: string; tab?: bool
         options={
           tab
             ? { headerTitle: () => <HeaderTitle>{title}</HeaderTitle>, headerLeft: undefined }
-            : { title, headerBackTitle: 'Units', headerLeft: undefined }
+            : { title, headerBackTitle: fixedUnitId ? 'Units' : undefined, headerLeft: undefined }
         }
       />
 
       <ScrollView contentContainerStyle={styles.content}>
+        {fixedUnitId ? null : (
+          <View>
+            <SelectField
+              label="Unit"
+              placeholder={units.isLoading ? 'Loading Units…' : 'Choose the Unit'}
+              value={unitId}
+              onChange={(next) => {
+                setPickedUnitId(next);
+                setUnitMissing(false);
+              }}
+              options={(units.data ?? []).map((option) => ({ value: option.id, label: option.name }))}
+            />
+            <ErrorBanner message={unitMissing ? 'Choose the Unit first.' : null} />
+          </View>
+        )}
+
         {existing ? (
           <Slip title="Your audit here is still open">
             <SlipText>
-              {existing.zonesFinished} of {existing.zonesTotal} Zone
-              {existing.zonesTotal === 1 ? '' : 's'} finished
-              {existing.status === 'PAUSED' ? ', paused' : ''}. Add the next Zone to this audit
-              rather than starting a new one.
+              {existing.status === 'PAUSED' ? 'It is paused' : 'It is not submitted yet'}. Carry on
+              with it, or start a separate audit for a different Zone.
             </SlipText>
             <View style={styles.slipAction}>
               <Button
@@ -232,11 +287,11 @@ export function AuditStart({ unitId, tab = false }: { unitId: string; tab?: bool
         </Card>
         <Card>
           <CardHeader
-            title="2 · Create the Zone"
+            title="2 · Select the Zone"
             description={
               walkBy
-                ? 'Zone 1 to 100, an optional description and the Zone Leader’s name. Then the photographs.'
-                : 'Zone 1 to 100, an optional description, the Zone Leader’s name and the department. Then its 50 questions.'
+                ? 'One of the Unit’s Zones, an optional description and the Zone Leader’s name. Then the photographs.'
+                : 'One of the Unit’s Zones, an optional description, the Zone Leader’s name and the department. Then its 50 questions — Submit finishes the audit.'
             }
           />
         </Card>
@@ -261,14 +316,14 @@ export function AuditStart({ unitId, tab = false }: { unitId: string; tab?: bool
               existing
                 ? Alert.alert(
                     'Start a separate audit?',
-                    'Your open audit of this Unit stays open. The Zones you add next go to the ' +
-                      'new audit instead, and the two are scored separately.',
+                    'Your open audit of this Unit stays open to finish later. An audit covers ' +
+                      'one Zone, so the new one is for a different Zone.',
                     [
                       { text: 'Keep my audit', style: 'cancel' },
-                      { text: 'Start new audit', onPress: () => startAudit.mutate(auditType) },
+                      { text: 'Start new audit', onPress: () => start(auditType) },
                     ],
                   )
-                : startAudit.mutate(auditType)
+                : start(auditType)
             }
           />
           <Muted>Work is saved on this device and syncs when there is a connection.</Muted>
