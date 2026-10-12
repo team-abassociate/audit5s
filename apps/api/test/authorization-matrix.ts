@@ -1211,10 +1211,11 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   {
     method: 'GET',
     path: '/api/v1/sync/catalogue',
-    description: 'sync:pull — the offline bootstrap; device roles and a Super Admin (§8.11, R-18)',
+    description: 'sync:pull — the offline bootstrap; every role that audits (§8.11, R-18, R-52)',
     expected: {
       SUPER_ADMIN: { inScope: OK },
       CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
       ZONE_LEADER: { inScope: OK },
     },
   },
@@ -1295,6 +1296,7 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     expected: {
       SUPER_ADMIN: { inScope: OK },
       CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
       ZONE_LEADER: { inScope: OK },
     },
   },

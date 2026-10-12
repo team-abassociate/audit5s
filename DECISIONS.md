@@ -45,6 +45,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-46 | No sign-in cap per login ID; the lockout stays | Settled |
 | R-47 | A Coordinator copies a Zone Leader link; a Consultant sees "All my Units" | Settled |
 | R-48 | Leanstack hosts two modules, 5S and Kaizen | Settled |
+| R-52 | Zones are selected, not made up; a Coordinator audits; a rename reaches history | Settled |
 
 ---
 
@@ -2316,3 +2317,46 @@ question and walk-by photographs.
   says otherwise.
 - **The score** on the web questionnaire is `scoreZone` from `packages/domain`, the function
   the server runs, labelled as provisional until the Zone is submitted (D5).
+
+---
+
+## R-52 — Zones are selected, not made up; a Coordinator audits; a rename reaches history
+
+**Settled 2026-10-12 by the product owner.** Withdraws the half of R-19 that let any auditor
+add a Zone by naming its number, and, for a Zone's code and name only, D6's snapshot.
+
+- **Selecting a Zone.** The audit's Zone step is "Select Zone": a dropdown of the Unit's own
+  Zones. A Zone already in this audit, or held by another open audit (R-29), is greyed out
+  with the reason. Only a **Super Admin or a Coordinator** may add a Zone there — "+ New
+  Zone" opens its number and name on one line. A Consultant or Zone Leader cannot.
+  `app_ensure_zone_for_audit` (migration 0048) enforces it for every client, an older APK
+  included: `403 ZONE_CREATE_FORBIDDEN`.
+- **Zone numbers are labels.** One to three letters or digits — `7`, `1A`, `12B` — stored
+  as `Z-07`, `Z-1A`, `Z-12B` and shown as "Zone 1A" everywhere (`zoneCodeForLabel`,
+  `zoneDisplayLabel`). A Coordinator or Super Admin may renumber and rename an existing Zone
+  (Zone 1 → Zone 1A) from the Unit's Zones on the web or the phone.
+- **A rename reaches history.** Asked whether last month's report should keep "Zone 1" after
+  the rename, the owner chose "everything shows the new name": a trigger on `zone` rewrites
+  `audit_zone.zone_code_snapshot` / `zone_name_snapshot` for every audit of the Zone,
+  finished ones included, so reports and corrective actions read the new label. The
+  append-only guard admits exactly that — the two columns, set to the Zone's live values —
+  and the rename is logged as `zone.updated`. What the auditor typed (description, leader)
+  is unchanged. A PDF already generated keeps what it printed until it is regenerated.
+- **An existing audit Zone is re-pointed by id only.** A phone's later writes repeat the
+  code it snapshotted, which a rename may have moved on; the server no longer reads that as
+  a re-point.
+- **A Coordinator audits their own Unit** as a Super Admin audits any (R-18): every audit
+  type, every conducting edge and permission, `own_unit`/`own_audits` scope, sync and
+  devices. They still read no report (R-39) and cancel nothing. Choosing "the consultant's
+  Zones or my own" needs no separate screen: the dropdown offers the Unit's Zones, which
+  they may rename and lead, and "+ New Zone" adds theirs.
+- **One audit covers one Zone.** The Zones screen offers no "Select the next Zone" and no
+  Finish button: Submit on the Zone's questions (or a walk-by's photographs) finishes the
+  audit — `completeLocalZone` queues the audit's `complete` behind the Zone's. An audit begun
+  earlier with several Zones finishes when its last open Zone is submitted, or from "Submit
+  audit" on the Zones screen. The server still accepts several Zones, so an older build keeps
+  working. A finished audit's Zone offers "Rename" to whoever may update Zones.
+- **Starting an audit picks the Unit in place.** "Start one myself" opens `/audit/start`, with
+  the Unit as a dropdown, rather than sending the Super Admin through the Units tab.
+  Assigning an audit picks the Unit from a dropdown too. The offline catalogue is pulled on
+  every sync cycle, so nobody has to open the Units tab for it.

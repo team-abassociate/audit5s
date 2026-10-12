@@ -3,14 +3,8 @@ import { ActivityIndicator, Alert, FlatList, Modal, Pressable, Text, View } from
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN, type ZoneLock, type ZoneLocksResponse } from '@audit5s/contracts';
-import {
-  MAX_AUDIT_RESTARTS,
-  restartsRemaining,
-  zoneCodeChoices,
-  zoneCodeForNumber,
-  zoneDisplayLabel,
-} from '@audit5s/domain';
+import type { ZoneLock, ZoneLocksResponse } from '@audit5s/contracts';
+import { MAX_AUDIT_RESTARTS, restartsRemaining, zoneCodeForLabel, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -37,6 +31,7 @@ import {
   restartLocalAudit,
   listLocalAuditZones,
   pauseLocalAudit,
+  renameLocalZone,
   withdrawLocalZone,
   resumeCursor,
   resumeLocalAudit,
@@ -46,10 +41,11 @@ import {
   listLocalZones as listCatalogueZones,
 } from '../../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
-import { api } from '../../../lib/api';
+import { api, problemMessage } from '../../../lib/api';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 import { leaveScreen } from '../../../lib/leave-screen';
 import { useRequiredFields } from '../../../lib/required-fields';
+import { useSession } from '../../../lib/session';
 
 type CatalogueZone = Awaited<ReturnType<typeof listCatalogueZones>>[number];
 
@@ -67,7 +63,7 @@ const MIN_RESTART_REASON = 10;
 /**
  * What has been typed for one Zone but not yet saved.
  *
- * Kept per Zone number rather than in three fields shared by the form, because the form is
+ * Kept per Zone rather than in three fields shared by the form, because the form is
  * reused for every Zone in the audit and the fields are *about* the Zone. Choosing Zone 4
  * after typing Zone 1's leader used to leave Zone 1's leader on screen, where the next tap
  * would have saved it against Zone 4 — a wrong name on a report, from a silent default.
@@ -83,7 +79,15 @@ interface ZoneDraft {
 const EMPTY_DRAFT: ZoneDraft = { description: '', leaderName: '', versionId: null };
 
 /** The slot for what is typed before any Zone is chosen; it follows the first choice. */
-const NO_ZONE = -1;
+const NO_ZONE = '';
+/** The slot for a Zone being added here (R-52), whatever label it ends up with. */
+const NEW_ZONE = '+new';
+
+/** R-52: a Zone added during the audit — its label (`1A`, at most 3) and its name. */
+interface NewZone {
+  label: string;
+  name: string;
+}
 
 function isEmptyDraft(draft: ZoneDraft): boolean {
   return draft.description.trim() === '' && draft.leaderName.trim() === '' && !draft.versionId;
@@ -92,10 +96,16 @@ function isEmptyDraft(draft: ZoneDraft): boolean {
 /**
  * The Zones of one audit: what has been done, what is next, and the way back in.
  *
- * Adding a Zone is a form (R-19): Zone 1…100 from a dropdown, an optional description, the
- * Zone Leader's name, and — on a scored audit — the department whose fifty questions follow.
- * A number the Unit already uses fills in what the catalogue knows; any other number is a
- * new Zone, which the server adds to the Unit when this audit syncs.
+ * An audit covers one Zone (owner, 2026-10-12): submitting it finishes the audit
+ * (`completeLocalZone`), so there is no Finish here.
+ *
+ * Adding a Zone is a form (R-19): the Zone from a dropdown of the Unit's own Zones, an
+ * optional description, the Zone Leader's name, and — on a scored audit — the department
+ * whose fifty questions follow. Choosing a Zone fills in what the catalogue knows.
+ *
+ * R-52: only a Super Admin or a Coordinator adds a Zone here — "+ New Zone" opens its label
+ * (at most three letters or digits) and name on one line — and the server adds it to the
+ * Unit when this audit syncs. Everyone else picks from the list.
  *
  * The resume banner of §9.8 is rendered from the local cursors, so reopening an audit
  * aborted three days ago costs no round trip.
@@ -108,13 +118,16 @@ export default function AuditZonesScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  const [zoneNumber, setZoneNumber] = useState<number | null>(null);
-  const [drafts, setDrafts] = useState<Record<number, ZoneDraft>>({});
+  const { can } = useSession();
+  const mayAddZone = can('zone', 'create');
+  const [zoneCode, setZoneCode] = useState<string | null>(null);
+  const [newZone, setNewZone] = useState<NewZone | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, ZoneDraft>>({});
   const [picking, setPicking] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const required = useRequiredFields<'zone' | 'leader' | 'department'>();
 
-  const draftKey = zoneNumber ?? NO_ZONE;
+  const draftKey = newZone ? NEW_ZONE : (zoneCode ?? NO_ZONE);
   const draft = drafts[draftKey] ?? EMPTY_DRAFT;
   const editDraft = (change: Partial<ZoneDraft>) =>
     setDrafts((current) => ({
@@ -175,10 +188,11 @@ export default function AuditZonesScreen() {
   const walkBy = audit.data?.auditType === 'WALK_BY';
 
   const addZone = useMutation({
-    mutationFn: (input: { zoneNumber: number; draft: ZoneDraft }) =>
+    mutationFn: (input: { zoneCode: string; zoneName: string | null; draftKey: string; draft: ZoneDraft }) =>
       addLocalZone(database, {
         auditId,
-        zoneNumber: input.zoneNumber,
+        zoneCode: input.zoneCode,
+        zoneName: input.zoneName,
         sequenceNo: (auditZones.data?.length ?? 0) + 1,
         checklistVersionId: walkBy ? null : input.draft.versionId,
         zoneDescription: input.draft.description,
@@ -189,10 +203,11 @@ export default function AuditZonesScreen() {
       // The Zone is in the audit now, so its draft has nowhere left to go back to.
       setDrafts((current) => {
         const next = { ...current };
-        delete next[input.zoneNumber];
+        delete next[input.draftKey];
         return next;
       });
-      setZoneNumber(null);
+      setZoneCode(null);
+      setNewZone(null);
       setShowErrors(false);
       router.push({
         pathname: walkBy ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
@@ -260,6 +275,26 @@ export default function AuditZonesScreen() {
     },
   });
 
+  /**
+   * Renaming the Zone once the audit is done — "Zone 7" added in the field becomes "Press
+   * shop". Online: the server renames the Unit's Zone, and the rename reaches every audit
+   * of it, finished ones included (R-52).
+   */
+  const [renaming, setRenaming] = useState<{ zoneId: string; label: string; name: string } | null>(null);
+  const rename = useMutation({
+    mutationFn: async (next: { zoneId: string; name: string }) => {
+      const zone = catalogueZones.data?.find((candidate) => candidate.id === next.zoneId);
+      if (!zone) throw new Error('This Zone has not reached the server yet. Sync, then rename it.');
+      const name = next.name.trim();
+      await api.patch(`/zones/${zone.id}`, { name });
+      await renameLocalZone(database, { unitId: audit.data!.unitId, code: zone.code, name });
+    },
+    onSuccess: () => {
+      setRenaming(null);
+      return queryClient.invalidateQueries({ queryKey: ['local'] });
+    },
+  });
+
   const [restartReason, setRestartReason] = useState<string | null>(null);
   const restart = useMutation({
     mutationFn: (reason: string) => restartLocalAudit(database, auditId, reason),
@@ -270,24 +305,18 @@ export default function AuditZonesScreen() {
   });
 
   /*
-   * Finishing is the one edge on this screen with no way back, and it sat behind a bare
-   * tap: §7.1 has no `COMPLETED → IN_PROGRESS`, the score is recomputed and frozen, and
-   * the nonconformities become corrective actions somebody is then chased for. Abort —
-   * which is reversible — already asks. The irreversible one did not.
-   *
-   * It names the Zone count rather than asking "are you sure": a person who has just
-   * finished Zone 3 of 4 and means to carry on is told what they are about to end, which
-   * is the mistake worth catching.
+   * Only an audit begun before one-Zone-per-audit can be here with every Zone done and the
+   * audit still open; Submit on a Zone finishes the audit now. It still asks, because a
+   * finished audit's nonconformities become corrective actions somebody is chased for.
    */
   const confirmFinish = () =>
     Alert.alert(
-      'Finish this audit?',
-      `${finished} Zone(s) will be submitted and scored. A finished audit cannot be ` +
-        'reopened from this screen, and any nonconformity photographs become corrective ' +
-        'actions. Check you have audited every Zone you meant to.',
+      'Submit this audit?',
+      `${finished} Zone(s) will be submitted and scored, and any nonconformity photographs ` +
+        'become corrective actions.',
       [
-        { text: 'Keep auditing', style: 'cancel' },
-        { text: 'Finish audit', onPress: () => finish.mutate() },
+        { text: 'Not yet', style: 'cancel' },
+        { text: 'Submit audit', onPress: () => finish.mutate() },
       ],
     );
 
@@ -309,8 +338,8 @@ export default function AuditZonesScreen() {
   const paused = audit.data?.status === 'PAUSED';
   // A paused audit is resumed first: its Zones and its finish wait behind *Resume*, which
   // is what the server's state machine asks too — a paused audit cannot be finished.
-  const canAddZone =
-    audit.data?.status !== 'COMPLETED' && !paused && (liveZones.length === 0 || allComplete);
+  // One Zone per audit: once it is chosen, there is no next one to add.
+  const canAddZone = audit.data?.status !== 'COMPLETED' && !paused && liveZones.length === 0;
 
   const finished = liveZones.filter((zone) => zone.status === 'COMPLETED').length;
   const canFinish = allComplete && audit.data?.status !== 'COMPLETED' && !paused;
@@ -331,11 +360,21 @@ export default function AuditZonesScreen() {
   const restartsLeft = restartsRemaining(audit.data?.restartCount ?? 0);
   const canRestart = audit.data?.status === 'COMPLETED' && restartsLeft > 0;
 
-  const selected = zoneNumber === null ? null : byCode.get(zoneCodeForNumber(zoneNumber));
+  const newCode = newZone ? zoneCodeForLabel(newZone.label) : null;
+  const pickedCode = newZone ? newCode : zoneCode;
+  const selected = zoneCode === null ? null : byCode.get(zoneCode);
   const lockedByCode = new Map((zoneLocks.data?.locks ?? []).map((lock) => [lock.zoneCode, lock]));
-  const lockOnSelection = zoneNumber === null ? null : lockedByCode.get(zoneCodeForNumber(zoneNumber));
+  const lockOnSelection = zoneCode === null || newZone ? null : lockedByCode.get(zoneCode);
   const errors = {
-    zone: zoneNumber === null ? 'Choose the Zone' : null,
+    zone: newZone
+      ? newCode === null
+        ? 'Enter 1 to 3 letters or digits'
+        : byCode.has(newCode) || usedCodes.has(newCode)
+          ? `Zone ${newZone.label} already exists. Choose it from the list.`
+          : null
+      : zoneCode === null
+        ? 'Choose the Zone'
+        : null,
     leader: draft.leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
     department: !walkBy && !draft.versionId ? 'Choose the department' : null,
   };
@@ -349,11 +388,11 @@ export default function AuditZonesScreen() {
    * follows the first choice rather than being thrown away, and never overwrites the
    * catalogue's answer for a Zone chosen later.
    */
-  const chooseZone = (number: number) => {
+  const chooseZone = (code: string) => {
     setDrafts((current) => {
-      if (current[number]) return current;
+      if (current[code]) return current;
 
-      const known = byCode.get(zoneCodeForNumber(number));
+      const known = byCode.get(code);
       const carried = current[NO_ZONE];
       const carry = carried && !isEmptyDraft(carried) ? carried : null;
       const template = known?.defaultChecklistTemplateId
@@ -364,61 +403,107 @@ export default function AuditZonesScreen() {
 
       const next = { ...current };
       delete next[NO_ZONE];
-      next[number] = {
+      next[code] = {
         description: carry?.description.trim() ? carry.description : (known?.description ?? ''),
         leaderName: carry?.leaderName.trim() ? carry.leaderName : (known?.zoneLeaderName ?? ''),
         versionId: carry?.versionId ?? template?.id ?? null,
       };
       return next;
     });
-    setZoneNumber(number);
+    setZoneCode(code);
+    setNewZone(null);
     setShowErrors(false);
   };
 
   const submit = () => {
     const complete = required.check([
       // A Zone somebody else holds is not a Zone chosen: its slip is shown right there.
-      ['zone', zoneNumber !== null && !lockOnSelection],
+      ['zone', pickedCode !== null && !errors.zone && !lockOnSelection],
       ['leader', !errors.leader],
       ['department', !errors.department],
     ]);
-    if (!complete || zoneNumber === null) {
+    if (!complete || pickedCode === null) {
       setShowErrors(true);
       return;
     }
-    addZone.mutate({ zoneNumber, draft });
+    addZone.mutate({ zoneCode: pickedCode, zoneName: newZone?.name.trim() || null, draftKey, draft });
   };
 
   const addZoneCard = canAddZone ? (
     <Card>
       <CardHeader
-        title={zonesInAudit.length === 0 ? 'Create the Zone' : 'Add the next Zone'}
+        title="Select Zone"
         description={
           walkBy
-            ? 'Where the walk-by goes, and who leads it.'
-            : 'Each Zone is its own questionnaire of the department you choose.'
+            ? 'Where the walk-by goes, and who leads it. One audit covers one Zone.'
+            : 'One audit covers one Zone: its questions, then Submit finishes the audit.'
         }
       />
 
       <View ref={required.anchor('zone')} collapsable={false}>
-      <Label>Zone</Label>
-      <Pressable
-        testID="zone-number"
-        accessibilityRole="button"
-        accessibilityLabel="Choose the Zone"
-        onPress={() => setPicking(true)}
-        style={[styles.select, showErrors && errors.zone ? styles.selectError : null]}
-      >
-        <Text style={zoneNumber === null ? styles.selectPlaceholder : styles.selectValue}>
-          {zoneNumber === null
-            ? `Choose Zone ${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`
-            : selected
-              ? zoneDisplayLabel(selected.code, selected.name)
-              : `Zone ${zoneNumber} (new)`}
-        </Text>
-        <Text style={styles.selectChevron}>▾</Text>
-      </Pressable>
-      {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
+      {newZone ? (
+        <>
+          {/* R-52: the new Zone's label and name, on one line. */}
+          <View style={styles.newZoneRow}>
+            <Field
+              testID="new-zone-label"
+              label="Zone no."
+              value={newZone.label}
+              onChangeText={(value) =>
+                setNewZone({ ...newZone, label: value.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase() })
+              }
+              maxLength={3}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholder="1A"
+              containerStyle={styles.newZoneLabel}
+            />
+            <Field
+              testID="new-zone-name"
+              label="Zone name"
+              value={newZone.name}
+              onChangeText={(value) => setNewZone({ ...newZone, name: value })}
+              maxLength={200}
+              placeholder="Press shop"
+              containerStyle={styles.newZoneName}
+            />
+          </View>
+          {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
+          <Pressable accessibilityRole="button" onPress={() => setNewZone(null)} hitSlop={8}>
+            <Text style={styles.link}>Choose one of the Unit’s Zones instead</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <Label>Zone</Label>
+          <Pressable
+            testID="zone-number"
+            accessibilityRole="button"
+            accessibilityLabel="Choose the Zone"
+            onPress={() => setPicking(true)}
+            style={[styles.select, showErrors && errors.zone ? styles.selectError : null]}
+          >
+            <Text style={selected ? styles.selectValue : styles.selectPlaceholder}>
+              {selected ? zoneDisplayLabel(selected.code, selected.name) : 'Choose the Zone'}
+            </Text>
+            <Text style={styles.selectChevron}>▾</Text>
+          </Pressable>
+          {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
+          {mayAddZone ? (
+            <Pressable
+              testID="new-zone"
+              accessibilityRole="button"
+              onPress={() => {
+                setNewZone({ label: '', name: '' });
+                setShowErrors(false);
+              }}
+              hitSlop={8}
+            >
+              <Text style={styles.link}>+ New Zone</Text>
+            </Pressable>
+          ) : null}
+        </>
+      )}
       </View>
 
       {/* R-29, said before the questions rather than after them. */}
@@ -495,21 +580,12 @@ export default function AuditZonesScreen() {
                 disabled={restart.isPending}
                 onPress={() => setRestartReason('')}
               />
-            ) : canPause || canFinish ? (
-              <View style={styles.headerActions}>
-                {canPause ? (
-                  <HeaderAction
-                    title="Save & pause"
-                    disabled={leave.isPending}
-                    onPress={() => leave.mutate(null)}
-                  />
-                ) : null}
-                <HeaderAction
-                  title="Finish audit"
-                  disabled={!canFinish || finish.isPending}
-                  onPress={confirmFinish}
-                />
-              </View>
+            ) : canPause ? (
+              <HeaderAction
+                title="Save & pause"
+                disabled={leave.isPending}
+                onPress={() => leave.mutate(null)}
+              />
             ) : null,
         }}
       />
@@ -543,6 +619,9 @@ export default function AuditZonesScreen() {
               they paused it and started a new audit for Zone 7 (2026-09-23).
             */}
             {addZoneCard}
+            {canFinish ? (
+              <Button title="Submit audit" busy={finish.isPending} onPress={confirmFinish} />
+            ) : null}
             {zonesInAudit.length > 0 ? (
               <SectionHead
                 title="Zones in this audit"
@@ -630,6 +709,21 @@ export default function AuditZonesScreen() {
                     />
                   </View>
                 ) : null}
+                {!auditOpen && can('zone', 'update') && item.status === 'COMPLETED' ? (
+                  <View style={styles.zoneAction}>
+                    <Button
+                      title="Rename"
+                      variant="secondary"
+                      onPress={() =>
+                        setRenaming({
+                          zoneId: item.zoneId,
+                          label: zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot),
+                          name: item.zoneNameSnapshot,
+                        })
+                      }
+                    />
+                  </View>
+                ) : null}
                 {/* Abort one Zone without leaving the audit (0031). Unfinished Zones only. */}
                 {auditOpen && item.status !== 'COMPLETED' ? (
                   <View style={styles.zoneAction}>
@@ -666,6 +760,18 @@ export default function AuditZonesScreen() {
         onSave={() => editing && editZone.mutate(editing)}
       />
 
+      <RenamePrompt
+        rename={renaming}
+        busy={rename.isPending}
+        error={problemMessage(rename.error) ?? (rename.error ? rename.error.message : null)}
+        onChange={(name) => renaming && setRenaming({ ...renaming, name })}
+        onCancel={() => {
+          setRenaming(null);
+          rename.reset();
+        }}
+        onSave={() => renaming && renaming.name.trim() && rename.mutate(renaming)}
+      />
+
       <RestartPrompt
         visible={restartReason !== null}
         reason={restartReason ?? ''}
@@ -679,9 +785,10 @@ export default function AuditZonesScreen() {
 
       <ZonePicker
         visible={picking}
+        zones={catalogueZones.data ?? []}
         usedCodes={usedCodes}
-        byCode={byCode}
         lockedByCode={lockedByCode}
+        mayAddZone={mayAddZone}
         onPick={chooseZone}
         onClose={() => setPicking(false)}
       />
@@ -749,6 +856,52 @@ function ZoneDetailsPrompt({
             />
             <ErrorBanner message={error} />
             <Button title="Save details" busy={busy} onPress={onSave} />
+            <Button title="Cancel" variant="secondary" onPress={onCancel} />
+          </View>
+        ) : null}
+      </View>
+    </Modal>
+  );
+}
+
+/** Renaming a done audit's Zone: one field, the name as it should read everywhere. */
+function RenamePrompt({
+  rename,
+  busy,
+  error,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  rename: { label: string; name: string } | null;
+  busy: boolean;
+  error: string | null;
+  onChange: (name: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const styles = useStyles();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Modal visible={rename !== null} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
+      <Pressable style={styles.scrim} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Close" />
+      <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom }]}>
+        <Text style={styles.sheetTitle} accessibilityRole="header">
+          Rename {rename?.label ?? 'Zone'}
+        </Text>
+        {rename ? (
+          <View style={styles.restartBody}>
+            <Field
+              label="Zone name"
+              value={rename.name}
+              onChangeText={onChange}
+              placeholder="e.g. Press shop"
+              autoCapitalize="words"
+              hint="Changes the name on this audit, its other audits and any report regenerated."
+            />
+            <ErrorBanner message={error} />
+            <Button title="Save name" busy={busy} disabled={!rename.name.trim()} onPress={onSave} />
             <Button title="Cancel" variant="secondary" onPress={onCancel} />
           </View>
         ) : null}
@@ -836,7 +989,7 @@ function RestartPrompt({
 }
 
 /**
- * The Zone 1…100 dropdown: a ruled sheet from the bottom edge, within thumb reach.
+ * The Unit's Zones as a dropdown: a ruled sheet from the bottom edge, within thumb reach.
  *
  * Two kinds of Zone cannot be chosen, and the row says which it is rather than only going
  * grey. One is already in this audit (§5.5). The other is in somebody else's open audit of
@@ -845,17 +998,19 @@ function RestartPrompt({
  */
 function ZonePicker({
   visible,
+  zones,
   usedCodes,
-  byCode,
   lockedByCode,
+  mayAddZone,
   onPick,
   onClose,
 }: {
   visible: boolean;
+  zones: readonly CatalogueZone[];
   usedCodes: ReadonlySet<string>;
-  byCode: ReadonlyMap<string, CatalogueZone>;
   lockedByCode: ReadonlyMap<string, ZoneLock>;
-  onPick: (zoneNumber: number) => void;
+  mayAddZone: boolean;
+  onPick: (zoneCode: string) => void;
   onClose: () => void;
 }) {
   const styles = useStyles();
@@ -869,15 +1024,21 @@ function ZonePicker({
           Choose the Zone
         </Text>
         <FlatList
-          data={zoneCodeChoices()}
-          keyExtractor={(choice) => choice.code}
+          data={zones}
+          keyExtractor={(zone) => zone.id}
           style={styles.sheetList}
           initialNumToRender={20}
+          ListEmptyComponent={
+            <Muted>
+              {mayAddZone
+                ? 'This Unit has no Zones yet. Close this and tap + New Zone.'
+                : 'This Unit has no Zones yet. Ask its Coordinator to add them, then pull down on Units to refresh.'}
+            </Muted>
+          }
           renderItem={({ item }) => {
             const inThisAudit = usedCodes.has(item.code);
             const lock = lockedByCode.get(item.code);
             const taken = inThisAudit || lock !== undefined;
-            const known = byCode.get(item.code);
             return (
               <Pressable
                 accessibilityRole="button"
@@ -885,19 +1046,19 @@ function ZonePicker({
                 disabled={taken}
                 onPress={() => {
                   onClose();
-                  onPick(item.number);
+                  onPick(item.code);
                 }}
                 style={({ pressed }) => [styles.sheetRow, taken && styles.sheetRowTaken, pressed && styles.pressed]}
               >
                 <Text style={[styles.sheetLabel, taken && styles.sheetLabelTaken]}>
-                  {known ? zoneDisplayLabel(known.code, known.name) : `Zone ${item.number}`}
+                  {zoneDisplayLabel(item.code, item.name)}
                 </Text>
                 {inThisAudit ? (
                   <Text style={styles.sheetDetail}>Already in this audit</Text>
                 ) : lock ? (
                   <Text style={styles.sheetDetail}>Being audited by {lock.auditorName}</Text>
-                ) : known?.zoneLeaderName ? (
-                  <Text style={styles.sheetDetail}>Leader {known.zoneLeaderName}</Text>
+                ) : item.zoneLeaderName ? (
+                  <Text style={styles.sheetDetail}>Leader {item.zoneLeaderName}</Text>
                 ) : null}
               </Pressable>
             );
@@ -914,11 +1075,20 @@ const useStyles = createThemedStyles((theme) => ({
   restartBody: { gap: theme.space.sm, paddingTop: theme.space.xs },
   zoneActions: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
   zoneAction: { flex: 1 },
-  headerActions: { flexDirection: 'row', gap: theme.space.xs },
   header: { gap: theme.space.sm },
   footer: { gap: theme.space.sm, marginTop: theme.space.lg, paddingBottom: theme.space.md },
   slipAction: { marginTop: theme.space.xs },
   gapAbove: { marginTop: theme.space.md },
+  newZoneRow: { flexDirection: 'row', gap: theme.space.sm },
+  newZoneLabel: { width: 96 },
+  newZoneName: { flex: 1 },
+  link: {
+    fontFamily: theme.family.medium,
+    fontSize: theme.font.base,
+    color: theme.color.ink,
+    textDecorationLine: 'underline',
+    marginTop: theme.space.sm,
+  },
   select: {
     minHeight: 48,
     flexDirection: 'row',

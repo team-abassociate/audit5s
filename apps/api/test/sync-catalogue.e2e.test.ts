@@ -156,10 +156,12 @@ describe('who may pull it', () => {
     expect(response.status, JSON.stringify(response.body)).toBe(200);
   });
 
-  it('refuses a Coordinator: they read the same data through the resource endpoints', async () => {
+  it('serves a Coordinator their own Unit: they audit on the phone too (R-52)', async () => {
     const response = await world.request('GET', `${base}/sync/catalogue`, {
       token: world.actors.COORDINATOR.accessToken,
     });
-    expect(response.status).toBe(403);
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const units = (response.body as { units: Array<{ id: string }> }).units.map((unit) => unit.id);
+    expect(units).toEqual([world.unitA]);
   });
 });

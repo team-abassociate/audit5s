@@ -145,6 +145,7 @@ export const ERROR_CODES = [
   'ZONE_HAS_IN_PROGRESS_AUDIT',
   'INVALID_STATE_TRANSITION',
   'ZONE_ALREADY_IN_AUDIT',
+  'ZONE_CREATE_FORBIDDEN',
   /** Another open audit of the same Unit already holds this Zone (R-29). */
   'ZONE_LOCKED_BY_ANOTHER_AUDIT',
   'ASSIGNMENT_REQUIRED',

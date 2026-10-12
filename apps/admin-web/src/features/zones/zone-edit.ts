@@ -1,4 +1,5 @@
 import type { UpdateZoneRequest, User, Zone } from '@audit5s/contracts';
+import { zoneCodeForLabel, zoneLabelFromCode, zoneSortOrder } from '@audit5s/domain';
 
 /**
  * The Zone edit form's values and the PATCH it sends (U1, UX audit 2026-10-03).
@@ -13,6 +14,8 @@ import type { UpdateZoneRequest, User, Zone } from '@audit5s/contracts';
 export const TYPED_LEADER = 'typed-leader';
 
 export interface EditZoneValues {
+  /** R-52: the Zone number, `7` or `1A`; empty for a code the Unit chose itself. */
+  label: string;
   name: string;
   description: string;
   zoneLeaderId: string;
@@ -26,6 +29,7 @@ export function typedLeaderOf(zone: Zone): string | null {
 
 export function editZoneDefaults(zone: Zone): EditZoneValues {
   return {
+    label: zoneLabelFromCode(zone.code) ?? '',
     name: zone.name,
     description: zone.description ?? '',
     zoneLeaderId: zone.zoneLeaderId ?? (typedLeaderOf(zone) ? TYPED_LEADER : ''),
@@ -65,6 +69,11 @@ export function changedZoneFields(
   const changed = (key: keyof EditZoneValues) =>
     dirty[key] === true && values[key] !== initial[key];
   const body: Omit<UpdateZoneRequest, 'version'> = {};
+  const code = changed('label') ? zoneCodeForLabel(values.label) : null;
+  if (code) {
+    body.code = code;
+    body.sortOrder = zoneSortOrder(values.label);
+  }
   if (changed('name')) body.name = values.name;
   if (changed('description')) body.description = values.description;
   if (changed('zoneLeaderId') && values.zoneLeaderId !== TYPED_LEADER) {

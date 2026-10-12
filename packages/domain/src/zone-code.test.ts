@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   reportZoneLabel,
   zoneCodeChoices,
+  zoneCodeForLabel,
   zoneCodeForNumber,
   zoneDisplayLabel,
+  zoneLabelFromCode,
   zoneLeaderSnapshot,
   zoneNumberFromCode,
 } from './zone-code';
@@ -40,6 +42,28 @@ describe('zone codes', () => {
     expect(zoneDisplayLabel('Z-07', 'Zone 7')).toBe('Zone 7');
     expect(zoneDisplayLabel('Z-07', 'zone 7')).toBe('Zone 7');
     expect(zoneDisplayLabel('Z-07', '')).toBe('Zone 7');
+  });
+});
+
+describe('zone labels (R-52)', () => {
+  it('stores one to three letters or digits, a number as it always was', () => {
+    expect(zoneCodeForLabel('7')).toBe('Z-07');
+    expect(zoneCodeForLabel('07')).toBe('Z-07');
+    expect(zoneCodeForLabel('1a')).toBe('Z-1A');
+    expect(zoneCodeForLabel(' 12B ')).toBe('Z-12B');
+    expect(zoneCodeForLabel('100')).toBe('Z-100');
+  });
+
+  it('refuses anything else', () => {
+    for (const bad of ['', '0', '1234', '1-A', 'Z 1', '१']) expect(zoneCodeForLabel(bad)).toBeNull();
+  });
+
+  it('reads the label back, and shows it as "Zone 1A"', () => {
+    expect(zoneLabelFromCode('Z-1A')).toBe('1A');
+    expect(zoneLabelFromCode('Z-07')).toBe('7');
+    expect(zoneLabelFromCode('BOILER')).toBeNull();
+    expect(zoneDisplayLabel('Z-1A', 'Press line')).toBe('Zone 1A — Press line');
+    expect(zoneDisplayLabel('Z-5A', 'Zone 5A')).toBe('Zone 5A');
   });
 });
 

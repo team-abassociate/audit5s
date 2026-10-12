@@ -11,7 +11,7 @@ import {
   uuidv7,
   zoneCodeForNumber,
   zoneLeaderSnapshot,
-  zoneNumberFromCode,
+  zoneLabelFromCode,
   type ScoreBreakdown,
 } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
@@ -96,8 +96,11 @@ export async function createLocalAudit(
 
 export interface AddZoneInput {
   auditId: string;
-  /** The Zone 1…100 the auditor chose (R-19). */
-  zoneNumber: number;
+  /** The Zone's code (`Z-1A`, R-52); or, as before labels, its number 1…100 (R-19). */
+  zoneCode?: string;
+  zoneNumber?: number;
+  /** The name typed beside a new Zone's label (R-52). Ignored for a Zone the Unit has. */
+  zoneName?: string | null;
   sequenceNo: number;
   /** The department whose fifty questions this Zone answers; null on a walk-by. */
   checklistVersionId: string | null;
@@ -109,12 +112,12 @@ export interface AddZoneInput {
 }
 
 /**
- * Adds a Zone to the audit by its number, taking the D6 snapshots on the device.
+ * Adds a Zone to the audit by its code, taking the D6 snapshots on the device.
  *
- * The Zone need not be in the catalogue (R-19): an auditor may name a Zone nobody has
- * created yet, and the server adds it to the Unit when this write arrives. So the row points
- * at the catalogue Zone when there is one and at a local id when there is not, and the
- * outbox names the Zone by its number — never by that local id.
+ * The Zone need not be in the catalogue: a Super Admin or a Coordinator may add one here
+ * (R-52), and the server adds it to the Unit when this write arrives. So the row points at
+ * the catalogue Zone when there is one and at a local id when there is not, and the outbox
+ * names the Zone by its code — never by that local id.
  *
  * The device snapshots for the same reason the server does: what the report renders must
  * not move when the Zone is edited later. The server takes its own copy on the way in and
@@ -137,7 +140,9 @@ export async function addLocalZone(
     throw new Error(`Audit ${input.auditId} is not on this device`);
   }
 
-  const code = zoneCodeForNumber(input.zoneNumber);
+  const code = input.zoneCode ?? zoneCodeForNumber(input.zoneNumber!);
+  const label = zoneLabelFromCode(code) ?? code;
+  const typedName = input.zoneName?.trim() || null;
 
   // The server's `UNIQUE (audit_id, zone_id)`, checked by code: a Zone not in the catalogue
   // has a fresh local id every time, so the local index alone would not catch a repeat.
@@ -154,7 +159,7 @@ export async function addLocalZone(
     )
     .limit(1);
   if (repeat) {
-    throw new Error(`Zone ${input.zoneNumber} is already part of this audit`);
+    throw new Error(`Zone ${label} is already part of this audit`);
   }
 
   const [zone] = await database
@@ -163,7 +168,7 @@ export async function addLocalZone(
     .where(and(eq(zones.unitId, audit.unitId), eq(zones.code, code)))
     .limit(1);
   if (zone?.archived) {
-    throw new Error(`Zone ${input.zoneNumber} is archived in this Unit`);
+    throw new Error(`Zone ${label} is archived in this Unit`);
   }
 
   const version = input.checklistVersionId
@@ -190,7 +195,7 @@ export async function addLocalZone(
     sequenceNo: input.sequenceNo,
     status: 'DRAFT',
     zoneCodeSnapshot: code,
-    zoneNameSnapshot: zone?.name ?? `Zone ${input.zoneNumber}`,
+    zoneNameSnapshot: zone?.name ?? typedName ?? `Zone ${label}`,
     zoneDescriptionSnapshot: typedDescription ?? zone?.description ?? null,
     zoneLeaderUserIdSnapshot: leader.userId,
     zoneLeaderNameSnapshot: leader.name,
@@ -206,7 +211,8 @@ export async function addLocalZone(
 
   await enqueue(database, 'audit_zone', id, 'upsert', {
     auditId: input.auditId,
-    zoneNumber: input.zoneNumber,
+    zoneCode: code,
+    ...(typedName && !zone ? { zoneName: typedName } : {}),
     sequenceNo: input.sequenceNo,
     checklistVersionId: input.checklistVersionId ?? undefined,
     ...(typedDescription ? { zoneDescription: typedDescription } : {}),
@@ -214,6 +220,32 @@ export async function addLocalZone(
   });
 
   return id;
+}
+
+/**
+ * A Zone renamed on the server (the rename reaches finished audits too, R-52): this device's
+ * catalogue and its audits of that Zone show the new name without waiting for a sync.
+ */
+export async function renameLocalZone(
+  database: LocalDatabase,
+  input: { unitId: string; code: string; name: string },
+): Promise<void> {
+  await database
+    .update(zones)
+    .set({ name: input.name })
+    .where(and(eq(zones.unitId, input.unitId), eq(zones.code, input.code)));
+  await database
+    .update(localAuditZones)
+    .set({ zoneNameSnapshot: input.name })
+    .where(
+      and(
+        eq(localAuditZones.zoneCodeSnapshot, input.code),
+        inArray(
+          localAuditZones.auditId,
+          database.select({ id: audits.id }).from(audits).where(eq(audits.unitId, input.unitId)),
+        ),
+      ),
+    );
 }
 
 /**
@@ -282,7 +314,8 @@ export async function editLocalZone(
 
   await enqueue(database, 'audit_zone', input.auditZoneId, 'upsert', {
     auditId: existing.auditId,
-    zoneNumber: zoneNumberFromCode(existing.zoneCodeSnapshot) ?? undefined,
+    zoneCode: existing.zoneCodeSnapshot,
+    zoneName: existing.zoneNameSnapshot,
     sequenceNo: existing.sequenceNo,
     checklistVersionId:
       (input.checklistVersionId ?? existing.checklistVersionId) || undefined,
@@ -464,12 +497,12 @@ export async function saveZoneRemark(
 
   if (zone) {
     // The outbox coalesces this with a first write that has not synced yet, so it must carry
-    // everything that write did — the Zone by number above all, since a Zone the catalogue
-    // lacked has only a local id the server has never seen (R-19).
-    const zoneNumber = zoneNumberFromCode(zone.zoneCodeSnapshot);
+    // everything that write did — the Zone by code above all, since a Zone the catalogue
+    // lacked has only a local id the server has never seen (R-19, R-52).
     await enqueue(database, 'audit_zone', auditZoneId, 'upsert', {
       auditId: zone.auditId,
-      ...(zoneNumber !== null ? { zoneNumber } : { zoneId: zone.zoneId }),
+      zoneCode: zone.zoneCodeSnapshot,
+      zoneName: zone.zoneNameSnapshot,
       sequenceNo: zone.sequenceNo,
       checklistVersionId: zone.checklistVersionId ?? undefined,
       zoneDescription: zone.zoneDescriptionSnapshot,
@@ -507,6 +540,24 @@ export async function completeLocalZone(
     ...(zone ? { auditId: zone.auditId } : {}),
     completedAt: now,
   });
+
+  // An audit covers one Zone (owner, 2026-10-12), so Submit on its last open Zone finishes
+  // the audit too — there is no separate Finish. A Zone completed while others are still
+  // open (an audit begun before the rule) leaves the audit running.
+  if (!zone) return;
+  const [audit] = await database.select().from(audits).where(eq(audits.id, zone.auditId)).limit(1);
+  if (audit?.status !== 'IN_PROGRESS') return;
+  const [open] = await database
+    .select({ id: localAuditZones.id })
+    .from(localAuditZones)
+    .where(
+      and(
+        eq(localAuditZones.auditId, zone.auditId),
+        sql`${localAuditZones.status} NOT IN ('COMPLETED', 'WITHDRAWN')`,
+      ),
+    )
+    .limit(1);
+  if (!open) await completeLocalAudit(database, zone.auditId, now);
 }
 
 /**

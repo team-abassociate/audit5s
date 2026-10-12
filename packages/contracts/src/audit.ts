@@ -18,7 +18,7 @@ import {
   syncStateSchema,
 } from './enums';
 import { overallActionSuggestionsSchema } from './corrective-action';
-import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from './zone';
+import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN, zoneCodeSchema, zoneNameSchema } from './zone';
 
 /**
  * Assignments, audits, audit Zones and question responses (ARCHITECTURE.md §5.5, §8.6).
@@ -464,7 +464,7 @@ export type ListAuditsQuery = z.infer<typeof listAuditsQuerySchema>;
  */
 export const upsertAuditZoneRequestSchema = z
   .object({
-    /** A Zone picked from the Unit's master list. Ignored when `zoneNumber` is sent. */
+    /** A Zone picked from the Unit's master list. Ignored when `zoneCode` or `zoneNumber` is sent. */
     zoneId: uuidSchema.optional(),
     /**
      * R-19 — the Zone 1…100 the auditor chose. The server uses that Zone of the audit's
@@ -473,6 +473,14 @@ export const upsertAuditZoneRequestSchema = z
      * exist yet.
      */
     zoneNumber: z.number().int().min(ZONE_NUMBER_MIN).max(ZONE_NUMBER_MAX).optional(),
+    /**
+     * R-52 — the Zone's code (`Z-1A`), sent in place of `zoneNumber` by a device that knows
+     * labels. Found in the audit's Unit; only a Super Admin or a Coordinator adds a Zone
+     * that is not there yet (`403 ZONE_CREATE_FORBIDDEN` for anyone else).
+     */
+    zoneCode: zoneCodeSchema.optional(),
+    /** R-52 — the name typed beside a new Zone's label. Ignored for a Zone that exists. */
+    zoneName: zoneNameSchema.optional(),
     sequenceNo: z.number().int().min(1).max(1000),
     /** The department whose fifty questions this Zone answers (QR-2). */
     checklistVersionId: uuidSchema.optional(),
@@ -502,8 +510,8 @@ export const upsertAuditZoneRequestSchema = z
     resumeQuestionId: uuidSchema.nullable().optional(),
     clientUpdatedAt: isoDateTimeSchema.optional(),
   })
-  .refine((body) => body.zoneNumber !== undefined || body.zoneId !== undefined, {
-    message: 'Name the Zone with zoneNumber or zoneId',
+  .refine((body) => body.zoneNumber !== undefined || body.zoneCode !== undefined || body.zoneId !== undefined, {
+    message: 'Name the Zone with zoneCode, zoneNumber or zoneId',
     path: ['zoneNumber'],
   });
 export type UpsertAuditZoneRequest = z.infer<typeof upsertAuditZoneRequestSchema>;

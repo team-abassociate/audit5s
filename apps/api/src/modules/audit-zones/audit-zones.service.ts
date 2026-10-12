@@ -11,6 +11,8 @@ import {
   auditTypeUsesChecklist,
   isAuditCompleted,
   zoneCodeForNumber,
+  zoneLabelFromCode,
+  zoneSortOrder,
   zoneLeaderSnapshot,
   type ScopeContext,
   type TransitionGuard,
@@ -70,17 +72,22 @@ export class AuditZonesService {
 
     /*
      * R-34: while the audit is **open**, the auditor may re-point this audit Zone at a
-     * different Zone number — they typed it, and a typo was previously permanent.
+     * different Zone — they chose it, and a slip was previously permanent.
      *
      * Once the audit is finished it keeps the Zone it was created with, which is D6: a
      * report issued today does not change its subject next month. A cancelled audit keeps
      * it too; there is nothing to correct in a voided record.
      */
     const editable = !isAuditCompleted(audit.status) && audit.status !== 'CANCELLED';
-    const zoneId =
-      existing && !editable
-        ? existing.zoneId
-        : await this.resolveZone(scope, audit, auditId, request);
+    // R-52: an existing audit Zone is re-pointed by id only. A phone's later writes repeat
+    // the code it snapshotted, which a rename (0048) may have moved on since; read as a
+    // re-point, that stale code would move the audit Zone, or add the old Zone back.
+    const byCode = request.zoneCode !== undefined || request.zoneNumber !== undefined;
+    const zoneId = !existing
+      ? await this.resolveZone(scope, audit, auditId, request)
+      : editable && !byCode && request.zoneId
+        ? request.zoneId
+        : existing.zoneId;
 
     // Re-pointing an existing audit Zone is subject to the same two refusals a first write
     // earns: the Unit's other open audits still hold what they hold (R-29), and one Zone
@@ -448,10 +455,12 @@ export class AuditZonesService {
   }
 
   /**
-   * R-19: the master Zone a first write names. A Zone number is found in the audit's Unit
-   * or added to it, through `app_ensure_zone_for_audit` (0014), which answers only for an
-   * open audit the actor is conducting. An added Zone is logged like one a Coordinator
-   * creates, so the master list never gains a row nobody can account for.
+   * R-19: the master Zone a first write names. A Zone code (or, from an older phone, a
+   * number) is found in the audit's Unit through `app_ensure_zone_for_audit`, which answers
+   * only for an open audit the actor is conducting. R-52: only a Super Admin or a
+   * Coordinator adds a Zone the Unit does not have yet — the function refuses anyone else
+   * with a NULL id. An added Zone is logged like one created on the Zones page, so the
+   * master list never gains a row nobody can account for.
    */
   private async resolveZone(
     scope: ScopeContext,
@@ -459,22 +468,29 @@ export class AuditZonesService {
     auditId: string,
     request: UpsertAuditZoneRequest,
   ): Promise<string> {
-    if (request.zoneNumber === undefined) {
-      // The contract refuses a body that names neither.
+    if (request.zoneCode === undefined && request.zoneNumber === undefined) {
+      // The contract refuses a body that names none of the three.
       return request.zoneId!;
     }
 
-    const code = zoneCodeForNumber(request.zoneNumber);
-    const name = `Zone ${request.zoneNumber}`;
+    const code = request.zoneCode ?? zoneCodeForNumber(request.zoneNumber!);
+    const label = zoneLabelFromCode(code) ?? code;
+    const name = request.zoneName?.trim() || `Zone ${label}`;
     const ensured = await this.repository.ensureZoneForAudit(scope, {
       auditId,
       code,
       name,
       description: request.zoneDescription?.trim() || null,
-      sortOrder: request.zoneNumber,
+      sortOrder: zoneSortOrder(label),
     });
     if (!ensured) {
       throw AppError.notFound('No such audit');
+    }
+    if (!ensured.zoneId) {
+      throw AppError.forbidden(
+        'ZONE_CREATE_FORBIDDEN',
+        `Zone ${label} is not one of this Unit's Zones. Only a Coordinator or a Super Admin can add a Zone; choose one from the list.`,
+      );
     }
 
     if (ensured.created) {

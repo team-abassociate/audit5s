@@ -465,11 +465,12 @@ describe('assignments', () => {
     });
     expect((stillOpen.body as AuditAssignment).status).toBe('IN_PROGRESS');
 
-    // The first audit's next Zone, named by number as the phone names it.
+    // The first audit's next Zone, one of the Unit's, named by code as the phone names it.
+    await createZone('Z-71', 'Zone 71');
     const nextZoneId = randomUUID();
     const next = await world.request('PUT', `${base}/audits/${first.auditId}/zones/${nextZoneId}`, {
       token,
-      body: { zoneNumber: 71, sequenceNo: 2, checklistVersionId: versionId, zoneLeaderName: 'A Leader' },
+      body: { zoneCode: 'Z-71', sequenceNo: 2, checklistVersionId: versionId, zoneLeaderName: 'A Leader' },
     });
     expect(next.status, JSON.stringify(next.body)).toBe(200);
 
@@ -1439,8 +1440,8 @@ describe('cancellation retains everything (A-1, D8)', () => {
   });
 });
 
-describe('snapshot isolation (D6)', () => {
-  it('leaves a completed audit untouched when the Zone is renamed and re-described', async () => {
+describe('snapshot isolation (D6), and the rename that crosses it (R-52)', () => {
+  it('relabels a completed audit when its Zone is renamed, and keeps everything else', async () => {
     const zoneId = await createZone('Z-46', 'Press', 'Press shop, bay 3');
     const { auditId, auditZoneId } = await completedAuditForZone(zoneId);
 
@@ -1451,24 +1452,31 @@ describe('snapshot isolation (D6)', () => {
     expect(beforeZone.zoneNameSnapshot).toBe('Press');
     expect(beforeZone.zoneDescriptionSnapshot).toBe('Press shop, bay 3');
 
-    // Exactly what a Coordinator is meant to stay free to do, through the real endpoint.
+    // Zone 46 becomes Zone 46A, through the real endpoint. The owner's rule (R-52): the old
+    // report reads the new label. The description the auditor saw stays what it was.
     const edited = await world.request('PATCH', `${base}/zones/${zoneId}`, {
       token: asSuperAdmin(),
-      body: { name: 'Press Shop (renamed)', description: 'Moved to bay 7 in June' },
+      body: { code: 'Z-46A', name: 'Press Shop (renamed)', description: 'Moved to bay 7 in June' },
     });
-    expect(edited.status).toBe(200);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
 
     const after = await world.request('GET', `${base}/audits/${auditId}`, {
       token: consultantToken,
     });
     const afterZone = (after.body as AuditDetail).zones.find((z) => z.id === auditZoneId)!;
-    expect(afterZone.zoneNameSnapshot).toBe('Press');
+    expect(afterZone.zoneNameSnapshot).toBe('Press Shop (renamed)');
+    expect(afterZone.zoneCodeSnapshot).toBe('Z-46A');
     expect(afterZone.zoneDescriptionSnapshot).toBe('Press shop, bay 3');
     expect(afterZone.totals).toEqual(beforeZone.totals);
-    expect(afterZone.zoneCodeSnapshot).toBe('Z-46');
+
+    // The carve-out is the Zone's own label and nothing else: history still refuses any
+    // other text, even from the table owner.
+    await expect(
+      world.owner.query(`UPDATE audit_zone SET zone_name_snapshot = 'Forged' WHERE id = $1`, [auditZoneId]),
+    ).rejects.toThrow(/may not be updated after completion/);
   });
 
-  it('refuses to re-snapshot on a later upsert of the same audit Zone', async () => {
+  it('keeps a rename on a later upsert, and is not re-pointed by the stale code a phone repeats', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
     const zoneId = await createZone('Z-47', 'Original name', 'Original description');
     const { auditId, auditZoneId } = await startAuditWithZone({
@@ -1483,13 +1491,22 @@ describe('snapshot isolation (D6)', () => {
       body: { name: 'Changed mid-audit', description: 'Changed too' },
     });
 
-    // A second upsert — the device saving a Zone remark — must not pick up the new name.
+    // A second upsert — the device saving a Zone remark — keeps the rename (R-52) and the
+    // description the auditor saw. It repeats the code the phone snapshotted, which the
+    // rename has moved on from; that must not re-point the audit Zone or add Z-47 back.
+    await world.request('PATCH', `${base}/zones/${zoneId}`, {
+      token: asSuperAdmin(),
+      body: { code: 'Z-47B' },
+    });
     const second = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
       token: consultantToken,
-      body: { zoneId, sequenceNo: 1, checklistVersionId: versionId, zoneRemark: 'Tidy' },
+      body: { zoneCode: 'Z-47', sequenceNo: 1, checklistVersionId: versionId, zoneRemark: 'Tidy' },
     });
-    expect(second.status).toBe(200);
-    expect((second.body as AuditZone).zoneNameSnapshot).toBe('Original name');
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect((second.body as AuditZone).zoneId).toBe(zoneId);
+    expect((second.body as AuditZone).zoneNameSnapshot).toBe('Changed mid-audit');
+    expect((second.body as AuditZone).zoneCodeSnapshot).toBe('Z-47B');
+    expect((second.body as AuditZone).zoneDescriptionSnapshot).toBe('Original description');
     expect((second.body as AuditZone).zoneRemark).toBe('Tidy');
   });
 
@@ -1990,9 +2007,11 @@ describe('the post-completion override (A-2)', () => {
     expect(response.status).toBe(404);
   });
 
-  it('is closed to a Coordinator and a Zone Leader', async () => {
+  it('is closed to a Zone Leader, and to a Coordinator for an audit they did not conduct', async () => {
     const { auditId } = await completedAudit('Z-65', 'Not theirs to change');
-    for (const role of ['COORDINATOR', 'ZONE_LEADER'] as const) {
+    // R-52: a Coordinator corrects their own audits, so a Consultant's is out of scope — a
+    // 404, as a colleague's audit is for a Consultant (AZ-3).
+    for (const [role, status] of [['COORDINATOR', 404], ['ZONE_LEADER', 403]] as const) {
       const response = await world.request('PATCH', `${base}/audits/${auditId}/post-completion`, {
         token: world.actors[role].accessToken,
         body: {
@@ -2000,7 +2019,7 @@ describe('the post-completion override (A-2)', () => {
           changes: { zoneRemark: { auditZoneId: randomUUID(), remark: 'x' } },
         },
       });
-      expect(response.status, `${role}: ${JSON.stringify(response.body)}`).toBe(403);
+      expect(response.status, `${role}: ${JSON.stringify(response.body)}`).toBe(status);
     }
   });
 });

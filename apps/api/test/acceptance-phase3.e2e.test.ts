@@ -412,7 +412,7 @@ describe('Phase 3 acceptance', () => {
     expect(completed.zones[0]!.zoneRemark).toBe('Housekeeping improving on the press line');
     expect(completed.totals.scorePercentage).toBe(onDevice.totals.scorePercentage);
 
-    // ------------------- 6. a Zone description edited afterwards changes nothing here
+    // ------- 6. a Zone renamed afterwards relabels it (R-52); the description stays
     const before = completed.zones[0]!;
 
     const edit = await request('PATCH', `${base}/zones/${zoneId}`, {
@@ -430,7 +430,7 @@ describe('Phase 3 acceptance', () => {
     const after = (afterResponse.body as AuditDetail).zones[0]!;
 
     expect(after.zoneCodeSnapshot).toBe('Z-11');
-    expect(after.zoneNameSnapshot).toBe('Press');
+    expect(after.zoneNameSnapshot).toBe('Press Shop (renamed in October)');
     expect(after.zoneDescriptionSnapshot).toBe('Press shop, bay 3');
     expect(after.totals).toEqual(before.totals);
     expect(after.sections).toEqual(before.sections);

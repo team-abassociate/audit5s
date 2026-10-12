@@ -86,16 +86,6 @@ export function FieldOverview() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
   });
 
-  // The same key the Units tab uses: whichever the auditor opens first does the pull.
-  useQuery({
-    queryKey: ['catalogue', 'bootstrap'],
-    queryFn: async () => {
-      await sync.mutateAsync().catch(() => undefined);
-      return true;
-    },
-    staleTime: 60_000,
-  });
-
   /**
    * Back into the audit, at the question it stopped on.
    *

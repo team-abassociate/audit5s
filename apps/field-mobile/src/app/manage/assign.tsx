@@ -12,6 +12,7 @@ import {
   Label,
   Screen,
   Segmented,
+  SelectField,
   Slip,
   SlipText,
 } from '../../components/ui';
@@ -105,17 +106,17 @@ export default function AssignScreen() {
       <Stack.Screen options={{ title: 'Assign an audit' }} />
       <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View ref={required.anchor('unit')} collapsable={false}>
-        <Label>Unit</Label>
-        {required.flagged('unit', unitId !== null) ? <ErrorBanner message="Choose a Unit." /> : null}
-        <ChoiceList
+        <SelectField
+          label="Unit"
+          placeholder={units.isLoading ? 'Loading Units…' : 'Choose the Unit'}
           value={unitId}
           onChange={(next) => {
             setUnitId(next);
             setAuditorUserId(null);
           }}
-          empty={units.isLoading ? 'Loading Units…' : 'Add a Unit first.'}
           options={(units.data?.data ?? []).map((unit) => ({ value: unit.id, label: unit.name }))}
         />
+        {required.flagged('unit', unitId !== null) ? <ErrorBanner message="Choose a Unit." /> : null}
         </View>
         {unitId ? (
           <View ref={required.anchor('consultant')} collapsable={false}>

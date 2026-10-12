@@ -4,15 +4,39 @@ import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from '@audit5s/contracts';
  * Zone codes.
  *
  * The stored `code` is free-form and unique per Unit (ARCHITECTURE.md §5.3, e.g. `Z-01`).
- * What the auditor sees is a dropdown of Zone 1…100 (`brainstorm.md`), so the admin web
- * offers `Z-01`…`Z-100` from this helper rather than each screen inventing a format.
+ * What a person types and reads is the Zone's *label* — `7`, `1A`, `12B`: one to three
+ * letters or digits (R-52) — stored as `Z-07`, `Z-1A`, `Z-12B` by these helpers, so the
+ * web, the device and the reports spell it the same way.
  */
 
 const NUMERIC_CODE = /^Z-0*(\d+)$/;
+const LABEL_CODE = /^Z-0*([0-9A-Z]{1,3})$/;
+const LABEL = /^[0-9A-Z]{1,3}$/;
 
 /** `1` → `Z-01`. Two digits below 100 so a plain lexical sort is also the numeric one. */
 export function zoneCodeForNumber(zoneNumber: number): string {
   return `Z-${String(zoneNumber).padStart(2, '0')}`;
+}
+
+/**
+ * R-52: what was typed in the Zone field → the stored code, or `null` if it is not one to
+ * three letters or digits. `7` → `Z-07` (as a number always was), `1a` → `Z-1A`. Leading
+ * zeros are dropped, so `07` and `7` cannot become two Zones.
+ */
+export function zoneCodeForLabel(label: string): string | null {
+  const clean = label.trim().toUpperCase().replace(/^0+(?=.)/, '');
+  if (!LABEL.test(clean) || clean === '0') return null;
+  return /^\d+$/.test(clean) ? zoneCodeForNumber(Number(clean)) : `Z-${clean}`;
+}
+
+/** `Z-07` → `7`, `Z-1A` → `1A`; `null` for a code a Unit chose for itself (`BOILER`). */
+export function zoneLabelFromCode(code: string): string | null {
+  return LABEL_CODE.exec(code.trim().toUpperCase())?.[1] ?? null;
+}
+
+/** Where a labelled Zone sorts: by its leading number, so `1A` sits beside `1`. */
+export function zoneSortOrder(label: string): number {
+  return Number.parseInt(label, 10) || 0;
 }
 
 /** The number behind a generated code, or `null` for a code a Unit chose for itself. */
@@ -34,13 +58,13 @@ export function zoneCodeChoices(): Array<{ number: number; code: string }> {
 
 /**
  * How a Zone is written wherever it is shown to a person, including the reports:
- * `Zone 1 — Press` for a generated code, `Z-BOILER — Boiler house` for a custom one.
+ * `Zone 1 — Press` or `Zone 1A — Press` for a labelled code, `BOILER — Boiler house` for a custom one.
  * Defined once so the web, the device and the PDF cannot disagree.
  */
 export function zoneDisplayLabel(code: string, name: string): string {
-  const zoneNumber = zoneNumberFromCode(code);
-  if (zoneNumber === null) return `${code} — ${name}`;
-  const plain = `Zone ${zoneNumber}`;
+  const label = zoneLabelFromCode(code);
+  if (label === null) return `${code} — ${name}`;
+  const plain = `Zone ${label}`;
   // A Zone an auditor added by number (R-19) is named just that: "Zone 7 — Zone 7" says it twice.
   const trimmed = name.trim();
   return trimmed === '' || trimmed.toLocaleLowerCase() === plain.toLocaleLowerCase()
