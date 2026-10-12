@@ -100,7 +100,7 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           <EmptyState
             title="No audits yet"
-            detail="Open a Unit and start an audit. Everything you record is kept on this device."
+            detail="Start an audit from Overview. Everything you record is kept on this device."
           />
         }
       />

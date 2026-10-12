@@ -46,6 +46,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-47 | A Coordinator copies a Zone Leader link; a Consultant sees "All my Units" | Settled |
 | R-48 | Leanstack hosts two modules, 5S and Kaizen | Settled |
 | R-52 | Zones are selected, not made up; a Coordinator audits; a rename reaches history | Settled |
+| R-53 | Starting an audit is the selfie, then the Zone — no start screen | Settled |
 
 ---
 
@@ -2360,3 +2361,24 @@ add a Zone by naming its number, and, for a Zone's code and name only, D6's snap
   the Unit as a dropdown, rather than sending the Super Admin through the Units tab.
   Assigning an audit picks the Unit from a dropdown too. The offline catalogue is pulled on
   every sync cycle, so nobody has to open the Units tab for it.
+
+---
+
+## R-53 — Starting an audit is the selfie, then the Zone — no start screen
+
+**Settled 2026-10-12 by the product owner.** Every way into an audit, for every role, on the
+phone and the web, goes to the selfie and then "Select Zone". There is no start screen, and
+no start goes through a Unit page or a Units list of one row.
+
+- **Only real choices are asked**, over a blank screen, as a popup: the Unit, when the person
+  holds several (a Super Admin; a searchable dropdown); the kind, when they may run more than
+  one (a Consultant's 5S audit or Walk-by); and "Carry on with it / Start a new audit" when an
+  audit of the Unit is already open on this device.
+- **A Coordinator or Zone Leader never picks a Unit** — they hold one. A Coordinator's start is
+  always a 5S audit, though R-52 lets them hold every kind. A Zone Leader's Audit tab is a
+  button that opens the start over the tabs.
+- **The audit row is written once the selfie is taken**, so backing out of the camera leaves no
+  empty audit behind.
+- **No "Finish audit" button** while an audit runs: Submit on the Zone finishes it (R-52). The
+  web shows "Submit audit" only for an older audit whose Zones are all in and that is still
+  open, never greyed out.

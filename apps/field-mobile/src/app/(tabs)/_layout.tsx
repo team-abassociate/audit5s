@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
 import { HeaderTitle } from '../../components/ui';
 import { managesOnPhone, useSession } from '../../lib/session';
@@ -35,6 +35,7 @@ import { tabBarStyle, useTheme } from '../../lib/theme';
  */
 export default function TabsLayout() {
   const theme = useTheme();
+  const router = useRouter();
   const { scope } = useSession();
   const admin = managesOnPhone(scope?.role);
   const coordinator = scope?.role === 'COORDINATOR';
@@ -87,7 +88,17 @@ export default function TabsLayout() {
       <Tabs.Screen name="people" options={{ title: 'People', tabBarIcon: icon('◉'), ...shownTo(admin) }} />
       <Tabs.Screen name="my-unit" options={{ title: 'My Unit', tabBarIcon: icon('▣'), ...shownTo(coordinator) }} />
       <Tabs.Screen name="index" options={{ tabBarButtonTestID: 'field-units-tab', title: 'Units', tabBarIcon: icon('▣'), ...shownTo(!admin && !zoneLeader) }} />
-      <Tabs.Screen name="audit" options={{ tabBarButtonTestID: 'field-audit-tab', title: 'Audit', tabBarIcon: icon('▣'), ...shownTo(zoneLeader) }} />
+      {/* Audit is a button, not a page: it starts the audit (selfie, then Zone) over the tabs, and Back returns. */}
+      <Tabs.Screen
+        name="audit"
+        options={{ tabBarButtonTestID: 'field-audit-tab', title: 'Audit', tabBarIcon: icon('▣'), ...shownTo(zoneLeader) }}
+        listeners={{
+          tabPress: (event) => {
+            event.preventDefault();
+            router.push('/audit/start');
+          },
+        }}
+      />
       <Tabs.Screen
         name="nonconformities"
         options={{

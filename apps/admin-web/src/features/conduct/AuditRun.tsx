@@ -352,11 +352,8 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
                   Save &amp; pause
                 </Button>
               ) : null}
-              {running ? (
-                <Button disabled={!canFinish} onClick={() => setFinishing(true)}>
-                  Finish audit
-                </Button>
-              ) : null}
+              {/* Submit on the Zone finishes the audit (R-52). This shows only for an older audit whose Zones are all in and that is somehow still open — never greyed out. */}
+              {canFinish ? <Button onClick={() => setFinishing(true)}>Submit audit</Button> : null}
               {canRestart ? (
                 <Button variant="secondary" onClick={() => setRestartReason('')}>
                   Restart ({restartsLeft})
