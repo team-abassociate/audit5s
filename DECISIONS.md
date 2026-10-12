@@ -1218,7 +1218,7 @@ Nothing else about the questionnaire changes.
 - **D6.** Snapshots are still taken on the first write only.
 - **A walk-by may still name a leader account** (§2.7 step 4); the device no longer offers
   it, but the API keeps it.
-- **The web app does not conduct audits.** Its audit detail and the reports already print
+- **The web app does not conduct audits.** *(Withdrawn by R-51, 2026-10-12: it does.)* Its audit detail and the reports already print
   the snapshotted description, leader name and department.
 
 ---
@@ -2281,3 +2281,38 @@ side nor on mobile app."
 - The form's photo steps say "Optional" and count as done once a photo is there. A photo the
   leader did add still goes up before the submit it belongs to, so the Coordinator reviews
   the sheet with it; a Kaizen with no photo is never held.
+
+---
+
+## R-51 — Everything the field app does, the admin web does too
+
+**Settled 2026-10-12 by the product owner**: "make sure all of the mobile app functionality is
+also available for that user on the web as well", for every role, including conducting 5S
+audits; and "dont keep camera only rules except for selfies". **Withdraws R-19(e)** ("the web
+app does not conduct audits") and, for the web, the camera-only half of §12.10 / R-11 for
+question and walk-by photographs.
+
+- **Kaizen authoring on the web.** A Zone Leader writes, saves, submits, resubmits and deletes
+  a draft (`/kaizen/new`, `/kaizen/edit/{id}`), and has the phone's Overview and History. The
+  web is online, so there is no outbox: each change is `POST /kaizens`, an upsert on a UUIDv7
+  the page mints. `uuidv7` and `groupLeaderKaizens` moved to `packages/domain` so both apps
+  share one copy.
+- **Answering a nonconformity signed in.** The corrective-action panel takes Option A or B
+  from a Zone Leader, recorded `WEB_SESSION`, as the link page and the phone do.
+- **Profile** opens from the identity chip: the account, and a Consultant's activity.
+- **Conducting audits (`/conduct`).** A browser registers itself as a device with platform
+  `web` (migration 0047) and sends `X-Device-Id` on every audit write, so D7's single-writer
+  lock is unchanged: an audit is held by the browser or phone that started it until it is
+  finished, and only a Super Admin's release moves it. The web uses the REST doors the sync
+  batch reaches (`POST /audits`, `/start`, Zone `PUT`, response `PUT`, evidence intent and
+  commit, `/complete`, `/pause`, `/resume`, `/restart`); withdrawing a Zone, which REST does
+  not carry, goes as a one-item `audit_zone:withdraw` batch. Units, Zones and departments come
+  from `GET /sync/catalogue`, so the web offers exactly what the phone does.
+- **Photographs.** The auditor's selfie stays a live camera photograph (§7.1's guard checks
+  `is_live_capture`). Every other photograph on the web — a question's, a walk-by's, a
+  Kaizen's, a corrective action's — may be taken with the camera or chosen as a file, and
+  `isLiveCapture` records which. The server never enforced live capture on question or
+  walk-by evidence, so no server change was needed. The phone is unchanged until a release
+  says otherwise.
+- **The score** on the web questionnaire is `scoreZone` from `packages/domain`, the function
+  the server runs, labelled as provisional until the Zone is submitted (D5).

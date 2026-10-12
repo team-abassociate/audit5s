@@ -14,7 +14,7 @@ import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from '@audit5s/contracts';
 import { formatDateTime, zoneCodeForNumber, zoneDisplayLabel } from '@audit5s/domain';
 import { api } from '@/lib/api';
 import { devGet } from '@/features/units/worst-case';
-import { newId } from '@/features/corrective-actions/PublicCorrectiveActionPage';
+import { newId } from '@/lib/photo';
 import { Button, Dialog, DialogActions, ErrorNotice, Field, Input, Select } from '@/components/ui';
 
 const STEPS = ['Unit', 'Zones', 'Industry and checklist', 'Coordinator', 'Review'] as const;

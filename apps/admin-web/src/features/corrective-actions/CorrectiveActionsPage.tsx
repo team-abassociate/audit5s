@@ -16,6 +16,7 @@ import {
   type User,
 } from '@audit5s/contracts';
 import {
+  awaitsResponse,
   formatDate,
   formatDateTime,
   isOverdue,
@@ -46,6 +47,7 @@ import {
   useRoutedPanel,
 } from '@/components/ui';
 import { EvidenceViewer } from '@/features/audits/AuditDetailPanel';
+import { AnswerForm } from './AnswerForm';
 import { groupActions, leaderOf, overdueByLeader, type GroupKey, type SortKey } from './queue';
 
 /** Rows per request; "Load more" asks for the next page (CA10). */
@@ -608,6 +610,8 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
       {can('corrective_action', 'link') && action.status !== 'VERIFIED' && action.status !== 'WITHDRAWN' && (
         <CopyLink actionId={action.id} listed={can('report_access_token', 'mint')} />
       )}
+
+      {can('corrective_action', 'submit') && awaitsResponse(action.status) && <AnswerForm key={action.id} action={action} onDone={refresh} />}
 
       <div className="space-y-3">
         <p className="gb-label">Answers ({action.submissions.length})</p>

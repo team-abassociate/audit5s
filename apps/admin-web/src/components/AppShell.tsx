@@ -25,6 +25,10 @@ interface NavItem {
   action: string;
   /** Rail section (§5): 1 daily work, 2 setup, 3 records. A rule is drawn between them. */
   group: 1 | 2 | 3;
+  /** Names a screen for the title without a rail entry of its own. */
+  hidden?: boolean;
+  /** Shown when any of these is held too, for a screen several permissions open. */
+  anyOf?: [string, string][];
 }
 
 /**
@@ -35,6 +39,18 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Unit board', resource: 'analytics', action: 'unit_dashboard', group: 1 },
   { to: '/audits', label: 'Audits', resource: 'audit', action: 'read', group: 1 },
+  // R-51: the phone's audit capture, in the browser, for whoever may start an audit.
+  {
+    to: '/conduct',
+    label: 'Run an audit',
+    resource: 'audit',
+    action: 'create_external',
+    group: 1,
+    anyOf: [
+      ['audit', 'create_walk_by'],
+      ['audit', 'create_cross'],
+    ],
+  },
   { to: '/corrective-actions', label: 'Corrective actions', resource: 'corrective_action', action: 'read', group: 1 },
   { to: '/notifications', label: 'Notifications', resource: 'notification', action: 'read', group: 1 },
   { to: '/units', label: 'Units & zones', resource: 'unit', action: 'read', group: 2 },
@@ -47,6 +63,8 @@ const NAV: NavItem[] = [
   { to: '/reports', label: 'Reports', resource: 'report', action: 'read_snapshot', group: 3 },
   { to: '/sync', label: 'Sync health', resource: 'sync_conflict', action: 'read', group: 3 },
   { to: '/audit-log', label: 'Activity log', resource: 'audit_log', action: 'read', group: 3 },
+  // Opened from the identity chip, as Profile is from the initials on the phone.
+  { to: '/profile', label: 'Profile', resource: 'audit', action: 'read', group: 3, hidden: true },
 ];
 
 /**
@@ -57,6 +75,17 @@ const KAIZEN_NAV: NavItem[] = [
   { to: '/kaizen', label: 'Kaizen overview', resource: 'kaizen', action: 'read', group: 1 },
   { to: '/kaizen/list', label: 'Kaizens', resource: 'kaizen', action: 'read', group: 1 },
   { to: '/kaizen/analysis', label: 'Kaizen analysis', resource: 'kaizen', action: 'read', group: 1 },
+];
+
+/**
+ * A Zone Leader's rail (`kaizen:create`), the phone's tabs: Overview · New Kaizen · History.
+ * History is the same list, of their own Kaizens; Analysis is the reviewers'.
+ */
+const KAIZEN_AUTHOR_NAV: NavItem[] = [
+  { to: '/kaizen', label: 'Kaizen overview', resource: 'kaizen', action: 'read', group: 1 },
+  { to: '/kaizen/new', label: 'New Kaizen', resource: 'kaizen', action: 'create', group: 1 },
+  { to: '/kaizen/edit', label: 'Edit Kaizen', resource: 'kaizen', action: 'create', group: 1, hidden: true },
+  { to: '/kaizen/list', label: 'My Kaizens', resource: 'kaizen', action: 'read', group: 1 },
 ];
 
 const TOPBAR_SLOT_ID = 'gb-topbar-tools';
@@ -97,8 +126,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     },
   });
   const kaizen = pathname === '/kaizen' || pathname.startsWith('/kaizen/');
-  const nav = kaizen ? KAIZEN_NAV : NAV;
-  const items = nav.filter((item) => can(item.resource, item.action));
+  const nav = kaizen ? (can('kaizen', 'create') ? KAIZEN_AUTHOR_NAV : KAIZEN_NAV) : NAV;
+  const items = nav.filter(
+    (item) => (can(item.resource, item.action) || (item.anyOf ?? []).some(([r, a]) => can(r, a))) && !item.hidden,
+  );
   // The longest match: `/kaizen` is a prefix of every Kaizen screen.
   const match = (list: NavItem[]) =>
     list.filter((item) => pathname.startsWith(item.to)).sort((a, b) => b.to.length - a.to.length)[0];
@@ -136,13 +167,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             <h1 className="gb-h1">{title}</h1>
             <div className="gb-shell-tools">
               <ThemeSwitch />
-              <div className="gb-who" title={user ? `${user.fullName} · ${user.loginId}` : undefined}>
+              {/* The identity chip opens Profile, as the initials do on the phone. */}
+              <Link to="/profile" className="gb-who" title={user ? `${user.fullName} · ${user.loginId} · Profile` : undefined}>
                 <div className="gb-av" aria-hidden="true">{initials(user?.fullName)}</div>
                 <div>
                   <b>{user?.fullName}</b>
                   <span>{user?.loginId}</span>
                 </div>
-              </div>
+              </Link>
               <button className="gb-btn" type="button" onClick={() => void signOut()}>
                 Sign out
               </button>

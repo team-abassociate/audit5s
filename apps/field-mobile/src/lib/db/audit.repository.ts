@@ -8,6 +8,7 @@ import {
 import {
   numericScoreFor,
   scoreZone,
+  uuidv7,
   zoneCodeForNumber,
   zoneLeaderSnapshot,
   zoneNumberFromCode,
@@ -46,21 +47,8 @@ import {
  * function, not two implementations of one formula.
  */
 
-/** UUIDv7, so device-generated keys are time-ordered and index locality survives (D12). */
-export function uuidv7(now: number = Date.now()): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-
-  const timestamp = BigInt(now);
-  for (let index = 0; index < 6; index += 1) {
-    bytes[index] = Number((timestamp >> BigInt(8 * (5 - index))) & 0xffn);
-  }
-  bytes[6] = (bytes[6]! & 0x0f) | 0x70; // version 7
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // variant
-
-  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
+/** UUIDv7 (D12), now in `@audit5s/domain` so the admin web mints the same ids. */
+export { uuidv7 };
 
 export interface StartAuditInput {
   unitId: string;

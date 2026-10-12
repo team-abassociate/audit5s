@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Check, Download, Undo2, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import type { KaizenDetail, KaizenExport, KaizenPhoto, KaizenReviewDecision } from '@audit5s/contracts';
 import { formatDate, formatDateTime, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
 import { Button, ErrorNotice, Field, SidePanel, Spinner, StatusChip } from '@/components/ui';
@@ -99,6 +100,7 @@ function KaizenSheet({ kaizen }: { kaizen: KaizenDetail }) {
         ))}
       </div>
 
+      <AuthorActions kaizen={kaizen} />
       <Review kaizen={kaizen} />
       {kaizen.status !== 'DRAFT' && <ExportButton kaizen={kaizen} />}
     </div>
@@ -114,6 +116,18 @@ function PhotoBox({ label, photo }: { label: string; photo: KaizenPhoto | null }
         {photo?.viewUrl ? <img src={photo.viewUrl} alt={`${label} photograph`} /> : null}
       </div>
     </figure>
+  );
+}
+
+/** The author's way back into the form: a draft carried on, or a Kaizen sent back fixed. */
+function AuthorActions({ kaizen }: { kaizen: KaizenDetail }) {
+  const { can, user } = useSession();
+  if (!can('kaizen', 'create') || kaizen.authorUserId !== user?.id) return null;
+  if (kaizen.status !== 'DRAFT' && kaizen.status !== 'SENT_BACK') return null;
+  return (
+    <Link to="/kaizen/edit/$kaizenId" params={{ kaizenId: kaizen.id }} className="gb-btn gb-btn--primary">
+      {kaizen.status === 'DRAFT' ? 'Continue draft' : 'Edit & resubmit'}
+    </Link>
   );
 }
 

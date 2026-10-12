@@ -26,7 +26,8 @@ export const capturedLocationSchema = z.object({
 });
 export type CapturedLocation = z.infer<typeof capturedLocationSchema>;
 
-export const devicePlatformSchema = z.enum(['android', 'ios']);
+/** 'web': a browser running an audit on the admin web (R-51). */
+export const devicePlatformSchema = z.enum(['android', 'ios', 'web']);
 export type DevicePlatform = z.infer<typeof devicePlatformSchema>;
 
 export const loginRequestSchema = z.object({
