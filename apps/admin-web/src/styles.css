@@ -276,6 +276,13 @@ body {
 .gb-who b {
   font-weight: 700;
 }
+a.gb-who {
+  color: inherit;
+  text-decoration: none;
+}
+a.gb-who:hover b {
+  text-decoration: underline;
+}
 .gb-who span {
   color: var(--ink-3);
   display: block;
@@ -2839,6 +2846,22 @@ li:has(> .gb-menu-item--danger) {
   display: block;
 }
 
+/* The Kaizen form's footer: what is left and Submit, held at the foot of the window. */
+.gb-kz-formbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  background: var(--tile);
+  border: 2px solid var(--edge);
+  box-shadow: 3px 3px 0 var(--hard);
+}
+
 /* Kaizen's decisions, told apart by colour on every screen (owner, 2026-10-10): the one
    exception to StatusChip's ink. A chosen decision is also tinted, not only outlined. */
 .gb-tone--ok {
@@ -2865,4 +2888,39 @@ li:has(> .gb-menu-item--danger) {
 }
 .gb-btn.gb-tone--crit[aria-pressed='true'] {
   background: color-mix(in srgb, var(--crit-band) 22%, var(--tile));
+}
+
+/* R-51: conducting an audit in the browser. */
+.gb-conduct-thumb {
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1.5px solid var(--edge);
+  background: var(--tile-2);
+  overflow: hidden;
+  cursor: pointer;
+}
+.gb-conduct-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gb-conduct-q {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-left: 4px solid transparent;
+}
+.gb-conduct-q--missing {
+  border-left-color: var(--crit-band);
+}
+
+/* A toggle button that is on (an answer, a waste, Yes/No): the segmented control's selection,
+   accent as selection only, plus the inset rule so it reads without colour. A Kaizen decision
+   keeps its own tone below this. */
+.gb-btn[aria-pressed='true']:not([class*='gb-tone--']) {
+  background: var(--accent-soft);
+  color: var(--ink);
+  box-shadow: inset 0 -3px 0 var(--accent), 2px 2px 0 var(--hard);
 }

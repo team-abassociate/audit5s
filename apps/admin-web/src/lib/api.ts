@@ -1,4 +1,4 @@
-import { HEADER_IDEMPOTENCY_KEY, type ProblemDetails } from '@audit5s/contracts';
+import { HEADER_DEVICE_ID, HEADER_IDEMPOTENCY_KEY, type ProblemDetails } from '@audit5s/contracts';
 
 /**
  * Where the API is.
@@ -99,6 +99,8 @@ interface RequestOptions {
   raw?: boolean;
   /** `Idempotency-Key` (§8.2b): a retry of a call whose answer was lost replays it. */
   idempotencyKey?: string;
+  /** `X-Device-Id`: this browser as the device running an audit (R-51). Audit capture only. */
+  deviceId?: string;
 }
 
 async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -107,6 +109,7 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
   if (options.body !== undefined) headers['content-type'] = 'application/json';
   if (current) headers.authorization = `Bearer ${current.accessToken}`;
   if (options.idempotencyKey) headers[HEADER_IDEMPOTENCY_KEY] = options.idempotencyKey;
+  if (options.deviceId) headers[HEADER_DEVICE_ID] = options.deviceId;
 
   const response = await fetch(`${BASE_URL}${path}`, {
     method: options.method ?? 'GET',
@@ -278,3 +281,22 @@ export const api = {
   put: <T>(path: string, body: unknown) => send<T>(path, { method: 'PUT', body }),
   delete: <T>(path: string) => send<T>(path, { method: 'DELETE' }),
 };
+
+/**
+ * The same calls, as this browser's device (R-51): every write of an audit being conducted
+ * on the web carries `X-Device-Id`, which is what D7's single-writer lock is checked against.
+ * Kept apart from `api` so nothing else — a corrective-action answer, a review — is ever
+ * recorded as coming from a device.
+ */
+export function deviceApi(deviceId: string) {
+  return {
+    get: <T>(path: string) => send<T>(path, { deviceId }),
+    post: <T>(path: string, body?: unknown, idempotencyKey?: string) =>
+      send<T>(path, { method: 'POST', body, idempotencyKey, deviceId }),
+    put: <T>(path: string, body: unknown, idempotencyKey?: string) =>
+      send<T>(path, { method: 'PUT', body, idempotencyKey, deviceId }),
+    patch: <T>(path: string, body: unknown) => send<T>(path, { method: 'PATCH', body, deviceId }),
+    delete: <T>(path: string) => send<T>(path, { method: 'DELETE', deviceId }),
+  };
+}
+export type DeviceApi = ReturnType<typeof deviceApi>;

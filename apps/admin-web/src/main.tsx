@@ -31,6 +31,11 @@ import {
   KaizensPage,
   validateKaizensSearch,
 } from '@/features/kaizen/KaizenPages';
+import { KaizenFormPage } from '@/features/kaizen/KaizenForm';
+import { ProfilePage } from '@/features/auth/ProfilePage';
+import { ConductStartPage } from '@/features/conduct/ConductStart';
+import { AuditRunPage } from '@/features/conduct/AuditRun';
+import { ZoneRunPage } from '@/features/conduct/ZoneRun';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { SyncHealthPage, validateSyncSearch } from '@/features/sync/SyncHealthPage';
 import { IndustriesPage } from '@/features/industries/IndustriesPage';
@@ -263,6 +268,35 @@ const syncRoute = createRoute({
   component: SyncHealthPage,
 });
 
+/** R-51: conducting an audit in the browser, the phone's flow. */
+const conductRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/conduct',
+  component: ConductStartPage,
+});
+const conductAuditRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/conduct/$auditId',
+  component: function ConductAudit() {
+    const { auditId } = conductAuditRoute.useParams();
+    return <AuditRunPage key={auditId} auditId={auditId} />;
+  },
+});
+const conductZoneRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/conduct/$auditId/$auditZoneId',
+  component: function ConductZone() {
+    const { auditId, auditZoneId } = conductZoneRoute.useParams();
+    return <ZoneRunPage key={auditZoneId} auditId={auditId} auditZoneId={auditZoneId} />;
+  },
+});
+
+const profileRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/profile',
+  component: ProfilePage,
+});
+
 const usersRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/users',
@@ -294,6 +328,9 @@ const kaizenOverviewRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/kaizen',
   staticData: { unitScope: 'any' },
+  // Set by the form after a submission, for the one slip that says so.
+  validateSearch: (search: Record<string, unknown>): { submitted?: 'new' | 'again' } =>
+    search.submitted === 'new' || search.submitted === 'again' ? { submitted: search.submitted } : {},
   component: () => (
     <KaizenOnly>
       <KaizenOverviewPage />
@@ -323,6 +360,30 @@ const kaizenAnalysisRoute = createRoute({
       <KaizenAnalysisPage />
     </KaizenOnly>
   ),
+});
+
+/** A Zone Leader's New Kaizen, and a draft or a sent-back Kaizen carried on (the phone's form). */
+const kaizenNewRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/kaizen/new',
+  component: () => (
+    <KaizenOnly>
+      <KaizenFormPage />
+    </KaizenOnly>
+  ),
+});
+
+const kaizenEditRoute = createRoute({
+  getParentRoute: () => gatedRoute,
+  path: '/kaizen/edit/$kaizenId',
+  component: function KaizenEdit() {
+    const { kaizenId } = kaizenEditRoute.useParams();
+    return (
+      <KaizenOnly>
+        <KaizenFormPage kaizenId={kaizenId} />
+      </KaizenOnly>
+    );
+  },
 });
 
 /** A Kaizen's own address opens it in the list's side panel. */
@@ -356,10 +417,16 @@ const routeTree = rootRoute.addChildren([
     notificationsRoute,
     syncRoute,
     usersRoute,
+    profileRoute,
+    conductRoute,
+    conductAuditRoute,
+    conductZoneRoute,
     auditLogRoute,
     kaizenOverviewRoute,
     kaizenListRoute,
     kaizenAnalysisRoute,
+    kaizenNewRoute,
+    kaizenEditRoute,
     kaizenDetailRoute,
   ]),
 ]);

@@ -10,7 +10,7 @@ import {
   type KaizenStatus,
   type Page,
 } from '@audit5s/contracts';
-import { formatDate, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDate, formatRupees, groupLeaderKaizens, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -28,7 +28,7 @@ import {
   Th,
   useRoutedPanel,
 } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, fetchAll } from '@/lib/api';
 import { KAIZEN_STATUS_LABEL } from '@/lib/labels';
 import { useUnitScope } from '@/lib/scope';
 import { useSession } from '@/lib/session';
@@ -51,23 +51,22 @@ function useUnitParam(): { ready: boolean; param: string } {
 
 export interface KaizensSearch {
   kaizen?: string;
-  status?: Exclude<KaizenStatus, 'DRAFT'>;
+  status?: KaizenStatus;
 }
 
 export function validateKaizensSearch(search: Record<string, unknown>): KaizensSearch {
   const status = search.status;
   return {
     kaizen: typeof search.kaizen === 'string' && search.kaizen !== '' ? search.kaizen : undefined,
-    status:
-      typeof status === 'string' && status !== 'DRAFT' && KAIZEN_STATUSES.includes(status as KaizenStatus)
-        ? (status as KaizensSearch['status'])
-        : undefined,
+    status: typeof status === 'string' && KAIZEN_STATUSES.includes(status as KaizenStatus) ? (status as KaizenStatus) : undefined,
   };
 }
 
 const PAGE = 100;
 
 export function KaizensPage() {
+  const { can } = useSession();
+  const author = can('kaizen', 'create');
   const search = useSearch({ strict: false }) as KaizensSearch;
   const navigate = useNavigate();
   const panel = useRoutedPanel('kaizen');
@@ -90,10 +89,22 @@ export function KaizensPage() {
   return (
     <div className="gb-withpanel">
       <Card className="min-w-0">
-        <CardHeader
-          title="Kaizens"
-          description="Every submitted Kaizen in your Units. Open one to read the sheet, review it, or download it as a PDF."
-        />
+        {author ? (
+          <CardHeader
+            title="My Kaizens"
+            description="Every Kaizen of yours, newest first, whatever its status. Open one to read it, carry a draft on, or fix one sent back."
+            action={
+              <Link to="/kaizen/new" className="gb-btn gb-btn--primary">
+                + New Kaizen
+              </Link>
+            }
+          />
+        ) : (
+          <CardHeader
+            title="Kaizens"
+            description="Every submitted Kaizen in your Units. Open one to read the sheet, review it, or download it as a PDF."
+          />
+        )}
         <div className="gb-filters">
           <Field label="Status">
             <Select
@@ -108,7 +119,7 @@ export function KaizensPage() {
               }
             >
               <option value="">Any</option>
-              {KAIZEN_STATUSES.filter((value) => value !== 'DRAFT').map((value) => (
+              {KAIZEN_STATUSES.filter((value) => author || value !== 'DRAFT').map((value) => (
                 <option key={value} value={value}>
                   {KAIZEN_STATUS_LABEL[value]}
                 </option>
@@ -116,7 +127,7 @@ export function KaizensPage() {
             </Select>
           </Field>
         </div>
-        <KaizenRows query={list} rows={rows} openId={panel.id} onOpen={panel.open} empty={status ? 'No Kaizens with this status.' : 'No Kaizens submitted yet.'} />
+        <KaizenRows query={list} rows={rows} openId={panel.id} onOpen={panel.open} empty={status ? 'No Kaizens with this status.' : author ? 'No Kaizens yet. Record your first from New Kaizen.' : 'No Kaizens submitted yet.'} />
         {list.hasNextPage && (
           <div className="p-4">
             <Button variant="secondary" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
@@ -205,6 +216,112 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
  * queue, then Top 3 approved by saving over the last 30 days. A row opens on the list.
  */
 export function KaizenOverviewPage() {
+  const { can } = useSession();
+  return can('kaizen', 'create') ? <LeaderOverview /> : <ReviewerOverview />;
+}
+
+/**
+ * A Zone Leader's Overview, as on the phone (§4.3): their own counts for the last 30 days,
+ * then what needs them (sent back, drafts), what waits on the Coordinator, and what was
+ * approved. Counted by `groupLeaderKaizens`, the phone's rule, from `@audit5s/domain`.
+ */
+function LeaderOverview() {
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as { submitted?: 'new' | 'again' };
+  const [now] = useState(() => Date.now());
+  const mine = useQuery({
+    queryKey: ['kaizens', 'mine'],
+    queryFn: () => fetchAll<Kaizen>('/kaizens?mine=true&limit=200'),
+  });
+
+  if (mine.isLoading) return <Skeleton variant="tiles" count={4} label="Loading your Kaizens" />;
+  if (mine.error) return <ErrorNotice error={mine.error} />;
+  const all = mine.data ?? [];
+  const { recent, approved, needsFix, drafts, waiting } = groupLeaderKaizens(all, now);
+  // Drafts and Kaizens sent back open in the form; anything else opens to read.
+  const open = (id: string) => {
+    const kaizen = all.find((k) => k.id === id);
+    if (kaizen && (kaizen.status === 'DRAFT' || kaizen.status === 'SENT_BACK')) void navigate({ to: '/kaizen/edit/$kaizenId', params: { kaizenId: id } });
+    else void navigate({ to: '/kaizen/list', search: { kaizen: id } as never });
+  };
+  const rows = (list: Kaizen[], empty: string) => (
+    <KaizenRows query={mine} rows={list} openId={null} onOpen={open} empty={empty} />
+  );
+  const newButton = (
+    <Link to="/kaizen/new" className="gb-btn gb-btn--primary">
+      + New Kaizen
+    </Link>
+  );
+
+  return (
+    <div className="space-y-4">
+      {search.submitted ? (
+        <Slip
+          title={search.submitted === 'again' ? 'Kaizen resubmitted' : 'Kaizen submitted'}
+          onDismiss={() => void navigate({ to: '/kaizen', search: {} as never, replace: true })}
+        >
+          It is with your Coordinator for review.
+        </Slip>
+      ) : needsFix.length > 0 ? (
+        <Slip title={`${needsFix.length} ${needsFix.length === 1 ? 'Kaizen was' : 'Kaizens were'} sent back to you`}>
+          Fix and resubmit: they are listed under Needs your fix.
+        </Slip>
+      ) : null}
+
+      {all.length === 0 ? (
+        <EmptyState title="Record your first Kaizen" action={newButton}>
+          One improvement: the problem, what you changed, and photos before and after. Your Coordinator reviews it.
+        </EmptyState>
+      ) : (
+        <>
+          <Card>
+            <CardHeader title="Last 30 days · Now" action={newButton} />
+            <div className="gb-kpis p-4">
+              <LeaderTile label="Submitted" value={recent.length} context="by you, last 30 days" band="none" />
+              <LeaderTile label="Approved" value={approved.length} context="by your Coordinator, last 30 days" band="ok" />
+              <LeaderTile label="Waiting" value={waiting.length} context="with your Coordinator" band="warn" />
+              <LeaderTile label="Needs your fix" value={needsFix.length} context="sent back to you" band="crit" />
+            </div>
+          </Card>
+          {needsFix.length > 0 ? (
+            <Card>
+              <CardHeader title="Needs your fix" />
+              {rows(needsFix, '')}
+            </Card>
+          ) : null}
+          {drafts.length > 0 ? (
+            <Card>
+              <CardHeader title="Drafts" />
+              {rows(drafts, '')}
+            </Card>
+          ) : null}
+          <Card>
+            <CardHeader title="Waiting for review" />
+            {rows(waiting, 'Nothing waiting with your Coordinator.')}
+          </Card>
+          <Card>
+            <CardHeader title="Approved · last 30 days" />
+            {rows(approved, 'No approved Kaizens in the last 30 days.')}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Label, figure (Archivo 900), one line of context, then the band: the board's KPI tile. */
+function LeaderTile({ label, value, context, band }: { label: string; value: number; context: string; band: 'ok' | 'warn' | 'crit' | 'none' }) {
+  return (
+    <div className={`gb-tile gb-kpi gb-${band}`}>
+      <span className="gb-label">{label}</span>
+      <b className="gb-figure">{value}</b>
+      <small>{context}</small>
+      <div className={`gb-band gb-band--${band}`} />
+    </div>
+  );
+}
+
+function ReviewerOverview() {
   const { can } = useSession();
   const navigate = useNavigate();
   const unit = useUnitParam();
