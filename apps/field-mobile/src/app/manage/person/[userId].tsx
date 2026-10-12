@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import type { Audit, MembershipDetail, Page, ResetUserPasswordResponse, Unit, User } from '@audit5s/contracts';
+import type { Audit, MembershipDetail, Page, ResetUserPasswordResponse, Unit, User, Zone } from '@audit5s/contracts';
+import { zoneDisplayLabel } from '@audit5s/domain';
 import {
   Avatar,
   Button,
   Card,
   CardHeader,
+  CheckRow,
   Chip,
   ChoiceList,
   ConfirmAction,
@@ -64,6 +66,13 @@ export default function PersonScreen() {
     queryFn: () => api.get<Page<Audit>>(`/audits?limit=50&auditorId=${userId}`),
     enabled: person.data?.role === 'CONSULTANT' || person.data?.role === 'ZONE_LEADER',
   });
+  // A Zone Leader holds one active membership: the Unit whose Zones they may lead.
+  const leaderUnitId = person.data?.role === 'ZONE_LEADER' ? memberships.data?.data[0]?.unitId : undefined;
+  const zones = useQuery({
+    queryKey: ['zones', leaderUnitId],
+    queryFn: () => api.get<Page<Zone>>(`/units/${leaderUnitId}/zones?limit=200`),
+    enabled: Boolean(leaderUnitId),
+  });
   const units = useQuery({
     queryKey: ['units'],
     queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
@@ -87,6 +96,12 @@ export default function PersonScreen() {
       setGranting(false);
       await refresh();
     },
+  });
+  // The Zone's own leader pointer; ticking a Zone someone else leads hands it over.
+  const lead = useMutation({
+    mutationFn: ({ zoneId, leads }: { zoneId: string; leads: boolean }) =>
+      api.post<Zone>(`/zones/${zoneId}/leader`, { zoneLeaderId: leads ? userId : null }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['zones'] }),
   });
   const disable = useMutation({
     mutationFn: () => api.post(`/users/${userId}/disable`, {}),
@@ -231,6 +246,35 @@ export default function PersonScreen() {
             <Button title="Give access to a Unit" variant="secondary" onPress={() => setGranting(true)} />
           )}
         </Card>
+
+        {leaderUnitId ? (
+          <Card>
+            <CardHeader
+              title="Zones they lead"
+              description={
+                can('zone', 'assign_leader')
+                  ? 'Tick the Zones they lead. A Zone has one leader, so ticking one led by someone else moves it to them.'
+                  : 'Zone leaders are set by the Coordinator.'
+              }
+            />
+            {(zones.data?.data ?? []).map((zone) => {
+              const leads = zone.zoneLeaderId === p.id;
+              return (
+                <CheckRow
+                  key={zone.id}
+                  label={zoneDisplayLabel(zone.code, zone.name)}
+                  detail={!leads && zone.zoneLeaderName ? `Now ${zone.zoneLeaderName}` : null}
+                  checked={leads}
+                  onChange={(next) => {
+                    if (can('zone', 'assign_leader') && !lead.isPending) lead.mutate({ zoneId: zone.id, leads: next });
+                  }}
+                />
+              );
+            })}
+            {zones.data && zones.data.data.length === 0 ? <Muted>This Unit has no Zones yet.</Muted> : null}
+            <ErrorBanner message={problemMessage(zones.error ?? lead.error)} />
+          </Card>
+        ) : null}
 
         {audits.data ? (
           <Card>

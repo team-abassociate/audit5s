@@ -568,6 +568,11 @@ function EditUserForm({ user, onDone }: { user: User; onDone: () => void }) {
       <div className="sm:col-span-3">
         <UserUnits user={user} />
       </div>
+      {user.role === 'ZONE_LEADER' && (
+        <div className="sm:col-span-3">
+          <UserZones user={user} />
+        </div>
+      )}
     </form>
   );
 }
@@ -685,6 +690,78 @@ function UserUnits({ user }: { user: User }) {
           at a time; adding a second is refused.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * The Zones a Zone Leader leads, ticked on or off one at a time. Each tick is the Zone's own
+ * leader pointer (`POST /zones/:id/leader`, logged as `zone.leader_assigned`), so ticking a
+ * Zone someone else leads hands it over: a Zone has one leader.
+ */
+function UserZones({ user }: { user: User }) {
+  const { can } = useSession();
+  const queryClient = useQueryClient();
+  const memberships = useQuery({
+    queryKey: ['memberships', 'user', user.id],
+    queryFn: () =>
+      api.get<Page<MembershipDetail>>(`/memberships?userId=${user.id}&status=ACTIVE&limit=200`),
+  });
+  // A Zone Leader holds one active membership, so their Unit is the first.
+  const unitId = memberships.data?.data[0]?.unitId;
+  const zones = useQuery({
+    queryKey: ['zones', unitId, 'active'],
+    queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?active=true&limit=200`),
+    enabled: Boolean(unitId),
+  });
+  const assign = useMutation({
+    mutationFn: ({ zoneId, leads }: { zoneId: string; leads: boolean }) =>
+      api.post<Zone>(`/zones/${zoneId}/leader`, { zoneLeaderId: leads ? user.id : null }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['zones'] }),
+  });
+  const mayAssign = can('zone', 'assign_leader');
+  const list = zones.data?.data ?? [];
+
+  return (
+    <div className="border-t border-edge-soft pt-3">
+      <span className="gb-label">Leads Zones · {list.filter((zone) => zone.zoneLeaderId === user.id).length}</span>
+      {!unitId ? (
+        <p className="mt-2 text-xs text-ink-2">Add them to a Unit first; they lead that Unit’s Zones.</p>
+      ) : zones.isLoading ? (
+        <Spinner />
+      ) : list.length === 0 ? (
+        <p className="mt-2 text-xs text-ink-2">This Unit has no Zones yet.</p>
+      ) : (
+        <div className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+          {list.map((zone) => {
+            const leads = zone.zoneLeaderId === user.id;
+            const other = !leads && zone.zoneLeaderName ? zone.zoneLeaderName : null;
+            return (
+              <label key={zone.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={leads}
+                  disabled={!mayAssign || assign.isPending}
+                  onChange={(event) => assign.mutate({ zoneId: zone.id, leads: event.target.checked })}
+                />
+                <span>
+                  {`Zone ${zone.code} — ${zone.name}`}
+                  {other && <span className="text-ink-3"> (now {other})</span>}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+      {(memberships.error || zones.error || assign.error) && (
+        <div className="mt-2">
+          <ErrorNotice error={memberships.error ?? zones.error ?? assign.error} />
+        </div>
+      )}
+      <p className="mt-2 text-xs text-ink-2">
+        Saved as you tick. A Zone has one leader, so ticking one led by someone else moves it to{' '}
+        {user.fullName}.
+      </p>
     </div>
   );
 }
