@@ -38,26 +38,31 @@ export const zoneSchema = z.object({
 export type Zone = z.infer<typeof zoneSchema>;
 
 /**
- * The Zone-number range the auditor's dropdown offers (`brainstorm.md`: "a dropdown from
- * Zone 1 to Zone 100"). It bounds the code helper, not the column: a Unit that names its
- * Zones some other way is still free to.
+ * Every Zone is addressed by its number, 1…100, stored as the code `Z-01`…`Z-100`. The
+ * number is mandatory and the name optional: a number cannot be mis-typed into a second
+ * spelling of the same place the way a name can.
  */
 export const ZONE_NUMBER_MIN = 1;
 export const ZONE_NUMBER_MAX = 100;
 
+/** Accepts `Z-7`, `z-07`, `Z-007`; stores the one spelling `Z-07` so uniqueness holds. */
 export const zoneCodeSchema = z
   .string()
   .trim()
   .toUpperCase()
-  .min(1)
-  .max(32)
-  .regex(/^[A-Z0-9][A-Z0-9_-]*$/, 'Zone code may contain letters, digits, hyphen and underscore');
+  .regex(/^Z-\d{1,3}$/, `Zone code is Z- and a number from ${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`)
+  .transform((code) => Number(code.slice(2)))
+  .refine((n) => n >= ZONE_NUMBER_MIN && n <= ZONE_NUMBER_MAX, {
+    message: `Zone number is ${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`,
+  })
+  .transform((n) => `Z-${String(n).padStart(2, '0')}`);
 
-export const zoneNameSchema = z.string().trim().min(1).max(200);
+/** Optional: left empty, the server names the Zone "Zone 7" after its number. */
+export const zoneNameSchema = z.string().trim().max(200);
 
 export const createZoneRequestSchema = z.object({
   code: zoneCodeSchema,
-  name: zoneNameSchema,
+  name: zoneNameSchema.optional(),
   description: optional(z.string().trim().max(2000)),
   departmentHint: optional(z.string().trim().max(120)),
   defaultChecklistTemplateId: uuidSchema.optional(),

@@ -319,7 +319,7 @@ function CreateZoneForm({
         </div>
       </Field>
 
-      <Field label="Name" error={fieldErrors.name}>
+      <Field label="Name (optional)" error={fieldErrors.name}>
         <Input {...register('name')} placeholder="Press shop" />
       </Field>
 
@@ -497,7 +497,7 @@ function EditZoneFields({
         update.mutate({ ...body, version: zone.version });
       })}
     >
-      <Field label="Name" error={fieldErrors.name}>
+      <Field label="Name (optional)" error={fieldErrors.name}>
         <Input {...register('name')} />
       </Field>
       <Field

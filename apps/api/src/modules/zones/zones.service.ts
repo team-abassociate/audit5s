@@ -7,7 +7,7 @@ import type {
   UpdateZoneRequest,
   Zone,
 } from '@audit5s/contracts';
-import type { ScopeContext } from '@audit5s/domain';
+import { zoneNumberFromCode, type ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
@@ -87,6 +87,9 @@ export class ZonesService {
     for (const [key, value] of Object.entries(fields)) {
       if (value === undefined) continue;
       (patch as Record<string, unknown>)[key] = value;
+    }
+    if (patch.name === '') {
+      patch.name = `Zone ${zoneNumberFromCode(patch.code ?? before.code)}`;
     }
 
     let updatedId: string | null;

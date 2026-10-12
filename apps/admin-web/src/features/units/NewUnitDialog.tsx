@@ -101,7 +101,7 @@ function Stepper({
 
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
-  const [zones, setZones] = useState<ZoneDraft[]>([{ id: newId(), number: '1', name: '' }]);
+  const [zones, setZones] = useState<ZoneDraft[]>([{ id: newId(), number: '', name: '' }]);
   const [industryId, setIndustryId] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [mode, setMode] = useState<CoordinatorMode>('new');
@@ -130,7 +130,7 @@ function Stepper({
 
   // Typed something, and nothing is on record yet: closing asks first. Once the Unit exists,
   // closing keeps it, and the list opens its row.
-  const touched = name.trim() !== '' || city.trim() !== '' || zones.some((zone) => zone.name.trim());
+  const touched = name.trim() !== '' || city.trim() !== '' || zones.some((zone) => zone.number.trim() || zone.name.trim());
   useEffect(() => {
     onDirty(touched && !created.unit);
     return () => onDirty(false);
@@ -152,9 +152,9 @@ function Stepper({
   );
   const unitError = !trimmedName ? 'Enter the Unit’s name.' : nameTaken ? 'A Unit with this name already exists.' : undefined;
 
-  // A row counts once it has a name; its number is filled in for it.
-  const zoneRows = zones.filter((zone) => zone.name.trim());
-  const zoneErrors = (zone: ZoneDraft): { number?: string; name?: string } => {
+  // A row counts once it has a number or a name; the number is what it needs, the name is optional.
+  const zoneRows = zones.filter((zone) => zone.number.trim() || zone.name.trim());
+  const zoneErrors = (zone: ZoneDraft): { number?: string } => {
     const parsed = Number(zone.number);
     const number =
       !Number.isInteger(parsed) || parsed < ZONE_NUMBER_MIN || parsed > ZONE_NUMBER_MAX || !zone.number.trim()
@@ -162,12 +162,9 @@ function Stepper({
         : zoneRows.some((other) => other.id !== zone.id && Number(other.number) === parsed)
           ? 'Used twice'
           : undefined;
-    return { number, name: zone.name.trim() ? undefined : 'Enter a name' };
+    return { number };
   };
-  const zonesValid = zoneRows.every((zone) => {
-    const errors = zoneErrors(zone);
-    return !errors.number && !errors.name;
-  });
+  const zonesValid = zoneRows.every((zone) => !zoneErrors(zone).number);
 
   const phoneDigits = person.phone.replace(/\D/g, '');
   const coordinatorError =
@@ -232,7 +229,7 @@ function Stepper({
         const number = Number(zone.number);
         made.zones[zone.id] = await post<Zone>(zone.id, `/units/${made.unit.id}/zones`, {
           code: zoneCodeForNumber(number),
-          name: zone.name.trim(),
+          name: zone.name.trim() || undefined,
           sortOrder: number,
           defaultChecklistTemplateId: template?.id,
         });
@@ -619,7 +616,7 @@ function ZonesTable({
   zones: ZoneDraft[];
   created: Record<string, Zone>;
   showErrors: boolean;
-  errorsOf: (zone: ZoneDraft) => { number?: string; name?: string };
+  errorsOf: (zone: ZoneDraft) => { number?: string };
   onChange: (zones: ZoneDraft[]) => void;
 }) {
   const nameInputs = useRef(new Map<string, HTMLInputElement>());
@@ -642,14 +639,14 @@ function ZonesTable({
   return (
     <>
       <p className="gb-hint">
-        One row per area to be audited. A row left without a name is dropped. Leaders can be named later,
-        on the Unit’s row.
+        One row per area to be audited. The Zone number is required and is how everyone refers to
+        it; the name is optional. Leaders can be named later, on the Unit’s row.
       </p>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left">
             <th className="gb-label w-24 pb-1 font-normal">Zone no.</th>
-            <th className="gb-label pb-1 font-normal">Name</th>
+            <th className="gb-label pb-1 font-normal">Name (optional)</th>
             <th className="w-24 pb-1">
               <span className="sr-only">Remove</span>
             </th>
@@ -658,7 +655,7 @@ function ZonesTable({
         <tbody>
           {zones.map((zone, index) => {
             const made = Boolean(created[zone.id]);
-            const errors = showErrors && zone.name.trim() ? errorsOf(zone) : {};
+            const errors = showErrors && (zone.number.trim() || zone.name.trim()) ? errorsOf(zone) : {};
             return (
               <tr key={zone.id} className="align-top">
                 <td className="pr-2 pb-2">
@@ -681,20 +678,18 @@ function ZonesTable({
                       else nameInputs.current.delete(zone.id);
                     }}
                     aria-label={`Zone ${index + 1} name`}
-                    aria-invalid={Boolean(errors.name)}
                     placeholder={index === 0 ? 'Press shop' : undefined}
                     className="w-full"
                     value={zone.name}
                     disabled={made}
                     onChange={(event) => update(zone.id, { name: event.target.value })}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' && index === zones.length - 1 && zone.name.trim()) {
+                      if (event.key === 'Enter' && index === zones.length - 1 && zone.number.trim()) {
                         event.preventDefault();
                         add();
                       }
                     }}
                   />
-                  {errors.name && <span className="gb-field-error block">{errors.name}</span>}
                 </td>
                 <td className="pb-2">
                   {made ? (

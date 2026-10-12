@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, ilike, isNull, sql, type SQL } from 'drizzle-orm';
 import { unitMemberships, zones, type Database } from '@audit5s/db';
-import type { ScopeContext } from '@audit5s/domain';
+import { zoneNumberFromCode, type ScopeContext } from '@audit5s/domain';
 import type { CreateZoneRequest, ListZonesQuery } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
@@ -79,7 +79,8 @@ export class ZonesRepository extends BaseRepository {
         .values({
           unitId,
           code: request.code,
-          name: request.name,
+          // Left unnamed, a Zone is called by its number — what an auditor sees on the phone.
+          name: request.name || `Zone ${zoneNumberFromCode(request.code)}`,
           description: request.description ?? null,
           departmentHint: request.departmentHint ?? null,
           defaultChecklistTemplateId: request.defaultChecklistTemplateId ?? null,

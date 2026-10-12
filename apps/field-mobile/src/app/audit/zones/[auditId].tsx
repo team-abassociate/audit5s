@@ -7,9 +7,9 @@ import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN, type ZoneLock, type ZoneLocksResponse
 import {
   MAX_AUDIT_RESTARTS,
   restartsRemaining,
-  zoneCodeChoices,
   zoneCodeForNumber,
   zoneDisplayLabel,
+  zoneNumberFromCode,
 } from '@audit5s/domain';
 import {
   Button,
@@ -92,7 +92,7 @@ function isEmptyDraft(draft: ZoneDraft): boolean {
 /**
  * The Zones of one audit: what has been done, what is next, and the way back in.
  *
- * Adding a Zone is a form (R-19): Zone 1…100 from a dropdown, an optional description, the
+ * Adding a Zone is a form (R-19): the Zone number on a number pad (or picked from the Unit’s Zones), an optional description, the
  * Zone Leader's name, and — on a scored audit — the department whose fifty questions follow.
  * A number the Unit already uses fills in what the catalogue knows; any other number is a
  * new Zone, which the server adds to the Unit when this audit syncs.
@@ -109,6 +109,8 @@ export default function AuditZonesScreen() {
   const router = useRouter();
 
   const [zoneNumber, setZoneNumber] = useState<number | null>(null);
+  /** The number pad's text. It becomes `zoneNumber` on leaving the box, not per keystroke. */
+  const [zoneText, setZoneText] = useState('');
   const [drafts, setDrafts] = useState<Record<number, ZoneDraft>>({});
   const [picking, setPicking] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
@@ -193,6 +195,7 @@ export default function AuditZonesScreen() {
         return next;
       });
       setZoneNumber(null);
+      setZoneText('');
       setShowErrors(false);
       router.push({
         pathname: walkBy ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
@@ -331,11 +334,29 @@ export default function AuditZonesScreen() {
   const restartsLeft = restartsRemaining(audit.data?.restartCount ?? 0);
   const canRestart = audit.data?.status === 'COMPLETED' && restartsLeft > 0;
 
-  const selected = zoneNumber === null ? null : byCode.get(zoneCodeForNumber(zoneNumber));
+  // What is typed is checked as it is typed: a taken Zone says so before the box is left.
+  const typed = zoneText === '' ? null : Number(zoneText);
+  const typedValid = typed !== null && typed >= ZONE_NUMBER_MIN && typed <= ZONE_NUMBER_MAX;
+  const typedCode = typedValid ? zoneCodeForNumber(typed) : null;
+  const typedInAudit = typedCode !== null && usedCodes.has(typedCode);
+  const selected = typedCode === null ? null : byCode.get(typedCode);
   const lockedByCode = new Map((zoneLocks.data?.locks ?? []).map((lock) => [lock.zoneCode, lock]));
-  const lockOnSelection = zoneNumber === null ? null : lockedByCode.get(zoneCodeForNumber(zoneNumber));
+  const lockOnSelection = typedCode === null ? null : lockedByCode.get(typedCode);
+  const existingZones = (catalogueZones.data ?? [])
+    .flatMap((zone) => {
+      const number = zoneNumberFromCode(zone.code);
+      return number === null ? [] : [{ number, zone }];
+    })
+    .sort((a, b) => a.number - b.number);
   const errors = {
-    zone: zoneNumber === null ? 'Choose the Zone' : null,
+    zone:
+      typed === null
+        ? 'Enter the Zone number'
+        : !typedValid
+          ? `Enter a number from ${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`
+          : typedInAudit
+            ? `Zone ${typed} is already in this audit`
+            : null,
     leader: draft.leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
     department: !walkBy && !draft.versionId ? 'Choose the department' : null,
   };
@@ -375,10 +396,23 @@ export default function AuditZonesScreen() {
     setShowErrors(false);
   };
 
+  /** Leaving the number box, or picking from the list, makes the typed number the Zone. */
+  const commitZone = (text: string) => {
+    const number = text === '' ? NaN : Number(text);
+    const code = number >= ZONE_NUMBER_MIN && number <= ZONE_NUMBER_MAX ? zoneCodeForNumber(number) : null;
+    if (code === null || usedCodes.has(code)) setZoneNumber(null);
+    else if (number !== zoneNumber) chooseZone(number);
+  };
+
   const submit = () => {
+    // Typed but the box never left: take it up first, so its catalogue details show.
+    if (!errors.zone && typed !== zoneNumber) {
+      commitZone(zoneText);
+      return;
+    }
     const complete = required.check([
       // A Zone somebody else holds is not a Zone chosen: its slip is shown right there.
-      ['zone', zoneNumber !== null && !lockOnSelection],
+      ['zone', !errors.zone && !lockOnSelection],
       ['leader', !errors.leader],
       ['department', !errors.department],
     ]);
@@ -400,34 +434,38 @@ export default function AuditZonesScreen() {
         }
       />
 
-      <View ref={required.anchor('zone')} collapsable={false}>
-      <Label>Zone</Label>
-      <Pressable
+      <Field
         testID="zone-number"
-        accessibilityRole="button"
-        accessibilityLabel="Choose the Zone"
-        onPress={() => setPicking(true)}
-        style={[styles.select, showErrors && errors.zone ? styles.selectError : null]}
-      >
-        <Text style={zoneNumber === null ? styles.selectPlaceholder : styles.selectValue}>
-          {zoneNumber === null
-            ? `Choose Zone ${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`
+        inputRef={required.input('zone')}
+        label="Zone number"
+        value={zoneText}
+        onChangeText={(value) => setZoneText(value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 3))}
+        onBlur={() => commitZone(zoneText)}
+        keyboardType="number-pad"
+        maxLength={3}
+        placeholder={`${ZONE_NUMBER_MIN} to ${ZONE_NUMBER_MAX}`}
+        error={(showErrors || typedInAudit || (typed !== null && !typedValid)) && errors.zone ? errors.zone : undefined}
+        hint={
+          !typedValid || lockOnSelection
+            ? undefined
             : selected
-              ? zoneDisplayLabel(selected.code, selected.name)
-              : `Zone ${zoneNumber} (new)`}
-        </Text>
-        <Text style={styles.selectChevron}>▾</Text>
-      </Pressable>
-      {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
-      </View>
+              ? [zoneDisplayLabel(selected.code, selected.name), selected.zoneLeaderName && `Leader ${selected.zoneLeaderName}`]
+                  .filter(Boolean)
+                  .join(' · ')
+              : `Zone ${typed} is new to this Unit — it is added when you start it`
+        }
+      />
+      {existingZones.length > 0 ? (
+        <Button title="Choose from this Unit’s Zones" variant="secondary" onPress={() => setPicking(true)} />
+      ) : null}
 
       {/* R-29, said before the questions rather than after them. */}
       {lockOnSelection ? (
         <Slip title="That Zone is taken">
           <SlipText>
-            {lockOnSelection.auditorName} is auditing Zone {lockOnSelection.zoneCode} —{' '}
-            {lockOnSelection.zoneName} in another audit of this Unit. Choose a
-            different Zone; nothing you have recorded is lost.
+            {lockOnSelection.auditorName} is auditing{' '}
+            {zoneDisplayLabel(lockOnSelection.zoneCode, lockOnSelection.zoneName)} in another audit of
+            this Unit. Choose a different Zone; nothing you have recorded is lost.
           </SlipText>
         </Slip>
       ) : null}
@@ -679,10 +717,14 @@ export default function AuditZonesScreen() {
 
       <ZonePicker
         visible={picking}
+        zones={existingZones}
         usedCodes={usedCodes}
         byCode={byCode}
         lockedByCode={lockedByCode}
-        onPick={chooseZone}
+        onPick={(number) => {
+          setZoneText(String(number));
+          commitZone(String(number));
+        }}
         onClose={() => setPicking(false)}
       />
     </Screen>
@@ -836,7 +878,8 @@ function RestartPrompt({
 }
 
 /**
- * The Zone 1…100 dropdown: a ruled sheet from the bottom edge, within thumb reach.
+ * The Unit's existing Zones: a ruled sheet from the bottom edge, within thumb reach. A Zone
+ * not on it yet is typed on the number pad instead, and is added to the Unit.
  *
  * Two kinds of Zone cannot be chosen, and the row says which it is rather than only going
  * grey. One is already in this audit (§5.5). The other is in somebody else's open audit of
@@ -845,6 +888,7 @@ function RestartPrompt({
  */
 function ZonePicker({
   visible,
+  zones,
   usedCodes,
   byCode,
   lockedByCode,
@@ -852,6 +896,7 @@ function ZonePicker({
   onClose,
 }: {
   visible: boolean;
+  zones: ReadonlyArray<{ number: number; zone: CatalogueZone }>;
   usedCodes: ReadonlySet<string>;
   byCode: ReadonlyMap<string, CatalogueZone>;
   lockedByCode: ReadonlyMap<string, ZoneLock>;
@@ -869,7 +914,7 @@ function ZonePicker({
           Choose the Zone
         </Text>
         <FlatList
-          data={zoneCodeChoices()}
+          data={zones.map(({ number, zone }) => ({ number, code: zone.code }))}
           keyExtractor={(choice) => choice.code}
           style={styles.sheetList}
           initialNumToRender={20}
@@ -919,20 +964,6 @@ const useStyles = createThemedStyles((theme) => ({
   footer: { gap: theme.space.sm, marginTop: theme.space.lg, paddingBottom: theme.space.md },
   slipAction: { marginTop: theme.space.xs },
   gapAbove: { marginTop: theme.space.md },
-  select: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
-    paddingHorizontal: theme.space.md,
-  },
-  selectError: { borderColor: theme.color.critBand, borderLeftWidth: 4 },
-  selectValue: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
-  selectPlaceholder: { fontFamily: theme.family.regular, fontSize: theme.font.base, color: theme.color.ink3 },
-  selectChevron: { fontFamily: theme.family.bold, fontSize: theme.font.base, color: theme.color.ink2 },
   error: {
     fontFamily: theme.family.medium,
     fontSize: 12.5,

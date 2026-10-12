@@ -51,6 +51,26 @@ describe('a Coordinator managing their own Unit’s Zones', () => {
     expect((response.body as { code: string }).code).toBe('DUPLICATE_CODE');
   });
 
+  it('names a Zone after its number when no name is given, and refuses one with no number', async () => {
+    const unnamed = await createZone(asCoordinator(), world.unitA, { code: 'Z-8' });
+    expect(unnamed.status).toBe(201);
+    expect(unnamed.body as Zone).toMatchObject({ code: 'Z-08', name: 'Zone 8' });
+
+    const renamed = await world.request('PATCH', `${base}/zones/${(unnamed.body as Zone).id}`, {
+      token: asCoordinator(),
+      body: { name: 'Press' },
+    });
+    expect((renamed.body as Zone).name).toBe('Press');
+    const cleared = await world.request('PATCH', `${base}/zones/${(unnamed.body as Zone).id}`, {
+      token: asCoordinator(),
+      body: { name: '' },
+    });
+    expect((cleared.body as Zone).name).toBe('Zone 8');
+
+    const unnumbered = await createZone(asCoordinator(), world.unitA, { code: 'BOILER', name: 'Boiler' });
+    expect(unnumbered.status).toBe(422);
+  });
+
   it('allows the same code in a different Unit — uniqueness is per Unit', async () => {
     const response = await createZone(asSuperAdmin(), world.unitB, {
       code: 'Z-07',
