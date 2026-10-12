@@ -3,6 +3,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -968,18 +969,37 @@ export function SelectField<T extends string>({
   value,
   onChange,
   placeholder = 'Choose…',
+  searchable = false,
 }: {
   label: string;
   options: ReadonlyArray<{ value: T; label: string; detail?: string | null }>;
   value: T | null;
   onChange: (value: T) => void;
   placeholder?: string;
+  /** A search box over the options, for a list long enough to hunt through (every Unit). */
+  searchable?: boolean;
 }) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  // The sheet sits on the bottom edge, so the keyboard a search opens would cover every
+  // result: it rides on top of the keyboard instead.
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    if (!searchable || !open) return;
+    const shown = Keyboard.addListener('keyboardDidShow', (event) => setKeyboard(event.endCoordinates.height));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboard(0));
+    return () => {
+      shown.remove();
+      hidden.remove();
+      setKeyboard(0);
+    };
+  }, [searchable, open]);
   const current = options.find((option) => option.value === value);
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const shown = options.filter((option) => words.every((word) => option.label.toLocaleLowerCase().includes(word)));
   return (
     <View style={styles.field}>
       <Label>{label}</Label>
@@ -999,12 +1019,29 @@ export function SelectField<T extends string>({
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)} statusBarTranslucent>
         <Pressable style={styles.scrim} onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel="Close" />
-        <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom, maxHeight: height * 0.75 }]}>
+        <View
+          style={[
+            styles.sheet,
+            keyboard > 0
+              ? { bottom: keyboard, paddingBottom: 14, maxHeight: (height - keyboard) * 0.85 }
+              : { paddingBottom: 14 + insets.bottom, maxHeight: height * 0.75 },
+          ]}
+        >
           <Text style={styles.h2} accessibilityRole="header">
             {label}
           </Text>
-          <ScrollView contentContainerStyle={styles.selectList} accessibilityRole="radiogroup">
-            {options.map((option) => {
+          {searchable ? (
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search…"
+              accessibilityLabel={`Search ${label}`}
+              autoCorrect={false}
+              style={styles.input}
+            />
+          ) : null}
+          <ScrollView contentContainerStyle={styles.selectList} accessibilityRole="radiogroup" keyboardShouldPersistTaps="handled">
+            {shown.map((option) => {
               const selected = option.value === value;
               return (
                 <Pressable

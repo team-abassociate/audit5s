@@ -99,8 +99,10 @@ export default function AuditsScreen() {
     newAudit.push({ label: 'Assign to a consultant', detail: 'They run it on their phone', onPress: () => router.push('/manage/assign') });
   }
   if (can('audit', 'create_external')) {
-    newAudit.push({ label: 'Start one myself', detail: 'Pick the Unit, then take the selfie', onPress: () => router.push('/audit/start') });
+    newAudit.push({ label: 'Start one myself', detail: 'Take the selfie, then select the Zone', onPress: () => router.push('/audit/start') });
   }
+  // One choice is no choice: "+ Audit" goes straight to it rather than through a menu of one.
+  const addAudit = () => (newAudit.length === 1 ? newAudit[0]!.onPress() : setAdding(true));
 
   // The same query as My Unit's, so the name is usually cached already.
   const ownUnitId = oneUnit ? scope.unitIds[0] : undefined;
@@ -245,7 +247,7 @@ export default function AuditsScreen() {
               <View style={styles.tools}>
                 {ownUnitId ? <ZoneFilterButton count={zoneFilter.selected.length} onPress={zoneFilter.show} /> : null}
                 {newAudit.length > 0 ? (
-                  <HeaderAction testID="add-audit" title="+ Audit" accessibilityLabel="New audit" onPress={() => setAdding(true)} />
+                  <HeaderAction testID="add-audit" title="+ Audit" accessibilityLabel="New audit" onPress={addAudit} />
                 ) : null}
               </View>
             ) : null,

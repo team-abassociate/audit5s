@@ -130,12 +130,7 @@ function ManagementOverview() {
     addActions.push({ label: 'Assign an audit', detail: 'A consultant runs it on their phone', onPress: () => router.push('/manage/assign') });
   }
   if (can('audit', 'create_external')) {
-    // A Coordinator has one Unit (R-52), so the selfie is the next step, not a Unit list.
-    addActions.push(
-      ownUnitId
-        ? { label: 'Start an audit myself', detail: 'Take the selfie, then select the Zone', onPress: () => router.push({ pathname: '/unit/[unitId]', params: { unitId: ownUnitId } }) }
-        : { label: 'Start an audit myself', detail: 'Pick the Unit, then take the selfie', onPress: () => router.push('/audit/start') },
-    );
+    addActions.push({ label: 'Start an audit myself', detail: 'Take the selfie, then select the Zone', onPress: () => router.push('/audit/start') });
   }
 
   return (

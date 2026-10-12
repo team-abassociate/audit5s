@@ -56,9 +56,8 @@ export function FieldOverview() {
   const { user, scope } = useSession();
   // R-18: a Super Admin answers corrective actions too; a Consultant never does.
   const answersActions = scope?.role === 'ZONE_LEADER' || scope?.role === 'SUPER_ADMIN';
-  // A Zone Leader's one Unit is the Audit tab; everyone else picks from the Units tab.
+  // A Zone Leader has one Unit and no Units tab: their shortcut starts the audit itself.
   const zoneLeader = scope?.role === 'ZONE_LEADER';
-  const startHref = zoneLeader ? '/audit' : '/';
 
   const resumable = useQuery({
     queryKey: ['local', 'resumable-audits'],
@@ -143,7 +142,7 @@ export function FieldOverview() {
           title={user ? `Good to see you, ${firstName(user.fullName)}` : 'Your work'}
           description={
             open.length === 0
-              ? 'Nothing in progress. Open a Unit to start an audit.'
+              ? 'Nothing in progress.'
               : `${open.length} audit${open.length === 1 ? '' : 's'} open on this device.`
           }
         />
@@ -170,9 +169,9 @@ export function FieldOverview() {
             />
             <Button
               testID="open-field-unit"
-              title={zoneLeader ? 'Start an audit' : 'Open a Unit'}
+              title="Start an audit"
               variant="secondary"
-              onPress={() => router.push(startHref)}
+              onPress={() => router.push('/audit/start')}
             />
           </Card>
         ) : (
@@ -237,9 +236,9 @@ export function FieldOverview() {
             <View style={styles.action}>
               <Button
                 testID="field-units-shortcut"
-                title={zoneLeader ? 'Audit' : 'Units'}
+                title={zoneLeader ? 'Start an audit' : 'Units'}
                 variant="secondary"
-                onPress={() => router.push(startHref)}
+                onPress={() => router.push(zoneLeader ? '/audit/start' : '/')}
               />
             </View>
           </View>

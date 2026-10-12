@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { Audit, AuditType, Page } from '@audit5s/contracts';
 import { formatDateTime, uuidv7 } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
-import { Button, Card, CardHeader, EmptyState, ErrorNotice, Field, Segmented, Select, Skeleton, StatusChip, Table, Td, Th } from '@/components/ui';
+import { Button, Card, CardHeader, EmptyState, Combobox, ErrorNotice, Field, StatusChip, Table, Td, Th } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useWebDevice } from '@/lib/device';
 import { uploadEvidence } from '@/lib/evidence';
@@ -13,23 +13,25 @@ import { useSession } from '@/lib/session';
 import { AUDIT_TYPE_LABEL, startableTypes, useCatalogue } from './shared';
 
 /**
- * Run an audit on the web (R-51): the phone's Unit page (`audit-start.tsx`) at a desk.
- * Your open audits first — continuing one beats starting a second and splitting the day's
- * Zones across two — then a new one: the Unit, the type, and the selfie, which is a live
- * webcam photograph (§7.1, §12.10). The audit is created as this browser's, then started.
+ * Run an audit on the web (R-51): the phone's `audit-start.tsx` at a desk, with the same
+ * rule (owner, 2026-10-12) — the selfie, then the Zone, and only the questions that are real
+ * choices on the way: the Unit when there are several, the kind when the person may run more
+ * than one (a Coordinator starts a 5S audit only), and, when an audit of the Unit is already
+ * open, whether to carry on with it. The selfie is a live webcam photograph (§7.1, §12.10).
+ * The audit is created as this browser's once the selfie is taken, then started.
  */
 export function ConductStartPage() {
   useDocumentTitle('Run an audit');
-  const { user, can } = useSession();
+  const { user, can, scope } = useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const device = useWebDevice();
   const catalogue = useCatalogue();
-  const types = startableTypes(can);
+  const types: AuditType[] = scope?.role === 'COORDINATOR' ? ['EXTERNAL_5S'] : startableTypes(can);
   const [picked, setPicked] = useState<AuditType | null>(null);
   const [unitId, setUnitId] = useState('');
-  const [selfie, setSelfie] = useState(false);
-  const auditType = picked ?? types[0] ?? null;
+  const [another, setAnother] = useState(false);
+  const auditType = types.length === 1 ? types[0]! : picked;
 
   const open = useQuery({
     queryKey: ['conduct', 'mine', user?.id],
@@ -57,21 +59,16 @@ export function ConductStartPage() {
   });
 
   if (types.length === 0) return <EmptyState title="Your role does not conduct audits." />;
-  const openHere = (open.data?.data ?? []).find((audit) => audit.unitId === unit);
+  const openAudits = open.data?.data ?? [];
+  const openHere = openAudits.find((audit) => audit.unitId === unit);
+  const toAudit = (auditId: string) => void navigate({ to: '/conduct/$auditId', params: { auditId } });
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader title="Your open audits" description="Started here or on your phone. Continue one rather than starting a second for the same Unit." />
-        {open.isLoading ? (
-          <Skeleton variant="rows" columns={['Unit', 'Type', 'Status', 'Started']} />
-        ) : open.error ? (
-          <div className="p-4">
-            <ErrorNotice error={open.error} />
-          </div>
-        ) : (open.data?.data.length ?? 0) === 0 ? (
-          <EmptyState title="No open audits." />
-        ) : (
+      {/* The way back into an audit left open here or on a phone; absent when there is none. */}
+      {openAudits.length > 0 ? (
+        <Card>
+          <CardHeader title="Your open audits" />
           <Table>
             <thead>
               <tr>
@@ -83,7 +80,7 @@ export function ConductStartPage() {
               </tr>
             </thead>
             <tbody>
-              {open.data!.data.map((audit) => (
+              {openAudits.map((audit) => (
                 <tr key={audit.id}>
                   <Td>{audit.unitName}</Td>
                   <Td>{AUDIT_TYPE_LABEL[audit.auditType]}</Td>
@@ -92,7 +89,7 @@ export function ConductStartPage() {
                   </Td>
                   <Td className="gb-data">{audit.startedAt ? formatDateTime(audit.startedAt) : '—'}</Td>
                   <Td className="text-right">
-                    <Button variant="secondary" onClick={() => void navigate({ to: '/conduct/$auditId', params: { auditId: audit.id } })}>
+                    <Button variant="secondary" onClick={() => toAudit(audit.id)}>
                       {audit.status === 'PAUSED' ? 'Resume' : 'Continue'}
                     </Button>
                   </Td>
@@ -100,52 +97,49 @@ export function ConductStartPage() {
               ))}
             </tbody>
           </Table>
-        )}
-      </Card>
+        </Card>
+      ) : null}
 
       <Card>
-        <CardHeader title="Start an audit" description="Your selfie first, then the Zone. The selfie is a live photograph from this computer's camera." />
+        <CardHeader title="Start an audit" />
         <div className="space-y-4 p-4">
           {catalogue.error ? <ErrorNotice error={catalogue.error} /> : null}
-          <div className="grid gap-4 sm:grid-cols-2">
+          {open.error ? <ErrorNotice error={open.error} /> : null}
+          {units.length > 1 ? (
             <Field label="Unit">
-              <Select value={unit} onChange={(event) => setUnitId(event.target.value)} disabled={units.length <= 1}>
-                {units.length !== 1 ? <option value="">Choose the Unit</option> : null}
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </Select>
+              <Combobox value={unit} onChange={setUnitId} options={units.map((u) => ({ id: u.id, label: u.name }))} placeholder="Search Units…" spellCheck={false} />
             </Field>
-            {types.length > 1 && auditType ? (
-              <div className="gb-field">
-                <span className="gb-label">Type</span>
-                <Segmented label="Audit type" options={types.map((value) => ({ value, label: AUDIT_TYPE_LABEL[value] }))} value={auditType} onChange={setPicked} />
+          ) : null}
+          {!unit || open.isLoading ? null : openHere && !another ? (
+            <div className="space-y-3">
+              <p className="gb-notice">
+                Your audit of this Unit is {openHere.status === 'PAUSED' ? 'paused' : 'not submitted yet'}. A new audit is for a different Zone.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => toAudit(openHere.id)}>{openHere.status === 'PAUSED' ? 'Resume it' : 'Carry on with it'}</Button>
+                <Button variant="secondary" onClick={() => setAnother(true)}>
+                  Start a new audit
+                </Button>
               </div>
-            ) : (
-              <Field label="Type">
-                <Select value={auditType ?? ''} disabled>
-                  <option>{auditType ? AUDIT_TYPE_LABEL[auditType] : ''}</option>
-                </Select>
-              </Field>
-            )}
-          </div>
-          {openHere ? (
-            <p className="gb-notice">
-              Your audit of this Unit is still open. Add the next Zone to it rather than starting a new one; a new audit is scored separately.
-            </p>
+            </div>
+          ) : types.length > 1 ? (
+            <div className="gb-field">
+              <span className="gb-label">Which audit?</span>
+              <div className="flex flex-wrap gap-2">
+                {types.map((type) => (
+                  <Button key={type} variant={type === auditType ? 'primary' : 'secondary'} onClick={() => setPicked(type)}>
+                    {AUDIT_TYPE_LABEL[type]}
+                  </Button>
+                ))}
+              </div>
+            </div>
           ) : null}
           {device.error ? <ErrorNotice error={device.error} /> : null}
-          {!unit ? null : selfie ? (
+          {unit && auditType && device.client && !open.isLoading && (!openHere || another) ? (
             <div className="max-w-md">
               <LiveCapture facing="user" openLabel="Open the camera for your selfie" onCapture={(blob) => start.mutate(blob)} />
             </div>
-          ) : (
-            <Button disabled={!device.client} onClick={() => setSelfie(true)}>
-              Take selfie
-            </Button>
-          )}
+          ) : null}
           {start.isPending ? <p className="text-sm text-ink-2" role="status">Starting the audit…</p> : null}
           <ErrorNotice error={start.error} />
         </div>
