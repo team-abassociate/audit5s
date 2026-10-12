@@ -22,6 +22,7 @@ import {
   units,
   checklistVersions,
   localAuditZones,
+  localEvidence,
   localQuestionResponses,
   localZoneActionSuggestions,
   outbox,
@@ -596,6 +597,50 @@ export async function withdrawLocalZone(
     ...(reason ? { reason } : {}),
     withdrawnAt: now,
   });
+}
+
+/**
+ * The auditor's "Abort audit" (owner, 2026-10-12): an unfinished audit leaves this phone
+ * and every list. Its rows are dropped here along with whatever of it was still queued; the
+ * server, if it ever heard of the audit, is told once (`audit:discard`) and voids it there,
+ * keeping its rows (A-1). An audit whose first upsert never left the phone just vanishes.
+ *
+ * ponytail: the photographs' files stay in the app's storage until it is cleared; delete
+ * them here if storage on shared phones becomes a complaint.
+ */
+export async function abortLocalAudit(
+  database: LocalDatabase,
+  auditId: string,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  const [upsert] = await database
+    .select()
+    .from(outbox)
+    .where(and(eq(outbox.entityType, 'audit'), eq(outbox.entityId, auditId), eq(outbox.operation, 'upsert')))
+    .limit(1);
+  const neverSent = upsert?.state === 'PENDING' && upsert.attempts === 0;
+
+  const ids = async (table: typeof localAuditZones | typeof localQuestionResponses | typeof localEvidence) =>
+    (await database.select({ id: table.id }).from(table).where(eq(table.auditId, auditId))).map((row) => row.id);
+  const owned: Array<[string, string[]]> = [
+    ['audit', [auditId]],
+    ['audit_zone', await ids(localAuditZones)],
+    ['question_response', await ids(localQuestionResponses)],
+    ['evidence', await ids(localEvidence)],
+  ];
+  for (const [entityType, entityIds] of owned) {
+    if (entityIds.length === 0) continue;
+    await database
+      .delete(outbox)
+      .where(and(eq(outbox.entityType, entityType), inArray(outbox.entityId, entityIds)));
+  }
+
+  await database.delete(localEvidence).where(eq(localEvidence.auditId, auditId));
+  await database.delete(localQuestionResponses).where(eq(localQuestionResponses.auditId, auditId));
+  await database.delete(localAuditZones).where(eq(localAuditZones.auditId, auditId));
+  await database.delete(audits).where(eq(audits.id, auditId));
+
+  if (!neverSent) await enqueue(database, 'audit', auditId, 'discard', { reason: 'Aborted by auditor' }, now);
 }
 
 /**

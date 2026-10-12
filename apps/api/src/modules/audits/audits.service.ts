@@ -636,6 +636,19 @@ export class AuditsService {
       after: { status: 'CANCELLED', reason: request.reason },
     });
 
+    // An aborted assigned audit hands the job back: the assignment is the auditor's to start
+    // again, unless another of its audits is still open.
+    if (
+      audit.assignmentId &&
+      !(await this.repository.hasOtherOpenAuditForAssignment(scope, audit.assignmentId, auditId))
+    ) {
+      await this.assignments.setStatus(
+        { ...scope, resolver: 'organization' },
+        audit.assignmentId,
+        'ACCEPTED',
+      );
+    }
+
     return this.get(scope, auditId);
   }
 

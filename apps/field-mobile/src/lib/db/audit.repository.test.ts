@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ResponseValue } from '@audit5s/contracts';
 import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
 import {
+  abortLocalAudit,
   addLocalZone,
   applyLocalOverride,
   completeLocalAudit,
   completeLocalZone,
   createLocalAudit,
   editLocalZone,
+  getLocalAudit,
   getLocalAuditZone,
   getZoneSuggestions,
   listLocalAudits,
@@ -508,6 +510,34 @@ describe('abort and resume (N7, §9.8)', () => {
     expect(pause).toBeDefined();
     expect(JSON.parse(pause!.payload)).toMatchObject({ resumeAuditZoneId: auditZoneId });
     expect(await pendingOutboxCount(database)).toBe(queued.length);
+  });
+});
+
+describe('aborting a whole audit (owner, 2026-10-12)', () => {
+  it('drops an audit the server never heard of without a trace', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers().slice(0, 5));
+
+    await abortLocalAudit(database, auditId);
+
+    expect(await getLocalAudit(database, auditId)).toEqual([]);
+    expect((await executor.query(`SELECT COUNT(*) FROM question_response`, []))[0]?.[0]).toBe(0);
+    expect(await listOutbox(database)).toEqual([]);
+    expect(await listResumableAudits(database)).toEqual([]);
+  });
+
+  it('tells the server once when the audit has already been sent', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers().slice(0, 5));
+    await executor.query(`UPDATE outbox SET state = 'SYNCED', attempts = 1`, []);
+
+    await abortLocalAudit(database, auditId);
+
+    const queued = await listOutbox(database);
+    expect(queued.filter((item) => item.state !== 'SYNCED').map((item) => `${item.entityType}:${item.operation}`)).toEqual([
+      'audit:discard',
+    ]);
+    expect(await getLocalAudit(database, auditId)).toEqual([]);
   });
 });
 

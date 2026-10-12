@@ -427,8 +427,9 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
   {
     resource: 'audit',
     action: 'cancel',
+    // The auditor's "Abort audit" (owner, 2026-10-12): an unfinished audit of their own.
     description: 'Cancel an audit',
-    grants: { SUPER_ADMIN: org },
+    grants: { SUPER_ADMIN: org, CONSULTANT: ownAudits, COORDINATOR: ownAudits, ZONE_LEADER: ownAudits },
   },
   {
     /*

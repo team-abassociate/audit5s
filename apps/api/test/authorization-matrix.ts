@@ -734,8 +734,13 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   {
     method: 'POST',
     path: '/api/v1/audits/:auditId/cancel',
-    description: 'audit:cancel — SUPER_ADMIN only; every row is retained (A-1)',
-    expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },
+    description:
+      'audit:cancel — a Super Admin, or the auditor\'s own Abort audit; every row is retained (A-1)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
     coveredBy: 'audits.e2e.test.ts',
   },
   {

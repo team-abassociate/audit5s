@@ -90,17 +90,10 @@ describe('every pair the table does not contain is refused', () => {
 });
 
 describe('the actor is part of the edge', () => {
-  it('lets a Super Admin cancel an in-progress audit and refuses the auditor holding it', () => {
-    expect(canTransition('audit', 'IN_PROGRESS', 'CANCELLED', asRole('SUPER_ADMIN')).allowed).toBe(
-      true,
-    );
-
-    const refused = canTransition('audit', 'IN_PROGRESS', 'CANCELLED', asRole('CONSULTANT'));
-    expect(refused).toEqual({
-      allowed: false,
-      reason: 'ROLE_NOT_PERMITTED',
-      allowedRoles: ['SUPER_ADMIN'],
-    });
+  it('lets a Super Admin cancel an in-progress audit, and its auditor abort it (owner, 2026-10-12)', () => {
+    for (const role of ROLES) {
+      expect(canTransition('audit', 'IN_PROGRESS', 'CANCELLED', asRole(role)).allowed, role).toBe(true);
+    }
   });
 
   it('refuses a user on a system-only edge, however privileged', () => {
@@ -111,9 +104,9 @@ describe('the actor is part of the edge', () => {
     expect(canTransition('audit', 'COMPLETED', 'CLOSED', asRole(null)).allowed).toBe(true);
   });
 
-  it('lets a Coordinator conduct an audit as a Consultant does, and cancel none (R-52)', () => {
+  it('lets a Coordinator conduct an audit as a Consultant does (R-52)', () => {
     // R-43's rollup of a disapproval was once their only audit edge. R-52 makes them an
-    // auditor of their own Unit too; cancelling stays the Super Admin's (A-1).
+    // auditor of their own Unit too, Abort audit included.
     const reachable = AUDIT_STATUSES.flatMap((from) =>
       nextStatuses('audit', from, 'COORDINATOR').map((to) => `${from} → ${to}`),
     );
@@ -121,7 +114,6 @@ describe('the actor is part of the edge', () => {
       nextStatuses('audit', from, 'CONSULTANT').map((to) => `${from} → ${to}`),
     );
     expect(reachable).toEqual(expect.arrayContaining([...consultant, 'CLOSED → PARTIALLY_CLOSED']));
-    expect(reachable.filter((edge) => edge.endsWith('CANCELLED'))).toEqual([]);
   });
 });
 
@@ -188,7 +180,7 @@ describe('assertTransition', () => {
   });
 
   it('says which roles the edge does admit', () => {
-    expect(() => assertTransition('audit', 'READY', 'CANCELLED', asRole('CONSULTANT'))).toThrow(
+    expect(() => assertTransition('audit_zone', 'COMPLETED', 'IN_PROGRESS', asRole('CONSULTANT'))).toThrow(
       /SUPER_ADMIN/,
     );
   });
@@ -201,10 +193,11 @@ describe('assertTransition', () => {
 describe('the table matches the diagrams in PART 7', () => {
   it('has no edge that deletes an audit — CANCELLED is the strongest action (A-1, D8)', () => {
     expect(AUDIT_TRANSITIONS.every((edge) => AUDIT_STATUSES.includes(edge.to))).toBe(true);
-    // Every pre-terminal status can be cancelled, and only by a Super Admin with a reason.
+    // Every pre-terminal status can be cancelled — by a Super Admin, or the auditor's
+    // Abort audit — always with a reason, and never once the audit is finished.
     for (const from of ['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'] as const) {
       const edge = AUDIT_TRANSITIONS.find((e) => e.from === from && e.to === 'CANCELLED');
-      expect(edge?.actors).toEqual(['SUPER_ADMIN']);
+      expect(edge?.actors).toEqual(['SUPER_ADMIN', 'CONSULTANT', 'COORDINATOR', 'ZONE_LEADER']);
       expect(edge?.guards).toContain('reason_given');
     }
   });
@@ -235,6 +228,7 @@ describe('the table matches the diagrams in PART 7', () => {
     expect(nextStatuses('audit_zone', 'COMPLETED', 'CONSULTANT')).toEqual([]);
     expect(nextStatuses('audit_zone', 'WITHDRAWN', 'CONSULTANT')).toEqual([]);
     expect(nextStatuses('audit', 'IN_PROGRESS', 'CONSULTANT').sort()).toEqual([
+      'CANCELLED',
       'COMPLETED',
       'PAUSED',
     ]);

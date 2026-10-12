@@ -86,9 +86,10 @@ export interface Transition<S extends string> {
 /**
  * `audit` (7.1).
  *
- * `CANCELLED` is reachable from every pre-terminal status and only by a Super Admin, with
- * a reason. It is the strongest administrative action in the system and it still only sets
- * a status: invariant A-1 says no path deletes an audit, so there is no edge to `[*]`.
+ * `CANCELLED` is reachable from every pre-terminal status, by a Super Admin or by the
+ * auditor's own "Abort audit" (owner, 2026-10-12), with a reason. It still only sets a
+ * status: invariant A-1 says no path deletes an audit, so there is no edge to `[*]`. A
+ * cancelled audit leaves every list instead.
  */
 /**
  * R-33's cap. Two, and the number lives here rather than in the service because both the
@@ -187,9 +188,9 @@ export const AUDIT_TRANSITIONS: readonly Transition<AuditStatus>[] = [
   ...(['ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED'] as const).map((from) => ({
     from,
     to: 'CANCELLED' as const,
-    actors: ['SUPER_ADMIN'] as const,
+    actors: ['SUPER_ADMIN', 'CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as const,
     guards: ['reason_given'] as const,
-    note: 'Administrative voiding. Every row is retained (A-1)',
+    note: 'Voiding, or the auditor\'s Abort audit. Every row is retained (A-1); it leaves every list',
   })),
 ];
 
