@@ -1428,7 +1428,7 @@ describe('cancellation retains everything (A-1, D8)', () => {
 
   it('lets the auditor abort their own audit, which leaves every list and frees the assignment', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
-    const zoneId = await createZone('Z-46', 'Aborted audit');
+    const zoneId = await createZone('Z-52', 'Aborted audit');
     const { auditId } = await startAuditWithZone({
       token: consultantToken,
       deviceId: CONSULTANT_DEVICE,
