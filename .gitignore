@@ -48,3 +48,6 @@ apps/admin-web/public/audit5s-ca.crt
 *.apk
 *.aab
 releases/
+
+# Local test logins (never commit)
+test-credentials.txt
