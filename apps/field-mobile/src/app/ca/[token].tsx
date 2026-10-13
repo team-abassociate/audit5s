@@ -89,7 +89,7 @@ export default function CorrectiveActionDeepLink() {
             'Super Admin for a new link — nothing you have done has been lost.'
           }
         />
-        <Button title="Back to my actions" onPress={() => router.replace('/actions')} />
+        <Button icon="arrow-back" title="Back to my actions" onPress={() => router.replace('/actions')} />
       </Screen>
     );
   }
@@ -101,7 +101,7 @@ export default function CorrectiveActionDeepLink() {
           title="Opened in your browser"
           detail="This link works without signing in. Sign in here to answer it offline instead."
         />
-        <Button title="Back" onPress={() => router.replace('/')} />
+        <Button icon="arrow-back" title="Back" onPress={() => router.replace('/')} />
       </Screen>
     );
   }

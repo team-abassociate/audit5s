@@ -170,7 +170,7 @@ export function UnitDetail({ unitId }: { unitId: string }) {
             title="Details"
             action={
               mayEdit ? (
-                <HeaderAction title="Edit" accessibilityLabel="Edit the Unit's details" onPress={() => setEditing(true)} />
+                <HeaderAction icon="edit" title="Edit" accessibilityLabel="Edit the Unit's details" onPress={() => setEditing(true)} />
               ) : null
             }
           />
@@ -192,7 +192,7 @@ export function UnitDetail({ unitId }: { unitId: string }) {
           }
           action={
             mayAddZone && zoneOpen !== 'new' ? (
-              <HeaderAction title="+ Zone" accessibilityLabel="Add a Zone" onPress={() => setZoneOpen('new')} />
+              <HeaderAction icon="add" title="Zone" accessibilityLabel="Add a Zone" onPress={() => setZoneOpen('new')} />
             ) : null
           }
         />
@@ -257,8 +257,8 @@ export function UnitDetail({ unitId }: { unitId: string }) {
           }
           action={
             mayAddLeader ? (
-              <HeaderAction
-                title="+ Zone leader"
+              <HeaderAction icon="person-add"
+                title="Zone leader"
                 accessibilityLabel="Add a Zone leader"
                 onPress={() =>
                   router.push({ pathname: '/manage/new-person', params: { role: 'ZONE_LEADER', unitId } })
@@ -315,16 +315,16 @@ export function UnitDetail({ unitId }: { unitId: string }) {
                 detail: `${ROLE_LABELS[person.role]}, ${person.loginId}`,
               }))}
             />
-            <Button title="Cancel" variant="secondary" onPress={() => setAdding(false)} />
+            <Button icon="close" title="Cancel" variant="secondary" onPress={() => setAdding(false)} />
           </View>
         ) : (
-          <Button title="Give someone access" variant="secondary" onPress={() => setAdding(true)} />
+          <Button icon="vpn-key" title="Give someone access" variant="secondary" onPress={() => setAdding(true)} />
         )}
       </Card>
 
       <View style={styles.actions}>
         {can('audit', 'create_external') ? (
-          <Button
+          <Button icon="play-arrow"
             title="Start an audit here"
             onPress={() => router.push({ pathname: '/unit/[unitId]', params: { unitId } })}
           />

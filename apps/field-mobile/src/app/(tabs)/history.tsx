@@ -52,7 +52,7 @@ export default function HistoryScreen() {
         <Data>Updated {formatDateTime(item.clientUpdatedAt)}</Data>
         <View style={styles.actions}>
           <View style={styles.action}>
-            <Button
+            <Button icon={isFinished(item.status) ? 'visibility' : 'play-arrow'}
               title={isFinished(item.status) ? 'Review' : 'Open'}
               variant="secondary"
               onPress={() =>
@@ -66,7 +66,7 @@ export default function HistoryScreen() {
           */}
           {isFinished(item.status) && item.auditType !== 'WALK_BY' ? (
             <View style={styles.action}>
-              <Button
+              <Button icon="bar-chart"
                 title="Scores"
                 variant="secondary"
                 onPress={() =>

@@ -1,6 +1,6 @@
 import { Tabs, useRouter } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
-import { HeaderTitle } from '../../components/ui';
+import { HeaderTitle, tabIcon } from '../../components/ui';
 import { managesOnPhone, useSession } from '../../lib/session';
 import { tabBarStyle, useTheme } from '../../lib/theme';
 
@@ -28,8 +28,9 @@ import { tabBarStyle, useTheme } from '../../lib/theme';
  * Every screen is a route in this group; a tab the role does not get is `href: null`, hidden
  * from the bar rather than absent, so a link to it still resolves.
  *
- * Icons are glyphs rather than an icon package: one fewer dependency, and the vector icon
- * font is a real chunk of the APK for a handful of characters. The bar is the web rail turned
+ * Icons are `TAB_ICON`'s Material symbols, shared with Kaizen's bar: a destination has one
+ * symbol whichever role holds it (Audits and a Zone Leader's Audit; Actions and NCs; Units
+ * and My Unit), and two destinations never share one. The bar is the web rail turned
  * sideways: tile-2 ground, a 2px ink rule, and the current item in ink with an underline —
  * shape as well as colour, and no Android elevation blur.
  */
@@ -40,11 +41,6 @@ export default function TabsLayout() {
   const admin = managesOnPhone(scope?.role);
   const coordinator = scope?.role === 'COORDINATOR';
   const zoneLeader = scope?.role === 'ZONE_LEADER';
-  const icon = (glyph: string) =>
-    function TabIcon({ color }: { color: ColorValue }) {
-      // A fixed, centred box in the mono face, so the glyphs line up the same on every phone.
-      return <Text style={{ color, fontFamily: theme.family.mono, fontSize: 18, width: 24, textAlign: 'center' }}>{glyph}</Text>;
-    };
   const shownTo = (show: boolean) => (show ? {} : { href: null });
   const tabLabel = (text: string, color: ColorValue, focused: boolean) => (
     <Text
@@ -81,17 +77,17 @@ export default function TabsLayout() {
       }}
     >
       {/* The one tab every role gets; the screen behind it differs (see `overview.tsx`). */}
-      <Tabs.Screen name="overview" options={{ title: 'Overview', tabBarIcon: icon('▦') }} />
-      <Tabs.Screen name="audits" options={{ title: 'Audits', tabBarIcon: icon('◷'), ...shownTo(admin) }} />
-      <Tabs.Screen name="review" options={{ title: 'Actions', tabBarIcon: icon('⚑'), ...shownTo(admin) }} />
-      <Tabs.Screen name="units" options={{ title: 'Units', tabBarIcon: icon('▣'), ...shownTo(admin && !coordinator) }} />
-      <Tabs.Screen name="people" options={{ title: 'People', tabBarIcon: icon('◉'), ...shownTo(admin) }} />
-      <Tabs.Screen name="my-unit" options={{ title: 'My Unit', tabBarIcon: icon('▣'), ...shownTo(coordinator) }} />
-      <Tabs.Screen name="index" options={{ tabBarButtonTestID: 'field-units-tab', title: 'Units', tabBarIcon: icon('▣'), ...shownTo(!admin && !zoneLeader) }} />
+      <Tabs.Screen name="overview" options={{ title: 'Overview', tabBarIcon: tabIcon('overview') }} />
+      <Tabs.Screen name="audits" options={{ title: 'Audits', tabBarIcon: tabIcon('audits'), ...shownTo(admin) }} />
+      <Tabs.Screen name="review" options={{ title: 'Actions', tabBarIcon: tabIcon('actions'), ...shownTo(admin) }} />
+      <Tabs.Screen name="units" options={{ title: 'Units', tabBarIcon: tabIcon('units'), ...shownTo(admin && !coordinator) }} />
+      <Tabs.Screen name="people" options={{ title: 'People', tabBarIcon: tabIcon('people'), ...shownTo(admin) }} />
+      <Tabs.Screen name="my-unit" options={{ title: 'My Unit', tabBarIcon: tabIcon('units'), ...shownTo(coordinator) }} />
+      <Tabs.Screen name="index" options={{ tabBarButtonTestID: 'field-units-tab', title: 'Units', tabBarIcon: tabIcon('units'), ...shownTo(!admin && !zoneLeader) }} />
       {/* Audit is a button, not a page: it starts the audit (selfie, then Zone) over the tabs, and Back returns. */}
       <Tabs.Screen
         name="audit"
-        options={{ tabBarButtonTestID: 'field-audit-tab', title: 'Audit', tabBarIcon: icon('▣'), ...shownTo(zoneLeader) }}
+        options={{ tabBarButtonTestID: 'field-audit-tab', title: 'Audit', tabBarIcon: tabIcon('audits'), ...shownTo(zoneLeader) }}
         listeners={{
           tabPress: (event) => {
             event.preventDefault();
@@ -104,12 +100,12 @@ export default function TabsLayout() {
         options={{
           title: 'Nonconformities',
           tabBarLabel: ({ color, focused }) => tabLabel('NCs', color, focused),
-          tabBarIcon: icon('⚑'),
+          tabBarIcon: tabIcon('actions'),
           ...shownTo(zoneLeader),
         }}
       />
-      <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: icon('◷'), ...shownTo(!admin) }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: icon('◧'), ...shownTo(!admin) }} />
+      <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: tabIcon('history'), ...shownTo(!admin) }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('profile'), ...shownTo(!admin) }} />
     </Tabs>
   );
 }

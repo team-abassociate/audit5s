@@ -16,7 +16,7 @@ export function ModuleSwitch() {
   if (!can('kaizen', 'read')) return null;
   const t = KAIZEN_STRINGS[language];
   return (
-    <Button
+    <Button icon="swap-horiz"
       testID="module-switch"
       title={t.switchModule}
       variant="secondary"

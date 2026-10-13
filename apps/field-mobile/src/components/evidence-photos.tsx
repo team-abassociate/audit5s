@@ -205,7 +205,7 @@ export function PhotoPreview({
           {editable ? (
             <View style={styles.actions}>
               {flaggable ? (
-                <Button
+                <Button icon={flagged ? 'outlined-flag' : 'flag'}
                   title={flagged ? 'Remove summary flag' : `Use as the ${label} summary photo`}
                   variant="secondary"
                   busy={flag.isPending}
@@ -231,7 +231,7 @@ export function PhotoPreview({
 
           <ErrorBanner message={error} />
         </ScrollView>
-        <Button title="Continue" variant="secondary" onPress={close} />
+        <Button icon="arrow-forward" title="Continue" variant="secondary" onPress={close} />
       </View>
     </Modal>
   );

@@ -249,14 +249,14 @@ export default function CorrectiveActionScreen() {
             {overall ? null : (
               <View style={styles.choice}>
                 <View style={styles.choiceItem}>
-                  <Button
+                  <Button icon="check-circle"
                     title="Completed"
                     variant={option === 'COMPLETED' ? 'primary' : 'secondary'}
                     onPress={() => setOption('COMPLETED')}
                   />
                 </View>
                 <View style={styles.choiceItem}>
-                  <Button
+                  <Button icon="block"
                     title="Not possible"
                     variant={option === 'NOT_POSSIBLE' ? 'primary' : 'secondary'}
                     onPress={() => setOption('NOT_POSSIBLE')}
@@ -291,14 +291,14 @@ export default function CorrectiveActionScreen() {
                   </View>
                 )}
                 <View style={styles.block}>
-                  <Button
+                  <Button icon="photo-camera"
                     title={photo ? 'Retake photograph' : 'Take photograph'}
                     variant="secondary"
                     onPress={() => setCameraOpen(true)}
                   />
                 </View>
                 <View style={styles.block}>
-                  <Button
+                  <Button icon="photo-library"
                     title={photo ? 'Choose another from gallery' : 'Choose from gallery'}
                     variant="secondary"
                     busy={gallery.isPending}
@@ -307,7 +307,7 @@ export default function CorrectiveActionScreen() {
                 </View>
                 {photo ? (
                   <View style={styles.block}>
-                    <Button
+                    <Button icon="delete"
                       title="Remove photograph"
                       variant="secondary"
                       busy={removePhoto.isPending}
@@ -341,7 +341,7 @@ export default function CorrectiveActionScreen() {
                 submit.error?.message ?? capture.error?.message ?? gallery.error?.message ?? null
               }
             />
-            <Button title="Submit" busy={submit.isPending} onPress={trySubmit} />
+            <Button icon="send" title="Submit" busy={submit.isPending} onPress={trySubmit} />
           </Card>
         ) : (
           <Card>

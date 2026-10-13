@@ -65,7 +65,7 @@ export default function ManageUnitsScreen() {
           headerRight: () =>
             mayCreate ? (
               <View style={styles.tools}>
-                <HeaderAction testID="add-unit" title="+ Unit" accessibilityLabel="Add a Unit" onPress={() => router.push('/manage/new-unit')} />
+                <HeaderAction icon="add" testID="add-unit" title="Unit" accessibilityLabel="Add a Unit" onPress={() => router.push('/manage/new-unit')} />
               </View>
             ) : null,
         }}

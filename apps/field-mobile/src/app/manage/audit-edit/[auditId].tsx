@@ -179,7 +179,7 @@ export default function EditAuditScreen() {
         <ErrorBanner message={problemMessage(save.error)} />
       </ScrollView>
       <ActionBar>
-        <Button
+        <Button icon="save"
           title="Save correction"
           busy={save.isPending}
           // Disabled only while there is nothing to save; a short reason is shown, not hidden.

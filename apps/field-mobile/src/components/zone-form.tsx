@@ -159,8 +159,8 @@ export function ZoneForm({
         ]}
       />
       <ErrorBanner message={problemMessage(save.error ?? archive.error)} />
-      <Button title={zone ? 'Save changes' : 'Add Zone'} busy={save.isPending} onPress={submit} />
-      <Button title="Cancel" variant="secondary" onPress={onDone} />
+      <Button icon={zone ? 'save' : 'add'} title={zone ? 'Save changes' : 'Add Zone'} busy={save.isPending} onPress={submit} />
+      <Button icon="close" title="Cancel" variant="secondary" onPress={onDone} />
       {zone ? (
         <ConfirmAction
           title="Archive Zone"

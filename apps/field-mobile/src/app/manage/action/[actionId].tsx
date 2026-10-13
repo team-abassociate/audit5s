@@ -200,7 +200,7 @@ export default function ReviewActionScreen() {
               description="You marked this not possible. The Super Admin accepts it or sends it back. If it was a mistake, take it back and record the fix."
             />
             <ErrorBanner message={problemMessage(review.error)} />
-            <Button
+            <Button icon="undo"
               title="Take it back"
               variant="secondary"
               busy={review.isPending}
@@ -228,7 +228,7 @@ export default function ReviewActionScreen() {
             <ErrorBanner message={problemMessage(review.error)} />
             <View style={styles.row}>
               <View style={styles.rowItem}>
-                <Button
+                <Button icon="cancel"
                   title="Disapprove"
                   variant="danger"
                   busy={review.isPending && review.variables === 'reopen'}
@@ -236,7 +236,7 @@ export default function ReviewActionScreen() {
                 />
               </View>
               <View style={styles.rowItem}>
-                <Button
+                <Button icon="check-circle"
                   title="Approve"
                   busy={review.isPending && review.variables === 'verify'}
                   onPress={() => review.mutate('verify')}
@@ -251,7 +251,7 @@ export default function ReviewActionScreen() {
               description="The Zone leader answers it, in the app or through the report link."
             />
             {mayAnswer ? (
-              <Button
+              <Button icon="build"
                 title="Record the fix"
                 variant="secondary"
                 onPress={() => router.push({ pathname: '/actions/[actionId]', params: { actionId: action.id } })}
