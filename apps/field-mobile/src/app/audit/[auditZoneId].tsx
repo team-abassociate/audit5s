@@ -54,6 +54,7 @@ import {
 } from '../../lib/db/evidence.repository';
 import { ZONE_PHOTO_LIMIT, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import type { ProcessedImage } from '../../lib/capture/media';
+import { pickFromGallery } from '../../lib/capture/gallery';
 import {
   applyLocalOverride,
   completeLocalZone,
@@ -288,8 +289,7 @@ export default function QuestionnaireScreen() {
    * same `classifyEvidence` the server runs — so it matches what the report will print.
    */
   const capture = useMutation({
-    mutationFn: async (image: ProcessedImage) => {
-      const row = cameraFor!;
+    mutationFn: async ({ row, image, live }: { row: Row; image: ProcessedImage; live: boolean }) => {
       const responseId = await responseIdFor(database, auditZoneId, row.questionId);
       const value = picked[row.questionId] ?? (row.value as ResponseValue | null);
 
@@ -304,6 +304,7 @@ export default function QuestionnaireScreen() {
         width: image.width,
         height: image.height,
         checksumSha256: image.checksumSha256,
+        isLiveCapture: live,
       });
     },
     onSuccess: (evidenceId) => {
@@ -313,6 +314,16 @@ export default function QuestionnaireScreen() {
       // §2.3 step 13: the auditor sees what they took, and may keep, flag or delete it.
       setPreviewId(evidenceId);
       scheduleSync();
+    },
+  });
+
+  // The owner, 2026-10-13: a question's photograph may also come from the gallery.
+  const gallery = useMutation({
+    mutationFn: async (row: Row) => {
+      // Refused before the picker opens, not after a photo was chosen.
+      await assertZonePhotoCapacity(database, auditZoneId);
+      const image = await pickFromGallery();
+      if (image) await capture.mutateAsync({ row, image, live: false });
     },
   });
 
@@ -597,6 +608,7 @@ export default function QuestionnaireScreen() {
               </Card>
             ) : null}
             <MarkingScheme />
+            <ErrorBanner message={gallery.error instanceof Error ? gallery.error.message : null} />
             {showMissing && unanswered > 0 ? (
               <ErrorBanner
                 message={t.unanswered(unanswered)}
@@ -627,6 +639,7 @@ export default function QuestionnaireScreen() {
               else save.mutate({ row: item, value, remark });
             }}
             onPhoto={() => setCameraFor(item)}
+            onGallery={() => gallery.mutate(item)}
           />
         )}
         ListFooterComponent={
@@ -738,7 +751,7 @@ export default function QuestionnaireScreen() {
             beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
             prompt={t.cameraPrompt(cameraFor.globalOrder)}
             onCaptured={async (image) => {
-              await capture.mutateAsync(image);
+              await capture.mutateAsync({ row: cameraFor, image, live: true });
             }}
             onCancel={() => setCameraFor(null)}
           />
@@ -782,6 +795,7 @@ function QuestionCard({
   onAnswer,
   onRemark,
   onPhoto,
+  onGallery,
 }: {
   row: Row;
   value: ResponseValue | null;
@@ -802,6 +816,7 @@ function QuestionCard({
   onAnswer: (value: ResponseValue, remark: string | null) => void;
   onRemark: (remark: string | null) => void;
   onPhoto: () => void;
+  onGallery: () => void;
 }) {
   const styles = useStyles();
   const { language, strings: t } = useLanguage();
@@ -853,6 +868,14 @@ function QuestionCard({
             variant="secondary"
             accessibilityLabel={t.takePhotoFor(row.globalOrder)}
             onPress={onPhoto}
+          />
+        ) : null}
+        {canPhoto ? (
+          <Button
+            title={t.fromGallery}
+            variant="secondary"
+            accessibilityLabel={t.fromGalleryFor(row.globalOrder)}
+            onPress={onGallery}
           />
         ) : null}
       </View>
@@ -1021,6 +1044,7 @@ const useStyles = createThemedStyles((theme) => ({
   },
   questionFoot: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: theme.space.sm,
     marginTop: theme.space.md,

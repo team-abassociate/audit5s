@@ -51,7 +51,7 @@ export interface CaptureEvidenceInput {
   /** Honoured for `WALK_BY_PHOTO` only (§2.7); ignored on every other kind. */
   classification?: EvidenceClassification | null;
   remark?: string | null;
-  /** False only if a flow ever admits a gallery pick. None of these do (§12.10). */
+  /** False for a gallery pick (scored and walk-by photos may be one, 2026-10-13). */
   isLiveCapture?: boolean;
   id?: string;
   now?: string;

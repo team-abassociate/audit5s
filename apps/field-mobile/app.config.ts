@@ -43,7 +43,7 @@ const config: ExpoConfig = {
      * capture entirely on 2026-09-29, and blocking it stops any library from adding it
      * back through its own manifest.
      *
-     * The gallery (R-38, overall corrective actions only) needs **no** permission: it is
+     * The gallery (fix photos, audit photos and Kaizen; never the selfie) needs **no** permission: it is
      * Android's system photo picker, which hands the app the one photograph the person
      * chose and nothing else. `expo-image-picker`'s manifest still asks for the old storage
      * permissions, so they are blocked here, with the media ones — no screen reads the

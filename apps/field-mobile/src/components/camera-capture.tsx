@@ -39,9 +39,10 @@ export const useCameraOpen = create<{ open: boolean }>(() => ({ open: false }));
  * > corrective-action or walk-by flows**; `is_live_capture=true` set by the capture
  * > component only.
  *
- * That absence is the control, such as it is: there is no code path in this component that
- * could produce an image the auditor did not just take, so `isLiveCapture` is not a flag a
- * caller passes but a fact about where the bytes came from.
+ * The owner lifted that on 2026-10-13: fix photos and audit photos (scored and walk-by) may
+ * also come from the gallery (`lib/capture/gallery.ts`), recorded as not live. The selfie
+ * stays camera-only. Within this component there is still no code path that could produce
+ * an image the auditor did not just take.
  *
  * §12.10 is equally clear about the limit, and the UI is written to match rather than to
  * overstate: "A modified build or a rooted device could inject frames. Detected only
