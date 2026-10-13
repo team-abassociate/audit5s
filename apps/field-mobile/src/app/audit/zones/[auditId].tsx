@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ZoneLock, ZoneLocksResponse } from '@audit5s/contracts';
 import { MAX_AUDIT_RESTARTS, restartsRemaining, zoneCodeForLabel, zoneDisplayLabel } from '@audit5s/domain';
@@ -28,6 +28,7 @@ import {
   abortLocalAudit,
   addLocalZone,
   completeLocalAudit,
+  discardLocalAuditIfEmpty,
   editLocalZone,
   getLocalAudit,
   restartLocalAudit,
@@ -123,6 +124,19 @@ export default function AuditZonesScreen() {
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const router = useRouter();
+
+  // Back before a Zone is chosen means no audit (owner, 2026-10-14): the selfie-only audit
+  // goes, so the next Audit tap is a fresh selfie, not "carry on or start a new one?".
+  const navigation = useNavigation();
+  useEffect(
+    () =>
+      navigation.addListener('beforeRemove', () => {
+        void discardLocalAuditIfEmpty(database, auditId).then((gone) => {
+          if (gone) void queryClient.invalidateQueries({ queryKey: ['local'] });
+        });
+      }),
+    [navigation, database, auditId, queryClient],
+  );
 
   const { can } = useSession();
   const mayAddZone = can('zone', 'create');

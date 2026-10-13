@@ -8,6 +8,7 @@ import {
   completeLocalAudit,
   completeLocalZone,
   createLocalAudit,
+  discardLocalAuditIfEmpty,
   editLocalZone,
   getLocalAudit,
   getLocalAuditZone,
@@ -545,6 +546,21 @@ describe('aborting a whole audit (owner, 2026-10-12)', () => {
       'audit:discard',
     ]);
     expect(await getLocalAudit(database, auditId)).toEqual([]);
+  });
+});
+
+describe('backing out before a Zone is chosen (owner, 2026-10-14)', () => {
+  it('drops the selfie-only audit, and leaves one with a Zone alone', async () => {
+    const empty = await createLocalAudit(database, { unitId: UNIT, auditType: 'CROSS_5S', checklistVersionId: null });
+    const { auditId } = await startAudit();
+
+    expect(await discardLocalAuditIfEmpty(database, empty)).toBe(true);
+    expect(await discardLocalAuditIfEmpty(database, auditId)).toBe(false);
+    // Already gone: nothing further is queued for it.
+    expect(await discardLocalAuditIfEmpty(database, empty)).toBe(false);
+
+    expect((await listResumableAudits(database)).map((audit) => audit.id)).toEqual([auditId]);
+    expect((await listOutbox(database)).some((item) => item.entityId === empty)).toBe(false);
   });
 });
 

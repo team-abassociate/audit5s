@@ -29,9 +29,7 @@ describe('openCrossAuditCalls', () => {
     expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', null)], now))).toEqual(['b', 'a']);
   });
 
-  it('answers an older call without a Zone by any cross audit at the Unit', () => {
-    const calls = [call('any', '2026-10-12T00:00:00Z')];
-    expect(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', null)], now)).toEqual([]);
-    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-11T09:00:00Z', 'z1')], now))).toEqual(['any']);
+  it('shows no call that names no Zone, answered or not', () => {
+    expect(openCrossAuditCalls([call('any', '2026-10-12T00:00:00Z')], [], now)).toEqual([]);
   });
 });

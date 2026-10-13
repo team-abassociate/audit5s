@@ -8,6 +8,7 @@ import { ActionSheet, EmptyState, ErrorBanner, Screen, SelectField } from './ui'
 import { CameraCapture } from './camera-capture';
 import {
   createLocalAudit,
+  discardLocalAuditIfEmpty,
   listResumableAudits,
   resumeLocalAudit,
 } from '../lib/db/audit.repository';
@@ -111,7 +112,8 @@ export function AuditStart({
   const openHere = useQuery({
     queryKey: ['local', 'resumable-audits'],
     queryFn: () => listResumableAudits(database),
-    select: (audits) => audits.find((audit) => audit.unitId === unitId) ?? null,
+    // One with no Zone yet is a selfie someone backed out of: nothing to carry on with.
+    select: (audits) => audits.find((audit) => audit.unitId === unitId && audit.zonesTotal > 0) ?? null,
     enabled: unitId !== null,
   });
   const existing = openHere.data ?? null;
@@ -153,6 +155,11 @@ export function AuditStart({
       // No audit-level checklist: the department is chosen per Zone, and that is the
       // version each Zone pins (QR-2). The row comes before the evidence: `evidence.audit_id`
       // is a foreign key on the server and the device mirrors its shape.
+      // And those backed-out selfies go now (before 2026-10-14, Back left them open).
+      if (!madeAuditId.current) {
+        const open = await listResumableAudits(database);
+        for (const audit of open) if (audit.zonesTotal === 0) await discardLocalAuditIfEmpty(database, audit.id);
+      }
       const auditId =
         madeAuditId.current ??
         (await createLocalAudit(database, { unitId: unitId!, auditType: auditType!, checklistVersionId: null }));
