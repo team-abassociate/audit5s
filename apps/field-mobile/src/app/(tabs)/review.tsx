@@ -79,7 +79,7 @@ export default function ReviewScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
-  const { scope } = useSession();
+  const { scope, user } = useSession();
   const [filter, setFilter] = useState<Filter>('REVIEW');
   const zoneFilter = useZoneFilter();
 
@@ -93,16 +93,23 @@ export default function ReviewScreen() {
     refetchInterval: 60_000,
   });
 
+  // A Coordinator's own "not possible" waits for the Super Admin, not in their queue.
+  const reviewable = (action: CorrectiveAction) =>
+    isReviewable(
+      action.status,
+      action.verifiedByUserId,
+      user?.role === 'COORDINATOR' && action.lastSubmittedByUserId === user.id,
+    );
   const all = actions.data?.data ?? [];
   // The board counts follow the Zone filter, so "Review 2" means two in the Zones chosen.
   const inZones = zoneFilter.active ? all.filter((action) => zoneFilter.selected.includes(action.zoneId)) : all;
   const now = Date.now();
-  const toReview = inZones.filter((action) => isReviewable(action.status, action.verifiedByUserId)).length;
+  const toReview = inZones.filter(reviewable).length;
   const open = inZones.filter((action) => awaitsResponse(action.status)).length;
   const closed = inZones.filter((action) => action.status === 'VERIFIED').length;
   const onBoard = (action: CorrectiveAction) =>
     filter === 'REVIEW'
-      ? isReviewable(action.status, action.verifiedByUserId)
+      ? reviewable(action)
       : filter === 'OPEN'
         ? awaitsResponse(action.status)
         : filter === 'CLOSED'

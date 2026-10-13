@@ -34,13 +34,17 @@ import { createThemedStyles, useTheme } from '../../../lib/theme';
  * possible" needs the decision. A Zone leader's closure is already closed, and the review is
  * optional: approving marks it checked, disapproving reopens it — its photo leaves the next
  * after-evidence report and the Zone leader answers again.
+ *
+ * Owner, 2026-10-13: a Coordinator may also record the fix themselves ("Record the fix"
+ * opens the Zone leader's form). Their "Done" closes approved; their own "not possible"
+ * waits for the Super Admin, and they may take it back to answer again.
  */
 export default function ReviewActionScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { can } = useSession();
+  const { can, user } = useSession();
   const { actionId } = useLocalSearchParams<{ actionId: string }>();
   const [note, setNote] = useState('');
   const required = useRequiredFields<'note'>();
@@ -53,12 +57,16 @@ export default function ReviewActionScreen() {
   });
 
   const review = useMutation({
-    mutationFn: (outcome: 'verify' | 'reopen') =>
+    // 'undo': a Coordinator takes back their own "not possible", which is a reopen.
+    mutationFn: (outcome: 'verify' | 'reopen' | 'undo') =>
       api.post<CorrectiveActionDetail>(
-        `/corrective-actions/${actionId}/${outcome}`,
+        `/corrective-actions/${actionId}/${outcome === 'verify' ? 'verify' : 'reopen'}`,
         outcome === 'verify'
           ? { version: detail.data!.version, ...(note.trim() ? { comment: note.trim() } : {}) }
-          : { version: detail.data!.version, reason: note.trim() },
+          : {
+              version: detail.data!.version,
+              reason: outcome === 'undo' ? 'Taken back by the person who answered it' : note.trim(),
+            },
       ),
     onSuccess: async () => {
       setNote('');
@@ -91,6 +99,8 @@ export default function ReviewActionScreen() {
   // R-43: a closure nobody has approved — optional to review, unlike a "not possible".
   const closure = isUnapprovedClosure(action.status, action.verifiedByUserId);
   const late = isOverdue(action.status, action.dueAt, Date.now());
+  // A Coordinator's own "not possible" is the Super Admin's to accept (owner, 2026-10-13).
+  const ownAnswer = user?.role === 'COORDINATOR' && action.lastSubmittedByUserId === user.id;
 
   return (
     <Screen>
@@ -183,7 +193,21 @@ export default function ReviewActionScreen() {
           </Card>
         )}
 
-        {isReviewable(action.status, action.verifiedByUserId) && mayReview ? (
+        {reviewing && ownAnswer ? (
+          <Card rail="warn">
+            <CardHeader
+              title="Waiting for the Super Admin"
+              description="You marked this not possible. The Super Admin accepts it or sends it back. If it was a mistake, take it back and record the fix."
+            />
+            <ErrorBanner message={problemMessage(review.error)} />
+            <Button
+              title="Take it back"
+              variant="secondary"
+              busy={review.isPending}
+              onPress={() => review.mutate('undo')}
+            />
+          </Card>
+        ) : isReviewable(action.status, action.verifiedByUserId) && mayReview ? (
           <Card rail={closure ? 'none' : 'warn'}>
             <CardHeader
               title={closure ? 'Review this closure (optional)' : 'Your decision'}
@@ -224,11 +248,11 @@ export default function ReviewActionScreen() {
           <Card>
             <CardHeader
               title="Waiting for a response"
-              description="Whoever holds the report link can answer it, as can a Super Admin."
+              description="The Zone leader answers it, in the app or through the report link."
             />
             {mayAnswer ? (
               <Button
-                title="Respond from this phone"
+                title="Record the fix"
                 variant="secondary"
                 onPress={() => router.push({ pathname: '/actions/[actionId]', params: { actionId: action.id } })}
               />

@@ -274,10 +274,11 @@ export const ASSIGNMENT_TRANSITIONS: readonly Transition<AssignmentStatus>[] = [
 export const CORRECTIVE_ACTION_TRANSITIONS: readonly Transition<CorrectiveActionStatus>[] = [
   // R-23: an answer with an after-photo closes the item directly. The two edges into
   // ACTION_SUBMITTED stay so rows submitted before the change can still be reviewed.
-  { from: 'OPEN', to: 'VERIFIED', actors: ['ZONE_LEADER'] },
-  { from: 'REOPENED', to: 'VERIFIED', actors: ['ZONE_LEADER'] },
+  // Owner, 2026-10-13: a Coordinator answers their own Unit's actions as a Zone Leader does.
+  { from: 'OPEN', to: 'VERIFIED', actors: ['ZONE_LEADER', 'COORDINATOR'] },
+  { from: 'REOPENED', to: 'VERIFIED', actors: ['ZONE_LEADER', 'COORDINATOR'] },
   { from: 'OPEN', to: 'ACTION_SUBMITTED', actors: ['ZONE_LEADER'] },
-  { from: 'OPEN', to: 'NOT_POSSIBLE', actors: ['ZONE_LEADER'], guards: ['reason_given'] },
+  { from: 'OPEN', to: 'NOT_POSSIBLE', actors: ['ZONE_LEADER', 'COORDINATOR'], guards: ['reason_given'] },
   // R-43: a Coordinator reviews their own Unit's actions as a Super Admin does — accepting
   // or reopening a "not possible", and disapproving a closure (`VERIFIED → REOPENED`).
   // Approving a closure moves no status, so it has no edge here.
@@ -286,7 +287,7 @@ export const CORRECTIVE_ACTION_TRANSITIONS: readonly Transition<CorrectiveAction
   { from: 'NOT_POSSIBLE', to: 'VERIFIED', actors: ['SUPER_ADMIN', 'COORDINATOR'] },
   { from: 'NOT_POSSIBLE', to: 'REOPENED', actors: ['SUPER_ADMIN', 'COORDINATOR'], guards: ['reason_given'] },
   { from: 'REOPENED', to: 'ACTION_SUBMITTED', actors: ['ZONE_LEADER'] },
-  { from: 'REOPENED', to: 'NOT_POSSIBLE', actors: ['ZONE_LEADER'], guards: ['reason_given'] },
+  { from: 'REOPENED', to: 'NOT_POSSIBLE', actors: ['ZONE_LEADER', 'COORDINATOR'], guards: ['reason_given'] },
   { from: 'VERIFIED', to: 'REOPENED', actors: ['SUPER_ADMIN', 'COORDINATOR'], guards: ['reason_given'] },
 
   /**

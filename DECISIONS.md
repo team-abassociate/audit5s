@@ -47,6 +47,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-48 | Leanstack hosts two modules, 5S and Kaizen | Settled |
 | R-52 | Zones are selected, not made up; a Coordinator audits; a rename reaches history | Settled |
 | R-53 | Starting an audit is the selfie, then the Zone — no start screen | Settled |
+| R-54 | Photos from the gallery in the audit too; a Coordinator closes nonconformities | Settled |
 
 ---
 
@@ -2382,3 +2383,26 @@ no start goes through a Unit page or a Units list of one row.
 - **No "Finish audit" button** while an audit runs: Submit on the Zone finishes it (R-52). The
   web shows "Submit audit" only for an older audit whose Zones are all in and that is still
   open, never greyed out.
+
+---
+
+## R-54 — Photos from the gallery in the audit too; a Coordinator closes nonconformities
+
+**Settled 2026-10-13 by the product owner.** Overrides §12.10's live-capture rule for the
+field app, and widens R-3b and R-43.
+
+- **The gallery.** On the phone, a nonconformity's fix photo and the auditor's photos during
+  an audit (scored and walk-by) may come from the camera or the gallery. `isLiveCapture`
+  still records which. The attendance selfie stays camera-only.
+- **A Coordinator closes nonconformities** in their own Unit exactly as a Zone Leader does:
+  `corrective_action:submit` on `own_unit`, the same answer edges, and migration `0049`
+  widening `app_may_answer_corrective_action` for the submission and its after-photo.
+  "Record the fix" on the review screen opens the Zone Leader's form.
+- **Their "Done" is closed and approved at once** — `verified_by_user_id` and the attempt's
+  review are theirs, on the submitting transaction — so it never waits in their own review
+  queue. The Super Admin can still reopen it.
+- **Their "not possible" waits for the Super Admin.** The API refuses a Coordinator who
+  accepts their own (`403`), and it is left out of their review queue on the phone and
+  of "Awaiting review" on the web. They may
+  take it back (the reopen edge) to answer again, so a mistaken tap can be undone.
+

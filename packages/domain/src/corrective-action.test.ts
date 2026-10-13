@@ -162,6 +162,7 @@ describe('R-43 — a closure is closed, and reviewing it is optional', () => {
 
   it('puts a required review and an optional approval on the reviewer’s list, nothing else', () => {
     expect(isReviewable('NOT_POSSIBLE', null)).toBe(true);
+    expect(isReviewable('NOT_POSSIBLE', null, true)).toBe(false);
     expect(isReviewable('ACTION_SUBMITTED', null)).toBe(true);
     expect(isReviewable('VERIFIED', null)).toBe(true);
     expect(isReviewable('VERIFIED', '00000000-0000-7000-8000-000000000001')).toBe(false);
@@ -183,8 +184,10 @@ describe('R-43 — the review edges a Coordinator may take', () => {
     expect(canTransition('corrective_action', 'NOT_POSSIBLE', 'REOPENED', coordinator).allowed).toBe(true);
     expect(canTransition('corrective_action', 'VERIFIED', 'REOPENED', coordinator).allowed).toBe(true);
   });
-  it('never answers one itself', () => {
-    expect(canTransition('corrective_action', 'OPEN', 'VERIFIED', coordinator).allowed).toBe(false);
-    expect(canTransition('corrective_action', 'OPEN', 'NOT_POSSIBLE', coordinator).allowed).toBe(false);
+  it('answers one in their own Unit, as a Zone Leader does (owner, 2026-10-13)', () => {
+    expect(canTransition('corrective_action', 'OPEN', 'VERIFIED', coordinator).allowed).toBe(true);
+    expect(canTransition('corrective_action', 'REOPENED', 'VERIFIED', coordinator).allowed).toBe(true);
+    expect(canTransition('corrective_action', 'OPEN', 'NOT_POSSIBLE', coordinator).allowed).toBe(true);
+    expect(canTransition('corrective_action', 'OPEN', 'ACTION_SUBMITTED', coordinator).allowed).toBe(false);
   });
 });

@@ -9,7 +9,8 @@ import { PhotoPicker } from '@/lib/photo';
 import { useSession } from '@/lib/session';
 
 /**
- * A signed-in Zone Leader answers a nonconformity here, as on the phone
+ * A signed-in Zone Leader — or, since 2026-10-13, the Unit's Coordinator — answers a
+ * nonconformity here, as on the phone
  * (`actions/[actionId].tsx`) and the PDF's link page: Option A is what was done and a
  * photograph of it, Option B why it cannot be done. An overall action (R-38) is answered
  * with what was done, and its photograph is optional. Either photograph may come from the

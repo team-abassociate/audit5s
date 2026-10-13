@@ -17,6 +17,7 @@ import {
 } from '@audit5s/contracts';
 import {
   awaitsResponse,
+  awaitsReview,
   formatDate,
   formatDateTime,
   isOverdue,
@@ -534,7 +535,7 @@ function ActionPanel({ actionId, onClose }: { actionId: string | null; onClose: 
 }
 
 function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; leader: string | null }) {
-  const { can } = useSession();
+  const { can, user } = useSession();
   const queryClient = useQueryClient();
   const [note, setNote] = useState('');
 
@@ -558,9 +559,14 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
 
   // R-43: a "not possible" waits for a decision; a Zone Leader's closure may be approved, and
   // need not be. Either may be disapproved, which is the reopen edge (R-40).
-  const reviewable = can('corrective_action', 'verify') && isReviewable(action.status, action.verifiedByUserId);
+  // Owner, 2026-10-13: a Coordinator's own "not possible" is the Super Admin's to accept; they
+  // may only take it back.
+  const ownAnswer = user?.role === 'COORDINATOR' && action.lastSubmittedByUserId === user.id;
+  const reviewable =
+    can('corrective_action', 'verify') && isReviewable(action.status, action.verifiedByUserId, ownAnswer);
   const closure = isUnapprovedClosure(action.status, action.verifiedByUserId);
-  const reopenable = can('corrective_action', 'reopen') && (reviewable || action.status === 'VERIFIED');
+  const takeBack = ownAnswer && awaitsReview(action.status);
+  const reopenable = can('corrective_action', 'reopen') && (reviewable || takeBack || action.status === 'VERIFIED');
   // CA7: the button names what approving does to *this* item.
   const approveLabel =
     action.status === 'NOT_POSSIBLE' ? 'Accept as not possible' : closure ? 'Approve closure' : 'Approve';
@@ -632,7 +638,12 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
                 reviewing it is optional.
               </p>
             )}
-            {action.status === 'NOT_POSSIBLE' && (
+            {takeBack ? (
+              <p className="text-sm text-ink-2">
+                You marked this not possible. The Super Admin accepts it or sends it back. If it was a
+                mistake, take it back and record the fix.
+              </p>
+            ) : action.status === 'NOT_POSSIBLE' && (
               <p className="text-sm text-ink-2">
                 The Zone Leader says this cannot be fixed. Accepting closes it; disapproving sends it back
                 for a new answer.
@@ -660,11 +671,11 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
                 disabled={review.isPending || note.trim().length === 0}
                 onClick={() => review.mutate('reopen')}
               >
-                Disapprove
+                {takeBack ? 'Take it back' : 'Disapprove'}
               </Button>
               {note.trim().length === 0 && (
                 <span className="text-xs text-ink-2" role="status">
-                  Write a note to disapprove.
+                  {takeBack ? 'Write a note to take it back.' : 'Write a note to disapprove.'}
                 </span>
               )}
             </div>

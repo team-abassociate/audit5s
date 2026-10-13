@@ -81,6 +81,9 @@ const actionColumns = {
     SELECT s.submitted_by_name FROM corrective_action_submission s
     WHERE s.corrective_action_id = ${correctiveActions.id}
     ORDER BY s.attempt_no DESC LIMIT 1) END`,
+  lastSubmittedByUserId: sql<string | null>`(SELECT s.submitted_by_user_id FROM corrective_action_submission s
+    WHERE s.corrective_action_id = ${correctiveActions.id}
+    ORDER BY s.attempt_no DESC LIMIT 1)`,
   reopenCount: correctiveActions.reopenCount,
   version: correctiveActions.version,
   auditType: audits.auditType,
@@ -251,7 +254,7 @@ export class CorrectiveActionsRepository extends BaseRepository {
             this.scoped(
               scope,
               scopeColumns,
-              ...this.filters(query),
+              ...this.filters(query, scope),
               query.cursor ? sql`${correctiveActions.id} > ${query.cursor}` : undefined,
             ),
           )
@@ -264,7 +267,7 @@ export class CorrectiveActionsRepository extends BaseRepository {
             .where(and(eq(correctiveActions.id, query.cursor), this.predicate(scope)))})`
         : undefined;
       return this.selectActions(tx)
-        .where(this.scoped(scope, scopeColumns, ...this.filters(query), after))
+        .where(this.scoped(scope, scopeColumns, ...this.filters(query, scope), after))
         .orderBy(...keys)
         .limit(query.limit + 1);
     });
@@ -274,7 +277,7 @@ export class CorrectiveActionsRepository extends BaseRepository {
   async summary(scope: ScopeContext, query: CorrectiveActionSummaryQuery) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const where = this.scoped(scope, scopeColumns, ...this.filters(query));
+      const where = this.scoped(scope, scopeColumns, ...this.filters(query, scope));
       type Counts = { total: number; overdue: number };
       const [totals] = (await this.selectFrom(tx, {
         total: countWhere(),
@@ -313,7 +316,7 @@ export class CorrectiveActionsRepository extends BaseRepository {
   }
 
   /** The list's filters, shared with its summary so the two always count the same rows. */
-  private filters(query: CorrectiveActionSummaryQuery): Array<SQL | undefined> {
+  private filters(query: CorrectiveActionSummaryQuery, scope: ScopeContext): Array<SQL | undefined> {
     return [
       query.unitId ? eq(correctiveActions.unitId, query.unitId) : undefined,
       query.zoneId ? eq(correctiveActions.zoneId, query.zoneId) : undefined,
@@ -322,6 +325,12 @@ export class CorrectiveActionsRepository extends BaseRepository {
       query.status ? eq(correctiveActions.status, query.status) : undefined,
       query.overdue ? overdueNow : undefined,
       query.awaitingReview ? inArray(correctiveActions.status, ['ACTION_SUBMITTED', 'NOT_POSSIBLE']) : undefined,
+      // Owner, 2026-10-13: a Coordinator's own answer waits for the Super Admin, not for them.
+      query.awaitingReview && scope.actor.role === 'COORDINATOR'
+        ? sql`(SELECT s.submitted_by_user_id FROM corrective_action_submission s
+            WHERE s.corrective_action_id = ${correctiveActions.id}
+            ORDER BY s.attempt_no DESC LIMIT 1) IS DISTINCT FROM ${scope.actor.userId}::uuid`
+        : undefined,
     ];
   }
 

@@ -963,8 +963,13 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     path: '/api/v1/corrective-actions/:correctiveActionId/submissions',
     description:
       'corrective_action:submit — Option A or B, one action, Idempotency-Key required. A ' +
-      'Zone Leader of the Unit, assigned or not (R-3b), or a Super Admin (R-18)',
-    expected: { SUPER_ADMIN: { inScope: CREATED, outOfScope: CREATED }, ZONE_LEADER: { inScope: CREATED, outOfScope: NOT_FOUND } },
+      'Zone Leader of the Unit, assigned or not (R-3b), its Coordinator (owner, 2026-10-13), ' +
+      'or a Super Admin (R-18)',
+    expected: {
+      SUPER_ADMIN: { inScope: CREATED, outOfScope: CREATED },
+      COORDINATOR: { inScope: CREATED, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: CREATED, outOfScope: NOT_FOUND },
+    },
     coveredBy: 'corrective-actions.e2e.test.ts',
   },
   {
