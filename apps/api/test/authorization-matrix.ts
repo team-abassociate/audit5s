@@ -287,6 +287,17 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     },
     coveredBy: 'notifications.e2e.test.ts',
   },
+  {
+    method: 'GET',
+    path: '/api/v1/units/:id/cross-audit-calls',
+    description: 'unit:read — the calls still standing in the Unit (0050)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+  },
 
   // ------------------------------------------------------------------- zones
   {

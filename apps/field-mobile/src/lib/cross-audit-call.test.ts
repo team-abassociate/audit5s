@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { NotificationPage } from '@audit5s/contracts';
-import { openCrossAuditCalls } from './cross-audit-call';
+import type { CrossAuditCall } from '@audit5s/contracts';
+import { isOverdue, openCrossAuditCalls } from './cross-audit-call';
 
-const now = Date.parse('2026-10-13T10:00:00Z');
-const call = (id: string, createdAt: string, zoneId?: string, unitId = 'u1') =>
-  ({ id, eventType: 'CROSS_AUDIT_CALLED', unitId, createdAt, data: { unitName: 'Pune', ...(zoneId ? { zoneId } : {}) } }) as unknown as NotificationPage['data'][number];
+const call = (id: string, createdAt: string, zoneId: string, unitId = 'u1') =>
+  ({ id, unitId, zoneId, createdAt, dueOn: '2026-10-18' }) as CrossAuditCall;
 const audit = (auditType: string, unitId: string, startedAt: string | null, zoneIds: string | null = null) => ({
   auditType,
   unitId,
@@ -14,22 +13,22 @@ const audit = (auditType: string, unitId: string, startedAt: string | null, zone
 const ids = (calls: { id: string }[]) => calls.map((c) => c.id);
 
 describe('openCrossAuditCalls', () => {
-  it('lists every call under 7 days old, newest first', () => {
-    const calls = [call('old', '2026-10-10T00:00:00Z', 'z1'), call('new', '2026-10-12T00:00:00Z', 'z2'), call('stale', '2026-10-05T00:00:00Z', 'z3')];
-    expect(ids(openCrossAuditCalls(calls, [], now))).toEqual(['new', 'old']);
-  });
-
-  it('answers a call only by a cross audit of its Zone, at its Unit, started after it', () => {
+  it('hides a call this phone answered: a cross audit of its Zone, at its Unit, started after it', () => {
     const calls = [call('a', '2026-10-12T00:00:00Z', 'z1'), call('b', '2026-10-12T01:00:00Z', 'z2')];
-    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', 'z1')], now))).toEqual(['b']);
-    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', 'z9,z2')], now))).toEqual(['a']);
-    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-11T09:00:00Z', 'z1')], now))).toEqual(['b', 'a']);
-    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u2', '2026-10-12T09:00:00Z', 'z1')], now))).toEqual(['b', 'a']);
-    expect(ids(openCrossAuditCalls(calls, [audit('EXTERNAL_5S', 'u1', '2026-10-12T09:00:00Z', 'z1')], now))).toEqual(['b', 'a']);
-    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', null)], now))).toEqual(['b', 'a']);
+    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', 'z1')]))).toEqual(['b']);
+    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', 'z9,z2')]))).toEqual(['a']);
+    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-11T09:00:00Z', 'z1')]))).toEqual(['a', 'b']);
+    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u2', '2026-10-12T09:00:00Z', 'z1')]))).toEqual(['a', 'b']);
+    expect(ids(openCrossAuditCalls(calls, [audit('EXTERNAL_5S', 'u1', '2026-10-12T09:00:00Z', 'z1')]))).toEqual(['a', 'b']);
+    // A selfie with no Zone yet answers nothing.
+    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', null)]))).toEqual(['a', 'b']);
   });
+});
 
-  it('shows no call that names no Zone, answered or not', () => {
-    expect(openCrossAuditCalls([call('any', '2026-10-12T00:00:00Z')], [], now)).toEqual([]);
+describe('isOverdue', () => {
+  it('is overdue from the day after it was due, in IST', () => {
+    const due = { dueOn: '2026-10-18' };
+    expect(isOverdue(due, new Date('2026-10-18T18:00:00Z'))).toBe(false); // 23:30 IST on the 18th
+    expect(isOverdue(due, new Date('2026-10-18T18:31:00Z'))).toBe(true); // 00:01 IST on the 19th
   });
 });

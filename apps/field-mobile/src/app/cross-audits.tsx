@@ -1,45 +1,47 @@
-import { FlatList, Text } from 'react-native';
+import { FlatList } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Card, Data, EmptyState, Muted, Screen } from '../components/ui';
-import { crossAuditCallZone, crossAuditStart, useOpenCrossAuditCalls } from '../components/cross-audit-calls';
-import { formatDateTime } from '../lib/format';
-import { createThemedStyles } from '../lib/theme';
+import { Card, CardHeader, Chip, Data, EmptyState, Screen } from '../components/ui';
+import { crossAuditCallZone, crossAuditDue, crossAuditStart, useOpenCrossAuditCalls } from '../components/cross-audit-calls';
+import { isOverdue } from '../lib/cross-audit-call';
 
 /**
- * Every cross audit called and not yet answered on this phone (owner, 2026-10-13). One card
- * per call; tapping one starts its audit — the selfie, then that Zone. Each call needs its own
- * audit, so starting one leaves the others here.
+ * Every cross audit called at the Unit and not yet done by anyone (owner, 2026-10-14), oldest
+ * due first. One card per call; tapping one starts its audit — the selfie, then that Zone. Past
+ * its date a call stays, marked overdue, until someone audits the Zone.
  */
 export default function CrossAuditsScreen() {
-  const styles = useStyles();
   const router = useRouter();
-  const { calls, notifications } = useOpenCrossAuditCalls(true);
+  const { calls, standing } = useOpenCrossAuditCalls(true);
   return (
     <Screen>
       <Stack.Screen options={{ title: 'Cross audits called' }} />
       <FlatList
         data={calls}
         keyExtractor={(call) => call.id}
-        refreshing={notifications.isFetching}
-        onRefresh={() => void notifications.refetch()}
+        refreshing={standing.isFetching}
+        onRefresh={() => void standing.refetch()}
         renderItem={({ item }) => {
           const zone = crossAuditCallZone(item);
-          const unit = String(item.data.unitName ?? 'your Unit');
-          const by = typeof item.data.calledBy === 'string' ? item.data.calledBy : null;
+          const late = isOverdue(item);
+          const due = crossAuditDue(item);
           return (
             <Card
+              rail={late ? 'crit' : 'none'}
               onPress={() => router.push(crossAuditStart(item))}
               accessibilityRole="button"
-              accessibilityLabel={`Cross audit of ${zone} at ${unit}${by ? `, called by ${by}` : ''}, ${formatDateTime(item.createdAt)}. Starts the audit.`}
+              accessibilityLabel={`Cross audit of ${zone} at ${item.unitName}, called by ${item.calledBy}. ${due}. Starts the audit.`}
             >
-              <Text style={styles.zone}>{zone}</Text>
-              <Muted>{by ? `${unit} · called by ${by}` : unit}</Muted>
-              <Data>{formatDateTime(item.createdAt)}</Data>
+              <CardHeader
+                title={zone}
+                description={`${item.unitName} · called by ${item.calledBy}`}
+                action={late ? <Chip tone="crit">Overdue</Chip> : undefined}
+              />
+              <Data>{due}</Data>
             </Card>
           );
         }}
         ListEmptyComponent={
-          notifications.isLoading ? null : (
+          standing.isLoading ? null : (
             <EmptyState title="No cross audit waiting" detail="When your Coordinator calls one, it appears here." />
           )
         }
@@ -47,7 +49,3 @@ export default function CrossAuditsScreen() {
     </Screen>
   );
 }
-
-const useStyles = createThemedStyles((theme) => ({
-  zone: { fontFamily: theme.family.bold, fontSize: theme.font.base, color: theme.color.ink },
-}));

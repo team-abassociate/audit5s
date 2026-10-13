@@ -8,6 +8,7 @@ import {
   type AuditScoreSummary,
   type AuditZone,
   type CorrectiveAction,
+  type CrossAuditCall,
   type Page,
   type ResponseValue,
   type ZoneLocksResponse,
@@ -1615,6 +1616,52 @@ describe('snapshot isolation (D6), and the rename that crosses it (R-52)', () =>
     });
     expect(response.status).toBe(409);
     expect((response.body as { code: string }).code).toBe('ZONE_ALREADY_IN_AUDIT');
+  });
+});
+
+describe('a called cross audit stands until anyone audits its Zone (0050)', () => {
+  const standing = async (token: string) => {
+    const list = await world.request('GET', `${base}/units/${world.unitA}/cross-audit-calls`, { token });
+    expect(list.status).toBe(200);
+    return list.body as CrossAuditCall[];
+  };
+
+  it('leaves every list once one Zone Leader starts a cross audit of it', async () => {
+    const zoneId = await createZone('Z-81', 'Called zone');
+    const other = await createZone('Z-82', 'Other zone');
+    for (const id of [zoneId, other]) {
+      const called = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+        token: world.actors.COORDINATOR.accessToken,
+        body: { zoneId: id, dueOn: new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10) },
+      });
+      expect(called.status).toBe(204);
+    }
+    expect((await standing(world.actors.COORDINATOR.accessToken)).map((call) => call.zoneId)).toEqual(
+      expect.arrayContaining([zoneId, other]),
+    );
+
+    await startAuditWithZone({ token: leaderToken, deviceId: LEADER_DEVICE, zoneId, auditType: 'CROSS_5S' });
+
+    for (const token of [leaderToken, world.actors.COORDINATOR.accessToken]) {
+      const zones = (await standing(token)).map((call) => call.zoneId);
+      expect(zones).not.toContain(zoneId);
+      expect(zones).toContain(other);
+    }
+  });
+
+  it('is not answered by a Consultant’s 5S audit of the Zone', async () => {
+    const zoneId = await createZone('Z-83', 'Consultant zone');
+    await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+      token: world.actors.COORDINATOR.accessToken,
+      body: { zoneId },
+    });
+    await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: (await assign(world.actors.CONSULTANT.userId)).id,
+    });
+    expect((await standing(leaderToken)).map((call) => call.zoneId)).toContain(zoneId);
   });
 });
 

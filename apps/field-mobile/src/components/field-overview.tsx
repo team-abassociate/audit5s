@@ -17,7 +17,8 @@ import {
   SlipStack,
   StatGrid,
 } from './ui';
-import { crossAuditCallZone, crossAuditStart, useOpenCrossAuditCalls } from './cross-audit-calls';
+import { crossAuditCallZone, crossAuditDue, crossAuditStart, useOpenCrossAuditCalls } from './cross-audit-calls';
+import { isOverdue } from '../lib/cross-audit-call';
 import { syncCatalogue } from '../lib/catalogue';
 import {
   listLocalAudits,
@@ -129,7 +130,7 @@ export function FieldOverview() {
             refreshing={sync.isPending}
             onRefresh={() => {
               sync.mutate();
-              void crossAudit.notifications.refetch();
+              void crossAudit.standing.refetch();
             }}
             colors={[theme.color.ink]}
             progressBackgroundColor={theme.color.tile}
@@ -172,7 +173,7 @@ export function FieldOverview() {
                   {
                     tone: 'crossAudit' as const,
                     title: `Cross audit called · ${crossAuditCallZone(crossAuditCalls[0]!)}`,
-                    detail: `At ${String(crossAuditCalls[0]!.data.unitName ?? 'your Unit')}. Tap to start it.`,
+                    detail: `${crossAuditDue(crossAuditCalls[0]!)}. Tap to start it.`,
                     onPress: () => router.push(crossAuditStart(crossAuditCalls[0]!)),
                   },
                 ]
@@ -181,7 +182,9 @@ export function FieldOverview() {
                     {
                       tone: 'crossAudit' as const,
                       title: `${crossAuditCalls.length} cross audits called`,
-                      detail: 'Each Zone needs its own audit.',
+                      detail: crossAuditCalls.some((call) => isOverdue(call))
+                        ? `${crossAuditCalls.filter((call) => isOverdue(call)).length} overdue. Each Zone needs its own audit.`
+                        : 'Each Zone needs its own audit.',
                       onPress: () => router.push('/cross-audits'),
                     },
                   ]

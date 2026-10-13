@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   UNIT_COORDINATOR_EDITABLE_FIELDS,
   type CreateUnitRequest,
+  type CrossAuditCall,
   type ListUnitsQuery,
   type Page,
   type Unit,
@@ -22,9 +23,12 @@ export class UnitsService {
     private readonly events: DomainEvents,
   ) {}
 
-  /** Every Zone Leader of the Unit is told to audit the named Zone, their own included (D9). */
-  async callCrossAudit(scope: ScopeContext, unitId: string, zoneId: string): Promise<void> {
-    const called = await this.repository.callCrossAudit(scope, unitId, zoneId, (tx, data) =>
+  /**
+   * Every Zone Leader of the Unit is told to audit the named Zone by `dueOn`, their own
+   * included (D9). The call is recorded, and stands until an audit of the Zone starts.
+   */
+  async callCrossAudit(scope: ScopeContext, unitId: string, zoneId: string, dueOn?: string): Promise<void> {
+    const called = await this.repository.callCrossAudit(scope, unitId, zoneId, dueOn, (tx, data) =>
       this.events.emit(tx, {
         type: 'CROSS_AUDIT_CALLED',
         actorUserId: scope.actor.userId,
@@ -34,9 +38,20 @@ export class UnitsService {
         data,
       }),
     );
-    if (!called) {
+    if (called === 'NOT_FOUND') {
       throw AppError.notFound('No such Zone in this Unit');
     }
+    if (called === 'PAST_DUE') {
+      throw AppError.validation('The date it is due by cannot be in the past');
+    }
+  }
+
+  async listCrossAuditCalls(scope: ScopeContext, unitId: string): Promise<CrossAuditCall[]> {
+    const calls = await this.repository.listCrossAuditCalls(scope, unitId);
+    if (!calls) {
+      throw AppError.notFound('No such Unit');
+    }
+    return calls;
   }
 
   async create(scope: ScopeContext, request: CreateUnitRequest): Promise<Unit> {

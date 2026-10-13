@@ -200,7 +200,7 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       if (item) {
         return {
           title: `Cross audit called: ${item}`,
-          body: `Audit this Zone at ${String(data.unitName ?? 'your Unit')}.`,
+          body: `Audit this Zone at ${String(data.unitName ?? 'your Unit')}${data.dueOn ? ` by ${formatDay(String(data.dueOn))}` : ''}.`,
         };
       }
       return {

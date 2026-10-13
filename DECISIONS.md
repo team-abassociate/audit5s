@@ -2406,3 +2406,20 @@ field app, and widens R-3b and R-43.
   of "Awaiting review" on the web. They may
   take it back (the reopen edge) to answer again, so a mistaken tap can be undone.
 
+
+## R-55 — A called cross audit has a deadline and stands until anyone does it
+
+**Settled 2026-10-14 by the product owner.** Replaces the seven-day expiry the phones gave a
+cross-audit call (§2.6).
+
+- **The Coordinator sets the date** a called cross audit is due, on the phone and the web.
+  The call is a record (`cross_audit_call`, migration `0050`, append-only), not only a
+  notification. An undated call from a phone not yet updated is due seven days out.
+- **It stands until anyone audits its Zone:** the first audit of that Zone started after the
+  call — a cross audit by any Zone Leader of the Unit, or any audit by its Coordinator —
+  takes it off every Zone Leader's list (`GET /units/{id}/cross-audit-calls`). A cancelled
+  audit or a withdrawn Zone does not count; a Consultant's 5S audit does not either.
+- **Past its date it stays, marked overdue** (a red rail and "Overdue since 18 Oct"), until
+  someone audits the Zone.
+- **Calls that named no Zone** (the four sent on 2026-10-13 before calls named one) are not
+  carried over and no longer shown.

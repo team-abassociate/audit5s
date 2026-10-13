@@ -156,9 +156,28 @@ export const updateUnitRequestSchema = z
   });
 export type UpdateUnitRequest = z.infer<typeof updateUnitRequestSchema>;
 
-/** §2.6: a Coordinator calls a cross audit of one Zone of their Unit. */
-export const callCrossAuditRequestSchema = z.object({ zoneId: uuidSchema });
+/**
+ * §2.6: a Coordinator calls a cross audit of one Zone of their Unit, due by `dueOn` (owner,
+ * 2026-10-14). `dueOn` is optional on the wire only for phones not yet updated: the server
+ * makes it seven days out, as those phones showed.
+ */
+export const callCrossAuditRequestSchema = z.object({ zoneId: uuidSchema, dueOn: z.iso.date().optional() });
 export type CallCrossAuditRequest = z.infer<typeof callCrossAuditRequestSchema>;
+
+/** A call still standing: no audit of its Zone has started since it was made. */
+export const crossAuditCallSchema = z.object({
+  id: uuidSchema,
+  unitId: uuidSchema,
+  unitName: z.string(),
+  zoneId: uuidSchema,
+  zoneCode: z.string(),
+  zoneName: z.string(),
+  calledBy: z.string(),
+  /** `YYYY-MM-DD`; past it the call is overdue, and still stands. */
+  dueOn: z.iso.date(),
+  createdAt: isoDateTimeSchema,
+});
+export type CrossAuditCall = z.infer<typeof crossAuditCallSchema>;
 
 export const listUnitsQuerySchema = paginationQuerySchema.extend({
   includeArchived: booleanQuery(false),
