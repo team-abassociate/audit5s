@@ -17,6 +17,7 @@ import {
   updateUnitRequestSchema,
   type CallCrossAuditRequest,
   type CreateUnitRequest,
+  type CrossAuditCall,
   type Page,
   type Unit,
   type UpdateUnitRequest,
@@ -94,6 +95,14 @@ export class UnitsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(callCrossAuditRequestSchema)) body: CallCrossAuditRequest,
   ): Promise<void> {
-    return this.units.callCrossAudit(scope, id, body.zoneId);
+    return this.units.callCrossAudit(scope, id, body.zoneId, body.dueOn);
+  }
+
+  /** The Unit's cross-audit calls still standing (0050): the Zone Leaders' blue list. */
+  @RequirePermission('unit', 'read')
+  @Scope({ param: 'id', intent: 'read' })
+  @Get(':id/cross-audit-calls')
+  listCrossAuditCalls(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<CrossAuditCall[]> {
+    return this.units.listCrossAuditCalls(scope, id);
   }
 }

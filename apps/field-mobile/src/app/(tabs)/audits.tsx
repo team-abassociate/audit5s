@@ -2,7 +2,8 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, SectionList, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
-import { zoneDisplayLabel } from '@audit5s/domain';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { istDateKey, zoneDisplayLabel } from '@audit5s/domain';
 import type { Audit, AuditAssignment, AuditStatus, AuditType, Page, Unit } from '@audit5s/contracts';
 import { AuditCard } from '../../components/audit-card';
 import {
@@ -107,23 +108,35 @@ export default function AuditsScreen() {
   if (can('unit', 'call_cross_audit') && oneUnit) {
     newAudit.push({
       label: 'Call a cross audit',
-      detail: 'Pick a Zone; every Zone Leader is notified to audit it',
+      detail: 'Pick a Zone and the date it is due; every Zone Leader is notified',
       onPress: () => setPickingCrossZone(true),
     });
   }
+  // The Zone, then the day it is due (owner, 2026-10-14) — a week out unless they move it —
+  // then one confirm naming both.
   const callCross = (zone: ZoneOption) => {
     const label = zoneDisplayLabel(zone.code, zone.name);
-    Alert.alert(`Call a cross audit of ${label}?`, `Every Zone Leader of the Unit gets a notification asking them to audit ${label}.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Notify Zone Leaders',
-        onPress: () =>
-          void api.post(`/units/${scope!.unitIds[0]}/cross-audit`, { zoneId: zone.id }).then(
-            () => Alert.alert('Zone Leaders notified', `Each one can now audit ${label}.`),
-            (error: unknown) => Alert.alert('Could not call the cross audit', problemMessage(error) ?? 'Try again.'),
-          ),
+    DateTimePickerAndroid.open({
+      value: new Date(Date.now() + 7 * 86_400_000),
+      mode: 'date',
+      minimumDate: new Date(),
+      onChange: (event, date) => {
+        const dueOn = event.type === 'set' && date ? istDateKey(date) : null;
+        if (!dueOn) return;
+        const day = formatDate(`${dueOn}T12:00:00+05:30`);
+        Alert.alert(`Call a cross audit of ${label}?`, `Every Zone Leader of the Unit is asked to audit ${label} by ${day}.`, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Notify Zone Leaders',
+            onPress: () =>
+              void api.post(`/units/${scope!.unitIds[0]}/cross-audit`, { zoneId: zone.id, dueOn }).then(
+                () => Alert.alert('Zone Leaders notified', `Each one can now audit ${label}. It is due by ${day}.`),
+                (error: unknown) => Alert.alert('Could not call the cross audit', problemMessage(error) ?? 'Try again.'),
+              ),
+          },
+        ]);
       },
-    ]);
+    });
   };
   // One choice is no choice: "+ Audit" goes straight to it rather than through a menu of one.
   const addAudit = () => (newAudit.length === 1 ? newAudit[0]!.onPress() : setAdding(true));

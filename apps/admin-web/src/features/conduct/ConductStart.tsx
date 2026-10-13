@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import type { Audit, AuditType, Page } from '@audit5s/contracts';
-import { formatDateTime, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDate, formatDateTime, istDateKey, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
-import { Button, Card, CardHeader, ConfirmDialog, EmptyState, Combobox, ErrorNotice, Field, Select, StatusChip, Table, Td, Th } from '@/components/ui';
+import { Button, Card, CardHeader, ConfirmDialog, EmptyState, Combobox, ErrorNotice, Field, Input, Select, StatusChip, Table, Td, Th } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useWebDevice } from '@/lib/device';
 import { uploadEvidence } from '@/lib/evidence';
@@ -33,6 +33,8 @@ export function ConductStartPage() {
   const [another, setAnother] = useState(false);
   const [calling, setCalling] = useState(false);
   const [crossZoneId, setCrossZoneId] = useState('');
+  // The day it is due (owner, 2026-10-14): a week out unless the Coordinator moves it.
+  const [crossDueOn, setCrossDueOn] = useState(() => istDateKey(Date.now() + 7 * 86_400_000) ?? '');
   const auditType = types.length === 1 ? types[0]! : picked;
 
   const open = useQuery({
@@ -64,7 +66,7 @@ export function ConductStartPage() {
   const unitZones = catalogue.data?.zones.filter((zone) => zone.unitId === unit) ?? [];
   const crossZone = unitZones.find((zone) => zone.id === crossZoneId);
   const callCross = useMutation({
-    mutationFn: () => api.post(`/units/${unit}/cross-audit`, { zoneId: crossZoneId }, uuidv7()),
+    mutationFn: () => api.post(`/units/${unit}/cross-audit`, { zoneId: crossZoneId, dueOn: crossDueOn }, uuidv7()),
     onSuccess: () => setCalling(false),
   });
 
@@ -114,7 +116,7 @@ export function ConductStartPage() {
         <Card>
           <CardHeader
             title="Cross audit"
-            description="Pick a Zone. Every Zone Leader of the Unit is notified to audit it."
+            description="Pick a Zone and the date it is due. Every Zone Leader of the Unit is notified to audit it."
             action={
               <Button variant="secondary" onClick={() => setCalling(true)}>
                 Call a cross audit
@@ -134,7 +136,7 @@ export function ConductStartPage() {
         tone="primary"
         confirmLabel="Notify Zone Leaders"
         pending={callCross.isPending}
-        disabled={!crossZone}
+        disabled={!crossZone || !crossDueOn}
         error={callCross.error}
         onConfirm={() => callCross.mutate()}
         onCancel={() => setCalling(false)}
@@ -149,8 +151,12 @@ export function ConductStartPage() {
             ))}
           </Select>
         </Field>
+        <Field label="Due by">
+          <Input type="date" value={crossDueOn} min={istDateKey(Date.now()) ?? undefined} onChange={(event) => setCrossDueOn(event.target.value)} />
+        </Field>
         <p className="mt-3">
-          Every Zone Leader of the Unit gets a notification asking them to audit {crossZone ? zoneDisplayLabel(crossZone.code, crossZone.name) : 'this Zone'}.
+          Every Zone Leader of the Unit gets a notification asking them to audit {crossZone ? zoneDisplayLabel(crossZone.code, crossZone.name) : 'this Zone'}
+          {crossDueOn ? ` by ${formatDate(`${crossDueOn}T12:00:00+05:30`)}` : ''}. It stays on their list, marked overdue after that day, until one of them audits it.
         </p>
       </ConfirmDialog>
 

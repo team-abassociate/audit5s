@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, ilike, isNull, sql, type SQL } from 'drizzle-orm';
-import { auditLogs, units, zones, type Database, type Transaction } from '@audit5s/db';
+import { auditLogs, crossAuditCalls, units, zones, type Database, type Transaction } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
-import type { CreateUnitRequest, ListUnitsQuery } from '@audit5s/contracts';
+import type { CreateUnitRequest, CrossAuditCall, ListUnitsQuery } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
@@ -35,6 +35,8 @@ export type CrossAuditCallData = {
   zoneName: string;
   /** "Rahul Sharma (RA3210)": who called it, for the Zone Leader's list. */
   calledBy: string | null;
+  /** `YYYY-MM-DD`, the day it is due (0050). */
+  dueOn: string;
 };
 
 @Injectable()
@@ -146,29 +148,99 @@ export class UnitsRepository extends BaseRepository {
     scope: ScopeContext,
     unitId: string,
     zoneId: string,
+    dueOn: string | undefined,
     emit: (tx: Transaction, data: CrossAuditCallData) => Promise<void>,
-  ): Promise<boolean> {
+  ): Promise<'CALLED' | 'NOT_FOUND' | 'PAST_DUE'> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [row] = await tx
-        .select({ unitName: units.name, zoneCode: zones.code, zoneName: zones.name })
+        .select({
+          unitName: units.name,
+          zoneCode: zones.code,
+          zoneName: zones.name,
+          // The Unit's own day: "due today" means today in the plant, not in UTC.
+          today: sql<string>`to_char((now() AT TIME ZONE ${units.timezone})::date, 'YYYY-MM-DD')`,
+          weekOut: sql<string>`to_char((now() AT TIME ZONE ${units.timezone})::date + 7, 'YYYY-MM-DD')`,
+        })
         .from(units)
         .innerJoin(zones, and(eq(zones.unitId, units.id), eq(zones.id, zoneId), isNull(zones.archivedAt)))
         .where(and(eq(units.id, unitId), isNull(units.archivedAt), this.scoped(scope, { unitId: units.id })))
         .limit(1);
-      if (!row) return false;
-      const data = { zoneId, ...row, calledBy: getRequestContext()?.actorLabel ?? null };
+      if (!row) return 'NOT_FOUND';
+      const due = dueOn ?? row.weekOut;
+      if (due < row.today) return 'PAST_DUE';
+      const calledBy = getRequestContext()?.actorLabel ?? null;
+      await tx.insert(crossAuditCalls).values({
+        unitId,
+        zoneId,
+        calledByUserId: scope.actor.userId,
+        calledByLabel: calledBy ?? 'system',
+        dueOn: due,
+      });
       await tx.insert(auditLogs).values(
         auditLogRow({
           action: 'unit.cross_audit_called',
           resourceType: 'unit',
           resourceId: unitId,
           unitId,
-          after: { zoneId, zoneCode: row.zoneCode, zoneName: row.zoneName },
+          after: { zoneId, zoneCode: row.zoneCode, zoneName: row.zoneName, dueOn: due },
         }),
       );
-      await emit(tx, data);
-      return true;
+      await emit(tx, { zoneId, unitName: row.unitName, zoneCode: row.zoneCode, zoneName: row.zoneName, calledBy, dueOn: due });
+      return 'CALLED';
+    });
+  }
+
+  /**
+   * The Unit's calls still standing, oldest due first: no audit of the call's Zone, by anyone,
+   * has started since it was made (owner, 2026-10-14). A cross audit answers it, and so does
+   * any audit by a Coordinator of the Unit. A cancelled audit or a withdrawn Zone does not.
+   * `null` when the Unit is not in scope.
+   */
+  async listCrossAuditCalls(scope: ScopeContext, unitId: string): Promise<CrossAuditCall[] | null> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [unit] = await tx
+        .select({ id: units.id })
+        .from(units)
+        .where(and(eq(units.id, unitId), this.scoped(scope, { unitId: units.id })))
+        .limit(1);
+      if (!unit) return null;
+      const rows = await tx
+        .select({
+          id: crossAuditCalls.id,
+          unitId: crossAuditCalls.unitId,
+          unitName: units.name,
+          zoneId: crossAuditCalls.zoneId,
+          zoneCode: zones.code,
+          zoneName: zones.name,
+          calledBy: crossAuditCalls.calledByLabel,
+          dueOn: crossAuditCalls.dueOn,
+          createdAt: crossAuditCalls.createdAt,
+        })
+        .from(crossAuditCalls)
+        .innerJoin(units, eq(units.id, crossAuditCalls.unitId))
+        .innerJoin(zones, eq(zones.id, crossAuditCalls.zoneId))
+        .where(
+          and(
+            eq(crossAuditCalls.unitId, unitId),
+            isNull(zones.archivedAt),
+            sql`NOT EXISTS (
+              SELECT 1 FROM audit a
+              JOIN audit_zone az ON az.audit_id = a.id
+              WHERE a.unit_id = ${crossAuditCalls.unitId}
+                AND az.zone_id = ${crossAuditCalls.zoneId}
+                AND az.status <> 'WITHDRAWN'
+                AND a.status <> 'CANCELLED'
+                AND a.started_at > ${crossAuditCalls.createdAt}
+                AND (a.audit_type = 'CROSS_5S' OR EXISTS (
+                  SELECT 1 FROM unit_membership m
+                  WHERE m.user_id = a.auditor_user_id AND m.unit_id = a.unit_id AND m.role = 'COORDINATOR'))
+            )`,
+          ),
+        )
+        .orderBy(asc(crossAuditCalls.dueOn), asc(crossAuditCalls.createdAt));
+      return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
     });
   }
 }

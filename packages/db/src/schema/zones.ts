@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { checklistTemplates } from './checklists';
 import { units, users } from './identity';
 
@@ -51,4 +51,28 @@ export const zones = pgTable(
     index('zone_unit_active_sort_idx').on(table.unitId, table.archivedAt, table.sortOrder),
     index('zone_leader_idx').on(table.zoneLeaderId),
   ],
+);
+
+/**
+ * A cross audit a Coordinator called, with the date it is due (0050, owner 2026-10-14).
+ * Append-only: whether it is answered is read from the audits of its Zone.
+ */
+export const crossAuditCalls = pgTable(
+  'cross_audit_call',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    unitId: uuid('unit_id')
+      .notNull()
+      .references(() => units.id, { onDelete: 'restrict' }),
+    zoneId: uuid('zone_id')
+      .notNull()
+      .references(() => zones.id, { onDelete: 'restrict' }),
+    calledByUserId: uuid('called_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    calledByLabel: text('called_by_label').notNull(),
+    dueOn: date('due_on', { mode: 'string' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('cross_audit_call_unit_idx').on(table.unitId, table.createdAt)],
 );

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   API_BASE_PATH,
   type Audit,
+  type CrossAuditCall,
   type NotificationPage,
   type NotificationPreferences,
   overdueBundleDataSchema,
@@ -465,6 +466,55 @@ describe('a cross audit called by the Coordinator (§2.6)', () => {
     });
     expect(archived.status).toBe(204);
     expect((await call(archivedId)).status).toBe(404);
+  });
+
+  it('carries the date it is due, and stands in the Unit’s list for its Zone Leaders', async () => {
+    const dueOn = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+    const response = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+      token: world.actors.COORDINATOR.accessToken,
+      body: { zoneId: world.zoneA, dueOn },
+    });
+    expect(response.status).toBe(204);
+    const events = await drainNotifications(world, worker, seen);
+    const called = events.find((event) => event.type === 'CROSS_AUDIT_CALLED')!;
+    expect(called.data).toMatchObject({ dueOn });
+    const [leader] = await notificationsFor(world.actors.ZONE_LEADER.userId, called.eventId);
+    expect(leader?.body).toMatch(/ by .+\.$/);
+
+    const list = await world.request('GET', `${base}/units/${world.unitA}/cross-audit-calls`, {
+      token: world.actors.ZONE_LEADER.accessToken,
+    });
+    expect(list.status).toBe(200);
+    const calls = list.body as CrossAuditCall[];
+    expect(calls.find((call) => call.dueOn === dueOn)).toMatchObject({ zoneId: world.zoneA, unitId: world.unitA });
+  });
+
+  it('makes an undated call, from a phone not yet updated, due in seven days; refuses a past date', async () => {
+    const before = await world.request('GET', `${base}/units/${world.unitA}/cross-audit-calls`, {
+      token: world.actors.COORDINATOR.accessToken,
+    });
+    const known = new Set((before.body as CrossAuditCall[]).map((call) => call.id));
+    expect(
+      (
+        await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+          token: world.actors.COORDINATOR.accessToken,
+          body: { zoneId: world.zoneA },
+        })
+      ).status,
+    ).toBe(204);
+    const after = await world.request('GET', `${base}/units/${world.unitA}/cross-audit-calls`, {
+      token: world.actors.COORDINATOR.accessToken,
+    });
+    const fresh = (after.body as CrossAuditCall[]).find((call) => !known.has(call.id))!;
+    const days = (Date.parse(fresh.dueOn) - Date.parse(fresh.createdAt.slice(0, 10))) / 86_400_000;
+    expect(days).toBeGreaterThanOrEqual(6);
+    expect(days).toBeLessThanOrEqual(8);
+
+    const past = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+      token: world.actors.COORDINATOR.accessToken,
+      body: { zoneId: world.zoneA, dueOn: '2020-01-01' },
+    });
+    expect(past.status).toBe(422);
   });
 
   it('still reads an older call, made without a Zone, as any Zone of the Unit', () => {
