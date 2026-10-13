@@ -30,6 +30,7 @@ import {
 import { useAbortMenu } from '../../components/abort-menu';
 import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import type { ProcessedImage } from '../../lib/capture/media';
+import { pickFromGallery } from '../../lib/capture/gallery';
 import {
   completeLocalZone,
   getLocalAuditZone,
@@ -87,7 +88,7 @@ export default function WalkByScreen() {
   useEffect(() => setZoneRemark(zone.data?.zoneRemark ?? ''), [zone.data?.zoneRemark]);
 
   const capture = useMutation({
-    mutationFn: async (image: ProcessedImage) => {
+    mutationFn: async ({ image, live }: { image: ProcessedImage; live: boolean }) => {
       await captureLocalEvidence(database, {
         auditId: zone.data!.auditId,
         auditZoneId,
@@ -98,12 +99,23 @@ export default function WalkByScreen() {
         width: image.width,
         height: image.height,
         checksumSha256: image.checksumSha256,
+        isLiveCapture: live,
       });
     },
     onSuccess: () => {
       // The camera closes the moment SQLite has the photo; the lists refresh behind it.
       setCameraOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['local'] });
+    },
+  });
+
+  // The owner, 2026-10-13: a walk-by photograph may also come from the gallery.
+  const gallery = useMutation({
+    mutationFn: async () => {
+      // Refused before the picker opens, not after a photo was chosen.
+      await assertZonePhotoCapacity(database, auditZoneId);
+      const image = await pickFromGallery();
+      if (image) await capture.mutateAsync({ image, live: false });
     },
   });
 
@@ -155,7 +167,7 @@ export default function WalkByScreen() {
         <CameraCapture
           beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
           prompt={`Capture a ${classificationLabel(classification).toLowerCase()} observation`}
-          onCaptured={(image) => capture.mutateAsync(image)}
+          onCaptured={(image) => capture.mutateAsync({ image, live: true })}
           onCancel={() => setCameraOpen(false)}
         />
       </>
@@ -199,6 +211,14 @@ export default function WalkByScreen() {
               <ErrorBanner message={count >= ZONE_PHOTO_LIMIT ? ZONE_PHOTO_LIMIT_MESSAGE : null} />
               <Muted>{count} / {ZONE_PHOTO_LIMIT} photos. Use Delete photo below to free a space.</Muted>
               <Button disabled={!photos.isSuccess || count >= ZONE_PHOTO_LIMIT} title={count ? 'Take another photo' : 'Open camera'} onPress={() => setCameraOpen(true)} />
+              <Button
+                variant="secondary"
+                disabled={!photos.isSuccess || count >= ZONE_PHOTO_LIMIT}
+                busy={gallery.isPending}
+                title="Choose from gallery"
+                onPress={() => gallery.mutate()}
+              />
+              <ErrorBanner message={gallery.error instanceof Error ? gallery.error.message : null} />
             </View>
           </Card>
           </View>

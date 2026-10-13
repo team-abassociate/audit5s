@@ -40,15 +40,14 @@ import { leaveScreen } from '../../lib/leave-screen';
 /**
  * One corrective action (§2.4 steps 6–9, §7.3).
  *
- * Option A is a name, a **live** after-photo and a description; Option B an explanation.
- * Either is saved on the device first and synced when there is signal — the camera is the
- * only way to a photograph here, as §12.10 requires, because `CameraCapture` is the only
- * capture path the app has.
+ * Option A is a name, an after-photo and a description; Option B an explanation. Either is
+ * saved on the device first and synced when there is signal. The after-photo comes from the
+ * camera or the gallery (`pickFromGallery`; the owner, 2026-10-13, overriding §12.10's live
+ * capture), as it may on the report's link page; `isLiveCapture` records which.
  *
  * An **overall** action (R-38) — the auditor's suggestion for the Zone as a whole — is
  * answered with what was done, and its photograph is optional: some fixes, a smell, cannot
- * be photographed. For it, and only for it, the photograph may also come from the gallery
- * (`pickFromGallery`), as it may on the report's link page.
+ * be photographed. For a nonconformity it stays required.
  */
 export default function CorrectiveActionScreen() {
   const styles = useStyles();
@@ -112,7 +111,7 @@ export default function CorrectiveActionScreen() {
     onSuccess: () => setCameraOpen(false),
   });
 
-  // R-38: an overall action's photograph may come from the gallery.
+  // Any after-photo may come from the gallery (R-38; the owner, 2026-10-13).
   const gallery = useMutation({
     mutationFn: async () => {
       const image = await pickFromGallery();
@@ -277,7 +276,7 @@ export default function CorrectiveActionScreen() {
                 <View ref={required.anchor('photo')} collapsable={false}>
                 <Label>{overall ? 'After photograph (optional)' : 'After photograph'}</Label>
                 {required.flagged('photo', overall || Boolean(photo)) ? (
-                  <ErrorBanner message="Take a photograph of the corrected condition." />
+                  <ErrorBanner message="Take or choose a photograph of the corrected condition." />
                 ) : null}
                 {photo ? (
                   <Image source={{ uri: photo.uri }} style={styles.photo} accessibilityLabel="After photograph" />
@@ -286,7 +285,7 @@ export default function CorrectiveActionScreen() {
                     <Muted>
                       {overall
                         ? 'If the fix cannot be photographed, leave this empty.'
-                        : 'A live photograph of the corrected condition is required.'}
+                        : 'Take or choose a photograph of the corrected condition.'}
                     </Muted>
                   </View>
                 )}
@@ -297,27 +296,23 @@ export default function CorrectiveActionScreen() {
                     onPress={() => setCameraOpen(true)}
                   />
                 </View>
-                {overall ? (
-                  <>
-                    <View style={styles.block}>
-                      <Button
-                        title={photo ? 'Choose another from gallery' : 'Choose from gallery'}
-                        variant="secondary"
-                        busy={gallery.isPending}
-                        onPress={() => gallery.mutate()}
-                      />
-                    </View>
-                    {photo ? (
-                      <View style={styles.block}>
-                        <Button
-                          title="Remove photograph"
-                          variant="secondary"
-                          busy={removePhoto.isPending}
-                          onPress={() => removePhoto.mutate()}
-                        />
-                      </View>
-                    ) : null}
-                  </>
+                <View style={styles.block}>
+                  <Button
+                    title={photo ? 'Choose another from gallery' : 'Choose from gallery'}
+                    variant="secondary"
+                    busy={gallery.isPending}
+                    onPress={() => gallery.mutate()}
+                  />
+                </View>
+                {photo ? (
+                  <View style={styles.block}>
+                    <Button
+                      title="Remove photograph"
+                      variant="secondary"
+                      busy={removePhoto.isPending}
+                      onPress={() => removePhoto.mutate()}
+                    />
+                  </View>
                 ) : null}
                 </View>
                 <Field

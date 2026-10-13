@@ -3,19 +3,22 @@ import { ImageManipulator } from 'expo-image-manipulator';
 import { processCapturedPhoto, type ProcessedImage } from './media';
 
 /**
- * A photograph from the phone's gallery — **overall corrective actions** (R-38) and **Kaizen's
- * before and after** (R-48: a "before" is often already on the phone, taken before anyone
- * thought of a Kaizen). Nowhere else.
+ * A photograph from the phone's gallery: a corrective action's after-photo (R-38; widened to
+ * nonconformities by the owner, 2026-10-13), an auditor's photographs in an audit, scored and
+ * walk-by (the owner, 2026-10-13, overriding §12.10), and **Kaizen's before and after** (R-48:
+ * a "before" is often already on the phone, taken before anyone thought of a Kaizen).
  *
- * Every other photograph in this app is a live capture through `CameraCapture` (§12.10), and
- * this file is the only importer of `expo-image-picker`, so a grep for it finds the whole of
- * the gallery path. It opens Android's system photo picker, which needs no permission: the
+ * The one exception is the attendance selfie, which stays a live capture through
+ * `CameraCapture` — the server refuses a selfie that is not.
+ *
+ * This file is the only importer of `expo-image-picker`, so a grep for it finds the whole
+ * of the gallery path. It opens Android's system photo picker, which needs no permission: the
  * app receives the one photograph the person chose and never reads the library itself.
  *
  * The chosen file goes through `processCapturedPhoto` exactly as a camera frame does —
  * ≤1920 px, JPEG, EXIF (GPS included) gone, hashed after re-encoding — so it uploads, commits
- * and prints like any other. It is recorded as **not** a live capture; the server accepts
- * that for an overall action and refuses it for a finding.
+ * and prints like any other. It is recorded as **not** a live capture, which the server
+ * accepts everywhere but the selfie.
  *
  * Null when the person closes the picker without choosing.
  */

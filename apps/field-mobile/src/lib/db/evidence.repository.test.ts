@@ -204,6 +204,21 @@ describe('capturing a photograph (§9.1, §9.4)', () => {
       '2026-09-09T08:00:00.000Z',
     );
   });
+  it('stores a gallery photo on a question as not live, and says so in its upload intent', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+
+    const evidenceId = await captureLocalEvidence(database, {
+      auditId,
+      auditZoneId,
+      kind: 'QUESTION_EVIDENCE',
+      ...PHOTO,
+      isLiveCapture: false,
+    });
+
+    expect((await getLocalEvidence(database, evidenceId))[0]!.isLiveCapture).toBe(0);
+    const [intent] = (await listOutbox(database)).filter((item) => item.queue === 'media');
+    expect(JSON.parse(intent!.payload)).toMatchObject({ isLiveCapture: false });
+  });
 });
 
 describe('invariant E-1 on the device', () => {
