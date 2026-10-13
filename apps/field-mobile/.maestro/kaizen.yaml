@@ -29,7 +29,8 @@ env:
 - takeScreenshot: kaizen-leader-overview
 - setAirplaneMode: enabled
 # The button in the page, not the tab: a debug build's LogBox toast covers the tab bar.
-- tapOn: "\\+ New Kaizen"
+- tapOn:
+    id: kaizen-new
 - waitForAnimationToEnd
 # The sample leader has drafts, so New Kaizen first offers them.
 - tapOn:

@@ -580,7 +580,7 @@ export default function AuditZonesScreen() {
 
       <ErrorBanner message={addZone.error ? addZone.error.message : null} />
 
-      <Button
+      <Button icon={walkBy ? 'photo-camera' : 'play-arrow'}
         testID="start-zone"
         title={walkBy ? 'Open camera' : 'Start the questions'}
         busy={addZone.isPending}
@@ -596,7 +596,7 @@ export default function AuditZonesScreen() {
           title: walkBy ? 'Walk-by' : 'Audit',
           headerRight: () =>
             canRestart ? (
-              <HeaderAction
+              <HeaderAction icon="restart-alt"
                 title={`Restart (${restartsLeft})`}
                 accessibilityLabel={`Restart audit, ${restartsLeft} left`}
                 disabled={restart.isPending}
@@ -605,14 +605,14 @@ export default function AuditZonesScreen() {
             ) : canPause || canAbort ? (
               <View style={styles.headerActions}>
                 {canPause ? (
-                  <HeaderAction
+                  <HeaderAction icon="pause"
                     title="Save & pause"
                     disabled={leave.isPending || abort.isPending}
                     onPress={() => leave.mutate(null)}
                   />
                 ) : null}
                 {canAbort ? (
-                  <HeaderAction
+                  <HeaderAction icon="cancel"
                     testID="abort-audit"
                     title="Abort audit"
                     variant="danger"
@@ -644,7 +644,7 @@ export default function AuditZonesScreen() {
                       : `${cursor.data.answered} question${cursor.data.answered === 1 ? '' : 's'} answered in this Zone. Resume where you stopped.`}
                 </SlipText>
                 <View style={styles.slipAction}>
-                  <Button title="Resume" busy={resume.isPending} onPress={() => resume.mutate()} />
+                  <Button icon="play-arrow" title="Resume" busy={resume.isPending} onPress={() => resume.mutate()} />
                 </View>
               </Slip>
             ) : null}
@@ -656,7 +656,7 @@ export default function AuditZonesScreen() {
             */}
             {addZoneCard}
             {canFinish ? (
-              <Button title="Submit audit" busy={finish.isPending} onPress={confirmFinish} />
+              <Button icon="send" title="Submit audit" busy={finish.isPending} onPress={confirmFinish} />
             ) : null}
             {zonesInAudit.length > 0 ? (
               <SectionHead
@@ -713,7 +713,7 @@ export default function AuditZonesScreen() {
             ) : (
               <View style={styles.zoneActions}>
                 <View style={styles.zoneAction}>
-                  <Button
+                  <Button icon={item.status === 'COMPLETED' ? 'visibility' : 'play-arrow'}
                     title={item.status === 'COMPLETED' ? 'Review' : 'Open'}
                     variant="secondary"
                     onPress={() =>
@@ -731,7 +731,7 @@ export default function AuditZonesScreen() {
                 */}
                 {auditOpen ? (
                   <View style={styles.zoneAction}>
-                    <Button
+                    <Button icon="edit"
                       title="Edit details"
                       variant="secondary"
                       onPress={() =>
@@ -747,7 +747,7 @@ export default function AuditZonesScreen() {
                 ) : null}
                 {!auditOpen && can('zone', 'update') && item.status === 'COMPLETED' ? (
                   <View style={styles.zoneAction}>
-                    <Button
+                    <Button icon="drive-file-rename-outline"
                       title="Rename"
                       variant="secondary"
                       onPress={() =>
@@ -891,8 +891,8 @@ function ZoneDetailsPrompt({
               placeholder="The name to print on the report"
             />
             <ErrorBanner message={error} />
-            <Button title="Save details" busy={busy} onPress={onSave} />
-            <Button title="Cancel" variant="secondary" onPress={onCancel} />
+            <Button icon="save" title="Save details" busy={busy} onPress={onSave} />
+            <Button icon="close" title="Cancel" variant="secondary" onPress={onCancel} />
           </View>
         ) : null}
       </View>
@@ -937,8 +937,8 @@ function RenamePrompt({
               hint="Changes the name on this audit, its other audits and any report regenerated."
             />
             <ErrorBanner message={error} />
-            <Button title="Save name" busy={busy} disabled={!rename.name.trim()} onPress={onSave} />
-            <Button title="Cancel" variant="secondary" onPress={onCancel} />
+            <Button icon="save" title="Save name" busy={busy} disabled={!rename.name.trim()} onPress={onSave} />
+            <Button icon="close" title="Cancel" variant="secondary" onPress={onCancel} />
           </View>
         ) : null}
       </View>
@@ -1012,12 +1012,12 @@ function RestartPrompt({
             placeholder="Finished before auditing the packing bay"
           />
           <ErrorBanner message={error} />
-          <Button
+          <Button icon="restart-alt"
             title="Restart audit"
             busy={busy}
             onPress={() => required.check([['reason', !tooShort]]) && onConfirm()}
           />
-          <Button title="Leave it finished" variant="secondary" onPress={onCancel} />
+          <Button icon="check" title="Leave it finished" variant="secondary" onPress={onCancel} />
         </View>
       </View>
     </Modal>
@@ -1100,7 +1100,7 @@ function ZonePicker({
             );
           }}
         />
-        <Button title="Cancel" variant="secondary" onPress={onClose} />
+        <Button icon="close" title="Cancel" variant="secondary" onPress={onClose} />
       </View>
     </Modal>
   );

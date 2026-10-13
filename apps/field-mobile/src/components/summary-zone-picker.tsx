@@ -105,7 +105,7 @@ export function SummaryZonePicker({
       </Muted>
 
       {allIds.length > 0 ? (
-        <Button
+        <Button icon={allChosen ? 'deselect' : 'select-all'}
           title={allChosen ? 'Clear all' : 'Choose all Zones'}
           variant="secondary"
           compact
@@ -126,7 +126,7 @@ export function SummaryZonePicker({
                 </Data>
               </View>
               {ids.length > 1 ? (
-                <Button
+                <Button icon={every ? 'deselect' : 'select-all'}
                   title={every ? 'None' : 'All'}
                   variant="secondary"
                   compact
@@ -157,7 +157,7 @@ export function SummaryZonePicker({
         );
       })}
 
-      <Button
+      <Button icon="picture-as-pdf"
         title={chosen.length === 0 ? 'Tick at least one Zone' : `Generate summary of ${count}`}
         busy={generate.isPending}
         disabled={chosen.length === 0}

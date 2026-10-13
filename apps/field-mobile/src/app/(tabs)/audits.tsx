@@ -271,7 +271,7 @@ export default function AuditsScreen() {
               <View style={styles.tools}>
                 {ownUnitId ? <ZoneFilterButton count={zoneFilter.selected.length} onPress={zoneFilter.show} /> : null}
                 {newAudit.length > 0 ? (
-                  <HeaderAction testID="add-audit" title="+ Audit" accessibilityLabel="New audit" onPress={addAudit} />
+                  <HeaderAction icon="add" testID="add-audit" title="Audit" accessibilityLabel="New audit" onPress={addAudit} />
                 ) : null}
               </View>
             ) : null,

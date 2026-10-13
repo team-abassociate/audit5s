@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
   useWindowDimensions,
+  type ColorValue,
   type PressableProps,
   type StyleProp,
   type TextInputProps,
@@ -39,8 +40,33 @@ import { EASE_OUT, fadeIn, transition } from '../lib/motion';
 export type IconName = ComponentProps<typeof MaterialIcons>['name'];
 
 /** An icon in the text's colour, sized to sit beside a label. Decorative: the label says it. */
-export function Icon({ name, color, size = 18 }: { name: IconName; color: string; size?: number }) {
+export function Icon({ name, color, size = 18 }: { name: IconName; color: ColorValue; size?: number }) {
   return <MaterialIcons name={name} size={size} color={color} accessibilityElementsHidden importantForAccessibility="no" />;
+}
+
+/**
+ * The bottom tabs' symbols, one per destination, shared by the 5S and Kaizen bars: a
+ * destination wears the same symbol for every role in either module, and no two
+ * destinations share one. A Zone Leader's Audit tab is `audits`; NCs are `actions`.
+ */
+export const TAB_ICON = {
+  overview: 'dashboard',
+  audits: 'fact-check',
+  actions: 'flag',
+  units: 'factory',
+  people: 'group',
+  history: 'history',
+  profile: 'person',
+  newKaizen: 'add-box',
+  kaizens: 'lightbulb',
+  analysis: 'insights',
+} satisfies Record<string, IconName>;
+
+/** A `tabBarIcon` for one of `TAB_ICON`'s destinations. */
+export function tabIcon(destination: keyof typeof TAB_ICON) {
+  return function TabIcon({ color }: { color: ColorValue }) {
+    return <Icon name={TAB_ICON[destination]} color={color} size={22} />;
+  };
 }
 
 /**
@@ -542,6 +568,7 @@ export function HeaderAction({
   testID,
   variant = 'default',
   disabled = false,
+  icon,
 }: {
   title: string;
   onPress: () => void;
@@ -550,8 +577,11 @@ export function HeaderAction({
   /** `danger`: the crit rule and ink, for the header action that ends something. */
   variant?: 'default' | 'danger';
   disabled?: boolean;
+  /** The action's symbol, before the word — `add` is the "+" of "+ Unit". */
+  icon?: IconName;
 }) {
   const styles = useStyles();
+  const theme = useTheme();
   const danger = variant === 'danger';
   return (
     <Pressable
@@ -564,11 +594,13 @@ export function HeaderAction({
       hitSlop={8}
       style={({ pressed }) => [
         styles.headerAction,
+        icon && styles.buttonRow,
         danger && styles.headerActionDanger,
         disabled && styles.headerActionDisabled,
         pressed && styles.headerActionPressed,
       ]}
     >
+      {icon ? <Icon name={icon} color={danger ? theme.color.crit : disabled ? theme.color.ink3 : theme.color.ink} size={16} /> : null}
       <Text style={[styles.headerActionText, danger && styles.headerActionDangerText, disabled && styles.headerActionTextDisabled]}>{title}</Text>
     </Pressable>
   );
@@ -1135,7 +1167,7 @@ export function SelectField<T extends string>({
               );
             })}
           </ScrollView>
-          <Button title="Cancel" variant="secondary" onPress={() => setOpen(false)} />
+          <Button title="Cancel" icon="close" variant="secondary" onPress={() => setOpen(false)} />
         </View>
       </Modal>
     </View>
@@ -1219,7 +1251,7 @@ export function ActionSheet({
             </Pressable>
           ))}
         </ScrollView>
-        <Button title="Cancel" variant="secondary" onPress={onClose} />
+        <Button title="Cancel" icon="close" variant="secondary" onPress={onClose} />
       </View>
     </Modal>
   );
@@ -1312,7 +1344,7 @@ export function ConfirmAction({
       <Text style={styles.noticeText}>{question}</Text>
       <View style={styles.confirmRow}>
         <View style={styles.confirmItem}>
-          <Button title={keepLabel} variant="secondary" onPress={() => setAsking(false)} />
+          <Button title={keepLabel} icon="close" variant="secondary" onPress={() => setAsking(false)} />
         </View>
         <View style={styles.confirmItem}>
           <Button title={confirmLabel} variant="danger" icon={icon} busy={busy} onPress={onConfirm} />

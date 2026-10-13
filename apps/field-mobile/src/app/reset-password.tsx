@@ -120,8 +120,8 @@ export default function ResetPasswordScreen() {
           <ErrorBanner message={error} />
 
           <View style={styles.actions}>
-            <Button title="Set password" onPress={submit} busy={busy} />
-            <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
+            <Button icon="lock-reset" title="Set password" onPress={submit} busy={busy} />
+            <Button icon="logout" title="Sign out" variant="secondary" onPress={() => void signOut()} />
           </View>
         </GateCard>
       </ScrollView>

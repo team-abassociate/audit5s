@@ -111,9 +111,9 @@ export default function PeopleScreen() {
           headerRight: () =>
             mayAdd ? (
               <View style={styles.tools}>
-                <HeaderAction
+                <HeaderAction icon="person-add"
                   testID="add-person"
-                  title="+ Add"
+                  title="Add"
                   accessibilityLabel={`Add a ${ROLE_LABELS[role].toLowerCase()}`}
                   onPress={() => router.push({ pathname: '/manage/new-person', params: { role } })}
                 />

@@ -72,7 +72,7 @@ export default function AuditSummaryScreen() {
               'The finished score is the server’s, not this device’s. Try again when you have signal.'
             }
           />
-          <Button
+          <Button icon="refresh"
             title="Try again"
             variant="secondary"
             busy={summary.isFetching}

@@ -187,7 +187,7 @@ export default function PersonScreen() {
             <CardHeader
               title="Details"
               action={
-                manages ? <HeaderAction title="Edit" accessibilityLabel="Edit details" onPress={() => setEditing(true)} /> : null
+                manages ? <HeaderAction icon="edit" title="Edit" accessibilityLabel="Edit details" onPress={() => setEditing(true)} /> : null
               }
             />
             <LedgerRow label="Phone" value={p.phoneE164} />
@@ -240,10 +240,10 @@ export default function PersonScreen() {
                 empty={units.isLoading ? 'Loading Units…' : 'They already reach every Unit.'}
                 options={grantable.map((unit) => ({ value: unit.id, label: unit.name }))}
               />
-              <Button title="Cancel" variant="secondary" onPress={() => setGranting(false)} />
+              <Button icon="close" title="Cancel" variant="secondary" onPress={() => setGranting(false)} />
             </View>
           ) : (
-            <Button title="Give access to a Unit" variant="secondary" onPress={() => setGranting(true)} />
+            <Button icon="vpn-key" title="Give access to a Unit" variant="secondary" onPress={() => setGranting(true)} />
           )}
         </Card>
 
@@ -379,8 +379,8 @@ function EditPerson({ user, onDone }: { user: User; onDone: () => void }) {
       <Field label="Email (optional)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
       <ErrorBanner message={problemMessage(save.error)} />
       <View style={styles.accountActions}>
-        <Button title="Save changes" busy={save.isPending} onPress={() => required.check([['name', fullName.trim() !== '']]) && save.mutate()} />
-        <Button title="Cancel" variant="secondary" onPress={onDone} />
+        <Button icon="save" title="Save changes" busy={save.isPending} onPress={() => required.check([['name', fullName.trim() !== '']]) && save.mutate()} />
+        <Button icon="close" title="Cancel" variant="secondary" onPress={onDone} />
       </View>
     </Card>
   );

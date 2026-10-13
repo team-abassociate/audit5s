@@ -94,8 +94,8 @@ export default function AssignScreen() {
           </Slip>
         </ScrollView>
         <ActionBar>
-          <Button title="Done" onPress={() => router.back()} />
-          <Button title="Assign another" variant="secondary" onPress={() => create.reset()} />
+          <Button icon="check" title="Done" onPress={() => router.back()} />
+          <Button icon="add" title="Assign another" variant="secondary" onPress={() => create.reset()} />
         </ActionBar>
       </Screen>
     );
@@ -154,7 +154,7 @@ export default function AssignScreen() {
         <ErrorBanner message={problemMessage(create.error)} />
       </ScrollView>
       <ActionBar>
-        <Button
+        <Button icon="assignment-ind"
           title="Assign audit"
           busy={create.isPending}
           onPress={() =>

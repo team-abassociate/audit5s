@@ -558,7 +558,7 @@ export default function QuestionnaireScreen() {
               <Slip title={t.correctingTitle}>
                 <SlipText>{t.correctingBody}</SlipText>
                 <View style={styles.slipAction}>
-                  <Button
+                  <Button icon="check"
                     title={t.doneCorrecting}
                     variant="secondary"
                     onPress={() => {
@@ -583,7 +583,7 @@ export default function QuestionnaireScreen() {
                       onChangeText={setReasonDraft}
                       hint={t.reasonHint}
                     />
-                    <Button
+                    <Button icon="edit"
                       title={t.correctMark}
                       onPress={() =>
                         required.check([['reason', reasonGiven]]) && setCorrecting(reasonDraft.trim())
@@ -674,7 +674,7 @@ export default function QuestionnaireScreen() {
                       }
                       containerStyle={styles.lastField}
                     />
-                    <Button
+                    <Button icon="remove-circle-outline"
                       title={t.removeOverallAction}
                       variant="secondary"
                       onPress={() =>
@@ -684,7 +684,7 @@ export default function QuestionnaireScreen() {
                   </View>
                 ))}
                 {suggestionDrafts.length < OVERALL_ACTION_SUGGESTION_LIMIT ? (
-                  <Button
+                  <Button icon="add"
                     title={t.addOverallAction}
                     variant="secondary"
                     onPress={() => setSuggestionDrafts((drafts) => [...drafts, ''])}
@@ -702,7 +702,7 @@ export default function QuestionnaireScreen() {
       <ActionBar>
         <View style={styles.navRow}>
           <View style={styles.navButton}>
-            <Button
+            <Button icon="arrow-back"
               title={t.previous}
               variant="secondary"
               disabled={page === 0}
@@ -711,9 +711,9 @@ export default function QuestionnaireScreen() {
           </View>
           <View style={styles.navButton}>
             {!lastPage ? (
-              <Button title={t.next} onPress={next} testID="next-page" />
+              <Button icon="arrow-forward" title={t.next} onPress={next} testID="next-page" />
             ) : auditOpen ? (
-              <Button
+              <Button icon={reviewingFinishedZone ? 'save' : 'send'}
                 // The word changes because the act does: the first pass finishes the Zone,
                 // a review commits the revision and rescores it.
                 title={reviewingFinishedZone ? t.saveChanges : t.submit}
@@ -722,7 +722,7 @@ export default function QuestionnaireScreen() {
                 testID="submit-zone"
               />
             ) : (
-              <Button
+              <Button icon={correcting !== null ? 'check' : 'close'}
                 title={correcting !== null ? t.done : t.close}
                 variant="secondary"
                 onPress={() => router.back()}
@@ -863,7 +863,7 @@ function QuestionCard({
           </Text>
         </Pressable>
         {canPhoto ? (
-          <Button
+          <Button icon="photo-camera"
             title={t.takePhoto}
             variant="secondary"
             accessibilityLabel={t.takePhotoFor(row.globalOrder)}
@@ -871,7 +871,7 @@ function QuestionCard({
           />
         ) : null}
         {canPhoto ? (
-          <Button
+          <Button icon="photo-library"
             title={t.fromGallery}
             variant="secondary"
             accessibilityLabel={t.fromGalleryFor(row.globalOrder)}

@@ -210,8 +210,8 @@ export default function WalkByScreen() {
               <ClassificationChoices value={classification} onChange={setClassification} />
               <ErrorBanner message={count >= ZONE_PHOTO_LIMIT ? ZONE_PHOTO_LIMIT_MESSAGE : null} />
               <Muted>{count} / {ZONE_PHOTO_LIMIT} photos. Use Delete photo below to free a space.</Muted>
-              <Button disabled={!photos.isSuccess || count >= ZONE_PHOTO_LIMIT} title={count ? 'Take another photo' : 'Open camera'} onPress={() => setCameraOpen(true)} />
-              <Button
+              <Button icon="photo-camera" disabled={!photos.isSuccess || count >= ZONE_PHOTO_LIMIT} title={count ? 'Take another photo' : 'Open camera'} onPress={() => setCameraOpen(true)} />
+              <Button icon="photo-library"
                 variant="secondary"
                 disabled={!photos.isSuccess || count >= ZONE_PHOTO_LIMIT}
                 busy={gallery.isPending}
@@ -259,7 +259,7 @@ export default function WalkByScreen() {
       </ScrollView>
       {editable ? (
         <ActionBar>
-          <Button
+          <Button icon="save"
             title="Save Zone"
             busy={finish.isPending}
             onPress={() => required.check([['photo', count > 0]]) && finish.mutate()}
@@ -345,14 +345,14 @@ function PhotoCard({ photo, editable }: { photo: Photo; editable: boolean }) {
             onChangeText={setRemark}
             containerStyle={styles.lastField}
           />
-          <Button title="Save remark" variant="secondary" busy={patch.isPending} onPress={() => patch.mutate({ remark: remark.trim() || null })} />
-          <Button
+          <Button icon="save" title="Save remark" variant="secondary" busy={patch.isPending} onPress={() => patch.mutate({ remark: remark.trim() || null })} />
+          <Button icon={photo.isSummaryFlagged === 1 ? 'outlined-flag' : 'flag'}
             title={photo.isSummaryFlagged === 1 ? 'Remove summary flag' : 'Flag for summary'}
             variant="secondary"
             busy={flag.isPending}
             onPress={() => flag.mutate()}
           />
-          <Button title="Delete photo" variant="danger" busy={remove.isPending} onPress={() => remove.mutate()} />
+          <Button icon="delete" title="Delete photo" variant="danger" busy={remove.isPending} onPress={() => remove.mutate()} />
         </View>
       ) : photo.remark ? <Muted>{photo.remark}</Muted> : null}
       <ErrorBanner message={error} />

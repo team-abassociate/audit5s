@@ -68,7 +68,7 @@ export function useZoneFilter() {
 
 export function ZoneFilterButton({ count, onPress }: { count: number; onPress: () => void }) {
   return (
-    <HeaderAction
+    <HeaderAction icon="filter-list"
       testID="zone-filter"
       title={count === 0 ? 'Zone ▾' : `Zones · ${count}`}
       accessibilityLabel={count === 0 ? 'Filter by zone' : `Filtered to ${count} zone${count === 1 ? '' : 's'}. Change`}
@@ -121,10 +121,10 @@ export function ZoneFilterSheet({
         </ScrollView>
         <View style={styles.actions}>
           <View style={styles.action}>
-            <Button title="Show all" variant="secondary" disabled={selected.length === 0} onPress={() => onChange([])} />
+            <Button icon="clear-all" title="Show all" variant="secondary" disabled={selected.length === 0} onPress={() => onChange([])} />
           </View>
           <View style={styles.action}>
-            <Button title="Done" onPress={onClose} />
+            <Button icon="check" title="Done" onPress={onClose} />
           </View>
         </View>
       </View>

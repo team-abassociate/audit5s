@@ -114,11 +114,11 @@ export default function NewPersonScreen() {
           </Card>
         </ScrollView>
         <ActionBar>
-          <Button
+          <Button icon="person"
             title="Open their profile"
             onPress={() => router.replace({ pathname: '/manage/person/[userId]', params: { userId: created.user.id } })}
           />
-          <Button
+          <Button icon="person-add"
             title="Add another"
             variant="secondary"
             onPress={() => {
@@ -212,7 +212,7 @@ export default function NewPersonScreen() {
         </View>
       </ScrollView>
       <ActionBar>
-        <Button
+        <Button icon="person-add"
           title={`Create ${ROLE_LABELS[role].toLowerCase()}`}
           busy={create.isPending}
           onPress={() =>

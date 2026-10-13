@@ -103,12 +103,12 @@ export function UnitForm({
       />
       <ErrorBanner message={problemMessage(save.error)} />
       <View style={styles.actions}>
-        <Button
+        <Button icon={unit ? 'save' : 'add'}
           title={unit ? 'Save changes' : 'Create Unit'}
           busy={save.isPending}
           onPress={() => required.check([['name', nameGiven]]) && save.mutate()}
         />
-        {onCancel ? <Button title="Cancel" variant="secondary" onPress={onCancel} /> : null}
+        {onCancel ? <Button icon="close" title="Cancel" variant="secondary" onPress={onCancel} /> : null}
       </View>
     </Card>
   );

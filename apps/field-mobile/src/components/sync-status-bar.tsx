@@ -100,7 +100,7 @@ export function SyncStatusBar() {
             </Text>
           ) : null}
           {/* Tappable offline too: "offline" is the last attempt's result, and a retry is how it ends. */}
-          <Button
+          <Button icon="sync"
             compact
             title={syncing ? 'Syncing…' : data.deadLettered > 0 ? 'Retry' : 'Sync now'}
             disabled={syncing}

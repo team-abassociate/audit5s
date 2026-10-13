@@ -146,7 +146,7 @@ export default function ManageAuditScreen() {
             <View style={styles.band}>
               <StatusBand band={band} />
             </View>
-            <Button
+            <Button icon="bar-chart"
               title="Section scores"
               variant="secondary"
               onPress={() => router.push({ pathname: '/audit/summary/[auditId]', params: { auditId } })}
@@ -176,7 +176,7 @@ export default function ManageAuditScreen() {
                   <View style={styles.actions}>
                     {/* Both editions, always: which one is the Super Admin's choice. */}
                     {(['INITIAL_ZONE', 'AFTER_EVIDENCE_ZONE'] as const).map((kind) => (
-                      <Button
+                      <Button icon="picture-as-pdf"
                         key={kind}
                         title={`Generate ${REPORT_KIND[kind].toLowerCase()}`}
                         variant="secondary"
@@ -211,7 +211,7 @@ export default function ManageAuditScreen() {
             />
             {mayGenerate && audit.scored && audit.zones.some((zone) => zone.status === 'COMPLETED') ? (
               <View style={styles.itemAction}>
-                <Button
+                <Button icon={summaryOpen ? 'close' : 'picture-as-pdf'}
                   title={summaryOpen ? 'Close unit summary' : 'Generate unit summary report'}
                   variant="secondary"
                   onPress={() => setSummaryOpen((isOpen) => !isOpen)}
@@ -242,7 +242,7 @@ export default function ManageAuditScreen() {
                 </Data>
                 {snapshot.status === 'READY' ? (
                   <View style={styles.itemAction}>
-                    <Button
+                    <Button icon="open-in-new"
                       title="Open PDF"
                       variant="secondary"
                       busy={opening === snapshot.id}
@@ -255,7 +255,7 @@ export default function ManageAuditScreen() {
                 {mayGenerate ? (
                   <View style={styles.itemAction}>
                     {inFlight(snapshot) ? (
-                      <Button
+                      <Button icon="close"
                         title="Cancel"
                         variant="danger"
                         busy={withdraw.isPending && withdraw.variables?.id === snapshot.id}
@@ -282,7 +282,7 @@ export default function ManageAuditScreen() {
 
         {finished && audit.scored && can('audit', 'edit_after_completion') ? (
           <View style={styles.actions}>
-            <Button
+            <Button icon="edit"
               title="Correct this audit"
               variant="secondary"
               onPress={() => router.push({ pathname: '/manage/audit-edit/[auditId]', params: { auditId } })}

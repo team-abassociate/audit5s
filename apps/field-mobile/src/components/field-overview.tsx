@@ -195,7 +195,7 @@ export function FieldOverview() {
               title="No audit in progress"
               detail="When you start one it appears here, with the way back to the question you stopped on."
             />
-            <Button
+            <Button icon="play-arrow"
               testID="open-field-unit"
               title="Start an audit"
               variant="secondary"
@@ -224,14 +224,14 @@ export function FieldOverview() {
               {audit.pauseReason ? <Muted>{audit.pauseReason}</Muted> : null}
               <View style={styles.actions}>
                 <View style={styles.action}>
-                  <Button
+                  <Button icon="play-arrow"
                     title={audit.status === 'PAUSED' ? 'Resume' : 'Continue'}
                     busy={resume.isPending && resume.variables?.id === audit.id}
                     onPress={() => resume.mutate(audit)}
                   />
                 </View>
                 <View style={styles.action}>
-                  <Button
+                  <Button icon="grid-view"
                     title="Zones"
                     variant="secondary"
                     onPress={() =>
@@ -259,10 +259,10 @@ export function FieldOverview() {
           />
           <View style={styles.actions}>
             <View style={styles.action}>
-              <Button title="History" variant="secondary" onPress={() => router.push('/history')} />
+              <Button icon="history" title="History" variant="secondary" onPress={() => router.push('/history')} />
             </View>
             <View style={styles.action}>
-              <Button
+              <Button icon={zoneLeader ? 'play-arrow' : 'factory'}
                 testID="field-units-shortcut"
                 title={zoneLeader ? 'Start an audit' : 'Units'}
                 variant="secondary"

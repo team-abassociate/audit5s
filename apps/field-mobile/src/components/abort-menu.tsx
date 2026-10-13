@@ -86,7 +86,7 @@ export function useAbortMenu({
   // something in the crit colour.
   const trigger = auditId ? (
     <View style={{ flexDirection: 'row', gap: theme.space.sm }}>
-      <HeaderAction
+      <HeaderAction icon="pause"
         testID="pause-audit"
         title="Pause"
         accessibilityLabel="Pause the audit. Everything is saved on this device, and you can resume it."
@@ -94,7 +94,7 @@ export function useAbortMenu({
         disabled={pause.isPending}
       />
       {zoneFinished ? null : (
-        <HeaderAction
+        <HeaderAction icon="cancel"
           testID="abort-zone"
           title="Abort"
           variant="danger"

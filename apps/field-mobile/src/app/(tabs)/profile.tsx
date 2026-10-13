@@ -195,7 +195,7 @@ export default function ProfileScreen() {
             <ErrorBanner
               message={sync.error ? 'Could not reach the server. The stored catalogue is unchanged.' : null}
             />
-            <Button
+            <Button icon="sync"
               title="Sync catalogue"
               variant="secondary"
               busy={sync.isPending}
@@ -251,7 +251,7 @@ export default function ProfileScreen() {
         </Link>
 
         <ModuleSwitch />
-        <Button title="Sign out" variant="secondary" onPress={() => void attemptSignOut()} />
+        <Button icon="logout" title="Sign out" variant="secondary" onPress={() => void attemptSignOut()} />
         <Text style={styles.version}>App version {Constants.expoConfig?.version ?? 'dev'}</Text>
       </ScrollView>
     </Screen>

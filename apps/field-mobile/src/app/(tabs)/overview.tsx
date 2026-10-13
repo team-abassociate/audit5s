@@ -139,9 +139,9 @@ function ManagementOverview() {
         options={{
           headerRight: () => (
             <View style={styles.tools}>
-              <HeaderAction title="Alerts" accessibilityLabel="Notifications" onPress={() => router.push('/notifications')} />
+              <HeaderAction icon="notifications" title="Alerts" accessibilityLabel="Notifications" onPress={() => router.push('/notifications')} />
               {addActions.length > 0 ? (
-                <HeaderAction testID="add-new" title="+ New" accessibilityLabel="Add something" onPress={() => setAdding(true)} />
+                <HeaderAction icon="add" testID="add-new" title="New" accessibilityLabel="Add something" onPress={() => setAdding(true)} />
               ) : null}
             </View>
           ),

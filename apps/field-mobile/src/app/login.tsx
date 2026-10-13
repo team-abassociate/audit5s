@@ -77,7 +77,7 @@ export default function LoginScreen() {
 
           <ErrorBanner message={error} />
 
-          <Button testID="sign-in" title="Sign in" onPress={submit} busy={busy} />
+          <Button icon="login" testID="sign-in" title="Sign in" onPress={submit} busy={busy} />
         </GateCard>
       </ScrollView>
     </Screen>

@@ -117,8 +117,8 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
           Photographs are the record of what was found. Without the camera an audit cannot be
           completed.
         </Text>
-        <Button title="Allow the camera" onPress={() => void whilePrompting(requestPermission)} />
-        <Button title="Back" variant="secondary" onPress={onCancel} />
+        <Button icon="photo-camera" title="Allow the camera" onPress={() => void whilePrompting(requestPermission)} />
+        <Button icon="arrow-back" title="Back" variant="secondary" onPress={onCancel} />
       </View>
     );
   }
@@ -174,7 +174,7 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
         >
           {busy ? <ActivityIndicator color={gemba.dark.ink} /> : <View style={styles.shutterInner} />}
         </Pressable>
-        <Button title="Cancel" variant="secondary" onPress={onCancel} />
+        <Button icon="close" title="Cancel" variant="secondary" onPress={onCancel} />
       </View>
     </View>
   );
