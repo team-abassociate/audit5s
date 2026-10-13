@@ -1,4 +1,4 @@
-import { Children, memo, useEffect, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { Children, memo, useEffect, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {
   ActivityIndicator,
@@ -76,6 +76,37 @@ const BoardGrid = memo(function BoardGrid() {
  * topbar's `border-bottom`), drawn here because a native header cannot carry a hard border.
  * `bare` drops it for screens with no header above them.
  */
+/**
+ * The on-screen keyboard's height, 0 while it is down. Android draws the app edge to edge,
+ * so the window no longer shrinks for the keyboard: it slides over the bottom of the
+ * screen, and the app has to make the room itself. `measure`, when given, narrows it to
+ * how much of that view the keyboard covers.
+ */
+export function useKeyboardHeight(measure?: { current: View | null }) {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', ({ endCoordinates }) => {
+      if (!measure) return setHeight(endCoordinates.height);
+      measure.current?.measureInWindow((_x, y, _width, viewHeight) =>
+        setHeight(Math.max(0, y + viewHeight - endCoordinates.screenY)),
+      );
+    });
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setHeight(0));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, [measure]);
+  return height;
+}
+
+/** A bottom sheet's offset: on top of the keyboard while it is up, above the nav bar otherwise. */
+export function useSheetInset(): ViewStyle {
+  const insets = useSafeAreaInsets();
+  const keyboard = useKeyboardHeight();
+  return keyboard > 0 ? { bottom: keyboard, paddingBottom: 14 } : { paddingBottom: 14 + insets.bottom };
+}
+
 export function Screen({
   children,
   style,
@@ -83,8 +114,12 @@ export function Screen({
   ...rest
 }: ViewProps & { children: ReactNode; bare?: boolean }) {
   const styles = useStyles();
+  const ref = useRef<View>(null);
+  // Every form lives in a Screen, so this is the one place the keyboard is made room for:
+  // the content shrinks to the space above it, and the focused field scrolls into view.
+  const keyboard = useKeyboardHeight(ref);
   return (
-    <View style={[styles.screen, !bare && styles.screenRuled, style]} {...rest}>
+    <View ref={ref} style={[styles.screen, !bare && styles.screenRuled, style, keyboard > 0 && { paddingBottom: keyboard }]} {...rest}>
       <BoardGrid />
       {children}
     </View>
@@ -554,8 +589,15 @@ export function HeaderAction({
 export function ActionBar({ children, row }: { children: ReactNode; row?: boolean }) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
+  // Above the keyboard there is no nav bar to clear.
+  const keyboard = useKeyboardHeight();
   return (
-    <View style={[styles.actionBar, row && styles.actionBarRow, { paddingBottom: 14 + insets.bottom }]}>
+    // `collapsable={false}`: flattened, its buttons are placed against the Screen and stay
+    // put when the bar rises with the keyboard.
+    <View
+      collapsable={false}
+      style={[styles.actionBar, row && styles.actionBarRow, { paddingBottom: 14 + (keyboard > 0 ? 0 : insets.bottom) }]}
+    >
       {row
         ? Children.map(children, (child) =>
             child === null || child === undefined || child === false ? null : (
@@ -986,17 +1028,7 @@ export function SelectField<T extends string>({
   const [query, setQuery] = useState('');
   // The sheet sits on the bottom edge, so the keyboard a search opens would cover every
   // result: it rides on top of the keyboard instead.
-  const [keyboard, setKeyboard] = useState(0);
-  useEffect(() => {
-    if (!searchable || !open) return;
-    const shown = Keyboard.addListener('keyboardDidShow', (event) => setKeyboard(event.endCoordinates.height));
-    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboard(0));
-    return () => {
-      shown.remove();
-      hidden.remove();
-      setKeyboard(0);
-    };
-  }, [searchable, open]);
+  const keyboard = useKeyboardHeight();
   const current = options.find((option) => option.value === value);
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   const shown = options.filter((option) => words.every((word) => option.label.toLocaleLowerCase().includes(word)));

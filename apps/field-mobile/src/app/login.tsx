@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Button, ErrorBanner, Field, GateCard, Screen } from '../components/ui';
 import { ApiError } from '../lib/api';
 import { useRequiredFields } from '../lib/required-fields';
@@ -39,54 +39,51 @@ export default function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <Screen bare>
-        <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <GateCard>
-            <Field
-              testID="login-id"
-              label="Login ID"
-              inputRef={required.input('loginId')}
-              error={required.error('loginId', 'Enter your login ID.', loginId.trim() !== '')}
-              hint="Issued when your account was created, e.g. RA3210"
-              value={loginId}
-              onChangeText={setLoginId}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              autoComplete="username"
-              placeholder="RA3210"
-              textContentType="username"
-              returnKeyType="next"
-            />
+    <Screen bare>
+      <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <GateCard>
+          <Field
+            testID="login-id"
+            label="Login ID"
+            inputRef={required.input('loginId')}
+            error={required.error('loginId', 'Enter your login ID.', loginId.trim() !== '')}
+            hint="Issued when your account was created, e.g. RA3210"
+            value={loginId}
+            onChangeText={setLoginId}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoComplete="username"
+            placeholder="RA3210"
+            textContentType="username"
+            returnKeyType="next"
+          />
 
-            <Field
-              testID="password"
-              label="Password"
-              inputRef={required.input('password')}
-              error={required.error('password', 'Enter your password.', password !== '')}
-              hint="First time? Your password is your phone number, and you will be asked to change it straight away."
-              value={password}
-              onChangeText={setPassword}
-              revealable
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="current-password"
-              textContentType="password"
-              returnKeyType="go"
-              onSubmitEditing={submit}
-            />
+          <Field
+            testID="password"
+            label="Password"
+            inputRef={required.input('password')}
+            error={required.error('password', 'Enter your password.', password !== '')}
+            hint="First time? Your password is your phone number, and you will be asked to change it straight away."
+            value={password}
+            onChangeText={setPassword}
+            revealable
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="current-password"
+            textContentType="password"
+            returnKeyType="go"
+            onSubmitEditing={submit}
+          />
 
-            <ErrorBanner message={error} />
+          <ErrorBanner message={error} />
 
-            <Button testID="sign-in" title="Sign in" onPress={submit} busy={busy} />
-          </GateCard>
-        </ScrollView>
-      </Screen>
-    </KeyboardAvoidingView>
+          <Button testID="sign-in" title="Sign in" onPress={submit} busy={busy} />
+        </GateCard>
+      </ScrollView>
+    </Screen>
   );
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center', paddingVertical: theme.space.xl },
 }));

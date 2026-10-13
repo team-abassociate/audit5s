@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { PASSWORD_MIN_LENGTH } from '@audit5s/contracts';
 import { PASSWORD_REJECTION_MESSAGES, checkPassword } from '@audit5s/domain';
 import { Button, ErrorBanner, Field, GateCard, Heading, Muted, Screen } from '../components/ui';
@@ -74,65 +74,62 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <Screen bare>
-        <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <GateCard>
-            <View style={styles.intro}>
-              <Heading>Choose a password</Heading>
-              <Muted>
-                Your phone number was a temporary credential only. Pick a password of at least{' '}
-                {PASSWORD_MIN_LENGTH} characters that is not your name or phone number.
-              </Muted>
-            </View>
+    <Screen bare>
+      <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <GateCard>
+          <View style={styles.intro}>
+            <Heading>Choose a password</Heading>
+            <Muted>
+              Your phone number was a temporary credential only. Pick a password of at least{' '}
+              {PASSWORD_MIN_LENGTH} characters that is not your name or phone number.
+            </Muted>
+          </View>
 
-            <Field
-              label="Current password"
-              inputRef={required.input('current')}
-              error={required.error('current', 'Enter your current password.', currentPassword !== '')}
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              revealable
-              autoCapitalize="none"
-              placeholder="Your phone number"
-            />
+          <Field
+            label="Current password"
+            inputRef={required.input('current')}
+            error={required.error('current', 'Enter your current password.', currentPassword !== '')}
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
+            revealable
+            autoCapitalize="none"
+            placeholder="Your phone number"
+          />
 
-            <Field
-              label="New password"
-              inputRef={required.input('new')}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              revealable
-              autoCapitalize="none"
-              error={localMessage ?? required.error('new', 'Choose a new password.', newPassword !== '')}
-            />
+          <Field
+            label="New password"
+            inputRef={required.input('new')}
+            value={newPassword}
+            onChangeText={setNewPassword}
+            revealable
+            autoCapitalize="none"
+            error={localMessage ?? required.error('new', 'Choose a new password.', newPassword !== '')}
+          />
 
-            <Field
-              label="Confirm new password"
-              inputRef={required.input('confirm')}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              revealable
-              autoCapitalize="none"
-              error={mismatch ?? required.error('confirm', 'Type the new password again.', confirmPassword !== '')}
-              onSubmitEditing={submit}
-            />
+          <Field
+            label="Confirm new password"
+            inputRef={required.input('confirm')}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            revealable
+            autoCapitalize="none"
+            error={mismatch ?? required.error('confirm', 'Type the new password again.', confirmPassword !== '')}
+            onSubmitEditing={submit}
+          />
 
-            <ErrorBanner message={error} />
+          <ErrorBanner message={error} />
 
-            <View style={styles.actions}>
-              <Button title="Set password" onPress={submit} busy={busy} />
-              <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
-            </View>
-          </GateCard>
-        </ScrollView>
-      </Screen>
-    </KeyboardAvoidingView>
+          <View style={styles.actions}>
+            <Button title="Set password" onPress={submit} busy={busy} />
+            <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
+          </View>
+        </GateCard>
+      </ScrollView>
+    </Screen>
   );
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  flex: { flex: 1 },
   content: { flexGrow: 1, justifyContent: 'center', paddingVertical: theme.space.xl },
   intro: { gap: theme.space.xs, marginBottom: theme.space.lg },
   actions: { gap: theme.space.sm },
