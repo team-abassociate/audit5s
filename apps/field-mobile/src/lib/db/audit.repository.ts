@@ -644,6 +644,24 @@ export async function abortLocalAudit(
 }
 
 /**
+ * Backing out before a Zone is chosen is not starting an audit: the selfie alone is no work
+ * to come back to. An open audit with no Zone ever added goes as an Abort does; anything
+ * else is left alone. Returns whether it went.
+ */
+export async function discardLocalAuditIfEmpty(database: LocalDatabase, auditId: string): Promise<boolean> {
+  const [audit] = await database.select().from(audits).where(eq(audits.id, auditId)).limit(1);
+  if (audit?.status !== 'IN_PROGRESS' && audit?.status !== 'PAUSED') return false;
+  const [zone] = await database
+    .select({ id: localAuditZones.id })
+    .from(localAuditZones)
+    .where(eq(localAuditZones.auditId, auditId))
+    .limit(1);
+  if (zone) return false;
+  await abortLocalAudit(database, auditId);
+  return true;
+}
+
+/**
  * Abort (N7): save + pause + resume.
  *
  * It writes cursors and a status and nothing else. There is no branch here that could

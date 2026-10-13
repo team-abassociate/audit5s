@@ -29,9 +29,11 @@ describe('openCrossAuditCalls', () => {
     expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', null)], now))).toEqual(['b', 'a']);
   });
 
-  it('answers an older call without a Zone by any cross audit at the Unit', () => {
+  it('answers an older call without a Zone by any cross audit at the Unit with a Zone started', () => {
     const calls = [call('any', '2026-10-12T00:00:00Z')];
-    expect(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', null)], now)).toEqual([]);
+    expect(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', 'z1')], now)).toEqual([]);
+    // A selfie with no Zone yet: the call stays, so discarding it brings nothing back.
+    expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-12T09:00:00Z', null)], now))).toEqual(['any']);
     expect(ids(openCrossAuditCalls(calls, [audit('CROSS_5S', 'u1', '2026-10-11T09:00:00Z', 'z1')], now))).toEqual(['any']);
   });
 });
