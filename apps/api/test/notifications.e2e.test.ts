@@ -16,6 +16,7 @@ import {
   type OutboundMessage,
 } from '../src/infrastructure/messaging/message-channel';
 import { NotificationWorker } from '../src/modules/notifications/notification.worker';
+import { renderNotification } from '../src/modules/notifications/notification-policy';
 import { NotificationsRepository } from '../src/modules/notifications/notifications.repository';
 import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import { completedWalkBy, drainNotifications, forgetQueuedNotifications, submit } from './corrective-fixtures';
@@ -408,17 +409,25 @@ describe('restart (R-33)', () => {
 });
 
 describe('a cross audit called by the Coordinator (§2.6)', () => {
-  it('reaches the Unit’s Zone Leaders, and nobody else', async () => {
+  it('names the Zone, and reaches the Unit’s Zone Leaders and nobody else', async () => {
     await drainNotifications(world, worker, seen);
     const response = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
       token: world.actors.COORDINATOR.accessToken,
+      body: { zoneId: world.zoneA },
     });
     expect(response.status).toBe(204);
 
     const events = await drainNotifications(world, worker, seen);
     const called = events.find((event) => event.type === 'CROSS_AUDIT_CALLED')!;
+    expect(called.data).toMatchObject({
+      zoneId: world.zoneA,
+      zoneCode: expect.any(String),
+      zoneName: expect.any(String),
+      calledBy: expect.any(String),
+    });
     const [leader] = await notificationsFor(world.actors.ZONE_LEADER.userId, called.eventId);
-    expect(leader?.title).toMatch(/^Cross audit called at /);
+    expect(leader?.title).toMatch(/^Cross audit called: Zone /);
+    expect(leader?.body).toMatch(/^Audit this Zone at /);
     expect(await notificationsFor(world.actors.COORDINATOR.userId, called.eventId)).toHaveLength(0);
     expect(await notificationsFor(world.actors.SUPER_ADMIN.userId, called.eventId)).toHaveLength(0);
   });
@@ -426,11 +435,43 @@ describe('a cross audit called by the Coordinator (§2.6)', () => {
   it('is the Coordinator’s to call: a Zone Leader is refused, another Unit is not found', async () => {
     const leader = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
       token: world.actors.ZONE_LEADER.accessToken,
+      body: { zoneId: world.zoneA },
     });
     expect(leader.status).toBe(403);
     const elsewhere = await world.request('POST', `${base}/units/${world.unitB}/cross-audit`, {
       token: world.actors.COORDINATOR.accessToken,
+      body: { zoneId: world.zoneB },
     });
     expect(elsewhere.status).toBe(404);
+  });
+
+  it('refuses a Zone of another Unit, an archived Zone, or no Zone', async () => {
+    const call = (zoneId?: string) =>
+      world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+        token: world.actors.COORDINATOR.accessToken,
+        body: zoneId ? { zoneId } : {},
+      });
+    expect((await call(world.zoneB)).status).toBe(404);
+    expect((await call()).status).toBe(422);
+
+    const created = await world.request('POST', `${base}/units/${world.unitA}/zones`, {
+      token: world.actors.COORDINATOR.accessToken,
+      body: { code: 'Z-61', name: 'Old paint store' },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const archivedId = (created.body as { id: string }).id;
+    const archived = await world.request('POST', `${base}/zones/${archivedId}/archive`, {
+      token: world.actors.COORDINATOR.accessToken,
+    });
+    expect(archived.status).toBe(204);
+    expect((await call(archivedId)).status).toBe(404);
+  });
+
+  it('still reads an older call, made without a Zone, as any Zone of the Unit', () => {
+    const rendered = renderNotification({
+      type: 'CROSS_AUDIT_CALLED',
+      data: { unitName: 'Pune' },
+    } as unknown as Parameters<typeof renderNotification>[0]);
+    expect(rendered.title).toBe('Cross audit called at Pune');
   });
 });

@@ -11,9 +11,11 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  callCrossAuditRequestSchema,
   createUnitRequestSchema,
   listUnitsQuerySchema,
   updateUnitRequestSchema,
+  type CallCrossAuditRequest,
   type CreateUnitRequest,
   type Page,
   type Unit,
@@ -82,12 +84,16 @@ export class UnitsController {
     return this.units.archive(scope, id);
   }
 
-  /** §2.6: tells every Zone Leader of the Unit to cross-audit. Nothing else changes. */
+  /** §2.6: tells every Zone Leader of the Unit to cross-audit the named Zone. Nothing else changes. */
   @RequirePermission('unit', 'call_cross_audit')
   @Scope({ param: 'id', intent: 'write' })
   @Post(':id/cross-audit')
   @HttpCode(HttpStatus.NO_CONTENT)
-  callCrossAudit(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.units.callCrossAudit(scope, id);
+  callCrossAudit(
+    @CurrentScope() scope: ScopeContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(callCrossAuditRequestSchema)) body: CallCrossAuditRequest,
+  ): Promise<void> {
+    return this.units.callCrossAudit(scope, id, body.zoneId);
   }
 }

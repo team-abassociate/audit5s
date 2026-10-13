@@ -196,6 +196,13 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       };
     }
     case 'CROSS_AUDIT_CALLED':
+      // A call made before calls named a Zone carries no zoneCode, and stays "any Zone".
+      if (item) {
+        return {
+          title: `Cross audit called: ${item}`,
+          body: `Audit this Zone at ${String(data.unitName ?? 'your Unit')}.`,
+        };
+      }
       return {
         title: `Cross audit called at ${String(data.unitName ?? 'your Unit')}`,
         body: 'Audit any Zone of the Unit — your own or another. Start it from the Audit tab.',

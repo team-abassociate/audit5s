@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, SectionList, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
+import { zoneDisplayLabel } from '@audit5s/domain';
 import type { Audit, AuditAssignment, AuditStatus, AuditType, Page, Unit } from '@audit5s/contracts';
 import { AuditCard } from '../../components/audit-card';
 import {
@@ -101,23 +102,29 @@ export default function AuditsScreen() {
   if (can('audit', 'create_external')) {
     newAudit.push({ label: 'Start one myself', detail: 'Take the selfie, then select the Zone', onPress: () => router.push('/audit/start') });
   }
-  // §2.6: a Coordinator tells every Zone Leader of the Unit to cross-audit any Zone of it.
+  // §2.6: a Coordinator calls a cross audit of one Zone; every Zone Leader of the Unit is told.
+  const [pickingCrossZone, setPickingCrossZone] = useState(false);
   if (can('unit', 'call_cross_audit') && oneUnit) {
-    const callCross = () =>
-      api.post(`/units/${scope.unitIds[0]}/cross-audit`).then(
-        () => Alert.alert('Zone Leaders notified', 'Each one can now audit any Zone — their own or another.'),
-        (error: unknown) => Alert.alert('Could not call the cross audit', problemMessage(error) ?? 'Try again.'),
-      );
     newAudit.push({
       label: 'Call a cross audit',
-      detail: 'Every Zone Leader is notified to audit any Zone',
-      onPress: () =>
-        Alert.alert('Call a cross audit?', 'Every Zone Leader of the Unit gets a notification asking them to audit any Zone — their own or another.', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Notify Zone Leaders', onPress: () => void callCross() },
-        ]),
+      detail: 'Pick a Zone; every Zone Leader is notified to audit it',
+      onPress: () => setPickingCrossZone(true),
     });
   }
+  const callCross = (zone: ZoneOption) => {
+    const label = zoneDisplayLabel(zone.code, zone.name);
+    Alert.alert(`Call a cross audit of ${label}?`, `Every Zone Leader of the Unit gets a notification asking them to audit ${label}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Notify Zone Leaders',
+        onPress: () =>
+          void api.post(`/units/${scope!.unitIds[0]}/cross-audit`, { zoneId: zone.id }).then(
+            () => Alert.alert('Zone Leaders notified', `Each one can now audit ${label}.`),
+            (error: unknown) => Alert.alert('Could not call the cross audit', problemMessage(error) ?? 'Try again.'),
+          ),
+      },
+    ]);
+  };
   // One choice is no choice: "+ Audit" goes straight to it rather than through a menu of one.
   const addAudit = () => (newAudit.length === 1 ? newAudit[0]!.onPress() : setAdding(true));
 
@@ -296,6 +303,12 @@ export default function AuditsScreen() {
         />
       )}
       <ActionSheet visible={adding} title="New audit" onClose={() => setAdding(false)} actions={newAudit} />
+      <ActionSheet
+        visible={pickingCrossZone}
+        title="Cross audit of which Zone?"
+        onClose={() => setPickingCrossZone(false)}
+        actions={zones.map((zone) => ({ label: zoneDisplayLabel(zone.code, zone.name), onPress: () => callCross(zone) }))}
+      />
       <ZoneFilterSheet
         visible={zoneFilter.open}
         zones={zones}

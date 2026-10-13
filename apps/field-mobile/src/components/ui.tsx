@@ -1181,7 +1181,7 @@ export function CheckRow({
   );
 }
 
-/** The + menu: a ruled sheet from the bottom edge, within thumb reach. */
+/** The + menu: a ruled sheet from the bottom edge, within thumb reach. A long list scrolls. */
 export function ActionSheet({
   visible,
   title,
@@ -1195,27 +1195,30 @@ export function ActionSheet({
 }) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
-      <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom }]}>
+      <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom, maxHeight: height * 0.75 }]}>
         <Text style={styles.h2} accessibilityRole="header">
           {title}
         </Text>
-        {actions.map((action) => (
-          <Pressable
-            key={action.label}
-            accessibilityRole="button"
-            onPress={() => {
-              onClose();
-              action.onPress();
-            }}
-            style={({ pressed }) => [styles.sheetRow, pressed && styles.pressed]}
-          >
-            <Text style={styles.sheetLabel}>{action.label}</Text>
-            {action.detail ? <Text style={styles.choiceDetail}>{action.detail}</Text> : null}
-          </Pressable>
-        ))}
+        <ScrollView contentContainerStyle={styles.selectList}>
+          {actions.map((action) => (
+            <Pressable
+              key={action.label}
+              accessibilityRole="button"
+              onPress={() => {
+                onClose();
+                action.onPress();
+              }}
+              style={({ pressed }) => [styles.sheetRow, pressed && styles.pressed]}
+            >
+              <Text style={styles.sheetLabel}>{action.label}</Text>
+              {action.detail ? <Text style={styles.choiceDetail}>{action.detail}</Text> : null}
+            </Pressable>
+          ))}
+        </ScrollView>
         <Button title="Cancel" variant="secondary" onPress={onClose} />
       </View>
     </Modal>

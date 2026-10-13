@@ -1,7 +1,7 @@
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import type { AuditStatus, AuditType, NotificationPage } from '@audit5s/contracts';
+import type { AuditStatus, AuditType } from '@audit5s/contracts';
 import { awaitsResponse } from '@audit5s/domain';
 import {
   Button,
@@ -17,9 +17,8 @@ import {
   SlipStack,
   StatGrid,
 } from './ui';
-import { api } from '../lib/api';
+import { crossAuditCallZone, crossAuditStart, useOpenCrossAuditCalls } from './cross-audit-calls';
 import { syncCatalogue } from '../lib/catalogue';
-import { activeCrossAuditCall } from '../lib/cross-audit-call';
 import {
   listLocalAudits,
   listResumableAudits,
@@ -81,12 +80,8 @@ export function FieldOverview() {
     enabled: answersActions,
   });
 
-  // Online only, and quiet when it fails: offline the cross-audit row just doesn't show.
-  const notifications = useQuery({
-    queryKey: ['notifications', 'cross-audit'],
-    queryFn: () => api.get<NotificationPage>('/notifications?limit=50'),
-    enabled: zoneLeader,
-  });
+  const crossAudit = useOpenCrossAuditCalls(zoneLeader);
+  const crossAuditCalls = crossAudit.calls;
 
   const sync = useMutation({
     mutationFn: () => syncCatalogue(database),
@@ -124,7 +119,6 @@ export function FieldOverview() {
   const open = resumable.data ?? [];
   const finishedCount = (audits.data ?? []).filter((audit) => isFinished(audit.status)).length;
   const toDo = actions.data?.filter((action) => awaitsResponse(action.effectiveStatus)).length ?? 0;
-  const crossAuditCall = activeCrossAuditCall(notifications.data?.data ?? [], audits.data ?? []);
 
   return (
     <Screen>
@@ -135,7 +129,7 @@ export function FieldOverview() {
             refreshing={sync.isPending}
             onRefresh={() => {
               sync.mutate();
-              void notifications.refetch();
+              void crossAudit.notifications.refetch();
             }}
             colors={[theme.color.ink]}
             progressBackgroundColor={theme.color.tile}
@@ -172,16 +166,26 @@ export function FieldOverview() {
                   },
                 ]
               : []),
-            ...(crossAuditCall
+            // One call starts its audit; several open the list, each needing its own audit.
+            ...(crossAuditCalls.length === 1
               ? [
                   {
                     tone: 'crossAudit' as const,
-                    title: `Cross audit called · ${String(crossAuditCall.data.unitName ?? 'your Unit')}`,
-                    detail: 'Audit any Zone, your own or another.',
-                    onPress: () => router.push({ pathname: '/audit/start', params: { type: 'CROSS_5S' } }),
+                    title: `Cross audit called · ${crossAuditCallZone(crossAuditCalls[0]!)}`,
+                    detail: `At ${String(crossAuditCalls[0]!.data.unitName ?? 'your Unit')}. Tap to start it.`,
+                    onPress: () => router.push(crossAuditStart(crossAuditCalls[0]!)),
                   },
                 ]
-              : []),
+              : crossAuditCalls.length > 1
+                ? [
+                    {
+                      tone: 'crossAudit' as const,
+                      title: `${crossAuditCalls.length} cross audits called`,
+                      detail: 'Each Zone needs its own audit.',
+                      onPress: () => router.push('/cross-audits'),
+                    },
+                  ]
+                : []),
           ]}
         />
 

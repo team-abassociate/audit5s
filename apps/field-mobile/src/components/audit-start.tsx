@@ -61,11 +61,14 @@ export function AuditStart({
   unitId: fixedUnitId,
   tab = false,
   type: presetType,
+  zoneId: presetZoneId,
 }: {
   unitId?: string;
   tab?: boolean;
   /** Preselected kind, e.g. the Overview's cross-audit call; ignored unless they may start it. */
   type?: string;
+  /** The Zone a cross-audit call names: chosen on the Zones step after the selfie. */
+  zoneId?: string;
 }) {
   const styles = useStyles();
   const theme = useTheme();
@@ -168,7 +171,11 @@ export function AuditStart({
     onSuccess: (auditId) =>
       leaveScreen(
         // Replace, so Back from the Zone form does not land on a spent selfie screen.
-        () => leaveTo({ pathname: '/audit/zones/[auditId]', params: { auditId } }),
+        () =>
+          leaveTo({
+            pathname: '/audit/zones/[auditId]',
+            params: presetZoneId ? { auditId, zoneId: presetZoneId } : { auditId },
+          }),
         () => void queryClient.invalidateQueries({ queryKey: ['local'] }),
       ),
   });

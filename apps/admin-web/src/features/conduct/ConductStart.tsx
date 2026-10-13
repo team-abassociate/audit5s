@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import type { Audit, AuditType, Page } from '@audit5s/contracts';
-import { formatDateTime, uuidv7 } from '@audit5s/domain';
+import { formatDateTime, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
-import { Button, Card, CardHeader, ConfirmDialog, EmptyState, Combobox, ErrorNotice, Field, StatusChip, Table, Td, Th } from '@/components/ui';
+import { Button, Card, CardHeader, ConfirmDialog, EmptyState, Combobox, ErrorNotice, Field, Select, StatusChip, Table, Td, Th } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useWebDevice } from '@/lib/device';
 import { uploadEvidence } from '@/lib/evidence';
@@ -32,6 +32,7 @@ export function ConductStartPage() {
   const [unitId, setUnitId] = useState('');
   const [another, setAnother] = useState(false);
   const [calling, setCalling] = useState(false);
+  const [crossZoneId, setCrossZoneId] = useState('');
   const auditType = types.length === 1 ? types[0]! : picked;
 
   const open = useQuery({
@@ -59,9 +60,11 @@ export function ConductStartPage() {
     },
   });
 
-  // §2.6: a Coordinator tells every Zone Leader of the Unit to cross-audit it.
+  // §2.6: a Coordinator calls a cross audit of one Zone; every Zone Leader of the Unit is told.
+  const unitZones = catalogue.data?.zones.filter((zone) => zone.unitId === unit) ?? [];
+  const crossZone = unitZones.find((zone) => zone.id === crossZoneId);
   const callCross = useMutation({
-    mutationFn: () => api.post(`/units/${unit}/cross-audit`, undefined, uuidv7()),
+    mutationFn: () => api.post(`/units/${unit}/cross-audit`, { zoneId: crossZoneId }, uuidv7()),
     onSuccess: () => setCalling(false),
   });
 
@@ -111,7 +114,7 @@ export function ConductStartPage() {
         <Card>
           <CardHeader
             title="Cross audit"
-            description="Every Zone Leader of the Unit is notified to audit any Zone — their own or another."
+            description="Pick a Zone. Every Zone Leader of the Unit is notified to audit it."
             action={
               <Button variant="secondary" onClick={() => setCalling(true)}>
                 Call a cross audit
@@ -120,7 +123,7 @@ export function ConductStartPage() {
           />
           {callCross.isSuccess ? (
             <p className="gb-notice m-4" role="status">
-              The Zone Leaders have been notified.
+              The Zone Leaders have been notified{crossZone ? ` to audit ${zoneDisplayLabel(crossZone.code, crossZone.name)}` : ''}.
             </p>
           ) : null}
         </Card>
@@ -131,11 +134,24 @@ export function ConductStartPage() {
         tone="primary"
         confirmLabel="Notify Zone Leaders"
         pending={callCross.isPending}
+        disabled={!crossZone}
         error={callCross.error}
         onConfirm={() => callCross.mutate()}
         onCancel={() => setCalling(false)}
       >
-        Every Zone Leader of the Unit gets a notification asking them to audit any Zone — their own or another.
+        <Field label="Zone">
+          <Select value={crossZoneId} onChange={(event) => setCrossZoneId(event.target.value)}>
+            <option value="">Choose a Zone…</option>
+            {unitZones.map((zone) => (
+              <option key={zone.id} value={zone.id}>
+                {zoneDisplayLabel(zone.code, zone.name)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <p className="mt-3">
+          Every Zone Leader of the Unit gets a notification asking them to audit {crossZone ? zoneDisplayLabel(crossZone.code, crossZone.name) : 'this Zone'}.
+        </p>
       </ConfirmDialog>
 
       <Card>

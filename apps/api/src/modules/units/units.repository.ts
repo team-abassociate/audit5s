@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, ilike, isNull, sql, type SQL } from 'drizzle-orm';
-import { auditLogs, units, type Database, type Transaction } from '@audit5s/db';
+import { auditLogs, units, zones, type Database, type Transaction } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { CreateUnitRequest, ListUnitsQuery } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
@@ -8,6 +8,7 @@ import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { setActorContext } from '../users/users.repository';
 import { auditLogRow } from '../../common/audit-log/audit-log.service';
+import { getRequestContext } from '../../common/observability/request-context';
 
 export type UnitPatch = Partial<{
   name: string;
@@ -26,6 +27,15 @@ export type UnitPatch = Partial<{
   photoCapPerZone: number;
   industryId: string | null;
 }>;
+
+export type CrossAuditCallData = {
+  unitName: string;
+  zoneId: string;
+  zoneCode: string;
+  zoneName: string;
+  /** "Rahul Sharma (RA3210)": who called it, for the Zone Leader's list. */
+  calledBy: string | null;
+};
 
 @Injectable()
 export class UnitsRepository extends BaseRepository {
@@ -129,25 +139,35 @@ export class UnitsRepository extends BaseRepository {
 
   /**
    * A Coordinator calls a cross audit (§2.6): the log entry and the notice to the Unit's Zone
-   * Leaders commit together, or neither does. `false` when the Unit is not in scope or archived.
+   * Leaders commit together, or neither does. `false` when the Unit is not in scope or archived,
+   * or the Zone is archived or not the Unit's.
    */
   async callCrossAudit(
     scope: ScopeContext,
     unitId: string,
-    emit: (tx: Transaction, unitName: string) => Promise<void>,
+    zoneId: string,
+    emit: (tx: Transaction, data: CrossAuditCallData) => Promise<void>,
   ): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const [unit] = await tx
-        .select({ name: units.name })
+      const [row] = await tx
+        .select({ unitName: units.name, zoneCode: zones.code, zoneName: zones.name })
         .from(units)
+        .innerJoin(zones, and(eq(zones.unitId, units.id), eq(zones.id, zoneId), isNull(zones.archivedAt)))
         .where(and(eq(units.id, unitId), isNull(units.archivedAt), this.scoped(scope, { unitId: units.id })))
         .limit(1);
-      if (!unit) return false;
-      await tx
-        .insert(auditLogs)
-        .values(auditLogRow({ action: 'unit.cross_audit_called', resourceType: 'unit', resourceId: unitId, unitId }));
-      await emit(tx, unit.name);
+      if (!row) return false;
+      const data = { zoneId, ...row, calledBy: getRequestContext()?.actorLabel ?? null };
+      await tx.insert(auditLogs).values(
+        auditLogRow({
+          action: 'unit.cross_audit_called',
+          resourceType: 'unit',
+          resourceId: unitId,
+          unitId,
+          after: { zoneId, zoneCode: row.zoneCode, zoneName: row.zoneName },
+        }),
+      );
+      await emit(tx, data);
       return true;
     });
   }
