@@ -20,6 +20,8 @@ export const RECIPIENT_ROLES: Record<NotificationEventType, Role[]> = {
   AUDIT_PAUSED: ['SUPER_ADMIN'],
   // §2.8: new actions reach their Zone Leaders (named by the event) and the Coordinator.
   AUDIT_COMPLETED: ['SUPER_ADMIN', 'COORDINATOR'],
+  // §2.6: the Zone Leaders are the cross-audit auditors; the Coordinator who called it knows.
+  CROSS_AUDIT_CALLED: ['ZONE_LEADER'],
   // §7.3: "Submission notifies Super Admin."
   CORRECTIVE_ACTION_SUBMITTED: ['SUPER_ADMIN'],
   CORRECTIVE_ACTION_VERIFIED: ['COORDINATOR'],
@@ -193,6 +195,11 @@ export function renderNotification(event: DomainEventJob): { title: string; body
         body: `Completed${when} — ${outcome}.`,
       };
     }
+    case 'CROSS_AUDIT_CALLED':
+      return {
+        title: `Cross audit called at ${String(data.unitName ?? 'your Unit')}`,
+        body: 'Audit any Zone of the Unit — your own or another. Start it from the Audit tab.',
+      };
     case 'CORRECTIVE_ACTION_SUBMITTED': {
       // Which audit raised it, and who conducted that audit. A Super Admin with four
       // Consultants in three plants gets a run of notifications that are otherwise

@@ -34,6 +34,15 @@ export function zoneLabelFromCode(code: string): string | null {
   return LABEL_CODE.exec(code.trim().toUpperCase())?.[1] ?? null;
 }
 
+/**
+ * A label as the Zone form types it: the number on a number pad, and a subzone letter only
+ * when the Unit has subzones. `1A` → `1` and `A`; `7` → `7` and ``.
+ */
+export function zoneLabelParts(label: string): { number: string; subzone: string } {
+  const clean = label.trim().toUpperCase();
+  return { number: clean.replace(/\D/g, ''), subzone: /[A-Z]$/.exec(clean)?.[0] ?? '' };
+}
+
 /** Where a labelled Zone sorts: by its leading number, so `1A` sits beside `1`. */
 export function zoneSortOrder(label: string): number {
   return Number.parseInt(label, 10) || 0;

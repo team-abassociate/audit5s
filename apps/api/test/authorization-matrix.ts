@@ -277,6 +277,16 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     expected: { SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT } },
     coveredBy: 'units.e2e.test.ts',
   },
+  {
+    method: 'POST',
+    path: '/api/v1/units/:id/cross-audit',
+    description: 'unit:call_cross_audit — SUPER_ADMIN organization; COORDINATOR own_unit (§2.6)',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
+      COORDINATOR: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'notifications.e2e.test.ts',
+  },
 
   // ------------------------------------------------------------------- zones
   {

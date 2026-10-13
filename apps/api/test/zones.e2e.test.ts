@@ -425,3 +425,34 @@ describe('scope', () => {
     expect(unitIds).toContain(world.unitB);
   });
 });
+
+describe('editing a Zone (field report 2026-10-13)', () => {
+  it('a leader chosen on the form replaces the one an auditor typed — Nobody included', async () => {
+    const created = (await createZone(asCoordinator(), world.unitA, { code: 'Z-1A', name: 'Zone 1A' })).body as Zone;
+    await world.owner.query(`UPDATE zone SET zone_leader_name = 'Shailendra Bahubali' WHERE id = $1`, [created.id]);
+
+    const response = await world.request('PATCH', `${base}/zones/${created.id}`, {
+      token: asCoordinator(),
+      body: { code: 'Z-4A', name: 'Zone 1A', zoneLeaderId: null, zoneLeaderName: null },
+    });
+    expect(response.status).toBe(200);
+    const zone = response.body as Zone;
+    expect(zone.zoneLeaderName).toBeNull();
+    // Still called by its number, the name follows the renumbering.
+    expect(zone.code).toBe('Z-4A');
+    expect(zone.name).toBe('Zone 4A');
+  });
+
+  it('keeps a typed leader and a chosen name when neither is changed', async () => {
+    const created = (await createZone(asCoordinator(), world.unitA, { code: 'Z-2B', name: 'Paint shop' })).body as Zone;
+    await world.owner.query(`UPDATE zone SET zone_leader_name = 'Ravi Kumar' WHERE id = $1`, [created.id]);
+
+    const response = await world.request('PATCH', `${base}/zones/${created.id}`, {
+      token: asCoordinator(),
+      body: { code: 'Z-3B', description: 'Booth 2' },
+    });
+    const zone = response.body as Zone;
+    expect(zone.zoneLeaderName).toBe('Ravi Kumar');
+    expect(zone.name).toBe('Paint shop');
+  });
+});

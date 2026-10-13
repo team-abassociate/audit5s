@@ -13,8 +13,11 @@ import {
 import { api, problemMessage } from '../lib/api';
 import { createThemedStyles } from '../lib/theme';
 import { Button, ConfirmAction, ErrorBanner, Field, SelectField } from './ui';
+import { ZoneNumberField } from './zone-number-field';
 
 const UNASSIGNED = '__none__';
+/** The leader an auditor typed (0015): kept unless another choice is made. */
+const TYPED = '__typed__';
 
 /**
  * Add or edit one Zone of a Unit — the web's Create / Edit Zone forms at phone width
@@ -23,7 +26,10 @@ const UNASSIGNED = '__none__';
  * `packages/domain`, so the phone, the web and the reports spell it the same way. Changing
  * it renames the Zone everywhere, its finished audits included (0048).
  *
- * The leader dropdown offers the Unit's Zone Leaders. A Zone with nobody to lead it yet is
+ * The Zone number is typed on the number pad; a subzone letter only when ticked.
+ *
+ * The leader dropdown offers the Unit's Zone Leaders. A leader an auditor typed is shown as
+ * the current choice and replaced by whatever is picked instead, "Nobody" included. A Zone with nobody to lead it yet is
  * created unassigned; adding a Zone Leader *with* this Zone (R-39) then points it at them.
  * The default checklist stays on the web: it is a Super Admin's catalogue choice.
  */
@@ -48,7 +54,9 @@ export function ZoneForm({
   );
   const [name, setName] = useState(zone?.name ?? '');
   const [description, setDescription] = useState(zone?.description ?? '');
-  const [leaderId, setLeaderId] = useState<string>(zone?.zoneLeaderId ?? UNASSIGNED);
+  const typedLeader = zone && !zone.zoneLeaderId ? zone.zoneLeaderName : null;
+  const initialLeader = zone?.zoneLeaderId ?? (typedLeader ? TYPED : UNASSIGNED);
+  const [leaderId, setLeaderId] = useState<string>(initialLeader);
   const [numberError, setNumberError] = useState<string | undefined>();
 
   const leaders = useQuery({
@@ -61,7 +69,7 @@ export function ZoneForm({
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['zones'] });
   const save = useMutation({
     mutationFn: () => {
-      const leader = leaderId === UNASSIGNED ? null : leaderId;
+      const leader = leaderId === UNASSIGNED || leaderId === TYPED ? null : leaderId;
       const code = zoneCodeForLabel(zoneNumber);
       const label = zoneLabelFromCode(code ?? '') ?? zoneNumber;
       if (zone) {
@@ -71,7 +79,10 @@ export function ZoneForm({
           // A Zone added by number is named just that (R-19); an emptied name goes back to it.
           name: name.trim() || (code && code !== zone.code ? `Zone ${label}` : zone.name),
           description: description.trim() || null,
-          zoneLeaderId: leader,
+          // Unchanged, the leader is left alone — a typed one included.
+          ...(leaderId !== initialLeader
+            ? { zoneLeaderId: leader, ...(initialLeader === TYPED && leader === null ? { zoneLeaderName: null } : {}) }
+            : {}),
           version: zone.version,
         });
       }
@@ -102,7 +113,7 @@ export function ZoneForm({
     if (!keepsCustomCode) {
       const code = zoneCodeForLabel(zoneNumber);
       if (!code) {
-        setNumberError('1 to 3 letters or digits, e.g. 7 or 1A.');
+        setNumberError('Type the Zone number, and its subzone letter if ticked.');
         return;
       }
       if (taken.has(code)) {
@@ -116,17 +127,7 @@ export function ZoneForm({
 
   return (
     <View style={styles.form}>
-      <View style={styles.row}>
-        <Field
-          label="Zone no."
-          value={zoneNumber}
-          onChangeText={(text) => setZoneNumber(text.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase())}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          maxLength={3}
-          placeholder="1A"
-          containerStyle={styles.number}
-        />
+      <ZoneNumberField label={zoneNumber} onChange={setZoneNumber}>
         <Field
           label="Name (optional)"
           value={name}
@@ -134,7 +135,7 @@ export function ZoneForm({
           placeholder={zone ? zoneDisplayLabel(zone.code, zone.name) : 'e.g. Press shop'}
           containerStyle={styles.name}
         />
-      </View>
+      </ZoneNumberField>
       {numberError ? <Text style={styles.error}>{numberError}</Text> : null}
       <Field
         label="Description (optional)"
@@ -148,6 +149,7 @@ export function ZoneForm({
         value={leaderId}
         onChange={setLeaderId}
         options={[
+          ...(typedLeader ? [{ value: TYPED, label: typedLeader, detail: 'Typed by an auditor' }] : []),
           { value: UNASSIGNED, label: 'Nobody' },
           ...leaderOptions.map((leader) => ({
             value: leader.id,
@@ -178,8 +180,6 @@ function firstFreeNumber(taken: Set<string>): number {
 
 const useStyles = createThemedStyles((theme) => ({
   form: { gap: theme.space.sm, paddingVertical: theme.space.sm },
-  row: { flexDirection: 'row', gap: theme.space.sm },
-  number: { width: 96 },
   name: { flex: 1 },
   error: { fontFamily: theme.family.medium, fontSize: 12.5, color: theme.color.critBand },
 }));

@@ -64,6 +64,8 @@ export const AUDIT_LOG_ACTIONS = [
   'unit.created',
   'unit.updated',
   'unit.archived',
+  /** §2.6: a Coordinator told the Unit's Zone Leaders to cross-audit it. */
+  'unit.cross_audit_called',
   'device.revoked',
   /** An administrator cleared a revoked phone; its people sign in on it again (2026-09-28). */
   'device.restored',

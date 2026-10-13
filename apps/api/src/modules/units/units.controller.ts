@@ -81,4 +81,13 @@ export class UnitsController {
   archive(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.units.archive(scope, id);
   }
+
+  /** §2.6: tells every Zone Leader of the Unit to cross-audit. Nothing else changes. */
+  @RequirePermission('unit', 'call_cross_audit')
+  @Scope({ param: 'id', intent: 'write' })
+  @Post(':id/cross-audit')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  callCrossAudit(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.units.callCrossAudit(scope, id);
+  }
 }

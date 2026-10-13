@@ -15,6 +15,8 @@ export type ZonePatch = Partial<{
   departmentHint: string | null;
   defaultChecklistTemplateId: string | null;
   zoneLeaderId: string | null;
+  /** Only ever cleared here: a leader chosen on the form replaces the one an auditor typed. */
+  zoneLeaderName: null;
   sortOrder: number;
 }>;
 

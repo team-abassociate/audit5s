@@ -1,12 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, ilike, isNull, sql, type SQL } from 'drizzle-orm';
-import { units, type Database } from '@audit5s/db';
+import { auditLogs, units, type Database, type Transaction } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { CreateUnitRequest, ListUnitsQuery } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { setActorContext } from '../users/users.repository';
+import { auditLogRow } from '../../common/audit-log/audit-log.service';
 
 export type UnitPatch = Partial<{
   name: string;
@@ -123,6 +124,31 @@ export class UnitsRepository extends BaseRepository {
         .where(and(eq(units.id, unitId), this.scoped(scope, { unitId: units.id })))
         .returning();
       return row ?? null;
+    });
+  }
+
+  /**
+   * A Coordinator calls a cross audit (§2.6): the log entry and the notice to the Unit's Zone
+   * Leaders commit together, or neither does. `false` when the Unit is not in scope or archived.
+   */
+  async callCrossAudit(
+    scope: ScopeContext,
+    unitId: string,
+    emit: (tx: Transaction, unitName: string) => Promise<void>,
+  ): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [unit] = await tx
+        .select({ name: units.name })
+        .from(units)
+        .where(and(eq(units.id, unitId), isNull(units.archivedAt), this.scoped(scope, { unitId: units.id })))
+        .limit(1);
+      if (!unit) return false;
+      await tx
+        .insert(auditLogs)
+        .values(auditLogRow({ action: 'unit.cross_audit_called', resourceType: 'unit', resourceId: unitId, unitId }));
+      await emit(tx, unit.name);
+      return true;
     });
   }
 }

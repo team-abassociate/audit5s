@@ -55,6 +55,9 @@ function notificationLink(n: Notification) {
       }
       return { to: '/units' } as const;
     case 'unit':
+      // §2.6: a called cross audit opens where the Zone Leader starts one.
+      if (n.eventType === 'CROSS_AUDIT_CALLED') return { to: '/conduct' } as const;
+      return { to: '/units' } as const;
     case 'unit_membership':
       return { to: '/units' } as const;
     default:
