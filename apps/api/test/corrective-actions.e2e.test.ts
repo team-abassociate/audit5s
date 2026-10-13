@@ -13,6 +13,7 @@ import {
 } from '@audit5s/contracts';
 import { captureEvidence, loginFromDevice, sha256Hex, startWorld, stopWorld, TINY_JPEG, type TestActor, type TestWorld } from './harness';
 import { afterPhoto, completedWalkBy, submit, submitOptionA } from './corrective-fixtures';
+import { isReviewable } from '@audit5s/domain';
 import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
 import { CorrectiveActionsService } from '../src/modules/corrective-actions/corrective-actions.service';
 
@@ -289,6 +290,103 @@ describe('a Coordinator reviews closures and "not possible" answers (R-43)', () 
   });
 });
 
+describe('a Coordinator closes their own Unit’s actions (owner, 2026-10-13)', () => {
+  const coordinator = () => world.actors.COORDINATOR.accessToken;
+
+  async function done(action: CorrectiveAction, isLiveCapture: boolean) {
+    const submissionId = randomUUID();
+    const photo = await afterPhoto(world, { token: coordinator(), action, submissionId, isLiveCapture });
+    return submit(world, coordinator(), action.id, {
+      option: 'COMPLETED',
+      id: submissionId,
+      submittedByName: 'Cora Coordinator',
+      description: 'Rack relabelled',
+      afterEvidenceId: photo,
+    });
+  }
+
+  it('closes a "Done" as already approved by them, so it never waits in review', async () => {
+    const { auditId, actions } = await walkBy(1);
+    const response = await done(actions[0]!, true);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+
+    const closed = await detail(actions[0]!.id);
+    expect(closed.status).toBe('VERIFIED');
+    expect(closed.verifiedByUserId).toBe(world.actors.COORDINATOR.userId);
+    expect(closed.lastSubmittedByUserId).toBe(world.actors.COORDINATOR.userId);
+    expect(closed.submissions[0]).toMatchObject({
+      submittedByUserId: world.actors.COORDINATOR.userId,
+      reviewOutcome: 'VERIFIED',
+      reviewedByUserId: world.actors.COORDINATOR.userId,
+    });
+    expect(isReviewable(closed.status, closed.verifiedByUserId)).toBe(false);
+    expect((await auditStatus(auditId)).status).toBe('CLOSED');
+
+    // The Super Admin can still undo it.
+    const undone = await reopen(actions[0]!.id, 'Not fixed', superAdmin);
+    expect(undone.status, JSON.stringify(undone.body)).toBe(200);
+    expect((undone.body as CorrectiveActionDetail).status).toBe('REOPENED');
+  });
+
+  it('takes the after-photo from the gallery as well', async () => {
+    const { actions } = await walkBy(1);
+    const response = await done(actions[0]!, false);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+  });
+
+  it('leaves their "not possible" for the Super Admin to accept, and lets them take it back', async () => {
+    const { actions } = await walkBy(2);
+    const body = { option: 'NOT_POSSIBLE', explanation: 'Needs capex' };
+    expect((await submit(world, coordinator(), actions[0]!.id, body)).status).toBe(201);
+    expect((await verify(actions[0]!.id, {}, coordinator())).status).toBe(403);
+    const waiting = async (token: string) =>
+      ((await world.request('GET', `${base}/corrective-actions?awaitingReview=true&limit=200`, { token })).body as Page<CorrectiveAction>).data.map(
+        (action) => action.id,
+      );
+    expect(await waiting(coordinator())).not.toContain(actions[0]!.id);
+    expect(await waiting(superAdmin)).toContain(actions[0]!.id);
+    expect((await verify(actions[0]!.id, {}, superAdmin)).status).toBe(200);
+
+    // A mistaken "not possible": sent back, then answered as done.
+    expect((await submit(world, coordinator(), actions[1]!.id, body)).status).toBe(201);
+    const undone = await reopen(actions[1]!.id, 'Tapped by mistake', coordinator());
+    expect(undone.status, JSON.stringify(undone.body)).toBe(200);
+    expect((await done(actions[1]!, true)).status).toBe(201);
+  });
+
+  it('answers nothing in another Unit — 404', async () => {
+    const { actions } = await walkBy(1, { unitB: true });
+    const response = await submit(world, coordinator(), actions[0]!.id, { option: 'NOT_POSSIBLE', explanation: 'x' });
+    expect(response.status).toBe(404);
+    const intent = await world.request('POST', `${base}/evidence/upload-intent`, {
+      token: coordinator(),
+      body: {
+        id: randomUUID(),
+        auditId: actions[0]!.auditId,
+        kind: 'CORRECTIVE_AFTER',
+        correctiveActionId: actions[0]!.id,
+        correctiveActionSubmissionId: randomUUID(),
+        contentType: 'image/jpeg',
+        byteSize: TINY_JPEG.length,
+        checksumSha256: sha256Hex(TINY_JPEG),
+        isLiveCapture: true,
+        capturedAt: new Date().toISOString(),
+      },
+    });
+    expect(intent.status, JSON.stringify(intent.body)).toBe(404);
+  });
+
+  it('carries their Unit’s open actions to their phone', async () => {
+    const { actions } = await walkBy(1);
+    const inB = (await walkBy(1, { unitB: true })).actions[0]!;
+    const catalogue = await world.request('GET', `${base}/sync/catalogue`, { token: coordinator() });
+    expect(catalogue.status, JSON.stringify(catalogue.body)).toBe(200);
+    const ids = (catalogue.body as SyncCatalogue).correctiveActions.map((action) => action.id);
+    expect(ids).toContain(actions[0]!.id);
+    expect(ids).not.toContain(inB.id);
+  });
+});
+
 // --------------------------------------------------- §7.3 — the named scenario
 
 describe('the five-nonconformity partial-submission scenario (§7.3)', () => {
@@ -538,7 +636,7 @@ describe('PART 6 — corrective actions', () => {
     expect(await status(leaderToken, inB.id)).toBe(404);
   });
 
-  it('submits: a Zone Leader of the Unit, assigned or not (R-3b), or a Super Admin (R-18); nobody else', async () => {
+  it('submits: a Zone Leader or Coordinator of the Unit, or a Super Admin (R-18); nobody else', async () => {
     const { actions } = await walkBy(3);
     const body = { option: 'NOT_POSSIBLE', explanation: 'Structural — needs capex' };
 
@@ -547,9 +645,7 @@ describe('PART 6 — corrective actions', () => {
     expect((await submit(world, world.outOfScopeActor.accessToken, actions[1]!.id, body)).status).toBe(404);
     // R-18: a Super Admin answers any action.
     expect((await submit(world, superAdmin, actions[2]!.id, body)).status).toBe(201);
-    for (const role of ['CONSULTANT', 'COORDINATOR'] as const) {
-      expect((await submit(world, world.actors[role].accessToken, actions[2]!.id, body)).status).toBe(403);
-    }
+    expect((await submit(world, world.actors.CONSULTANT.accessToken, actions[2]!.id, body)).status).toBe(403);
   });
 
   it('verifies and reopens: a Super Admin, or the Coordinator of the Unit (R-43); nobody else', async () => {

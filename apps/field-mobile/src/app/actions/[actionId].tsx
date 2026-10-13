@@ -38,7 +38,8 @@ import { createThemedStyles, useTheme } from '../../lib/theme';
 import { leaveScreen } from '../../lib/leave-screen';
 
 /**
- * One corrective action (§2.4 steps 6–9, §7.3).
+ * One corrective action (§2.4 steps 6–9, §7.3), answered by a Zone Leader — or, since the
+ * owner's ruling of 2026-10-13, by the Coordinator of the Unit, from the review screen.
  *
  * Option A is a name, a **live** after-photo and a description; Option B an explanation.
  * Either is saved on the device first and synced when there is signal — the camera is the

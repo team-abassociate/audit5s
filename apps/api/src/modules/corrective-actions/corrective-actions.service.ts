@@ -20,6 +20,7 @@ import {
 } from '@audit5s/contracts';
 import {
   assertTransition,
+  awaitsReview,
   grantFor,
   rollupAuditStatus,
   rollupPath,
@@ -102,8 +103,9 @@ export class CorrectiveActionsService {
 
   /** §8.11's open actions, for a device. A Consultant reads actions but never answers one. */
   async listForCatalogue(scope: ScopeContext): Promise<CorrectiveAction[]> {
-    // R-18: a Super Admin answers any action, so his device carries them all.
-    if (scope.actor.role !== 'ZONE_LEADER' && scope.actor.role !== 'SUPER_ADMIN') return [];
+    // R-18: a Super Admin answers any action, so his device carries them all; a Coordinator
+    // answers their Unit's (owner, 2026-10-13).
+    if (!grantFor(scope.actor.role, 'corrective_action:submit')) return [];
     const rows = await this.repository.listUnverified(scopeFor(scope, 'corrective_action:read'));
     return rows.map(toCorrectiveAction);
   }
@@ -431,7 +433,7 @@ export class CorrectiveActionsService {
     // AZ-5: this is reachable from `/sync/batch`, whose own permission is `sync:push`, so
     // the service asks the question the route would have.
     if (!grantFor(scope.actor.role, 'corrective_action:submit')) {
-      throw AppError.forbidden('FORBIDDEN', 'Only a Zone Leader or a Super Admin answers a corrective action');
+      throw AppError.forbidden('FORBIDDEN', 'Only a Zone Leader, a Coordinator or a Super Admin answers a corrective action');
     }
     const submitScope = scopeFor(scope, 'corrective_action:submit');
     const action = await this.mustFind(submitScope, actionId);
@@ -480,11 +482,19 @@ export class CorrectiveActionsService {
         // step. `resolved_at` must accompany VERIFIED (the table's CHECK). Nobody verified
         // it, so no verifier is recorded; a Super Admin can still reopen it.
         const closes = target === 'VERIFIED';
+        // Owner, 2026-10-13: a Coordinator is the Unit's reviewer (R-43), so their own fix is
+        // approved by them as it closes, and never waits in their own review queue.
+        const selfApproved = closes && scope.actor.role === 'COORDINATOR';
         const moved = await unit.moveAction(
           actionId,
           { status: current.status, version: current.version },
           closes
-            ? { status: target, lastSubmittedAt: new Date(), resolvedAt: new Date(), verifiedByUserId: null }
+            ? {
+                status: target,
+                lastSubmittedAt: new Date(),
+                resolvedAt: new Date(),
+                verifiedByUserId: selfApproved ? scope.actor.userId : null,
+              }
             : { status: target, lastSubmittedAt: new Date() },
         );
         if (!moved) throw this.versionConflict();
@@ -502,6 +512,7 @@ export class CorrectiveActionsService {
           ipAddress: context?.ipAddress ?? null,
           userAgent: context?.userAgent ?? null,
         });
+        if (selfApproved) await unit.recordReview(submissionId, 'VERIFIED', null);
 
         if (closes) {
           // The audit rolls on (§2.8) exactly as a verification rolls it. Those edges are
@@ -527,10 +538,11 @@ export class CorrectiveActionsService {
 
         if (closes) {
           // §2.8 tells the Coordinator when an item is closed. With no review step (R-23) the
-          // closing is this submission, so the verified event is raised here, by nobody.
+          // closing is this submission, so the verified event is raised here, by nobody —
+          // or by the Coordinator who closed it, who is not told of their own act.
           await this.events.emit(unit.tx, {
             type: 'CORRECTIVE_ACTION_VERIFIED',
-            actorUserId: null,
+            actorUserId: selfApproved ? scope.actor.userId : null,
             unitId: current.unitId,
             resourceType: 'corrective_action',
             resourceId: actionId,
@@ -655,6 +667,15 @@ export class CorrectiveActionsService {
           data: describe(current),
         });
         return;
+      }
+
+      // Owner, 2026-10-13: a Coordinator's own "not possible" is the Super Admin's to accept.
+      // Sending it back stays theirs, so a mistaken answer can be undone and answered again.
+      if (scope.actor.role === 'COORDINATOR' && outcome === 'VERIFIED' && awaitsReview(current.status)) {
+        const pending = await unit.latestUnreviewed(actionId);
+        if (pending?.submittedByUserId === scope.actor.userId) {
+          throw AppError.forbidden('FORBIDDEN', 'Your own answer waits for the Super Admin to accept it');
+        }
       }
 
       try {
@@ -873,6 +894,7 @@ export function toCorrectiveAction(row: CorrectiveActionRow): CorrectiveAction {
     verifiedByUserId: row.verifiedByUserId,
     verifiedByName: row.verifiedByName,
     closedByName: row.closedByName,
+    lastSubmittedByUserId: row.lastSubmittedByUserId,
     reopenCount: row.reopenCount,
     version: row.version,
     auditType: row.auditType,

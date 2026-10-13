@@ -121,12 +121,17 @@ export function isUnapprovedClosure(
   return status === 'VERIFIED' && verifiedByUserId === null;
 }
 
-/** R-43: what a reviewer may act on — a required review, or an optional approval. */
+/**
+ * R-43: what a reviewer may act on — a required review, or an optional approval.
+ * `ownAnswer`: a Coordinator who gave the answer themselves; it waits for the Super Admin
+ * (owner, 2026-10-13).
+ */
 export function isReviewable(
   status: CorrectiveActionStatus,
   verifiedByUserId: string | null,
+  ownAnswer = false,
 ): boolean {
-  return awaitsReview(status) || isUnapprovedClosure(status, verifiedByUserId);
+  return (awaitsReview(status) && !ownAnswer) || isUnapprovedClosure(status, verifiedByUserId);
 }
 
 export function isOverdue(

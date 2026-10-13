@@ -161,16 +161,19 @@ export class EvidenceRepository extends BaseRepository {
    *
    * A Zone Leader holds `own_audits` there "or assigned_actions, for CORRECTIVE_AFTER
    * evidence": the after-photo of an action they may answer, on an audit somebody else
-   * conducted. Without the second half their own photograph would be invisible to its
-   * `commit` and to the media worker that thumbnails it (R-13).
+   * conducted. A Coordinator holds the same with "own_unit actions" (owner, 2026-10-13).
+   * Without the second half their own photograph would be invisible to its `commit` and to
+   * the media worker that thumbnails it (R-13).
    */
   private writablePredicate(scope: ScopeContext): SQL {
     const base = this.scoped(scope, evidenceScopeColumns);
-    if (scope.resolver !== 'own_audits' || scope.actor.role !== 'ZONE_LEADER') {
+    const answers =
+      scope.actor.role === 'ZONE_LEADER' ? 'assigned_actions' : scope.actor.role === 'COORDINATOR' ? 'own_unit' : null;
+    if (scope.resolver !== 'own_audits' || answers === null) {
       return base;
     }
     const answerable = this.scoped(
-      { ...scope, resolver: 'assigned_actions' },
+      { ...scope, resolver: answers },
       { assignedUserId: correctiveActions.assignedZoneLeaderUserId, unitId: correctiveActions.unitId },
     );
     return sql`(${base} OR (${evidence.kind} = 'CORRECTIVE_AFTER' AND EXISTS (

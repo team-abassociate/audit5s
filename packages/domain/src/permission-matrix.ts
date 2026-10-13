@@ -581,7 +581,10 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Create an upload intent',
     grants: {
       CONSULTANT: ownAudits,
-      COORDINATOR: ownAudits,
+      COORDINATOR: {
+        resolver: 'own_audits',
+        condition: 'or own_unit actions, for CORRECTIVE_AFTER evidence',
+      },
       ZONE_LEADER: {
         resolver: 'own_audits',
         condition: 'or assigned_actions, for CORRECTIVE_AFTER evidence',
@@ -655,6 +658,8 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
       // R-3b: `assigned_actions` widens deliberately to any Zone Leader of the Unit, so a
       // corrective action does not stall while its assignee is on leave. Do not narrow.
       ZONE_LEADER: { resolver: 'assigned_actions', condition: 'or via a valid signed token' },
+      // Owner, 2026-10-13: a Coordinator records a fix in their own Unit as a Zone Leader does.
+      COORDINATOR: ownUnit,
     },
   },
   {

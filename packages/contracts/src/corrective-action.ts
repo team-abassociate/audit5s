@@ -73,6 +73,11 @@ export const correctiveActionSchema = z.object({
    * response from an API older than this still parses.
    */
   closedByName: z.string().nullable().optional(),
+  /**
+   * Who gave the latest answer. A Coordinator's own "not possible" waits for the Super Admin
+   * rather than in their own review queue (owner, 2026-10-13). Optional for an older API.
+   */
+  lastSubmittedByUserId: uuidSchema.nullable().optional(),
   reopenCount: z.number().int().nonnegative(),
   /** Optimistic lock (§15.8): the second of two concurrent reviewers gets VERSION_CONFLICT. */
   version: z.number().int().positive(),
