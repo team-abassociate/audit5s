@@ -775,7 +775,7 @@ export function ErrorBanner({ message }: { message: string | null }) {
   );
 }
 
-/** `gb-slip`: the yellow note. At most one per screen, and only when someone must act. */
+/** `gb-slip`: the yellow note. At most one per screen (a `SlipStack` counts as the one), and only when someone must act. */
 export function Slip({
   title,
   children,
@@ -821,6 +821,49 @@ export function Slip({
 export function SlipText({ children }: { children: ReactNode }) {
   const styles = useStyles();
   return <Text style={styles.slipText}>{children}</Text>;
+}
+
+export type SlipRow = { title: string; detail?: string; tone: 'slip' | 'crossAudit'; onPress: () => void };
+
+/**
+ * Several things to act on, as one slip: a bordered block of tappable rows, tighter than
+ * `Slip`, each in its own colour. Still one per screen. The block presses as a whole, like
+ * a slip, whichever row is under the finger.
+ */
+export function SlipStack({ rows }: { rows: SlipRow[] }) {
+  const styles = useStyles();
+  const theme = useTheme();
+  const press = usePress(theme.press, {});
+  if (rows.length === 0) return null;
+  return (
+    <Magnet style={styles.cardGap} pressed={press.pressed}>
+      <Animated.View style={[styles.slipStack, press.sink]}>
+        {rows.map((row, index) => {
+          const ink = row.tone === 'slip' ? theme.color.slipInk : theme.color.crossAuditInk;
+          return (
+            <Pressable
+              key={row.title}
+              accessibilityRole="button"
+              accessibilityLabel={row.detail ? `${row.title}. ${row.detail}` : row.title}
+              onPress={row.onPress}
+              {...press.handlers}
+              style={[
+                styles.slipRow,
+                { backgroundColor: row.tone === 'slip' ? theme.color.slip : theme.color.crossAudit },
+                index > 0 && styles.slipRowDivider,
+              ]}
+            >
+              <View style={styles.slipRowText}>
+                <Text style={[styles.slipRowTitle, { color: ink }]}>{row.title}</Text>
+                {row.detail ? <Text style={[styles.slipText, { color: ink }]}>{row.detail}</Text> : null}
+              </View>
+              <Text style={[styles.slipRowChevron, { color: ink }]}>›</Text>
+            </Pressable>
+          );
+        })}
+      </Animated.View>
+    </Magnet>
+  );
 }
 
 /** `gb-tile--pending`: nothing here yet is a dashed tile with a way forward, not a void. */
@@ -1556,6 +1599,18 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.color.slipInk,
   },
   slipText: { fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.slipInk },
+  slipStack: { borderWidth: 1.5, borderColor: theme.color.edge, ...iosHardShadow(theme.color.hard) },
+  slipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.sm,
+    paddingVertical: 9,
+    paddingHorizontal: theme.space.md,
+  },
+  slipRowDivider: { borderTopWidth: 1, borderTopColor: theme.color.edge },
+  slipRowText: { flex: 1, gap: 2 },
+  slipRowTitle: { fontFamily: theme.family.bold, fontSize: theme.font.sm, lineHeight: 18 },
+  slipRowChevron: { fontFamily: theme.family.bold, fontSize: 20 },
   empty: {
     backgroundColor: theme.color.tile2,
     borderWidth: 1.5,

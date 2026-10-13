@@ -1,7 +1,7 @@
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useRouter } from 'expo-router';
-import type { AuditStatus, AuditType } from '@audit5s/contracts';
+import { useRouter } from 'expo-router';
+import type { AuditStatus, AuditType, NotificationPage } from '@audit5s/contracts';
 import { awaitsResponse } from '@audit5s/domain';
 import {
   Button,
@@ -14,11 +14,12 @@ import {
   Muted,
   Screen,
   SectionHead,
-  Slip,
-  SlipText,
+  SlipStack,
   StatGrid,
 } from './ui';
+import { api } from '../lib/api';
 import { syncCatalogue } from '../lib/catalogue';
+import { activeCrossAuditCall } from '../lib/cross-audit-call';
 import {
   listLocalAudits,
   listResumableAudits,
@@ -80,6 +81,13 @@ export function FieldOverview() {
     enabled: answersActions,
   });
 
+  // Online only, and quiet when it fails: offline the cross-audit row just doesn't show.
+  const notifications = useQuery({
+    queryKey: ['notifications', 'cross-audit'],
+    queryFn: () => api.get<NotificationPage>('/notifications?limit=50'),
+    enabled: zoneLeader,
+  });
+
   const sync = useMutation({
     mutationFn: () => syncCatalogue(database),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
@@ -116,6 +124,7 @@ export function FieldOverview() {
   const open = resumable.data ?? [];
   const finishedCount = (audits.data ?? []).filter((audit) => isFinished(audit.status)).length;
   const toDo = actions.data?.filter((action) => awaitsResponse(action.effectiveStatus)).length ?? 0;
+  const crossAuditCall = activeCrossAuditCall(notifications.data?.data ?? [], audits.data ?? []);
 
   return (
     <Screen>
@@ -124,7 +133,10 @@ export function FieldOverview() {
         refreshControl={
           <RefreshControl
             refreshing={sync.isPending}
-            onRefresh={() => sync.mutate()}
+            onRefresh={() => {
+              sync.mutate();
+              void notifications.refetch();
+            }}
             colors={[theme.color.ink]}
             progressBackgroundColor={theme.color.tile}
           />
@@ -147,19 +159,31 @@ export function FieldOverview() {
           }
         />
 
-        {/* The one slip, and only for a role that answers findings. */}
-        {answersActions && toDo > 0 ? (
-          <Link href="/actions" asChild>
-            <Slip
-              accessibilityRole="button"
-              title={`${toDo} nonconformit${toDo === 1 ? 'y' : 'ies'} waiting for you`}
-            >
-              <SlipText>
-                Record each fix with a live photograph, or explain why it is not possible.
-              </SlipText>
-            </Slip>
-          </Link>
-        ) : null}
+        {/* The one slip: findings to answer, and a cross audit called at their Unit. */}
+        <SlipStack
+          rows={[
+            ...(answersActions && toDo > 0
+              ? [
+                  {
+                    tone: 'slip' as const,
+                    title: `${toDo} nonconformit${toDo === 1 ? 'y' : 'ies'} waiting for you`,
+                    detail: 'Fix with a photo, or explain why not.',
+                    onPress: () => router.push('/actions'),
+                  },
+                ]
+              : []),
+            ...(crossAuditCall
+              ? [
+                  {
+                    tone: 'crossAudit' as const,
+                    title: `Cross audit called · ${String(crossAuditCall.data.unitName ?? 'your Unit')}`,
+                    detail: 'Audit any Zone, your own or another.',
+                    onPress: () => router.push({ pathname: '/audit/start', params: { type: 'CROSS_5S' } }),
+                  },
+                ]
+              : []),
+          ]}
+        />
 
         {open.length === 0 ? (
           <Card>

@@ -57,7 +57,16 @@ function auditTypesFor(can: (resource: string, action: string) => boolean, coord
  * menu's "Start one myself", with no `unitId`; and a tab (`tab`), which is not pushed, so the
  * way on to the Zones is a push rather than a replace — replacing would swap out the tab bar.
  */
-export function AuditStart({ unitId: fixedUnitId, tab = false }: { unitId?: string; tab?: boolean }) {
+export function AuditStart({
+  unitId: fixedUnitId,
+  tab = false,
+  type: presetType,
+}: {
+  unitId?: string;
+  tab?: boolean;
+  /** Preselected kind, e.g. the Overview's cross-audit call; ignored unless they may start it. */
+  type?: string;
+}) {
   const styles = useStyles();
   const theme = useTheme();
   const database = useLocalDatabase();
@@ -106,7 +115,8 @@ export function AuditStart({ unitId: fixedUnitId, tab = false }: { unitId?: stri
 
   const types = auditTypesFor(can, scope?.role === 'COORDINATOR');
   const [pickedType, setPickedType] = useState<AuditType | null>(null);
-  const auditType = types.length === 1 ? types[0]! : pickedType;
+  const preset = types.find((type) => type === presetType) ?? null;
+  const auditType = types.length === 1 ? types[0]! : (pickedType ?? preset);
 
   // `null` until they answer the open-audit question; 'new' once they choose another audit.
   const [openChoice, setOpenChoice] = useState<'continue' | 'new' | null>(null);
