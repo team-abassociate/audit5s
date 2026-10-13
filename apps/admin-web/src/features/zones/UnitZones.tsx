@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import type {
   ChecklistTemplate,
   CreateZoneRequest,
@@ -30,6 +30,7 @@ import {
   Th,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { ZoneNumberInput } from './ZoneNumberInput';
 import { BootstrapNotice, CreateUserForm } from '@/features/users/UsersPage';
 import {
   changedZoneFields,
@@ -252,6 +253,7 @@ function CreateZoneForm({
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     setValue,
@@ -281,14 +283,14 @@ function CreateZoneForm({
     onError: (error) => setFieldErrors(error instanceof ApiError ? error.fieldErrors() : {}),
   });
 
-  const number = register('zoneNumber', {
+  const numberRules = {
     required: 'Enter a Zone number',
-    validate: (value) => {
+    validate: (value: string) => {
       const code = zoneCodeForLabel(value);
-      if (!code) return '1 to 3 letters or digits, e.g. 7 or 1A';
+      if (!code) return 'Type the Zone number, and its subzone letter if ticked';
       return !taken.has(code) || 'That Zone number is already used';
     },
-  });
+  };
 
   return (
     <>
@@ -296,25 +298,18 @@ function CreateZoneForm({
         className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2"
         onSubmit={handleSubmit((body) => create.mutate(body))}
       >
-      <div className="flex gap-3 sm:col-span-2">
-        <Field label="Zone no." error={errors.zoneNumber?.message ?? fieldErrors.code} hint="e.g. 7 or 1A">
-          <Input
-            {...number}
-            type="text"
-            maxLength={3}
-            className="w-20 gb-data"
-            onChange={(event) => {
-              event.target.value = event.target.value.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase();
-              void number.onChange(event);
-            }}
-          />
-        </Field>
-        <div className="min-w-0 flex-1">
-          <Field label="Name" error={fieldErrors.name}>
-            <Input {...register('name')} placeholder="Press shop" />
-          </Field>
-        </div>
-      </div>
+      <Controller
+        control={control}
+        name="zoneNumber"
+        rules={numberRules}
+        render={({ field }) => (
+          <ZoneNumberInput value={field.value} onChange={field.onChange} error={errors.zoneNumber?.message ?? fieldErrors.code}>
+            <Field label="Name" error={fieldErrors.name}>
+              <Input {...register('name')} placeholder="Press shop" />
+            </Field>
+          </ZoneNumberInput>
+        )}
+      />
 
       <Field
         label="Description"
@@ -469,18 +464,19 @@ function EditZoneFields({
   const [defaultValues] = useState(() => editZoneDefaults(zone));
   const {
     register,
+    control,
     handleSubmit,
     formState: { dirtyFields, errors },
   } = useForm<EditZoneValues>({ defaultValues });
-  const label = register('label', {
-    validate: (value) => {
+  const labelRules = {
+    validate: (value: string) => {
       // A code the Unit chose itself (`BOILER`) opens empty, and empty keeps it.
       if (value === '' && zoneLabelFromCode(zone.code) === null) return true;
       const code = zoneCodeForLabel(value);
-      if (!code) return '1 to 3 letters or digits, e.g. 7 or 1A';
+      if (!code) return 'Type the Zone number, and its subzone letter if ticked';
       return code === zone.code || !codes.includes(code) || 'That Zone number is already used';
     },
-  });
+  };
   const labelError = errors.label?.message;
 
   const update = useMutation({
@@ -505,29 +501,23 @@ function EditZoneFields({
         update.mutate({ ...body, version: zone.version });
       })}
     >
-      <div className="flex gap-3 sm:col-span-2">
-        <Field
-          label="Zone no."
-          error={labelError ?? fieldErrors.code}
-          hint={zoneLabelFromCode(zone.code) === null ? `Now ${zone.code}` : 'e.g. 1A'}
-        >
-          <Input
-            {...label}
-            type="text"
-            maxLength={3}
-            className="w-20 gb-data"
-            onChange={(event) => {
-              event.target.value = event.target.value.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase();
-              void label.onChange(event);
-            }}
-          />
-        </Field>
-        <div className="min-w-0 flex-1">
-          <Field label="Name" error={fieldErrors.name} hint="Renaming relabels this Zone’s past audits and reports too.">
-            <Input {...register('name')} />
-          </Field>
-        </div>
-      </div>
+      <Controller
+        control={control}
+        name="label"
+        rules={labelRules}
+        render={({ field }) => (
+          <ZoneNumberInput
+            value={field.value}
+            onChange={field.onChange}
+            error={labelError ?? fieldErrors.code}
+            hint={zoneLabelFromCode(zone.code) === null ? `Now ${zone.code}` : undefined}
+          >
+            <Field label="Name" error={fieldErrors.name} hint="Renaming relabels this Zone’s past audits and reports too.">
+              <Input {...register('name')} />
+            </Field>
+          </ZoneNumberInput>
+        )}
+      />
       <Field
         label="Description"
         error={fieldErrors.description}
@@ -540,16 +530,13 @@ function EditZoneFields({
         error={fieldErrors.zoneLeaderId}
         hint={
           typedLeader
-            ? 'Typed by the auditor. Choose a Zone Leader account to replace it.'
+            ? 'Typed by the auditor. Choose an account, or Unassigned, to replace it.'
             : undefined
         }
       >
         <Select {...register('zoneLeaderId')}>
-          {typedLeader ? (
-            <option value={TYPED_LEADER}>{typedLeader}</option>
-          ) : (
-            <option value="">Unassigned</option>
-          )}
+          {typedLeader ? <option value={TYPED_LEADER}>{typedLeader}</option> : null}
+          <option value="">Unassigned</option>
           {leaderOptions.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}

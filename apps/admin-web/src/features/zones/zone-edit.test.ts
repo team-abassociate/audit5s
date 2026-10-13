@@ -71,6 +71,12 @@ describe('leaderAccountOptions', () => {
 });
 
 describe('changedZoneFields', () => {
+  it('clears a typed leader when Unassigned is chosen over it', () => {
+    const initial = editZoneDefaults(zone({ zoneLeaderName: 'Shailendra Bahubali' }));
+    const body = changedZoneFields({ ...initial, zoneLeaderId: '' }, initial, { zoneLeaderId: true });
+    expect(body).toEqual({ zoneLeaderId: null, zoneLeaderName: null });
+  });
+
   it('sends only the description when only the description changed (typed leader kept)', () => {
     const initial = editZoneDefaults(zone({ zoneLeaderName: 'fsda' }));
     const body = changedZoneFields(

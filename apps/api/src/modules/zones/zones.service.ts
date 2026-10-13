@@ -7,7 +7,7 @@ import type {
   UpdateZoneRequest,
   Zone,
 } from '@audit5s/contracts';
-import type { ScopeContext } from '@audit5s/domain';
+import { zoneLabelFromCode, type ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
@@ -88,6 +88,17 @@ export class ZonesService {
       if (value === undefined) continue;
       (patch as Record<string, unknown>)[key] = value;
     }
+    // An account chosen replaces the name an auditor typed (0015); "Nobody" sends
+    // `zoneLeaderName: null` itself, copied above.
+    if (patch.zoneLeaderId) patch.zoneLeaderName = null;
+    // A Zone still called by its number ("Zone 1A") follows a renumbering to "Zone 4A".
+    if (patch.code && patch.code !== before.code && (patch.name === undefined || patch.name === before.name)) {
+      const was = zoneLabelFromCode(before.code);
+      const now = zoneLabelFromCode(patch.code);
+      if (was && now && before.name.trim().toLowerCase() === `zone ${was}`.toLowerCase()) {
+        patch.name = `Zone ${now}`;
+      }
+    }
 
     let updatedId: string | null;
     try {
@@ -142,6 +153,7 @@ export class ZonesService {
 
     const updatedId = await this.repository.update(scope, zoneId, {
       zoneLeaderId: request.zoneLeaderId,
+      zoneLeaderName: null,
     });
     if (!updatedId) {
       throw AppError.notFound('No such Zone');
@@ -215,6 +227,7 @@ function audited(row: ZoneRow) {
     departmentHint: row.departmentHint,
     defaultChecklistTemplateId: row.defaultChecklistTemplateId,
     zoneLeaderId: row.zoneLeaderId,
+    zoneLeaderName: row.zoneLeaderName,
     sortOrder: row.sortOrder,
   };
 }

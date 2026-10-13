@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { Audit, AuditType, Page } from '@audit5s/contracts';
 import { formatDateTime, uuidv7 } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
-import { Button, Card, CardHeader, EmptyState, Combobox, ErrorNotice, Field, StatusChip, Table, Td, Th } from '@/components/ui';
+import { Button, Card, CardHeader, ConfirmDialog, EmptyState, Combobox, ErrorNotice, Field, StatusChip, Table, Td, Th } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useWebDevice } from '@/lib/device';
 import { uploadEvidence } from '@/lib/evidence';
@@ -31,6 +31,7 @@ export function ConductStartPage() {
   const [picked, setPicked] = useState<AuditType | null>(null);
   const [unitId, setUnitId] = useState('');
   const [another, setAnother] = useState(false);
+  const [calling, setCalling] = useState(false);
   const auditType = types.length === 1 ? types[0]! : picked;
 
   const open = useQuery({
@@ -56,6 +57,12 @@ export function ConductStartPage() {
       await queryClient.invalidateQueries({ queryKey: ['audits'] });
       void navigate({ to: '/conduct/$auditId', params: { auditId } });
     },
+  });
+
+  // §2.6: a Coordinator tells every Zone Leader of the Unit to cross-audit it.
+  const callCross = useMutation({
+    mutationFn: () => api.post(`/units/${unit}/cross-audit`, undefined, uuidv7()),
+    onSuccess: () => setCalling(false),
   });
 
   if (types.length === 0) return <EmptyState title="Your role does not conduct audits." />;
@@ -99,6 +106,37 @@ export function ConductStartPage() {
           </Table>
         </Card>
       ) : null}
+
+      {unit && can('unit', 'call_cross_audit') ? (
+        <Card>
+          <CardHeader
+            title="Cross audit"
+            description="Every Zone Leader of the Unit is notified to audit any Zone — their own or another."
+            action={
+              <Button variant="secondary" onClick={() => setCalling(true)}>
+                Call a cross audit
+              </Button>
+            }
+          />
+          {callCross.isSuccess ? (
+            <p className="gb-notice m-4" role="status">
+              The Zone Leaders have been notified.
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
+      <ConfirmDialog
+        open={calling}
+        title="Call a cross audit?"
+        tone="primary"
+        confirmLabel="Notify Zone Leaders"
+        pending={callCross.isPending}
+        error={callCross.error}
+        onConfirm={() => callCross.mutate()}
+        onCancel={() => setCalling(false)}
+      >
+        Every Zone Leader of the Unit gets a notification asking them to audit any Zone — their own or another.
+      </ConfirmDialog>
 
       <Card>
         <CardHeader title="Start an audit" />

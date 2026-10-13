@@ -78,6 +78,12 @@ export const updateZoneRequestSchema = z
     departmentHint: clearable(z.string().trim().max(120)),
     defaultChecklistTemplateId: uuidSchema.nullable().optional(),
     zoneLeaderId: uuidSchema.nullable().optional(),
+    /**
+     * `null` clears the leader an auditor typed (0015) — "Nobody" chosen over it. Explicit,
+     * because released field apps send `zoneLeaderId: null` on every save; that alone must not
+     * erase a typed leader. Choosing an account clears it as well.
+     */
+    zoneLeaderName: z.null().optional(),
     sortOrder: z.number().int().min(0).max(10_000).optional(),
     version: z.number().int().positive().optional(),
   })

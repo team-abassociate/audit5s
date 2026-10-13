@@ -406,3 +406,31 @@ describe('restart (R-33)', () => {
     expect(await notificationsFor(world.actors.CONSULTANT.userId, withdrawn.eventId)).toHaveLength(0);
   });
 });
+
+describe('a cross audit called by the Coordinator (§2.6)', () => {
+  it('reaches the Unit’s Zone Leaders, and nobody else', async () => {
+    await drainNotifications(world, worker, seen);
+    const response = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+      token: world.actors.COORDINATOR.accessToken,
+    });
+    expect(response.status).toBe(204);
+
+    const events = await drainNotifications(world, worker, seen);
+    const called = events.find((event) => event.type === 'CROSS_AUDIT_CALLED')!;
+    const [leader] = await notificationsFor(world.actors.ZONE_LEADER.userId, called.eventId);
+    expect(leader?.title).toMatch(/^Cross audit called at /);
+    expect(await notificationsFor(world.actors.COORDINATOR.userId, called.eventId)).toHaveLength(0);
+    expect(await notificationsFor(world.actors.SUPER_ADMIN.userId, called.eventId)).toHaveLength(0);
+  });
+
+  it('is the Coordinator’s to call: a Zone Leader is refused, another Unit is not found', async () => {
+    const leader = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+      token: world.actors.ZONE_LEADER.accessToken,
+    });
+    expect(leader.status).toBe(403);
+    const elsewhere = await world.request('POST', `${base}/units/${world.unitB}/cross-audit`, {
+      token: world.actors.COORDINATOR.accessToken,
+    });
+    expect(elsewhere.status).toBe(404);
+  });
+});

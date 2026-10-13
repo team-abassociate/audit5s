@@ -25,6 +25,7 @@ import { useSession } from '@/lib/session';
 import { useWebDevice } from '@/lib/device';
 import { LiveCapture } from '@/lib/photo';
 import { uploadEvidence } from '@/lib/evidence';
+import { ZoneNumberInput } from '@/features/zones/ZoneNumberInput';
 import { AUDIT_TYPE_LABEL, useAuditDetail, useCatalogue, versionsForUnit, withdrawZone } from './shared';
 
 type AuditZone = AuditDetail['zones'][number];
@@ -198,7 +199,7 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const errors = {
     zone: newZone
       ? newCode === null
-        ? 'Enter 1 to 3 letters or digits'
+        ? 'Type the Zone number, and its subzone letter if ticked'
         : byCode.has(newCode) || used.has(newCode)
           ? `Zone ${newZone.label} already exists. Choose it from the list.`
           : null
@@ -267,30 +268,25 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
           />
           <div className="grid gap-4 p-4 sm:grid-cols-2">
             {newZone ? (
-              <Field label="New Zone" {...(showErrors && errors.zone ? { error: errors.zone } : {})}>
-                <div className="flex gap-2">
-                  <Input
-                    aria-label="Zone no."
-                    className="max-w-20 gb-data"
-                    value={newZone.label}
-                    maxLength={3}
-                    placeholder="1A"
-                    onChange={(event) =>
-                      setNewZone({ ...newZone, label: event.target.value.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase() })
-                    }
-                  />
-                  <Input
-                    aria-label="Zone name"
-                    value={newZone.name}
-                    maxLength={200}
-                    placeholder="Zone name"
-                    onChange={(event) => setNewZone({ ...newZone, name: event.target.value })}
-                  />
-                </div>
+              <div className="sm:col-span-2">
+                <ZoneNumberInput
+                  value={newZone.label}
+                  onChange={(label) => setNewZone({ ...newZone, label })}
+                  error={(showErrors && errors.zone) || undefined}
+                >
+                  <Field label="Zone name">
+                    <Input
+                      value={newZone.name}
+                      maxLength={200}
+                      placeholder="Press shop"
+                      onChange={(event) => setNewZone({ ...newZone, name: event.target.value })}
+                    />
+                  </Field>
+                </ZoneNumberInput>
                 <button type="button" className="mt-1 text-sm underline" onClick={() => setNewZone(null)}>
                   Choose one of the Unit’s Zones instead
                 </button>
-              </Field>
+              </div>
             ) : (
               <Field label="Zone" {...(showErrors && errors.zone ? { error: errors.zone } : {})}>
                 <Select value={zoneCode ?? ''} onChange={(event) => chooseZone(event.target.value || null)}>

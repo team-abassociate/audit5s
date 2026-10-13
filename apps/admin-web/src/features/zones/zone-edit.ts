@@ -78,6 +78,8 @@ export function changedZoneFields(
   if (changed('description')) body.description = values.description;
   if (changed('zoneLeaderId') && values.zoneLeaderId !== TYPED_LEADER) {
     body.zoneLeaderId = values.zoneLeaderId === '' ? null : values.zoneLeaderId;
+    // Unassigned chosen over a typed leader clears it (an account clears it server-side too).
+    if (initial.zoneLeaderId === TYPED_LEADER && body.zoneLeaderId === null) body.zoneLeaderName = null;
   }
   if (changed('defaultChecklistTemplateId')) {
     body.defaultChecklistTemplateId =

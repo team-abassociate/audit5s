@@ -22,6 +22,8 @@ export const NOTIFICATION_EVENT_TYPES = [
   'AUDIT_STARTED',
   'AUDIT_PAUSED',
   'AUDIT_COMPLETED',
+  /** §2.6: a Coordinator asks the Unit's Zone Leaders to cross-audit it. */
+  'CROSS_AUDIT_CALLED',
   'CORRECTIVE_ACTION_SUBMITTED',
   'CORRECTIVE_ACTION_VERIFIED',
   'CORRECTIVE_ACTION_REOPENED',

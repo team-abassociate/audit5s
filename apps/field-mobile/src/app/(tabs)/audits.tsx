@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, RefreshControl, SectionList, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, RefreshControl, SectionList, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
 import type { Audit, AuditAssignment, AuditStatus, AuditType, Page, Unit } from '@audit5s/contracts';
@@ -30,7 +30,7 @@ import {
   useZoneFilter,
   type ZoneOption,
 } from '../../components/zone-filter';
-import { api } from '../../lib/api';
+import { api, problemMessage } from '../../lib/api';
 import { listLocalAudits } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { formatDate } from '../../lib/format';
@@ -100,6 +100,23 @@ export default function AuditsScreen() {
   }
   if (can('audit', 'create_external')) {
     newAudit.push({ label: 'Start one myself', detail: 'Take the selfie, then select the Zone', onPress: () => router.push('/audit/start') });
+  }
+  // §2.6: a Coordinator tells every Zone Leader of the Unit to cross-audit any Zone of it.
+  if (can('unit', 'call_cross_audit') && oneUnit) {
+    const callCross = () =>
+      api.post(`/units/${scope.unitIds[0]}/cross-audit`).then(
+        () => Alert.alert('Zone Leaders notified', 'Each one can now audit any Zone — their own or another.'),
+        (error: unknown) => Alert.alert('Could not call the cross audit', problemMessage(error) ?? 'Try again.'),
+      );
+    newAudit.push({
+      label: 'Call a cross audit',
+      detail: 'Every Zone Leader is notified to audit any Zone',
+      onPress: () =>
+        Alert.alert('Call a cross audit?', 'Every Zone Leader of the Unit gets a notification asking them to audit any Zone — their own or another.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Notify Zone Leaders', onPress: () => void callCross() },
+        ]),
+    });
   }
   // One choice is no choice: "+ Audit" goes straight to it rather than through a menu of one.
   const addAudit = () => (newAudit.length === 1 ? newAudit[0]!.onPress() : setAdding(true));

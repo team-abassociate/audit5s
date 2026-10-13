@@ -6,6 +6,7 @@ import {
   zoneCodeForNumber,
   zoneDisplayLabel,
   zoneLabelFromCode,
+  zoneLabelParts,
   zoneLeaderSnapshot,
   zoneNumberFromCode,
 } from './zone-code';
@@ -136,5 +137,14 @@ describe('zoneLeaderSnapshot (R-19)', () => {
   it('prints the typed name for a Zone with no record at all', () => {
     expect(zoneLeaderSnapshot(null, 'Ravi Kumar')).toEqual({ userId: null, name: 'Ravi Kumar' });
     expect(zoneLeaderSnapshot(undefined, null)).toEqual({ userId: null, name: null });
+  });
+});
+
+describe('zoneLabelParts', () => {
+  it('splits a subzone letter from its number', () => {
+    expect(zoneLabelParts('1A')).toEqual({ number: '1', subzone: 'A' });
+    expect(zoneLabelParts('12b')).toEqual({ number: '12', subzone: 'B' });
+    expect(zoneLabelParts('7')).toEqual({ number: '7', subzone: '' });
+    expect(zoneLabelParts('')).toEqual({ number: '', subzone: '' });
   });
 });

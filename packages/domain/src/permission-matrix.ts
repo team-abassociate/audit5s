@@ -174,6 +174,13 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: { SUPER_ADMIN: org, COORDINATOR: ownUnit },
   },
   {
+    // §2.6: a cross audit needs no assignment; this only tells the Zone Leaders to run one.
+    resource: 'unit',
+    action: 'call_cross_audit',
+    description: "Notify the Unit's Zone Leaders to cross-audit it",
+    grants: { COORDINATOR: ownUnit },
+  },
+  {
     resource: 'unit',
     action: 'archive',
     description: 'Archive a Unit',

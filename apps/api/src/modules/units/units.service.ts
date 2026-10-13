@@ -11,6 +11,7 @@ import type { ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
+import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { UnitsRepository, type UnitPatch } from './units.repository';
 
 @Injectable()
@@ -18,7 +19,25 @@ export class UnitsService {
   constructor(
     private readonly repository: UnitsRepository,
     private readonly auditLog: AuditLogService,
+    private readonly events: DomainEvents,
   ) {}
+
+  /** Every Zone Leader of the Unit is told to audit any Zone of it, their own included (D9). */
+  async callCrossAudit(scope: ScopeContext, unitId: string): Promise<void> {
+    const called = await this.repository.callCrossAudit(scope, unitId, (tx, unitName) =>
+      this.events.emit(tx, {
+        type: 'CROSS_AUDIT_CALLED',
+        actorUserId: scope.actor.userId,
+        unitId,
+        resourceType: 'unit',
+        resourceId: unitId,
+        data: { unitName },
+      }),
+    );
+    if (!called) {
+      throw AppError.notFound('No such Unit');
+    }
+  }
 
   async create(scope: ScopeContext, request: CreateUnitRequest): Promise<Unit> {
     try {

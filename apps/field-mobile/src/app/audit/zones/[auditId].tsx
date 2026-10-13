@@ -47,6 +47,7 @@ import { createThemedStyles, useTheme } from '../../../lib/theme';
 import { leaveScreen } from '../../../lib/leave-screen';
 import { useRequiredFields } from '../../../lib/required-fields';
 import { useSession } from '../../../lib/session';
+import { ZoneNumberField } from '../../../components/zone-number-field';
 
 type CatalogueZone = Awaited<ReturnType<typeof listCatalogueZones>>[number];
 
@@ -390,7 +391,7 @@ export default function AuditZonesScreen() {
   const errors = {
     zone: newZone
       ? newCode === null
-        ? 'Enter 1 to 3 letters or digits'
+        ? 'Type the Zone number, and its subzone letter if ticked'
         : byCode.has(newCode) || usedCodes.has(newCode)
           ? `Zone ${newZone.label} already exists. Choose it from the list.`
           : null
@@ -465,21 +466,8 @@ export default function AuditZonesScreen() {
       <View ref={required.anchor('zone')} collapsable={false}>
       {newZone ? (
         <>
-          {/* R-52: the new Zone's label and name, on one line. */}
-          <View style={styles.newZoneRow}>
-            <Field
-              testID="new-zone-label"
-              label="Zone no."
-              value={newZone.label}
-              onChangeText={(value) =>
-                setNewZone({ ...newZone, label: value.replace(/[^0-9a-z]/gi, '').slice(0, 3).toUpperCase() })
-              }
-              maxLength={3}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              placeholder="1A"
-              containerStyle={styles.newZoneLabel}
-            />
+          {/* R-52: the new Zone's number and name, on one line; a subzone letter when ticked. */}
+          <ZoneNumberField testID="new-zone-label" label={newZone.label} onChange={(label) => setNewZone({ ...newZone, label })}>
             <Field
               testID="new-zone-name"
               label="Zone name"
@@ -489,7 +477,7 @@ export default function AuditZonesScreen() {
               placeholder="Press shop"
               containerStyle={styles.newZoneName}
             />
-          </View>
+          </ZoneNumberField>
           {showErrors && errors.zone ? <Text style={styles.error}>{errors.zone}</Text> : null}
           <Pressable accessibilityRole="button" onPress={() => setNewZone(null)} hitSlop={8}>
             <Text style={styles.link}>Choose one of the Unit’s Zones instead</Text>
@@ -1116,8 +1104,6 @@ const useStyles = createThemedStyles((theme) => ({
   footer: { gap: theme.space.sm, marginTop: theme.space.lg, paddingBottom: theme.space.md },
   slipAction: { marginTop: theme.space.xs },
   gapAbove: { marginTop: theme.space.md },
-  newZoneRow: { flexDirection: 'row', gap: theme.space.sm },
-  newZoneLabel: { width: 96 },
   newZoneName: { flex: 1 },
   link: {
     fontFamily: theme.family.medium,
