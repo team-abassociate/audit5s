@@ -141,6 +141,13 @@ describe('the local schema', () => {
     const audits = await listLocalAudits(database);
     expect(audits.map((audit) => audit.id)).toContain(auditId);
   });
+
+  it('lists each audit with its Zones, which is what answers a cross-audit call', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    const [zone] = await getLocalAuditZone(database, auditZoneId);
+    const listed = (await listLocalAudits(database)).find((audit) => audit.id === auditId);
+    expect(listed?.zoneIds?.split(',')).toEqual([zone!.zoneId]);
+  });
   it('rebuilds audit_zone for v7 without losing a Zone a device already holds', async () => {
     const { auditId, auditZoneId } = await startAudit();
     await answerAll(auditId, auditZoneId, fiftyAnswers().slice(0, 5));

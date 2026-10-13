@@ -116,7 +116,10 @@ function isEmptyDraft(draft: ZoneDraft): boolean {
 export default function AuditZonesScreen() {
   const styles = useStyles();
   const theme = useTheme();
-  const { auditId } = useLocalSearchParams<{ auditId: string }>();
+  const params = useLocalSearchParams<{ auditId: string; zoneId?: string }>();
+  const auditId = params.auditId;
+  // A cross-audit call's Zone (`?zoneId=`), chosen once the catalogue is in; then forgotten.
+  const [presetZoneId, setPresetZoneId] = useState(params.zoneId ?? null);
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -438,6 +441,14 @@ export default function AuditZonesScreen() {
     setNewZone(null);
     setShowErrors(false);
   };
+
+  // Set during render, React's way to act once on data that arrived. A Zone not in the
+  // catalogue is ignored, and so is one picked by hand first.
+  if (presetZoneId !== null && catalogueZones.data && versions.data) {
+    setPresetZoneId(null);
+    const preset = catalogueZones.data.find((zone) => zone.id === presetZoneId);
+    if (preset && canAddZone && zoneCode === null && !newZone) chooseZone(preset.code);
+  }
 
   const submit = () => {
     const complete = required.check([

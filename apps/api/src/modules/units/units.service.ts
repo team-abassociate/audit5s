@@ -22,20 +22,20 @@ export class UnitsService {
     private readonly events: DomainEvents,
   ) {}
 
-  /** Every Zone Leader of the Unit is told to audit any Zone of it, their own included (D9). */
-  async callCrossAudit(scope: ScopeContext, unitId: string): Promise<void> {
-    const called = await this.repository.callCrossAudit(scope, unitId, (tx, unitName) =>
+  /** Every Zone Leader of the Unit is told to audit the named Zone, their own included (D9). */
+  async callCrossAudit(scope: ScopeContext, unitId: string, zoneId: string): Promise<void> {
+    const called = await this.repository.callCrossAudit(scope, unitId, zoneId, (tx, data) =>
       this.events.emit(tx, {
         type: 'CROSS_AUDIT_CALLED',
         actorUserId: scope.actor.userId,
         unitId,
         resourceType: 'unit',
         resourceId: unitId,
-        data: { unitName },
+        data,
       }),
     );
     if (!called) {
-      throw AppError.notFound('No such Unit');
+      throw AppError.notFound('No such Zone in this Unit');
     }
   }
 

@@ -156,6 +156,10 @@ export const updateUnitRequestSchema = z
   });
 export type UpdateUnitRequest = z.infer<typeof updateUnitRequestSchema>;
 
+/** §2.6: a Coordinator calls a cross audit of one Zone of their Unit. */
+export const callCrossAuditRequestSchema = z.object({ zoneId: uuidSchema });
+export type CallCrossAuditRequest = z.infer<typeof callCrossAuditRequestSchema>;
+
 export const listUnitsQuerySchema = paginationQuerySchema.extend({
   includeArchived: booleanQuery(false),
   search: z.string().trim().min(1).max(120).optional(),

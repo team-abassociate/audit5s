@@ -30,6 +30,7 @@
   /* --- board materials --- */
   --tape:#D9CF9A;   --tape-ink:#33301F;   /* masking-tape strip */
   --slip:#E8E24B;   --slip-ink:#33301F;   /* yellow slip: one warning per view */
+  --cross-audit:#1F4E9C; --cross-audit-ink:#FFFFFF; /* cross-audit call row, same in both themes */
 
   /* --- semantic status (independent of accent) --- */
   --ok:#2F6E3A;     --ok-band:#3E8E4B;
@@ -64,6 +65,7 @@
     --hard:rgba(0,0,0,.55);
     --tape:#57512F;   --tape-ink:#EDE6C4;
     --slip:#D2C92F;   --slip-ink:#33301F;
+    --cross-audit:#1F4E9C; --cross-audit-ink:#FFFFFF;
     --ok:#6FC27E;     --ok-band:#49A05A;
     --warn:#E7B03A;   --warn-band:#D79A05;
     --crit:#F27458;   --crit-band:#D94A2E;
@@ -78,6 +80,7 @@
   --board:#151816; --board-line:rgba(255,255,255,.045); --tile:#1E2220; --tile-2:#191D1B;
   --ink:#EDEAE0; --ink-2:#A8A899; --ink-3:#9A9C8F; --edge:#3C423D; --edge-soft:#2C312D;
   --hard:rgba(0,0,0,.55); --tape:#57512F; --tape-ink:#EDE6C4; --slip:#D2C92F; --slip-ink:#33301F;
+  --cross-audit:#1F4E9C; --cross-audit-ink:#FFFFFF;
   --ok:#6FC27E; --ok-band:#49A05A; --warn:#E7B03A; --warn-band:#D79A05;
   --crit:#F27458; --crit-band:#D94A2E; --accent:#4FD2D8; --accent-soft:#12302F;
   color-scheme:dark;

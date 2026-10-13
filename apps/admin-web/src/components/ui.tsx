@@ -620,6 +620,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   tone = 'danger',
   pending = false,
+  disabled = false,
   error,
   onConfirm,
   onCancel,
@@ -632,6 +633,8 @@ export function ConfirmDialog({
   cancelLabel?: string;
   tone?: 'danger' | 'primary';
   pending?: boolean;
+  /** Confirm waits on a choice made inside the dialog. */
+  disabled?: boolean;
   error?: unknown;
   onConfirm: () => void;
   onCancel: () => void;
@@ -657,7 +660,7 @@ export function ConfirmDialog({
         <Button ref={cancel} variant="secondary" onClick={onCancel} disabled={pending}>
           {cancelLabel}
         </Button>
-        <Button variant={tone} onClick={onConfirm} disabled={pending}>
+        <Button variant={tone} onClick={onConfirm} disabled={pending || disabled}>
           {pending ? (pendingLabel ?? `${confirmLabel}…`) : confirmLabel}
         </Button>
       </DialogActions>

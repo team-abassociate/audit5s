@@ -835,7 +835,12 @@ export function getLocalAudit(database: LocalDatabase, auditId: string) {
 /** The device's audits, newest first, each with its Unit's cached name for the History list. */
 export function listLocalAudits(database: LocalDatabase) {
   return database
-    .select({ ...getTableColumns(audits), unitName: units.name })
+    .select({
+      ...getTableColumns(audits),
+      unitName: units.name,
+      /** The audit's Zones, comma-separated — what a cross-audit call is answered by. */
+      zoneIds: sql<string | null>`(SELECT group_concat(${localAuditZones.zoneId}) FROM ${localAuditZones} WHERE ${localAuditZones.auditId} = ${audits.id})`,
+    })
     .from(audits)
     .leftJoin(units, eq(units.id, audits.unitId))
     .orderBy(sql`${audits.clientUpdatedAt} DESC`);
