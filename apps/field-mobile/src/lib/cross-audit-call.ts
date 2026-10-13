@@ -12,8 +12,8 @@ export function crossAuditCallZoneId(call: CrossAuditCall): string | null {
 /**
  * Every cross-audit call still standing, newest first (owner, 2026-10-13): under 7 days old,
  * and not yet answered by a cross audit at that Unit, started after the call, that includes
- * the Zone it names. An older call without a Zone is answered by any cross audit at the Unit
- * with a Zone started.
+ * the Zone it names. A call naming no Zone (sent before calls named one) is not shown (owner,
+ * 2026-10-14).
  *
  * ponytail: only audits on this device count as answering a call; a server-side "answered"
  * flag on the call is the upgrade if a Zone Leader ever answers from a second phone.
@@ -26,21 +26,18 @@ export function openCrossAuditCalls(
   return notifications
     .filter((notification) => {
       if (notification.eventType !== 'CROSS_AUDIT_CALLED') return false;
+      const zoneId = crossAuditCallZoneId(notification);
+      if (zoneId === null) return false;
       const calledAt = Date.parse(notification.createdAt);
       if (now - calledAt > CROSS_AUDIT_CALL_DAYS * 86_400_000) return false;
-      const zoneId = crossAuditCallZoneId(notification);
-      return !audits.some((audit) => {
-        // A selfie with no Zone yet answers nothing, or "Any Zone" calls vanish and come back.
-        const zoneIds = audit.zoneIds ? audit.zoneIds.split(',') : [];
-        return (
+      return !audits.some(
+        (audit) =>
           audit.auditType === 'CROSS_5S' &&
           audit.unitId === notification.unitId &&
           audit.startedAt !== null &&
           Date.parse(audit.startedAt) > calledAt &&
-          zoneIds.length > 0 &&
-          (zoneId === null || zoneIds.includes(zoneId))
-        );
-      });
+          (audit.zoneIds ?? '').split(',').includes(zoneId),
+      );
     })
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 }
