@@ -22,6 +22,7 @@ import {
   SectionHead,
   Slip,
   SlipText,
+  useSheetInset,
 } from '../../../components/ui';
 import {
   abortLocalAudit,
@@ -848,7 +849,7 @@ function ZoneDetailsPrompt({
   onSave: () => void;
 }) {
   const styles = useStyles();
-  const insets = useSafeAreaInsets();
+  const inset = useSheetInset();
 
   return (
     <Modal
@@ -859,7 +860,7 @@ function ZoneDetailsPrompt({
       statusBarTranslucent
     >
       <Pressable style={styles.scrim} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Close" />
-      <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom }]}>
+      <View style={[styles.sheet, inset]}>
         <Text style={styles.sheetTitle} accessibilityRole="header">
           {edit ? edit.label : 'Zone details'}
         </Text>
@@ -905,12 +906,12 @@ function RenamePrompt({
   onSave: () => void;
 }) {
   const styles = useStyles();
-  const insets = useSafeAreaInsets();
+  const inset = useSheetInset();
 
   return (
     <Modal visible={rename !== null} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
       <Pressable style={styles.scrim} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Close" />
-      <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom }]}>
+      <View style={[styles.sheet, inset]}>
         <Text style={styles.sheetTitle} accessibilityRole="header">
           Rename {rename?.label ?? 'Zone'}
         </Text>
@@ -965,14 +966,14 @@ function RestartPrompt({
   onConfirm: () => void;
 }) {
   const styles = useStyles();
-  const insets = useSafeAreaInsets();
+  const inset = useSheetInset();
   const tooShort = reason.trim().length < MIN_RESTART_REASON;
   const required = useRequiredFields<'reason'>();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
       <Pressable style={styles.scrim} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Close" />
-      <View style={[styles.sheet, { paddingBottom: 14 + insets.bottom }]}>
+      <View style={[styles.sheet, inset]}>
         <Text style={styles.sheetTitle} accessibilityRole="header">
           Restart this audit?
         </Text>
