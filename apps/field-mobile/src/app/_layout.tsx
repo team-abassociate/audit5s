@@ -4,6 +4,7 @@ import '../lib/crypto-polyfill';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Alert, AppState, LogBox, View } from 'react-native';
 import { useFonts } from 'expo-font';
+import * as Updates from 'expo-updates';
 import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular';
 import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold';
 import { Archivo_800ExtraBold } from '@expo-google-fonts/archivo/800ExtraBold';
@@ -70,6 +71,8 @@ function AuthGate() {
   // Whether this sign-in has already been sent to its landing screen. Overview is where a
   // session *starts*, not a place the app keeps pulling people back to.
   const landed = useRef(false);
+  const onTab = segments[0] === '(tabs)' || (segments[0] === 'kaizen' && segments[1] === '(tabs)');
+  const { isUpdatePending } = Updates.useUpdates();
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -145,6 +148,9 @@ function AuthGate() {
 
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        // expo-updates only checks on a cold start; a phone that never closes the app would
+        // never see an OTA fix. Download it now; the effect below applies it.
+        if (Updates.isEnabled) Updates.fetchUpdateAsync().catch(() => {});
         showOverview();
         if (pauseError.current) {
           Alert.alert('Could not pause audit', pauseError.current);
@@ -183,6 +189,17 @@ function AuthGate() {
     return () => subscription.remove();
   }, [status, segments, auditId, auditZoneId, database, queryClient, router, sync]);
 
+  // A downloaded OTA update otherwise waits for the *next* cold start, so a fix needed an
+  // open, a close and a second open. Apply it as soon as it lands, but only where a restart
+  // loses nothing: a tab's main page or the sign-in screens, never mid-audit, behind a
+  // camera, or on Kaizen's half-filled New form.
+  const safeToRestart =
+    status !== 'ready' ||
+    (onTab && !cameraOpen && segments[2] !== 'new');
+  useEffect(() => {
+    if (isUpdatePending && safeToRestart) void Updates.reloadAsync();
+  }, [isUpdatePending, safeToRestart]);
+
   if (status === 'loading') {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.board }}>
@@ -197,7 +214,6 @@ function AuthGate() {
   // status is one Back away. Nobody signed in, nothing to report. A camera is the whole
   // screen, even when it opens on a tab (a Kaizen photo, from New), so the bar steps aside.
   const signedIn = status === 'ready';
-  const onTab = segments[0] === '(tabs)' || (segments[0] === 'kaizen' && segments[1] === '(tabs)');
   const showBar = signedIn && onTab && !cameraOpen;
 
   return (
