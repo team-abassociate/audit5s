@@ -148,6 +148,8 @@ describe('the local schema', () => {
     const [zone] = await getLocalAuditZone(database, auditZoneId);
     const listed = (await listLocalAudits(database)).find((audit) => audit.id === auditId);
     expect(listed?.zoneIds?.split(',')).toEqual([zone!.zoneId]);
+    // History titles the card by these, not by the Unit.
+    expect(JSON.parse(listed!.zoneSnapshots)).toEqual([[zone!.zoneCodeSnapshot, zone!.zoneNameSnapshot]]);
   });
   it('rebuilds audit_zone for v7 without losing a Zone a device already holds', async () => {
     const { auditId, auditZoneId } = await startAudit();

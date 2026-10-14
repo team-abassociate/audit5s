@@ -9,8 +9,15 @@ import { formatDateTime } from '../../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, isFinished } from '../../lib/labels';
 import { createThemedStyles } from '../../lib/theme';
 import type { AuditStatus, AuditType } from '@audit5s/contracts';
+import { zoneDisplayLabel } from '@audit5s/domain';
 
 type LocalAudit = Awaited<ReturnType<typeof listLocalAudits>>[number];
+
+/** The card's title: what was audited, not the Unit every card on the phone shares. */
+function zonesTitle(audit: LocalAudit): string {
+  const zones = JSON.parse(audit.zoneSnapshots || '[]') as [string, string][];
+  return zones.length === 0 ? 'No Zone yet' : zones.map(([code, name]) => zoneDisplayLabel(code, name)).join(', ');
+}
 
 /**
  * Audit history — **this device's** audits, read from SQLite.
@@ -41,8 +48,8 @@ export default function HistoryScreen() {
     ({ item }: { item: LocalAudit }) => (
       <Card>
         <CardHeader
-          title={item.unitName ?? 'Unit'}
-          description={AUDIT_TYPE_LABELS[item.auditType as AuditType] ?? item.auditType}
+          title={zonesTitle(item)}
+          description={`${AUDIT_TYPE_LABELS[item.auditType as AuditType] ?? item.auditType} · ${item.unitName ?? 'Unit'}`}
           action={
             <Chip tone={AUDIT_STATUS_TONE[item.status as AuditStatus] ?? 'muted'}>
               {AUDIT_STATUS_LABELS[item.status as AuditStatus] ?? item.status}
@@ -51,15 +58,6 @@ export default function HistoryScreen() {
         />
         <Data>Updated {formatDateTime(item.clientUpdatedAt)}</Data>
         <View style={styles.actions}>
-          <View style={styles.action}>
-            <Button icon={isFinished(item.status) ? 'visibility' : 'play-arrow'}
-              title={isFinished(item.status) ? 'Review' : 'Open'}
-              variant="secondary"
-              onPress={() =>
-                router.push({ pathname: '/audit/zones/[auditId]', params: { auditId: item.id } })
-              }
-            />
-          </View>
           {/*
             N6: a Consultant's read model, not a report. The official PDF is a Super
             Admin deliverable, and nothing on this device issues one.
@@ -75,6 +73,15 @@ export default function HistoryScreen() {
               />
             </View>
           ) : null}
+          <View style={styles.action}>
+            <Button icon={isFinished(item.status) ? 'visibility' : 'play-arrow'}
+              title={isFinished(item.status) ? 'Review' : 'Open'}
+              variant="secondary"
+              onPress={() =>
+                router.push({ pathname: '/audit/zones/[auditId]', params: { auditId: item.id } })
+              }
+            />
+          </View>
         </View>
       </Card>
     ),
