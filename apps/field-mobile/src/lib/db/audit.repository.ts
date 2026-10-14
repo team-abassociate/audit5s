@@ -858,6 +858,8 @@ export function listLocalAudits(database: LocalDatabase) {
       unitName: units.name,
       /** The audit's Zones, comma-separated — what a cross-audit call is answered by. */
       zoneIds: sql<string | null>`(SELECT group_concat(${localAuditZones.zoneId}) FROM ${localAuditZones} WHERE ${localAuditZones.auditId} = ${audits.id})`,
+      /** The audit's Zones in the order they were audited, as `[[code, name], …]` JSON. */
+      zoneSnapshots: sql<string>`(SELECT json_group_array(json_array(code, name)) FROM (SELECT ${localAuditZones.zoneCodeSnapshot} AS code, ${localAuditZones.zoneNameSnapshot} AS name FROM ${localAuditZones} WHERE ${localAuditZones.auditId} = ${audits.id} AND ${localAuditZones.status} != 'WITHDRAWN' ORDER BY ${localAuditZones.sequenceNo}))`,
     })
     .from(audits)
     .leftJoin(units, eq(units.id, audits.unitId))

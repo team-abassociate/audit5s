@@ -1,5 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator } from 'expo-image-manipulator';
+import { whilePrompting } from '../permission-prompt';
 import { processCapturedPhoto, type ProcessedImage } from './media';
 
 /**
@@ -23,14 +24,18 @@ import { processCapturedPhoto, type ProcessedImage } from './media';
  * Null when the person closes the picker without choosing.
  */
 export async function pickFromGallery(): Promise<ProcessedImage | null> {
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    allowsEditing: false,
-    allowsMultipleSelection: false,
-    // The original: the re-encode below is the one compression step, as for the camera.
-    quality: 1,
-    exif: false,
-  });
+  // The picker is its own activity, so the app reads as backgrounded while it is open. Held
+  // like a permission dialog, or the root layout pauses the audit and returns to Overview.
+  const result = await whilePrompting(() =>
+    ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      allowsMultipleSelection: false,
+      // The original: the re-encode below is the one compression step, as for the camera.
+      quality: 1,
+      exif: false,
+    }),
+  );
   const asset = result.canceled ? undefined : result.assets[0];
   if (!asset) return null;
 
