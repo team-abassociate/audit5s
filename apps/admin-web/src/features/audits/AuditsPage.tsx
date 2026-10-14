@@ -43,6 +43,7 @@ import { useSession } from '@/lib/session';
 import { useFollowItemUnit, useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL } from '@/lib/labels';
 import { AuditDetailPanel } from './AuditDetailPanel';
+import { CrossAuditsCard } from './CrossAudits';
 import { AuditProgress, TeamProgress } from './AuditProgress';
 import { read, readAll } from './data';
 
@@ -219,6 +220,11 @@ export function AuditsPage() {
   return (
     <div className="gb-withpanel">
       <div className={cn('@container min-w-0 space-y-4', TABLES_FIT)}>
+        {/* R-56: a cross audit of one Unit — the Coordinator's, or the Unit a Super Admin chose. */}
+        {unitScope.unitId && can('unit', 'call_cross_audit') ? (
+          <CrossAuditsCard unitId={unitScope.unitId} mayManage />
+        ) : null}
+
         <Card>
           <CardHeader
             title={isConsultant ? 'My audits' : 'Audits'}

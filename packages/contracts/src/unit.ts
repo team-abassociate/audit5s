@@ -161,8 +161,59 @@ export type UpdateUnitRequest = z.infer<typeof updateUnitRequestSchema>;
  * 2026-10-14). `dueOn` is optional on the wire only for phones not yet updated: the server
  * makes it seven days out, as those phones showed.
  */
-export const callCrossAuditRequestSchema = z.object({ zoneId: uuidSchema, dueOn: z.iso.date().optional() });
+export const callCrossAuditRequestSchema = z
+  .object({
+    /** One Zone: what phones before 0051 send. */
+    zoneId: uuidSchema.optional(),
+    /** Several Zones, one cross audit (owner, 2026-10-14). */
+    zoneIds: z.array(uuidSchema).min(1).max(500).optional(),
+    dueOn: z.iso.date().optional(),
+  })
+  .refine((body) => body.zoneId !== undefined || body.zoneIds !== undefined, {
+    message: 'Name at least one Zone',
+    path: ['zoneIds'],
+  });
 export type CallCrossAuditRequest = z.infer<typeof callCrossAuditRequestSchema>;
+
+/** Where a Zone of a called cross audit stands: nobody has started it, it is under way, it is done. */
+export const crossAuditZoneStateSchema = z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED']);
+export type CrossAuditZoneState = z.infer<typeof crossAuditZoneStateSchema>;
+
+/**
+ * One called cross audit, of one Zone or many (0051): the Coordinator's card on every Audits
+ * board. Each Zone's state is read from the first audit of it since the call that counts
+ * (R-55: a Zone Leader's cross audit, or any audit by the Coordinator).
+ */
+export const crossAuditRoundSchema = z.object({
+  id: uuidSchema,
+  unitId: uuidSchema,
+  calledBy: z.string(),
+  /** `YYYY-MM-DD`, the deadline in force. */
+  dueOn: z.iso.date(),
+  createdAt: isoDateTimeSchema,
+  completedAt: isoDateTimeSchema.nullable(),
+  completedBy: z.string().nullable(),
+  completionRemark: z.string().nullable(),
+  zones: z.array(
+    z.object({
+      zoneId: uuidSchema,
+      zoneCode: z.string(),
+      zoneName: z.string(),
+      state: crossAuditZoneStateSchema,
+      auditId: uuidSchema.nullable(),
+      auditorName: z.string().nullable(),
+    }),
+  ),
+});
+export type CrossAuditRound = z.infer<typeof crossAuditRoundSchema>;
+
+/** Moving a called cross audit's deadline — later, or sooner, but not into the past. */
+export const changeCrossAuditDeadlineRequestSchema = z.object({ dueOn: z.iso.date() });
+export type ChangeCrossAuditDeadlineRequest = z.infer<typeof changeCrossAuditDeadlineRequestSchema>;
+
+/** Completing a called cross audit; the remark is required when a Zone is not done. */
+export const completeCrossAuditRequestSchema = z.object({ remark: z.string().trim().max(2000).optional() });
+export type CompleteCrossAuditRequest = z.infer<typeof completeCrossAuditRequestSchema>;
 
 /** A call still standing: no audit of its Zone has started since it was made. */
 export const crossAuditCallSchema = z.object({

@@ -31,6 +31,7 @@ import { api } from '../../lib/api';
 import { formatDate, formatPct } from '../../lib/format';
 import { isRunning } from '../../lib/labels';
 import { AuditCard } from '../../components/audit-card';
+import { CallCrossAuditSheet } from '../../components/cross-audit-round';
 import { FieldOverview } from '../../components/field-overview';
 import { managesOnPhone, useSession } from '../../lib/session';
 import { bandOf, createThemedStyles } from '../../lib/theme';
@@ -113,6 +114,7 @@ function ManagementOverview() {
   const running = (active.data?.data ?? []).filter((audit) => isRunning(audit.status));
 
   const addActions: Array<{ label: string; detail?: string; onPress: () => void }> = [];
+  const coordinator = scope?.role === 'COORDINATOR';
   if (can('unit', 'create')) addActions.push({ label: 'New Unit', onPress: () => router.push('/manage/new-unit') });
   if (scope?.role === 'SUPER_ADMIN') {
     addActions.push(
@@ -120,17 +122,29 @@ function ManagementOverview() {
       { label: 'New coordinator', onPress: () => router.push({ pathname: '/manage/new-person', params: { role: 'COORDINATOR' } }) },
     );
   }
-  if (can('user', 'create')) {
-    addActions.push({
-      label: 'New zone leader',
-      onPress: () => router.push({ pathname: '/manage/new-person', params: { role: 'ZONE_LEADER' } }),
-    });
-  }
   if (can('audit_assignment', 'create')) {
     addActions.push({ label: 'Assign an audit', detail: 'A consultant runs it on their phone', onPress: () => router.push('/manage/assign') });
   }
   if (can('audit', 'create_external')) {
     addActions.push({ label: 'Start an audit myself', detail: 'Take the selfie, then select the Zone', onPress: () => router.push('/audit/start') });
+  }
+  // A Coordinator's own Unit (owner, 2026-10-14): its Zones, its Zone Leaders, its cross audits.
+  if (coordinator && can('zone', 'create')) {
+    addActions.push({ label: 'Add a Zone', detail: 'On My Unit', onPress: () => router.push({ pathname: '/my-unit', params: { add: 'zone' } }) });
+  }
+  if (can('user', 'create')) {
+    addActions.push({
+      label: coordinator ? 'Add a Zone Leader' : 'New zone leader',
+      onPress: () => router.push({ pathname: '/manage/new-person', params: { role: 'ZONE_LEADER' } }),
+    });
+  }
+  const [callingCross, setCallingCross] = useState(false);
+  if (coordinator && can('unit', 'call_cross_audit') && ownUnitId) {
+    addActions.push({
+      label: 'Start a cross audit',
+      detail: 'Pick the Zones — or all of them — and the date it is due',
+      onPress: () => setCallingCross(true),
+    });
   }
 
   return (
@@ -249,6 +263,7 @@ function ManagementOverview() {
       </ScrollView>
 
       <ActionSheet visible={adding} title="Add" onClose={() => setAdding(false)} actions={addActions} />
+      <CallCrossAuditSheet unitId={ownUnitId ?? undefined} visible={callingCross} onClose={() => setCallingCross(false)} />
     </Screen>
   );
 }

@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Tabs } from 'expo-router';
+import { Tabs, useLocalSearchParams, useRouter } from 'expo-router';
 import type { Unit } from '@audit5s/contracts';
 import { EmptyState, HeaderTitle, Screen } from '../../components/ui';
 import { UnitDetail } from '../../components/unit-detail';
@@ -14,6 +15,13 @@ import { useSession } from '../../lib/session';
 export default function MyUnitScreen() {
   const { scope } = useSession();
   const unitId = scope?.unitIds[0];
+  // Overview's "Add a Zone" lands here with the add form open; the param is spent once read.
+  const router = useRouter();
+  const { add } = useLocalSearchParams<{ add?: string }>();
+  const addZone = add === 'zone';
+  useEffect(() => {
+    if (addZone) router.setParams({ add: undefined });
+  }, [addZone, router]);
   // The same query key as the page's own. The header names the Unit; the tab still says My Unit.
   const unit = useQuery({
     queryKey: ['unit', unitId],
@@ -25,7 +33,7 @@ export default function MyUnitScreen() {
     <Screen>
       <Tabs.Screen options={{ headerTitle: () => <HeaderTitle>{unit.data?.name ?? 'My Unit'}</HeaderTitle> }} />
       {unitId ? (
-        <UnitDetail unitId={unitId} />
+        <UnitDetail unitId={unitId} addZone={addZone} />
       ) : (
         <EmptyState title="No Unit" detail="No Unit is assigned to you. A Super Admin gives a Coordinator their Unit." />
       )}

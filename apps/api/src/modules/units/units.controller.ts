@@ -12,12 +12,17 @@ import {
 } from '@nestjs/common';
 import {
   callCrossAuditRequestSchema,
+  changeCrossAuditDeadlineRequestSchema,
+  completeCrossAuditRequestSchema,
   createUnitRequestSchema,
   listUnitsQuerySchema,
   updateUnitRequestSchema,
   type CallCrossAuditRequest,
+  type ChangeCrossAuditDeadlineRequest,
+  type CompleteCrossAuditRequest,
   type CreateUnitRequest,
   type CrossAuditCall,
+  type CrossAuditRound,
   type Page,
   type Unit,
   type UpdateUnitRequest,
@@ -95,7 +100,7 @@ export class UnitsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(callCrossAuditRequestSchema)) body: CallCrossAuditRequest,
   ): Promise<void> {
-    return this.units.callCrossAudit(scope, id, body.zoneId, body.dueOn);
+    return this.units.callCrossAudit(scope, id, body.zoneIds ?? [body.zoneId!], body.dueOn);
   }
 
   /** The Unit's cross-audit calls still standing (0050): the Zone Leaders' blue list. */
@@ -104,5 +109,41 @@ export class UnitsController {
   @Get(':id/cross-audit-calls')
   listCrossAuditCalls(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<CrossAuditCall[]> {
     return this.units.listCrossAuditCalls(scope, id);
+  }
+
+  /** The Unit's called cross audits, each with where every Zone stands (0051): the Coordinator's card. */
+  @RequirePermission('unit', 'read')
+  @Scope({ param: 'id', intent: 'read' })
+  @Get(':id/cross-audits')
+  listCrossAuditRounds(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<CrossAuditRound[]> {
+    return this.units.listCrossAuditRounds(scope, id);
+  }
+
+  /** Moves a called cross audit's deadline: the Zone Leaders could not make it in time (0051). */
+  @RequirePermission('unit', 'call_cross_audit')
+  @Scope({ param: 'id', intent: 'write' })
+  @Patch(':id/cross-audits/:roundId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  changeCrossAuditDeadline(
+    @CurrentScope() scope: ScopeContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('roundId', ParseUUIDPipe) roundId: string,
+    @Body(new ZodValidationPipe(changeCrossAuditDeadlineRequestSchema)) body: ChangeCrossAuditDeadlineRequest,
+  ): Promise<void> {
+    return this.units.changeCrossAuditDeadline(scope, id, roundId, body.dueOn);
+  }
+
+  /** Completes a called cross audit, with a remark when a Zone was left unaudited (0051). */
+  @RequirePermission('unit', 'call_cross_audit')
+  @Scope({ param: 'id', intent: 'write' })
+  @Post(':id/cross-audits/:roundId/complete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  completeCrossAudit(
+    @CurrentScope() scope: ScopeContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('roundId', ParseUUIDPipe) roundId: string,
+    @Body(new ZodValidationPipe(completeCrossAuditRequestSchema)) body: CompleteCrossAuditRequest,
+  ): Promise<void> {
+    return this.units.completeCrossAudit(scope, id, roundId, body.remark);
   }
 }

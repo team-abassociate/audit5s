@@ -196,6 +196,13 @@ export function renderNotification(event: DomainEventJob): { title: string; body
       };
     }
     case 'CROSS_AUDIT_CALLED':
+      // One call of several Zones is one notice (0051), counting them; the list names each.
+      if (Number(data.zoneCount ?? 1) > 1) {
+        return {
+          title: `Cross audit called: ${Number(data.zoneCount)} Zones`,
+          body: `Audit them at ${String(data.unitName ?? 'your Unit')}${data.dueOn ? ` by ${formatDay(String(data.dueOn))}` : ''}. Each Zone needs its own audit.`,
+        };
+      }
       // A call made before calls named a Zone carries no zoneCode, and stays "any Zone".
       if (item) {
         return {

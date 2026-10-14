@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -39,7 +39,7 @@ import { leaveScreen } from '../lib/leave-screen';
  * - **People:** a Super Admin grants and revokes access; a Coordinator adds Zone leaders
  *   (R-39), and opens a person to edit, reset or disable them.
  */
-export function UnitDetail({ unitId }: { unitId: string }) {
+export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: boolean }) {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
@@ -48,7 +48,11 @@ export function UnitDetail({ unitId }: { unitId: string }) {
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
   // The Zone open for editing, or 'new' for the add form. One at a time: a phone shows one form.
-  const [zoneOpen, setZoneOpen] = useState<string | null>(null);
+  const [zoneOpen, setZoneOpen] = useState<string | null>(addZone ? 'new' : null);
+  // Asked for from elsewhere (Overview's "Add a Zone") while this page is already mounted.
+  useEffect(() => {
+    if (addZone) setZoneOpen('new');
+  }, [addZone]);
 
   const mayEdit = can('unit', 'update_profile');
   const mayGrant = can('unit_membership', 'create');

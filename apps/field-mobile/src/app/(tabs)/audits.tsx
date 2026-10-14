@@ -1,11 +1,10 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, SectionList, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, SectionList, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { istDateKey, zoneDisplayLabel } from '@audit5s/domain';
 import type { Audit, AuditAssignment, AuditStatus, AuditType, Page, Unit } from '@audit5s/contracts';
 import { AuditCard } from '../../components/audit-card';
+import { CallCrossAuditSheet, CrossAuditRoundCard, roundsOnBoard, useCrossAuditRounds } from '../../components/cross-audit-round';
 import {
   ActionSheet,
   Card,
@@ -32,7 +31,7 @@ import {
   useZoneFilter,
   type ZoneOption,
 } from '../../components/zone-filter';
-import { api, problemMessage } from '../../lib/api';
+import { api } from '../../lib/api';
 import { listLocalAudits } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { formatDate } from '../../lib/format';
@@ -103,41 +102,16 @@ export default function AuditsScreen() {
   if (can('audit', 'create_external')) {
     newAudit.push({ label: 'Start one myself', detail: 'Take the selfie, then select the Zone', onPress: () => router.push('/audit/start') });
   }
-  // §2.6: a Coordinator calls a cross audit of one Zone; every Zone Leader of the Unit is told.
-  const [pickingCrossZone, setPickingCrossZone] = useState(false);
+  // §2.6, 0051: a Coordinator calls one cross audit of any number of Zones; every Zone Leader
+  // of the Unit is told once. It is a card on every board below.
+  const [callingCross, setCallingCross] = useState(false);
   if (can('unit', 'call_cross_audit') && oneUnit) {
     newAudit.push({
-      label: 'Call a cross audit',
-      detail: 'Pick a Zone and the date it is due; every Zone Leader is notified',
-      onPress: () => setPickingCrossZone(true),
+      label: 'Start a cross audit',
+      detail: 'Pick the Zones — or all of them — and the date it is due; every Zone Leader is notified',
+      onPress: () => setCallingCross(true),
     });
   }
-  // The Zone, then the day it is due (owner, 2026-10-14) — a week out unless they move it —
-  // then one confirm naming both.
-  const callCross = (zone: ZoneOption) => {
-    const label = zoneDisplayLabel(zone.code, zone.name);
-    DateTimePickerAndroid.open({
-      value: new Date(Date.now() + 7 * 86_400_000),
-      mode: 'date',
-      minimumDate: new Date(),
-      onChange: (event, date) => {
-        const dueOn = event.type === 'set' && date ? istDateKey(date) : null;
-        if (!dueOn) return;
-        const day = formatDate(`${dueOn}T12:00:00+05:30`);
-        Alert.alert(`Call a cross audit of ${label}?`, `Every Zone Leader of the Unit is asked to audit ${label} by ${day}.`, [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Notify Zone Leaders',
-            onPress: () =>
-              void api.post(`/units/${scope!.unitIds[0]}/cross-audit`, { zoneId: zone.id, dueOn }).then(
-                () => Alert.alert('Zone Leaders notified', `Each one can now audit ${label}. It is due by ${day}.`),
-                (error: unknown) => Alert.alert('Could not call the cross audit', problemMessage(error) ?? 'Try again.'),
-              ),
-          },
-        ]);
-      },
-    });
-  };
   // One choice is no choice: "+ Audit" goes straight to it rather than through a menu of one.
   const addAudit = () => (newAudit.length === 1 ? newAudit[0]!.onPress() : setAdding(true));
 
@@ -150,6 +124,9 @@ export default function AuditsScreen() {
   });
   const unitName = ownUnit.data?.name;
   const zones = useUnitZones(ownUnitId);
+  const rounds = useCrossAuditRounds(can('unit', 'call_cross_audit') ? ownUnitId : undefined);
+  // Not filtered by Zone: a cross audit spans Zones, and its own screen lists them.
+  const roundCards = roundsOnBoard(rounds.data ?? [], board);
 
   const mine = useQuery({ queryKey: ['local', 'audits'], queryFn: () => listLocalAudits(database) });
   const resumable = (mine.data ?? []).find((audit) => audit.status === 'IN_PROGRESS' || audit.status === 'PAUSED');
@@ -248,6 +225,9 @@ export default function AuditsScreen() {
       ) : null}
       <Segmented options={BOARDS} value={board} onChange={setBoard} />
       <ZoneFilterChips zones={zones} selected={zoneFilter.selected} onChange={zoneFilter.setSelected} />
+      {roundCards.map((round) => (
+        <CrossAuditRoundCard key={round.id} round={round} board={board} />
+      ))}
       <ErrorBanner
         message={current.error ? 'Audits could not load. This needs a connection; pull down to try again.' : null}
       />
@@ -266,13 +246,21 @@ export default function AuditsScreen() {
   );
   const empty = current.isLoading ? (
     <ActivityIndicator color={theme.color.ink} />
-  ) : current.data ? (
+  ) : current.data && roundCards.length === 0 ? (
     <EmptyState
       title="Nothing here"
       detail={zoneFilter.active ? 'Nothing on this board in the zones you chose.' : HEAD[board].empty}
     />
   ) : null;
-  const refresh = <RefreshControl refreshing={current.isRefetching} onRefresh={() => void current.refetch()} />;
+  const refresh = (
+    <RefreshControl
+      refreshing={current.isRefetching}
+      onRefresh={() => {
+        void current.refetch();
+        void rounds.refetch();
+      }}
+    />
+  );
 
   return (
     <Screen>
@@ -316,12 +304,7 @@ export default function AuditsScreen() {
         />
       )}
       <ActionSheet visible={adding} title="New audit" onClose={() => setAdding(false)} actions={newAudit} />
-      <ActionSheet
-        visible={pickingCrossZone}
-        title="Cross audit of which Zone?"
-        onClose={() => setPickingCrossZone(false)}
-        actions={zones.map((zone) => ({ label: zoneDisplayLabel(zone.code, zone.name), onPress: () => callCross(zone) }))}
-      />
+      <CallCrossAuditSheet unitId={ownUnitId} visible={callingCross} onClose={() => setCallingCross(false)} />
       <ZoneFilterSheet
         visible={zoneFilter.open}
         zones={zones}

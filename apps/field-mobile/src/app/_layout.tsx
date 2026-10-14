@@ -98,6 +98,7 @@ function AuthGate() {
       group === 'actions' ||
       group === 'notifications' ||
       group === 'cross-audits' ||
+      group === 'cross-audit' ||
       group === 'manage' ||
       group === 'module' ||
       group === 'kaizen' ||
