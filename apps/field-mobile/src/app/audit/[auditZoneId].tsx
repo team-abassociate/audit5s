@@ -1052,8 +1052,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderTopWidth: 1,
     borderTopColor: theme.color.edgeSoft,
   },
+  // Its own line: `flex: 1` in this wrapping row squeezed it to a letter per line.
   photoCount: {
-    flex: 1,
+    flexBasis: '100%',
     fontFamily: theme.family.mono,
     fontSize: 12,
     color: theme.color.ink2,
