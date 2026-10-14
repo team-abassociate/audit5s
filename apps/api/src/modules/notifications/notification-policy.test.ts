@@ -24,6 +24,16 @@ describe('notification policy (§5.9)', () => {
     }
   });
 
+  it('counts the Zones of one cross audit called of several, and names a single one', () => {
+    const many = renderNotification(job('CROSS_AUDIT_CALLED', { unitName: 'Pune', zoneCount: 25, dueOn: '2026-10-20' }));
+    expect(many.title).toBe('Cross audit called: 25 Zones');
+    expect(many.body).toContain('Pune');
+    const one = renderNotification(
+      job('CROSS_AUDIT_CALLED', { unitName: 'Pune', zoneCount: 1, zoneCode: 'Z-04', zoneName: 'Paint shop' }),
+    );
+    expect(one.title).toContain('Paint shop');
+  });
+
   it('names the auditor, the Unit and the day a completed audit finished', () => {
     const { title, body } = renderNotification(
       job('AUDIT_COMPLETED', {

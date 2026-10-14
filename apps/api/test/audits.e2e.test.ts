@@ -9,6 +9,7 @@ import {
   type AuditZone,
   type CorrectiveAction,
   type CrossAuditCall,
+  type CrossAuditRound,
   type Page,
   type ResponseValue,
   type ZoneLocksResponse,
@@ -1662,6 +1663,78 @@ describe('a called cross audit stands until anyone audits its Zone (0050)', () =
       assignmentId: (await assign(world.actors.CONSULTANT.userId)).id,
     });
     expect((await standing(leaderToken)).map((call) => call.zoneId)).toContain(zoneId);
+  });
+});
+
+describe('one cross audit of several Zones (0051)', () => {
+  const inDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  const coordinator = () => world.actors.COORDINATOR.accessToken;
+  const rounds = async () => {
+    const list = await world.request('GET', `${base}/units/${world.unitA}/cross-audits`, { token: coordinator() });
+    expect(list.status).toBe(200);
+    return list.body as CrossAuditRound[];
+  };
+
+  it('is one round; its deadline moves; it completes with a remark when a Zone was left', async () => {
+    const first = await createZone('Z-1R', 'Round one');
+    const second = await createZone('Z-2R', 'Round two');
+    const called = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+      token: coordinator(),
+      body: { zoneIds: [first, second], dueOn: inDays(2) },
+    });
+    expect(called.status, JSON.stringify(called.body)).toBe(204);
+
+    const round = (await rounds())[0]!;
+    expect(round.zones.map((zone) => [zone.zoneId, zone.state])).toEqual([
+      [first, 'NOT_STARTED'],
+      [second, 'NOT_STARTED'],
+    ]);
+
+    const { auditId } = await startAuditWithZone({ token: leaderToken, deviceId: LEADER_DEVICE, zoneId: first, auditType: 'CROSS_5S' });
+    const started = (await rounds()).find((one) => one.id === round.id)!;
+    expect(started.zones.find((zone) => zone.zoneId === first)).toMatchObject({ state: 'IN_PROGRESS', auditId });
+
+    // The deadline: any later day; never the past.
+    const path = `${base}/units/${world.unitA}/cross-audits/${round.id}`;
+    expect((await world.request('PATCH', path, { token: coordinator(), body: { dueOn: inDays(40) } })).status).toBe(204);
+    expect((await world.request('PATCH', path, { token: coordinator(), body: { dueOn: inDays(-1) } })).status).toBe(422);
+    expect((await rounds()).find((one) => one.id === round.id)!.dueOn).toBe(inDays(40));
+    expect((await world.request('PATCH', path, { token: leaderToken, body: { dueOn: inDays(5) } })).status).toBe(403);
+
+    // Completing with a Zone not done needs a remark, and then no Zone Leader is asked any more.
+    expect((await world.request('POST', `${path}/complete`, { token: coordinator(), body: {} })).status).toBe(422);
+    const done = await world.request('POST', `${path}/complete`, {
+      token: coordinator(),
+      body: { remark: 'Zone 92 shut for maintenance' },
+    });
+    expect(done.status, JSON.stringify(done.body)).toBe(204);
+    expect((await rounds()).find((one) => one.id === round.id)).toMatchObject({
+      completionRemark: 'Zone 92 shut for maintenance',
+      completedAt: expect.any(String),
+    });
+    const standing = await world.request('GET', `${base}/units/${world.unitA}/cross-audit-calls`, { token: leaderToken });
+    expect((standing.body as CrossAuditCall[]).map((call) => call.zoneId)).not.toContain(second);
+    expect((await world.request('POST', `${path}/complete`, { token: coordinator(), body: { remark: 'again' } })).status).toBe(409);
+    expect((await world.request('PATCH', path, { token: coordinator(), body: { dueOn: inDays(9) } })).status).toBe(409);
+  });
+
+  it('lists a Zone once for the Zone Leaders when two open calls name it', async () => {
+    const zoneId = await createZone('Z-4R', 'Called twice');
+    for (const dueOn of [inDays(6), inDays(3)]) {
+      await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, { token: coordinator(), body: { zoneIds: [zoneId], dueOn } });
+    }
+    const standing = await world.request('GET', `${base}/units/${world.unitA}/cross-audit-calls`, { token: leaderToken });
+    const listed = (standing.body as CrossAuditCall[]).filter((call) => call.zoneId === zoneId);
+    expect(listed.map((call) => call.dueOn)).toEqual([inDays(3)]);
+  });
+
+  it('is not reached from another Unit', async () => {
+    const zoneId = await createZone('Z-3R', 'Round three');
+    await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, { token: coordinator(), body: { zoneIds: [zoneId] } });
+    const round = (await rounds())[0]!;
+    const elsewhere = `${base}/units/${world.unitB}/cross-audits/${round.id}`;
+    expect((await world.request('PATCH', elsewhere, { token: coordinator(), body: { dueOn: inDays(3) } })).status).toBe(404);
+    expect((await world.request('POST', `${elsewhere}/complete`, { token: asSuperAdmin(), body: { remark: 'x' } })).status).toBe(404);
   });
 });
 

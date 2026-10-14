@@ -298,6 +298,37 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
   },
+  {
+    method: 'GET',
+    path: '/api/v1/units/:id/cross-audits',
+    description: 'unit:read — the called cross audits of the Unit, each Zone with its state (0051)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+  },
+  {
+    method: 'PATCH',
+    path: '/api/v1/units/:id/cross-audits/:roundId',
+    description: 'unit:call_cross_audit — move a called cross audit’s deadline (0051)',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
+      COORDINATOR: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/units/:id/cross-audits/:roundId/complete',
+    description: 'unit:call_cross_audit — complete a called cross audit, with a remark if a Zone was left (0051)',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
+      COORDINATOR: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
 
   // ------------------------------------------------------------------- zones
   {

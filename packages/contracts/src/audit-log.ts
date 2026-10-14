@@ -66,6 +66,10 @@ export const AUDIT_LOG_ACTIONS = [
   'unit.archived',
   /** §2.6: a Coordinator told the Unit's Zone Leaders to cross-audit it. */
   'unit.cross_audit_called',
+  /** The Coordinator moved a called cross audit's deadline (0051). */
+  'cross_audit.deadline_changed',
+  /** The Coordinator completed a called cross audit, with a remark if a Zone was left (0051). */
+  'cross_audit.completed',
   'device.revoked',
   /** An administrator cleared a revoked phone; its people sign in on it again (2026-09-28). */
   'device.restored',

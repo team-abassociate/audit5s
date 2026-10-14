@@ -54,8 +54,34 @@ export const zones = pgTable(
 );
 
 /**
- * A cross audit a Coordinator called, with the date it is due (0050, owner 2026-10-14).
- * Append-only: whether it is answered is read from the audits of its Zone.
+ * One cross audit a Coordinator called, of one Zone or many (0051, owner 2026-10-14). Its
+ * `dueOn` is the deadline in force — the Coordinator may move it — and it ends when every
+ * Zone is audited or the Coordinator completes it, with a remark if a Zone was left.
+ */
+export const crossAuditRounds = pgTable(
+  'cross_audit_round',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    unitId: uuid('unit_id')
+      .notNull()
+      .references(() => units.id, { onDelete: 'restrict' }),
+    calledByUserId: uuid('called_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    calledByLabel: text('called_by_label').notNull(),
+    dueOn: date('due_on', { mode: 'string' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    completedByUserId: uuid('completed_by_user_id').references(() => users.id, { onDelete: 'restrict' }),
+    completedByLabel: text('completed_by_label'),
+    completionRemark: text('completion_remark'),
+  },
+  (table) => [index('cross_audit_round_unit_idx').on(table.unitId, table.createdAt)],
+);
+
+/**
+ * A Zone of a called cross audit, with the date first asked (0050). Append-only: whether it
+ * is answered is read from the audits of its Zone; the deadline in force is its round's.
  */
 export const crossAuditCalls = pgTable(
   'cross_audit_call',
@@ -73,6 +99,12 @@ export const crossAuditCalls = pgTable(
     calledByLabel: text('called_by_label').notNull(),
     dueOn: date('due_on', { mode: 'string' }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    roundId: uuid('round_id')
+      .notNull()
+      .references(() => crossAuditRounds.id, { onDelete: 'restrict' }),
   },
-  (table) => [index('cross_audit_call_unit_idx').on(table.unitId, table.createdAt)],
+  (table) => [
+    index('cross_audit_call_unit_idx').on(table.unitId, table.createdAt),
+    index('cross_audit_call_round_idx').on(table.roundId),
+  ],
 );

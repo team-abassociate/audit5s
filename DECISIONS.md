@@ -48,6 +48,8 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-52 | Zones are selected, not made up; a Coordinator audits; a rename reaches history | Settled |
 | R-53 | Starting an audit is the selfie, then the Zone — no start screen | Settled |
 | R-54 | Photos from the gallery in the audit too; a Coordinator closes nonconformities | Settled |
+| R-55 | A called cross audit has a deadline and stands until anyone does it | Settled |
+| R-56 | A cross audit covers several Zones; the Coordinator moves its date and completes it | Settled |
 
 ---
 
@@ -2423,3 +2425,21 @@ cross-audit call (§2.6).
   someone audits the Zone.
 - **Calls that named no Zone** (the four sent on 2026-10-13 before calls named one) are not
   carried over and no longer shown.
+
+## R-56 — A cross audit covers several Zones; the Coordinator moves its date and completes it
+
+**Settled 2026-10-14 by the product owner.** Extends R-55.
+
+- **One call, many Zones.** The Coordinator ticks the Zones — or "Select all" — and the date,
+  from Overview's New menu or the Audits tab. It is one cross audit (`cross_audit_round`,
+  migration `0051`) with a call per Zone, and one notice to each Zone Leader ("Cross audit
+  called: 25 Zones"). Calls made before are each a cross audit of their one Zone.
+- **A card on every board.** On the Coordinator's Audits tab an open cross audit is a card on
+  Active, Completed and Assigned; it opens on that board's Zones — under way, done, not
+  started. A completed one is only on Completed.
+- **The deadline moves** to any day from today on, as often as needed, logged with the date it
+  replaced. The Zone Leaders' list reads the new date.
+- **The Coordinator completes it**, even with Zones not audited — then a remark saying why is
+  required and kept. Its Zones stop standing for every Zone Leader. Only a cross audit
+  completes this way; an external audit the Super Admin assigned is never completed by a
+  Coordinator.

@@ -4,6 +4,7 @@ import {
   API_BASE_PATH,
   type Audit,
   type CrossAuditCall,
+  type CrossAuditRound,
   type NotificationPage,
   type NotificationPreferences,
   overdueBundleDataSchema,
@@ -490,10 +491,6 @@ describe('a cross audit called by the Coordinator (§2.6)', () => {
   });
 
   it('makes an undated call, from a phone not yet updated, due in seven days; refuses a past date', async () => {
-    const before = await world.request('GET', `${base}/units/${world.unitA}/cross-audit-calls`, {
-      token: world.actors.COORDINATOR.accessToken,
-    });
-    const known = new Set((before.body as CrossAuditCall[]).map((call) => call.id));
     expect(
       (
         await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
@@ -502,10 +499,12 @@ describe('a cross audit called by the Coordinator (§2.6)', () => {
         })
       ).status,
     ).toBe(204);
-    const after = await world.request('GET', `${base}/units/${world.unitA}/cross-audit-calls`, {
+    // The Zone may already stand from an earlier call, so the new call is read as the newest
+    // cross audit rather than from the Zone Leaders' list, which shows a Zone once (0051).
+    const after = await world.request('GET', `${base}/units/${world.unitA}/cross-audits`, {
       token: world.actors.COORDINATOR.accessToken,
     });
-    const fresh = (after.body as CrossAuditCall[]).find((call) => !known.has(call.id))!;
+    const fresh = (after.body as CrossAuditRound[])[0]!;
     const days = (Date.parse(fresh.dueOn) - Date.parse(fresh.createdAt.slice(0, 10))) / 86_400_000;
     expect(days).toBeGreaterThanOrEqual(6);
     expect(days).toBeLessThanOrEqual(8);

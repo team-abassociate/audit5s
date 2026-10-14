@@ -3,6 +3,7 @@ import {
   UNIT_COORDINATOR_EDITABLE_FIELDS,
   type CreateUnitRequest,
   type CrossAuditCall,
+  type CrossAuditRound,
   type ListUnitsQuery,
   type Page,
   type Unit,
@@ -24,11 +25,12 @@ export class UnitsService {
   ) {}
 
   /**
-   * Every Zone Leader of the Unit is told to audit the named Zone by `dueOn`, their own
-   * included (D9). The call is recorded, and stands until an audit of the Zone starts.
+   * Every Zone Leader of the Unit is told to audit the named Zones by `dueOn`, their own
+   * included (D9). One call of many Zones is one cross audit (0051); it stands until each
+   * Zone is audited or the Coordinator completes it.
    */
-  async callCrossAudit(scope: ScopeContext, unitId: string, zoneId: string, dueOn?: string): Promise<void> {
-    const called = await this.repository.callCrossAudit(scope, unitId, zoneId, dueOn, (tx, data) =>
+  async callCrossAudit(scope: ScopeContext, unitId: string, zoneIds: readonly string[], dueOn?: string): Promise<void> {
+    const called = await this.repository.callCrossAudit(scope, unitId, zoneIds, dueOn, (tx, data) =>
       this.events.emit(tx, {
         type: 'CROSS_AUDIT_CALLED',
         actorUserId: scope.actor.userId,
@@ -52,6 +54,30 @@ export class UnitsService {
       throw AppError.notFound('No such Unit');
     }
     return calls;
+  }
+
+  async listCrossAuditRounds(scope: ScopeContext, unitId: string): Promise<CrossAuditRound[]> {
+    const rounds = await this.repository.listCrossAuditRounds(scope, unitId);
+    if (!rounds) {
+      throw AppError.notFound('No such Unit');
+    }
+    return rounds;
+  }
+
+  async changeCrossAuditDeadline(scope: ScopeContext, unitId: string, roundId: string, dueOn: string): Promise<void> {
+    const result = await this.repository.changeCrossAuditDeadline(scope, unitId, roundId, dueOn);
+    if (result === 'NOT_FOUND') throw AppError.notFound('No such cross audit');
+    if (result === 'PAST_DUE') throw AppError.validation('The date it is due by cannot be in the past');
+    if (result === 'COMPLETED') throw AppError.conflict('INVALID_STATE_TRANSITION', 'This cross audit is already completed');
+  }
+
+  async completeCrossAudit(scope: ScopeContext, unitId: string, roundId: string, remark?: string): Promise<void> {
+    const result = await this.repository.completeCrossAudit(scope, unitId, roundId, remark);
+    if (result === 'NOT_FOUND') throw AppError.notFound('No such cross audit');
+    if (result === 'ALREADY') throw AppError.conflict('INVALID_STATE_TRANSITION', 'This cross audit is already completed');
+    if (result === 'REMARK_REQUIRED') {
+      throw AppError.validation('Say why the cross audit is completed with Zones not yet audited');
+    }
   }
 
   async create(scope: ScopeContext, request: CreateUnitRequest): Promise<Unit> {
