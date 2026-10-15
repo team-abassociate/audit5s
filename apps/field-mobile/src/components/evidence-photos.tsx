@@ -1,15 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   deleteLocalEvidence,
+  setLocalEvidenceRemark,
   setLocalSummaryFlag,
   type listLocalEvidenceForZone,
 } from '../lib/db/evidence.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import { createThemedStyles, type Band } from '../lib/theme';
-import { Button, Card, CardHeader, Chip, ConfirmAction, ErrorBanner, Label, Muted } from './ui';
+import { Button, Card, CardHeader, Chip, ConfirmAction, ErrorBanner, Field, Label, Muted } from './ui';
 
 /**
  * The photographs of a scored Zone: thumbnails, a full-size preview, delete (E-4) and the
@@ -125,7 +126,10 @@ export function SummaryPhotosCard({
   );
 }
 
-/** Full-screen preview with the two decisions: flag for the summary, or delete. */
+/**
+ * Full-screen preview with the two decisions — flag for the summary, or delete — and the
+ * photograph's own remark, which the reports print under it. The remark saves on Continue.
+ */
 export function PhotoPreview({
   photo,
   editable,
@@ -140,6 +144,10 @@ export function PhotoPreview({
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [remark, setRemark] = useState('');
+
+  // Each photograph opens on its own saved remark.
+  useEffect(() => setRemark(photo?.remark ?? ''), [photo?.id]);
 
   const label = classificationLabel(photo?.classification ?? 'NEUTRAL');
 
@@ -159,6 +167,11 @@ export function PhotoPreview({
     },
   });
 
+  const saveRemark = useMutation({
+    mutationFn: (next: string | null) => setLocalEvidenceRemark(database, photo!.id, next),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
+  });
+
   const remove = useMutation({
     mutationFn: () => deleteLocalEvidence(database, photo!.id),
     onSuccess: async () => {
@@ -173,6 +186,8 @@ export function PhotoPreview({
   const flagged = photo.isSummaryFlagged === 1;
   const flaggable = photo.classification === 'GOOD' || photo.classification === 'NONCONFORMITY';
   const close = () => {
+    const next = remark.trim() || null;
+    if (editable && next !== (photo.remark ?? null)) saveRemark.mutate(next);
     setError(null);
     onClose();
   };
@@ -201,6 +216,19 @@ export function PhotoPreview({
             <Chip tone={classificationTone(photo.classification)}>{label}</Chip>
             {flagged ? <Chip>Summary photo</Chip> : null}
           </View>
+
+          {editable ? (
+            <Field
+              label="Remark"
+              multiline
+              placeholder="What this photograph shows"
+              value={remark}
+              onChangeText={setRemark}
+              maxLength={2000}
+            />
+          ) : photo.remark ? (
+            <Muted>{photo.remark}</Muted>
+          ) : null}
 
           {editable ? (
             <View style={styles.actions}>
