@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { AuditAssignment, Page, Unit, User } from '@audit5s/contracts';
@@ -21,25 +22,16 @@ import { formatDate } from '../../lib/format';
 import { createThemedStyles } from '../../lib/theme';
 import { useRequiredFields } from '../../lib/required-fields';
 
-type Due = 'NONE' | 'TODAY' | 'WEEK' | 'FORTNIGHT';
-const DUES = [
-  { value: 'NONE', label: 'No date' },
-  { value: 'TODAY', label: 'Today' },
-  { value: 'WEEK', label: '7 days' },
-  { value: 'FORTNIGHT', label: '14 days' },
-] as const;
 const TYPES = [
   { value: 'EXTERNAL_5S', label: '5S audit' },
   { value: 'WALK_BY', label: 'Walk-by' },
 ] as const;
 
-/** End of the chosen day, local time. Presets rather than a date picker: no new dependency. */
-function dueAt(due: Due): string | undefined {
-  if (due === 'NONE') return undefined;
-  const date = new Date();
-  date.setDate(date.getDate() + (due === 'TODAY' ? 0 : due === 'WEEK' ? 7 : 14));
-  date.setHours(23, 59, 0, 0);
-  return date.toISOString();
+/** End of the chosen day, local time. */
+function endOfDay(date: Date): Date {
+  const end = new Date(date);
+  end.setHours(23, 59, 0, 0);
+  return end;
 }
 
 /**
@@ -54,7 +46,7 @@ export default function AssignScreen() {
   const [unitId, setUnitId] = useState<string | null>(params.unitId ?? null);
   const [auditorUserId, setAuditorUserId] = useState<string | null>(params.auditorUserId ?? null);
   const [auditType, setAuditType] = useState<'EXTERNAL_5S' | 'WALK_BY'>('EXTERNAL_5S');
-  const [due, setDue] = useState<Due>('WEEK');
+  const [due, setDue] = useState<Date | null>(() => endOfDay(new Date(Date.now() + 7 * 86_400_000)));
   const [instructions, setInstructions] = useState('');
   const required = useRequiredFields<'unit' | 'consultant'>();
 
@@ -71,7 +63,7 @@ export default function AssignScreen() {
         unitId,
         auditorUserId,
         auditType,
-        ...(dueAt(due) ? { dueAt: dueAt(due) } : {}),
+        ...(due ? { dueAt: due.toISOString() } : {}),
         ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
       }),
     onSuccess: async () => {
@@ -142,8 +134,26 @@ export default function AssignScreen() {
         ) : null}
         <Label>Type</Label>
         <Segmented options={TYPES} value={auditType} onChange={setAuditType} />
-        <Label>Due</Label>
-        <Segmented options={DUES} value={due} onChange={setDue} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={due ? `Due: ${formatDate(due.toISOString())}` : 'Due: no date'}
+          onPress={() =>
+            DateTimePickerAndroid.open({
+              value: due ?? new Date(),
+              mode: 'date',
+              minimumDate: new Date(),
+              onChange: (event, date) => {
+                if (event.type === 'set' && date) setDue(endOfDay(date));
+              },
+            })
+          }
+        >
+          {/* The text box's own look, so it reads as one more box on the form. */}
+          <View pointerEvents="none">
+            <Field label="Due" value={due ? formatDate(due.toISOString()) : ''} placeholder="No date" editable={false} />
+          </View>
+        </Pressable>
+        {due ? <Button icon="event-busy" title="No due date" variant="secondary" onPress={() => setDue(null)} /> : null}
         <Field
           label="Instructions (optional)"
           multiline
