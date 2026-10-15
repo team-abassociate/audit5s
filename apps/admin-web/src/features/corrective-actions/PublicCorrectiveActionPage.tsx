@@ -402,11 +402,11 @@ function SubmitForm({
 
       {overall ? null : (
         <div className="mt-3 flex gap-3">
-          <OptionTab active={option === 'COMPLETED'} onClick={() => setOption('COMPLETED')}>
-            A — Done
+          <OptionTab tone="ok" active={option === 'COMPLETED'} onClick={() => setOption('COMPLETED')}>
+            Done
           </OptionTab>
-          <OptionTab active={option === 'NOT_POSSIBLE'} onClick={() => setOption('NOT_POSSIBLE')}>
-            B — Not possible
+          <OptionTab tone="crit" active={option === 'NOT_POSSIBLE'} onClick={() => setOption('NOT_POSSIBLE')}>
+            Not possible
           </OptionTab>
         </div>
       )}
@@ -579,10 +579,12 @@ async function uploadAfterPhoto(
 }
 
 function OptionTab({
+  tone,
   active,
   onClick,
   children,
 }: {
+  tone: 'ok' | 'crit';
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
@@ -592,7 +594,7 @@ function OptionTab({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={active ? 'gb-btn gb-btn--primary flex-1' : 'gb-btn flex-1'}
+      className={`gb-btn gb-btn--${tone} flex-1`}
     >
       {children}
     </button>
