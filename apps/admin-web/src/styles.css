@@ -1346,6 +1346,25 @@ a.gb-who:hover b {
   color: var(--crit);
   border-color: var(--crit);
 }
+/* The public link's two answers, filled with their band colour by the owner's ruling
+   (2026-10-15) — the one exception to the rule above. The chosen one carries an ink outline. */
+.gb-btn--ok,
+.gb-btn--crit {
+  color: var(--board);
+}
+.gb-btn--ok {
+  background: var(--ok-band);
+  border-color: var(--ok-band);
+}
+.gb-btn--crit {
+  background: var(--crit-band);
+  border-color: var(--crit-band);
+}
+.gb-btn--ok[aria-pressed='true'],
+.gb-btn--crit[aria-pressed='true'] {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
 .gb-btn--block {
   display: block;
   width: 100%;

@@ -2,7 +2,7 @@ import { Alert, ScrollView, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'expo-router';
-import type { ConsultantActivity } from '@audit5s/contracts';
+import type { ConsultantActivity, Unit } from '@audit5s/contracts';
 import {
   Avatar,
   Button,
@@ -109,6 +109,14 @@ export default function ProfileScreen() {
     staleTime: 5 * 60_000,
   });
 
+  // The same query as the Audits tab's, so the name is usually cached already.
+  const ownUnitId = scope && !scope.organizationWide && scope.unitIds.length === 1 ? scope.unitIds[0] : undefined;
+  const ownUnit = useQuery({
+    queryKey: ['unit', ownUnitId],
+    queryFn: () => api.get<Unit>(`/units/${ownUnitId}`),
+    enabled: ownUnitId !== undefined,
+  });
+
   if (!user) {
     return (
       <Screen>
@@ -127,6 +135,7 @@ export default function ProfileScreen() {
             <View style={styles.whoText}>
               <Text style={styles.name}>{user.fullName}</Text>
               <Data>{user.loginId}</Data>
+              {ownUnit.data ? <Text style={styles.unit}>Unit: {ownUnit.data.name}</Text> : null}
               <View style={styles.role}>
                 <Chip>{ROLE_LABELS[user.role]}</Chip>
               </View>
@@ -139,10 +148,6 @@ export default function ProfileScreen() {
           <View style={styles.rows} />
           <LedgerRow label="Phone" value={user.phoneE164} />
           <LedgerRow label="Email" value={user.email ?? '—'} />
-          <LedgerRow
-            label="Units"
-            value={scope?.organizationWide ? 'All Units' : String(scope?.unitIds.length ?? 0)}
-          />
           <LedgerRow
             label="Last sign-in"
             value={user.lastLoginAt ? formatDateTime(user.lastLoginAt) : '—'}
@@ -270,6 +275,7 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.color.ink,
     textTransform: 'uppercase',
   },
+  unit: { fontFamily: theme.family.bold, fontSize: 13, color: theme.color.ink2, marginTop: 2 },
   cardAction: { marginTop: theme.space.md },
   linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   version: {
