@@ -18,6 +18,7 @@ import {
   queueEvidenceCommit,
   reclassifyLocalEvidence,
   responseIdFor,
+  setLocalEvidenceRemark,
   setLocalSummaryFlag,
   updateLocalWalkByEvidence,
   zoneHasLocalEvidence,
@@ -314,6 +315,26 @@ describe('invariant E-1 on the device', () => {
 
     const [row] = await getLocalEvidence(database, evidenceId);
     expect(row).toMatchObject({ classification: 'NEUTRAL', isSummaryFlagged: 0 });
+  });
+
+  it("saves a question photograph's own remark and queues it for the server", async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    const evidenceId = await captureLocalEvidence(database, {
+      auditId,
+      auditZoneId,
+      kind: 'QUESTION_EVIDENCE',
+      scoreAtCapture: 'SCORE_0',
+      ...PHOTO,
+    });
+
+    await setLocalEvidenceRemark(database, evidenceId, 'Oil drip under the press');
+
+    const [row] = await getLocalEvidence(database, evidenceId);
+    expect(row?.remark).toBe('Oil drip under the press');
+    const patch = (await listOutbox(database)).find(
+      (item) => item.entityType === 'evidence' && item.operation === 'patch',
+    );
+    expect(JSON.parse(patch!.payload)).toMatchObject({ remark: 'Oil drip under the press' });
   });
 
   it('finds the response a question already has, or null', async () => {

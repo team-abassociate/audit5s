@@ -871,8 +871,9 @@ function QuestionCard({
           />
         ) : null}
         {canPhoto ? (
+          // Symbol only, so it sits on the camera's line (the owner, 2026-10-15).
           <Button icon="photo-library"
-            title={t.fromGallery}
+            title=""
             variant="secondary"
             accessibilityLabel={t.fromGalleryFor(row.globalOrder)}
             onPress={onGallery}

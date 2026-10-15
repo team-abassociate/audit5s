@@ -31,7 +31,6 @@ export interface AuditStrings {
   addRemark: string;
   takePhoto: string;
   takePhotoFor: (question: number) => string;
-  fromGallery: string;
   fromGalleryFor: (question: number) => string;
   cameraPrompt: (question: number) => string;
   remark: string;
@@ -109,7 +108,6 @@ const EN: AuditStrings = {
   addRemark: 'Add remark',
   takePhoto: 'Take photo',
   takePhotoFor: (question) => `Take a photograph for question ${question}`,
-  fromGallery: 'Gallery',
   fromGalleryFor: (question) => `Choose a photograph from the gallery for question ${question}`,
   cameraPrompt: (question) => `Photograph for question ${question}`,
   remark: 'Remark',
@@ -198,7 +196,6 @@ const HI: AuditStrings = {
   addRemark: 'टिप्पणी जोड़ें',
   takePhoto: 'फ़ोटो लें',
   takePhotoFor: (question) => `प्रश्न ${question} के लिए फ़ोटो लें`,
-  fromGallery: 'गैलरी',
   fromGalleryFor: (question) => `प्रश्न ${question} के लिए गैलरी से फ़ोटो चुनें`,
   cameraPrompt: (question) => `प्रश्न ${question} के लिए फ़ोटो`,
   remark: 'टिप्पणी',
@@ -289,7 +286,6 @@ const MR: AuditStrings = {
   addRemark: 'शेरा जोडा',
   takePhoto: 'फोटो घ्या',
   takePhotoFor: (question) => `प्रश्न ${question} साठी फोटो घ्या`,
-  fromGallery: 'गॅलरी',
   fromGalleryFor: (question) => `प्रश्न ${question} साठी गॅलरीतून फोटो निवडा`,
   cameraPrompt: (question) => `प्रश्न ${question} साठी फोटो`,
   remark: 'शेरा',

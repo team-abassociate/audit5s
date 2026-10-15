@@ -777,15 +777,18 @@ export function Button({
         ) : (
           <View style={styles.buttonRow}>
             {icon ? <Icon name={icon} color={ink} size={compact ? 14 : 18} /> : null}
-            <Text
-              style={[
-                isPrimary ? styles.buttonPrimaryText : styles.buttonSecondaryText,
-                { color: ink },
-                compact && styles.buttonCompactText,
-              ]}
-            >
-              {title}
-            </Text>
+            {/* An empty title is a symbol-only button; `accessibilityLabel` then names it. */}
+            {title ? (
+              <Text
+                style={[
+                  isPrimary ? styles.buttonPrimaryText : styles.buttonSecondaryText,
+                  { color: ink },
+                  compact && styles.buttonCompactText,
+                ]}
+              >
+                {title}
+              </Text>
+            ) : null}
           </View>
         )}
       </AnimatedPressable>

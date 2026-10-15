@@ -328,6 +328,20 @@ export async function setLocalSummaryFlag(
   return { ok: true };
 }
 
+/** A photograph's own remark, written in its preview; the reports print it under the photo. */
+export async function setLocalEvidenceRemark(
+  database: LocalDatabase,
+  evidenceId: string,
+  remark: string | null,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  await database
+    .update(localEvidence)
+    .set({ remark, clientUpdatedAt: now })
+    .where(eq(localEvidence.id, evidenceId));
+  await queueEvidencePatch(database, evidenceId, now);
+}
+
 /** Updates the fields an auditor may change after taking a walk-by photograph. */
 export async function updateLocalWalkByEvidence(
   database: LocalDatabase,
