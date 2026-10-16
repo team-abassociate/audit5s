@@ -21,7 +21,8 @@ export async function connect(url: string): Promise<Client> {
 
 /** Applies every pending migration. Safe to call repeatedly. */
 export function migrate(): void {
-  execFileSync('npx', ['tsx', join(__dirname, 'migrate.ts')], {
+  // tsx's CLI under this Node, not `npx tsx`: Windows cannot spawn `npx.cmd` without a shell.
+  execFileSync(process.execPath, [require.resolve('tsx/cli'), join(__dirname, 'migrate.ts')], {
     env: { ...process.env, DATABASE_MIGRATION_URL: OWNER_URL },
     stdio: 'pipe',
   });
