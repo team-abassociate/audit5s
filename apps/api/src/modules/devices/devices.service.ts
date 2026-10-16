@@ -134,6 +134,10 @@ export class DevicesService {
   async touchSync(scope: ScopeContext, deviceId: string): Promise<void> {
     await this.repository.touchSync(scope, deviceId);
   }
+
+  async touchSeen(scope: ScopeContext, deviceId: string): Promise<void> {
+    await this.repository.touchSeen(scope, deviceId);
+  }
 }
 
 export function toDevice(row: DeviceRow): Device {

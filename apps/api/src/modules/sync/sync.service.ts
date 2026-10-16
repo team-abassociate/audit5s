@@ -7,6 +7,7 @@ import { AssignmentsRepository } from '../audit-assignments/assignments.reposito
 import { toAssignment } from '../audit-assignments/assignments.service';
 import { ChecklistsService } from '../checklists/checklists.service';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
+import { DevicesService } from '../devices/devices.service';
 import { toUnit } from '../units/units.service';
 import { UnitsRepository } from '../units/units.repository';
 import { toZone } from '../zones/zones.service';
@@ -31,9 +32,14 @@ export class SyncService {
     private readonly checklists: ChecklistsService,
     private readonly assignments: AssignmentsRepository,
     private readonly correctiveActions: CorrectiveActionsService,
+    private readonly devices: DevicesService,
   ) {}
 
   async catalogue(scope: ScopeContext, query: SyncCatalogueQuery): Promise<SyncCatalogue> {
+    // The phone pulls this every minute whether or not it has anything to upload, so it is
+    // the honest "Last seen" for a phone that is fully synced and idle.
+    if (scope.actor.deviceId) await this.devices.touchSeen(scope, scope.actor.deviceId);
+
     // Each collection is read under the resolver PART 6 grants this role for *that*
     // resource, not under the one that let the caller reach this endpoint. Reusing the
     // sync grant for a Unit read would be a quiet widening.

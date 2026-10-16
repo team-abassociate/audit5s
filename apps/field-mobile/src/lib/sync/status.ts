@@ -25,6 +25,11 @@ export interface LocalSyncStatus {
   deadLettered: number;
   syncing: boolean;
   lastSuccessfulPushAt: string | null;
+  /**
+   * When the phone last heard from the server: the catalogue pull rides every sync tick,
+   * so with nothing waiting it is the moment the phone was last known to be in step.
+   */
+  lastCheckedAt: string | null;
 }
 
 export async function readSyncStatus(database: LocalDatabase): Promise<LocalSyncStatus> {
@@ -41,6 +46,7 @@ export async function readSyncStatus(database: LocalDatabase): Promise<LocalSync
     deadLettered,
     syncing,
     lastSuccessfulPushAt: await getSyncMeta(database, SYNC_META_KEYS.lastSuccessfulPushAt),
+    lastCheckedAt: await getSyncMeta(database, SYNC_META_KEYS.lastCatalogueSyncAt),
   };
 }
 

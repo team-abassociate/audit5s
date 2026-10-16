@@ -68,11 +68,15 @@ export function SyncStatusBar() {
 
   const label = describe(data);
   // §9.9's offline banner, in the words it prescribes: the work is not at risk.
+  // With nothing waiting, the last upload's age says nothing about the phone; the last
+  // successful check with the server does. With work waiting, the upload age is the point.
   const detail = !online
     ? 'Offline — your work is saved on this device'
-    : data.lastSuccessfulPushAt
-      ? `Last synced ${relative(data.lastSuccessfulPushAt)}`
-      : null;
+    : data.dot === 'synced' && data.lastCheckedAt
+      ? `Up to date · checked ${relative(data.lastCheckedAt)}`
+      : data.lastSuccessfulPushAt
+        ? `Last synced ${relative(data.lastSuccessfulPushAt)}`
+        : null;
   const syncing = syncNow.isPending || data.syncing;
   const syncLabel = syncing ? 'Syncing…' : data.deadLettered > 0 ? 'Retry' : 'Sync now';
 

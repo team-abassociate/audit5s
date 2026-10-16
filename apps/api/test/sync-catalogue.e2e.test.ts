@@ -13,7 +13,7 @@ import {
   ChecklistImportWorker,
   type ChecklistImportJobData,
 } from '../src/modules/checklists/import/checklist-import.worker';
-import { APP_URL, startWorld, stopWorld, type TestWorld } from './harness';
+import { APP_URL, OWNER_URL, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import { buildWorkbook } from './workbook-fixtures';
 
 /**
@@ -163,5 +163,33 @@ describe('who may pull it', () => {
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     const units = (response.body as { units: Array<{ id: string }> }).units.map((unit) => unit.id);
     expect(units).toEqual([world.unitA]);
+  });
+});
+
+describe('a catalogue pull from a device', () => {
+  it('moves the device Last seen and leaves Last synced to uploads', async () => {
+    // A fully synced phone has nothing to upload, so the minute-by-minute catalogue pull is
+    // its only contact; "Last seen" read a day old while it was in step.
+    const deviceId = '01920000-0000-7000-8000-00000000c0de';
+    const token = await loginFromDevice(world, world.actors.CONSULTANT, deviceId);
+    const owner = createPool({ connectionString: OWNER_URL, max: 1 });
+    try {
+      await owner.query(
+        `UPDATE device SET last_seen_at = now() - interval '1 day' WHERE id = $1`,
+        [deviceId],
+      );
+
+      const response = await world.request('GET', `${base}/sync/catalogue`, { token, deviceId });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+
+      const { rows } = await owner.query<{ seen_recently: boolean; last_sync_at: Date | null }>(
+        `SELECT last_seen_at > now() - interval '1 minute' AS seen_recently, last_sync_at
+           FROM device WHERE id = $1`,
+        [deviceId],
+      );
+      expect(rows[0]).toEqual({ seen_recently: true, last_sync_at: null });
+    } finally {
+      await owner.end();
+    }
   });
 });
