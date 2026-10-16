@@ -67,6 +67,8 @@ export async function startWorld(): Promise<TestWorld> {
     cwd: resolve(__dirname, '..', '..', '..'),
     env: { ...process.env, DATABASE_MIGRATION_URL: OWNER_URL },
     stdio: 'pipe',
+    // Windows resolves `pnpm.cmd` only through a shell; the arguments are fixed literals.
+    shell: process.platform === 'win32',
   });
 
   const owner = new Client({ connectionString: OWNER_URL });
