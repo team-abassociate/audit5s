@@ -4,15 +4,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSegments } from 'expo-router';
 import { readSyncStatus, type SyncDot } from '../lib/sync/status';
 import { useLocalDatabase } from '../lib/db/provider';
+import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
+import { useLanguage } from '../lib/language-provider';
+import type { AppModule } from '../lib/secure-storage';
 import { useSession } from '../lib/session';
 import { retryDeadLetters } from '../lib/sync/engine';
 import { useSync } from '../lib/sync/provider';
 import { createThemedStyles, useTheme } from '../lib/theme';
+import { useOpenModule } from './module-switch';
 import { Avatar, Button } from './ui';
 
 /**
  * The persistent bar of §9.9, on every field screen: who is signed in on the left (a tap
- * opens the profile), and on the right the sync status above a compact Sync now.
+ * opens the profile), beside it the 5S | KAIZEN switch for a role holding Kaizen, and on the
+ * right the sync status above a compact Sync now.
  *
  * §9.9 ends with the rule this component exists to keep:
  *
@@ -32,7 +37,8 @@ export function SyncStatusBar() {
   const inKaizen = (useSegments() as string[])[0] === 'kaizen';
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
-  const { user } = useSession();
+  const { user, can } = useSession();
+  const showSwitch = can('kaizen', 'read');
   const { sync, online } = useSync();
 
   const status = useQuery({
@@ -68,6 +74,7 @@ export function SyncStatusBar() {
       ? `Last synced ${relative(data.lastSuccessfulPushAt)}`
       : null;
   const syncing = syncNow.isPending || data.syncing;
+  const syncLabel = syncing ? 'Syncing…' : data.deadLettered > 0 ? 'Retry' : 'Sync now';
 
   return (
     <View style={[styles.bar, { paddingTop: insets.top + 2 }]}>
@@ -81,6 +88,8 @@ export function SyncStatusBar() {
         <Avatar name={user?.fullName} size={32} />
       </Pressable>
 
+      {showSwitch ? <ModuleToggle current={inKaizen ? 'kaizen' : 'five-s'} /> : null}
+
       <View style={styles.side}>
         <View
           style={styles.status}
@@ -89,7 +98,7 @@ export function SyncStatusBar() {
           accessibilityLabel={detail ? `${label}. ${detail}` : label}
         >
           <View style={[styles.dot, { backgroundColor: dotColour(data.dot, theme) }]} />
-          <Text style={styles.label} numberOfLines={1}>
+          <Text style={styles.label} numberOfLines={showSwitch ? 2 : 1}>
             {label}
           </Text>
         </View>
@@ -99,15 +108,54 @@ export function SyncStatusBar() {
               {detail}
             </Text>
           ) : null}
-          {/* Tappable offline too: "offline" is the last attempt's result, and a retry is how it ends. */}
+          {/* Tappable offline too: "offline" is the last attempt's result, and a retry is how it ends.
+              Beside the switch a 360dp phone has no room for the word: the symbol, still named. */}
           <Button icon="sync"
             compact
-            title={syncing ? 'Syncing…' : data.deadLettered > 0 ? 'Retry' : 'Sync now'}
+            title={showSwitch ? '' : syncLabel}
+            accessibilityLabel={syncLabel}
             disabled={syncing}
             onPress={() => syncNow.mutate()}
           />
         </View>
       </View>
+    </View>
+  );
+}
+
+/**
+ * 5S | KAIZEN, one tap from every tab: the module open now is filled in ink, the other is the
+ * one to tap. A 2px ink border and square ends, like the bar and the tab bar around it.
+ */
+function ModuleToggle({ current }: { current: AppModule }) {
+  const styles = useStyles();
+  const openModule = useOpenModule();
+  const { language } = useLanguage();
+  const t = KAIZEN_STRINGS[language];
+  const halves = [
+    { module: 'five-s', text: t.fiveSShort, name: t.fiveS },
+    { module: 'kaizen', text: t.kaizen, name: t.kaizen },
+  ] as const;
+  return (
+    <View style={styles.toggle}>
+      {halves.map(({ module, text, name }) => {
+        const selected = module === current;
+        return (
+          <Pressable
+            key={module}
+            testID={`module-bar-${module}`}
+            accessibilityRole="button"
+            accessibilityLabel={name}
+            accessibilityState={{ selected }}
+            // 32dp drawn, 44dp to the finger.
+            hitSlop={{ top: 6, bottom: 6 }}
+            onPress={selected ? undefined : () => openModule(module)}
+            style={[styles.half, selected && styles.halfSelected]}
+          >
+            <Text style={[styles.halfText, selected && styles.halfTextSelected]}>{text}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -161,6 +209,17 @@ const useStyles = createThemedStyles((theme) => ({
     borderBottomColor: theme.color.edge,
   },
   pressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
+  toggle: { flexDirection: 'row', borderWidth: 2, borderColor: theme.color.edge },
+  half: { height: 32, paddingHorizontal: 10, justifyContent: 'center', backgroundColor: theme.color.tile },
+  halfSelected: { backgroundColor: theme.color.ink },
+  halfText: {
+    fontFamily: theme.family.black,
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: theme.color.ink3,
+  },
+  halfTextSelected: { color: theme.color.tile },
   side: { flex: 1, alignItems: 'flex-end', gap: 2 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: '100%' },
   dot: { width: 9, height: 9 },

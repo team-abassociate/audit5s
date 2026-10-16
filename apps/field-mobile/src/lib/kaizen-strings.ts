@@ -54,6 +54,8 @@ export interface KaizenStrings {
   // picker
   chooseWork: string;
   switchModule: string;
+  /** The sync bar's 5S | KAIZEN switch: the 5S half (the Kaizen half is `kaizen`). */
+  fiveSShort: string;
   fiveS: string;
   fiveSLine: string;
   kaizen: string;
@@ -204,7 +206,8 @@ export interface KaizenStrings {
 
 const EN: KaizenStrings = {
   chooseWork: 'Choose work',
-  switchModule: '⇄ Switch module',
+  switchModule: 'Switch module',
+  fiveSShort: '5S',
   fiveS: '5S Audit',
   fiveSLine: 'Audit your zone, close nonconformities',
   kaizen: 'Kaizen',
@@ -394,7 +397,7 @@ const EN: KaizenStrings = {
   reviewed: (decision, no, author) =>
     decision === 'APPROVED' ? `Approved ${no}` : decision === 'SENT_BACK' ? `Sent back ${no} to ${author}` : `Rejected ${no}`,
   moreWaiting: (n) => (n === 0 ? 'Nothing else is waiting for review.' : `${n} more waiting for review.`),
-  switchHint: 'Switch any time from your initials, top left.',
+  switchHint: 'Switch any time with 5S | KAIZEN at the top of the screen.',
   exportPdf: 'Download Kaizen Sheet (PDF)',
   exporting: 'Preparing the PDF…',
   exportFailed: 'The PDF could not be made. Try again.',
@@ -403,7 +406,8 @@ const EN: KaizenStrings = {
 
 const HI: KaizenStrings = {
   chooseWork: 'काम चुनें',
-  switchModule: '⇄ मॉड्यूल बदलें',
+  switchModule: 'मॉड्यूल बदलें',
+  fiveSShort: '5S',
   fiveS: '5S ऑडिट',
   fiveSLine: 'अपने ज़ोन का ऑडिट करें, कमियाँ दूर करें',
   kaizen: 'काइज़ेन',
@@ -593,7 +597,7 @@ const HI: KaizenStrings = {
   reviewed: (decision, no, author) =>
     decision === 'APPROVED' ? `${no} स्वीकृत किया` : decision === 'SENT_BACK' ? `${no} ${author} को वापस भेजा` : `${no} अस्वीकृत किया`,
   moreWaiting: (n) => (n === 0 ? 'समीक्षा के लिए और कुछ नहीं।' : `${n} और समीक्षा की प्रतीक्षा में।`),
-  switchHint: 'मॉड्यूल कभी भी बदलें: ऊपर बाईं ओर अपने नाम के अक्षरों से।',
+  switchHint: 'मॉड्यूल कभी भी बदलें: स्क्रीन में सबसे ऊपर 5S | काइज़ेन से।',
   exportPdf: 'काइज़ेन शीट डाउनलोड करें (PDF)',
   exporting: 'PDF तैयार हो रहा है…',
   exportFailed: 'PDF नहीं बन सका। फिर से कोशिश करें।',
@@ -602,7 +606,8 @@ const HI: KaizenStrings = {
 
 const MR: KaizenStrings = {
   chooseWork: 'काम निवडा',
-  switchModule: '⇄ मॉड्यूल बदला',
+  switchModule: 'मॉड्यूल बदला',
+  fiveSShort: '5S',
   fiveS: '5S ऑडिट',
   fiveSLine: 'तुमच्या झोनचे ऑडिट करा, त्रुटी दूर करा',
   kaizen: 'कायझेन',
@@ -792,7 +797,7 @@ const MR: KaizenStrings = {
   reviewed: (decision, no, author) =>
     decision === 'APPROVED' ? `${no} मंजूर केले` : decision === 'SENT_BACK' ? `${no} ${author} यांना परत पाठवले` : `${no} नाकारले`,
   moreWaiting: (n) => (n === 0 ? 'पुनरावलोकनासाठी आणखी काहीही नाही.' : `आणखी ${n} पुनरावलोकनाच्या प्रतीक्षेत.`),
-  switchHint: 'मॉड्यूल कधीही बदला: वर डावीकडील तुमच्या आद्याक्षरांतून.',
+  switchHint: 'मॉड्यूल कधीही बदला: स्क्रीनच्या सर्वात वर 5S | कायझेन वरून.',
   exportPdf: 'कायझेन शीट डाउनलोड करा (PDF)',
   exporting: 'PDF तयार होत आहे…',
   exportFailed: 'PDF तयार झाले नाही. पुन्हा प्रयत्न करा.',
