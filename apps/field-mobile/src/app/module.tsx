@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import type { KaizenDashboard } from '@audit5s/contracts';
@@ -13,23 +13,24 @@ import { useLocalDatabase } from '../lib/db/provider';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { ROLE_LABELS } from '../lib/labels';
 import { useLanguage } from '../lib/language-provider';
-import { saveModule, type AppModule } from '../lib/secure-storage';
 import { useSession } from '../lib/session';
 import { createThemedStyles, iosHardShadow } from '../lib/theme';
+import { useOpenModule } from '../components/module-switch';
 import { Figure, Label, Magnet, Muted, Screen } from '../components/ui';
 
 /**
  * The module picker (plans/kaizen-module.md §4.3; the "Split" design picked in Phase 0).
  *
- * Two equal tiles, each with the one count that says what is waiting there. Every count a
- * leader sees is read from SQLite, so the picker opens offline exactly as it does online —
+ * Two equal tiles, sized to what they say and lifted on the board's highest shadow, each
+ * with the one count that says what is waiting there. Every count a leader sees is read
+ * from SQLite, so the picker opens offline exactly as it does online —
  * the offline unlock never meets a spinner here. A Coordinator's "awaiting your review" is
  * the one live number (they record nothing offline, R-24); without a connection the tile
  * simply says nothing is known to be waiting.
  */
 export default function ModulePicker() {
   const styles = useStyles();
-  const router = useRouter();
+  const pick = useOpenModule();
   const insets = useSafeAreaInsets();
   const database = useLocalDatabase();
   const { user, scope, can } = useSession();
@@ -59,11 +60,6 @@ export default function ModulePicker() {
     queryFn: () => api.get<KaizenDashboard>('/kaizens/dashboard'),
     enabled: reviews,
   });
-
-  const pick = (module: AppModule) => {
-    if (user) void saveModule(user.id, module);
-    router.replace(module === 'kaizen' ? '/kaizen/overview' : '/overview');
-  };
 
   const counts = local.data;
   const kaizenCount = reviews
@@ -97,7 +93,7 @@ export default function ModulePicker() {
         </View>
         <Tile name={t.fiveS} line={t.fiveSLine} count={fiveSCount} empty={t.nothingWaiting} label={t.open(t.fiveS)} onPress={() => pick('five-s')} testID="module-five-s" />
         <Tile name={t.kaizen} line={t.kaizenLine} count={kaizenCount} empty={t.nothingWaiting} label={t.open(t.kaizen)} onPress={() => pick('kaizen')} testID="module-kaizen" />
-        {/* Where the choice is made, say how to change it later (#18; the switch stays on Profile). */}
+        {/* Where the choice is made, say how to change it later (#18): the switch in the sync bar. */}
         <Muted>{t.switchHint}</Muted>
       </View>
     </Screen>
@@ -124,7 +120,7 @@ function Tile({
   const styles = useStyles();
   const waiting = count && (count.figure > 0 || !!count.sub);
   return (
-    <Magnet style={styles.tileShell}>
+    <Magnet offset={LIFT}>
       <Pressable
         testID={testID}
         accessibilityRole="button"
@@ -140,7 +136,7 @@ function Tile({
         {count ? (
           waiting ? (
             <View style={styles.count}>
-              <Figure size={44}>{count.figure}</Figure>
+              <Figure size={34}>{count.figure}</Figure>
               <View style={styles.countText}>
                 <Text style={styles.countLabel}>{count.text}</Text>
                 {count.sub ? <Muted>{count.sub}</Muted> : null}
@@ -165,8 +161,11 @@ function initials(fullName: string): string {
     .join('');
 }
 
+/** GEMBA §2.2's hover / selected offset: the most a magnet lifts off the board. */
+const LIFT = 5;
+
 const useStyles = createThemedStyles((theme) => ({
-  body: { flex: 1, gap: theme.space.md },
+  body: { flex: 1, gap: theme.space.lg },
   name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink },
   chip: {
     minWidth: 40,
@@ -178,29 +177,27 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
   },
   chipText: { fontFamily: theme.family.bold, fontSize: theme.font.sm, color: theme.color.ink },
-  tileShell: { flex: 1 },
   tile: {
-    flex: 1,
     backgroundColor: theme.color.tile,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: theme.color.edge,
     padding: theme.space.md,
-    paddingBottom: theme.space.md + 8,
-    ...iosHardShadow(theme.color.hard),
+    paddingBottom: theme.space.md + 6,
+    ...iosHardShadow(theme.color.hard, LIFT),
   },
-  pressed: { transform: [{ translateX: 3 }, { translateY: 3 }], shadowOpacity: 0 },
+  pressed: { transform: [{ translateX: LIFT }, { translateY: LIFT }], shadowOpacity: 0 },
   tileName: {
     fontFamily: theme.family.black,
-    fontSize: 34,
-    lineHeight: 38,
+    fontSize: 28,
+    lineHeight: 32,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
     color: theme.color.ink,
     marginBottom: theme.space.xs,
   },
-  spacer: { flex: 1, minHeight: theme.space.md },
+  spacer: { height: theme.space.sm },
   count: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md },
   countText: { flex: 1 },
   countLabel: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
-  band: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 8, backgroundColor: theme.color.ink },
+  band: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 6, backgroundColor: theme.color.ink },
 }));

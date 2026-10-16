@@ -27,6 +27,29 @@ env:
       LOGIN_ID: ${LEADER_ID}
       PASSWORD: ${LEADER_PASSWORD}
 - takeScreenshot: kaizen-leader-overview
+# The sync bar's 5S | KAIZEN switch: the current half does nothing, the other opens its module.
+- assertVisible:
+    id: module-bar-kaizen
+    selected: true
+- tapOn:
+    id: module-bar-kaizen
+- assertVisible:
+    id: kaizen-new
+- tapOn:
+    id: module-bar-five-s
+- extendedWaitUntil:
+    visible:
+      id: module-bar-five-s
+      selected: true
+    timeout: 15000
+- assertNotVisible:
+    id: kaizen-new
+- tapOn:
+    id: module-bar-kaizen
+- extendedWaitUntil:
+    visible:
+      id: kaizen-new
+    timeout: 15000
 - setAirplaneMode: enabled
 # The button in the page, not the tab: a debug build's LogBox toast covers the tab bar.
 - tapOn:
