@@ -179,7 +179,7 @@ describe('a catalogue pull from a device', () => {
         [deviceId],
       );
 
-      const response = await world.request('GET', `${base}/sync/catalogue`, { token, deviceId });
+      const response = await world.request('GET', `${base}/sync/catalogue`, { token });
       expect(response.status, JSON.stringify(response.body)).toBe(200);
 
       const { rows } = await owner.query<{ seen_recently: boolean; last_sync_at: Date | null }>(
