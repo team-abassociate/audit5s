@@ -68,6 +68,18 @@ beforeEach(async () => {
      VALUES ($1, $3, 'ZONE_LEADER', $5), ($2, $4, 'COORDINATOR', $5)`,
     [K.leaderTwo, K.coordinatorB, IDS.unitA, IDS.unitB, IDS.superAdmin],
   );
+  // 0052 (R-57): everyone here holds Kaizen; 'without Kaizen access' below takes it away.
+  await owner.query(`UPDATE "user" SET kaizen_access = true`);
+});
+
+describe('without Kaizen access (0052, R-57)', () => {
+  it('a role that holds Kaizen neither writes nor sees one', async () => {
+    await create(K.kaizen1, IDS.zoneA);
+    await owner.query(`UPDATE "user" SET kaizen_access = false WHERE id = $1`, [IDS.zoneLeaderA]);
+    await expect(create(K.kaizen2, IDS.zoneA)).rejects.toThrow(/row-level security/);
+    const seen = await asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () => app.query(`SELECT id FROM kaizen`));
+    expect(seen.rows).toEqual([]);
+  });
 });
 
 /** A Zone Leader creates a draft, as the API does: id and Zone only, unit from the trigger. */
