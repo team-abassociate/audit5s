@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
 import type {
@@ -20,12 +20,16 @@ import {
   ErrorBanner,
   Figure,
   HeaderAction,
+  Icon,
+  type IconName,
   Label,
+  Magnet,
   Screen,
   SectionHead,
   Slip,
   SlipText,
   StatusBand,
+  TAB_ICON,
 } from '../../components/ui';
 import { api } from '../../lib/api';
 import { formatDate, formatPct } from '../../lib/format';
@@ -34,7 +38,7 @@ import { AuditCard } from '../../components/audit-card';
 import { CallCrossAuditSheet } from '../../components/cross-audit-round';
 import { FieldOverview } from '../../components/field-overview';
 import { managesOnPhone, useSession } from '../../lib/session';
-import { bandOf, createThemedStyles } from '../../lib/theme';
+import { bandOf, createThemedStyles, iosHardShadow, useTheme } from '../../lib/theme';
 
 /**
  * The Overview tab, which is two screens wearing one route.
@@ -195,9 +199,9 @@ function ManagementOverview() {
         ) : null}
 
         <View style={styles.kpis}>
-          <Kpi label={organizationWide ? 'Units' : 'Unit'} value={count(units.data)} onPress={() => router.push('/units')} />
-          <Kpi label="Consultants" value={count(consultants.data)} onPress={() => router.push('/people')} />
-          <Kpi label="Auditing" value={active.data ? String(running.length) : '—'} onPress={() => router.push('/audits')} />
+          <Kpi label={organizationWide ? 'Units' : 'Unit'} icon={TAB_ICON.units} value={count(units.data)} onPress={() => router.push('/units')} />
+          <Kpi label="Consultants" icon={TAB_ICON.people} value={count(consultants.data)} onPress={() => router.push('/people')} />
+          <Kpi label="Auditing" icon={TAB_ICON.audits} value={active.data ? String(running.length) : '—'} onPress={() => router.push('/audits')} />
         </View>
 
         <SectionHead
@@ -272,24 +276,55 @@ function count(page: Page<unknown> | undefined): string {
   return page ? String(page.data.length) : '—';
 }
 
-/** `gb-kpi`: label, figure. A tap goes to the tab the number comes from. */
-function Kpi({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
+/**
+ * `gb-kpi`: the destination's tab symbol, label, figure, lifted on the module picker's 5px
+ * shadow with its ink band. The row stretches every tile to the tallest, so a label that
+ * shrinks to fit never leaves one shorter than its neighbours. A tap goes to that tab.
+ */
+function Kpi({ label, value, icon, onPress }: { label: string; value: string; icon: IconName; onPress: () => void }) {
   const styles = useStyles();
+  const theme = useTheme();
   return (
-    <View style={styles.kpi}>
-      <Card accessibilityRole="button" accessibilityLabel={`${label}: ${value}`} onPress={onPress}>
-        <Label fit>{label}</Label>
-        <Figure>{value}</Figure>
-      </Card>
-    </View>
+    <Magnet offset={LIFT} style={styles.kpi}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${value}`}
+        onPress={onPress}
+        style={({ pressed }) => [styles.kpiFace, pressed && styles.kpiPressed]}
+      >
+        <Icon name={icon} color={theme.color.ink3} size={20} />
+        <View style={styles.kpiText}>
+          <Label fit>{label}</Label>
+          <Figure size={32}>{value}</Figure>
+        </View>
+        <View style={styles.kpiBand} />
+      </Pressable>
+    </Magnet>
   );
 }
+
+/** GEMBA §2.2's hover / selected offset, as the module picker's tiles. */
+const LIFT = 5;
 
 const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.xl },
   tools: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, marginRight: theme.space.md },
-  kpis: { flexDirection: 'row', gap: theme.space.sm, marginBottom: theme.space.md },
+  kpis: { flexDirection: 'row', alignItems: 'stretch', gap: theme.space.sm, marginBottom: theme.space.lg },
   kpi: { flex: 1 },
+  kpiFace: {
+    flex: 1,
+    minHeight: 112,
+    justifyContent: 'space-between',
+    backgroundColor: theme.color.tile,
+    borderWidth: 2,
+    borderColor: theme.color.edge,
+    padding: theme.space.sm + 2,
+    paddingBottom: theme.space.sm + 8,
+    ...iosHardShadow(theme.color.hard, LIFT),
+  },
+  kpiPressed: { transform: [{ translateX: LIFT }, { translateY: LIFT }], shadowOpacity: 0 },
+  kpiText: { marginTop: theme.space.sm },
+  kpiBand: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 5, backgroundColor: theme.color.ink },
   section: { marginTop: theme.space.lg },
   scoreRow: {
     flexDirection: 'row',
