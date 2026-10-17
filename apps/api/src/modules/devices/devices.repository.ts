@@ -238,12 +238,25 @@ export class DevicesRepository extends BaseRepository {
 
   /** Stamps the device's last successful sync, for the dashboard's staleness column. */
   async touchSync(scope: ScopeContext, deviceId: string): Promise<void> {
+    await this.touch(scope, deviceId, { lastSyncAt: new Date(), lastSeenAt: new Date() });
+  }
+
+  /**
+   * Stamps contact without an upload: a phone with nothing to send still pulls the
+   * catalogue every minute, and "Last seen" read a day old while it did.
+   */
+  async touchSeen(scope: ScopeContext, deviceId: string): Promise<void> {
+    await this.touch(scope, deviceId, { lastSeenAt: new Date() });
+  }
+
+  private async touch(
+    scope: ScopeContext,
+    deviceId: string,
+    stamps: { lastSyncAt?: Date; lastSeenAt: Date },
+  ): Promise<void> {
     await this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      await tx
-        .update(devices)
-        .set({ lastSyncAt: new Date(), lastSeenAt: new Date() })
-        .where(eq(devices.id, deviceId));
+      await tx.update(devices).set(stamps).where(eq(devices.id, deviceId));
     });
   }
 }
