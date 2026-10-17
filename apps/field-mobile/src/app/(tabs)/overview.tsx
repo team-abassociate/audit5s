@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
 import type {
@@ -22,7 +22,6 @@ import {
   HeaderAction,
   Icon,
   type IconName,
-  Label,
   Magnet,
   Screen,
   SectionHead,
@@ -284,6 +283,7 @@ function count(page: Page<unknown> | undefined): string {
 function Kpi({ label, value, icon, onPress }: { label: string; value: string; icon: IconName; onPress: () => void }) {
   const styles = useStyles();
   const theme = useTheme();
+  const { width } = useWindowDimensions();
   return (
     <Magnet offset={LIFT} style={styles.kpi}>
       <Pressable
@@ -294,7 +294,9 @@ function Kpi({ label, value, icon, onPress }: { label: string; value: string; ic
       >
         <Icon name={icon} color={theme.color.ink3} size={20} />
         <View style={styles.kpiText}>
-          <Label fit>{label}</Label>
+          <Text style={[styles.kpiLabel, { fontSize: kpiLabelSize(width) }]} numberOfLines={1}>
+            {label}
+          </Text>
           <Figure size={32}>{value}</Figure>
         </View>
         <View style={styles.kpiBand} />
@@ -305,6 +307,21 @@ function Kpi({ label, value, icon, onPress }: { label: string; value: string; ic
 
 /** GEMBA §2.2's hover / selected offset, as the module picker's tiles. */
 const LIFT = 5;
+const KPI_PAD = 10;
+
+/**
+ * One label size for all three tiles, fitted to the longest label ("CONSULTANTS") in a third
+ * of the screen, so no tile's label shrinks on its own and makes it look smaller.
+ * ponytail: 0.72em is an average uppercase glyph width; measure with onTextLayout if a
+ * longer label or another font ever clips.
+ */
+function kpiLabelSize(screenWidth: number): number {
+  // Screen padding 14 each side, two 8dp gaps, each tile's 5dp shadow margin, 2dp border, padding.
+  const inner = (screenWidth - 28 - 16 - 3 * LIFT) / 3 - 4 - 2 * KPI_PAD;
+  const perGlyph = inner / 'CONSULTANTS'.length - KPI_TRACKING;
+  return Math.max(8, Math.min(11, perGlyph / 0.72));
+}
+const KPI_TRACKING = 0.6;
 
 const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.xl },
@@ -313,17 +330,24 @@ const useStyles = createThemedStyles((theme) => ({
   kpi: { flex: 1 },
   kpiFace: {
     flex: 1,
-    minHeight: 112,
+    height: 112,
     justifyContent: 'space-between',
     backgroundColor: theme.color.tile,
     borderWidth: 2,
     borderColor: theme.color.edge,
-    padding: theme.space.sm + 2,
-    paddingBottom: theme.space.sm + 8,
+    padding: KPI_PAD,
+    paddingBottom: KPI_PAD + 6,
     ...iosHardShadow(theme.color.hard, LIFT),
   },
   kpiPressed: { transform: [{ translateX: LIFT }, { translateY: LIFT }], shadowOpacity: 0 },
   kpiText: { marginTop: theme.space.sm },
+  kpiLabel: {
+    fontFamily: theme.family.medium,
+    color: theme.color.ink3,
+    marginBottom: theme.space.xs,
+    textTransform: 'uppercase',
+    letterSpacing: KPI_TRACKING,
+  },
   kpiBand: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 5, backgroundColor: theme.color.ink },
   section: { marginTop: theme.space.lg },
   scoreRow: {
