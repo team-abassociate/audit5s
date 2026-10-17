@@ -336,7 +336,7 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
         {can('unit', 'archive') ? (
           <ConfirmAction
             title="Archive Unit"
-            question={`Archive ${u.name}? It leaves every list and no new audit can start there. Its audits, reports and people's history are kept.`}
+            question={`Archive ${u.name}? It leaves every list and no new audit can start there. Its Coordinator and Zone Leaders lose access to 5S and Kaizen and are signed out. Its audits, reports and people's history are kept.`}
             confirmLabel="Archive"
             busy={archive.isPending}
             onConfirm={() => archive.mutate()}

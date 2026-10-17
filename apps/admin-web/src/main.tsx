@@ -320,8 +320,9 @@ const auditLogRoute = createRoute({
  * sent home rather than shown pages whose every query the server refuses.
  */
 function KaizenOnly({ children }: { children: ReactNode }) {
-  const { can } = useSession();
-  return can('kaizen', 'read') ? children : <Navigate to="/" replace />;
+  const { can, user } = useSession();
+  // 0052: holding the role is not enough; the Super Admin grants Kaizen person by person.
+  return can('kaizen', 'read') && user?.kaizenAccess ? children : <Navigate to="/" replace />;
 }
 
 const kaizenOverviewRoute = createRoute({

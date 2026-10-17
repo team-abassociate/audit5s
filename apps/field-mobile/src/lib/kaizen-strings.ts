@@ -54,6 +54,9 @@ export interface KaizenStrings {
   // picker
   chooseWork: string;
   switchModule: string;
+  /** 0052: tapping Kaizen without the Super Admin's grant. */
+  needAccess: string;
+  needAccessBody: string;
   /** The sync bar's 5S | KAIZEN switch: the 5S half (the Kaizen half is `kaizen`). */
   fiveSShort: string;
   fiveS: string;
@@ -207,6 +210,8 @@ export interface KaizenStrings {
 const EN: KaizenStrings = {
   chooseWork: 'Choose work',
   switchModule: 'Switch module',
+  needAccess: 'You need access to this feature',
+  needAccessBody: 'Ask your Super Admin or Coordinator to give you access to Kaizen.',
   fiveSShort: '5S',
   fiveS: '5S Audit',
   fiveSLine: 'Audit your zone, close nonconformities',
@@ -407,6 +412,8 @@ const EN: KaizenStrings = {
 const HI: KaizenStrings = {
   chooseWork: 'काम चुनें',
   switchModule: 'मॉड्यूल बदलें',
+  needAccess: 'इस सुविधा के लिए आपको अनुमति चाहिए',
+  needAccessBody: 'Kaizen की अनुमति के लिए अपने Super Admin या Coordinator से कहें।',
   fiveSShort: '5S',
   fiveS: '5S ऑडिट',
   fiveSLine: 'अपने ज़ोन का ऑडिट करें, कमियाँ दूर करें',
@@ -607,6 +614,8 @@ const HI: KaizenStrings = {
 const MR: KaizenStrings = {
   chooseWork: 'काम निवडा',
   switchModule: 'मॉड्यूल बदला',
+  needAccess: 'या सुविधेसाठी तुम्हाला परवानगी हवी',
+  needAccessBody: 'Kaizen च्या परवानगीसाठी तुमच्या Super Admin किंवा Coordinator ला सांगा.',
   fiveSShort: '5S',
   fiveS: '5S ऑडिट',
   fiveSLine: 'तुमच्या झोनचे ऑडिट करा, त्रुटी दूर करा',

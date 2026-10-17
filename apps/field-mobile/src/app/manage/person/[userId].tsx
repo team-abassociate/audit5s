@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { Audit, MembershipDetail, Page, ResetUserPasswordResponse, Unit, User, Zone } from '@audit5s/contracts';
-import { zoneDisplayLabel } from '@audit5s/domain';
+import { mayGrantKaizen, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Avatar,
   Button,
@@ -50,7 +50,7 @@ export default function PersonScreen() {
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { scope, can } = useSession();
+  const { scope, can, user: self } = useSession();
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const [editing, setEditing] = useState(false);
   const [granting, setGranting] = useState(false);
@@ -102,6 +102,11 @@ export default function PersonScreen() {
     mutationFn: ({ zoneId, leads }: { zoneId: string; leads: boolean }) =>
       api.post<Zone>(`/zones/${zoneId}/leader`, { zoneLeaderId: leads ? userId : null }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['zones'] }),
+  });
+  /** R-57: Kaizen, given and taken back like Unit access. */
+  const kaizenAccess = useMutation({
+    mutationFn: (granted: boolean) => api.patch<User>(`/users/${userId}`, { kaizenAccess: granted }),
+    onSuccess: refresh,
   });
   const disable = useMutation({
     mutationFn: () => api.post(`/users/${userId}/disable`, {}),
@@ -275,6 +280,29 @@ export default function PersonScreen() {
             <ErrorBanner message={problemMessage(zones.error ?? lead.error)} />
           </Card>
         ) : null}
+
+        {p.role === 'SUPER_ADMIN' ? null : (
+          <Card>
+            <CardHeader
+              title="Kaizen"
+              description={p.kaizenAccess ? 'They can open Kaizen.' : 'They cannot open Kaizen until someone gives them access.'}
+            />
+            {self && mayGrantKaizen({ ...self, userId: self.id }, p) ? (
+              p.kaizenAccess ? (
+                <ConfirmAction
+                  title="Remove Kaizen access"
+                  question={`Remove ${p.fullName}'s Kaizen access? They keep 5S. Their Kaizens stay on record.`}
+                  confirmLabel="Remove"
+                  busy={kaizenAccess.isPending}
+                  onConfirm={() => kaizenAccess.mutate(false)}
+                />
+              ) : (
+                <Button icon="vpn-key" title="Give Kaizen access" variant="secondary" busy={kaizenAccess.isPending} onPress={() => kaizenAccess.mutate(true)} />
+              )
+            ) : null}
+            <ErrorBanner message={problemMessage(kaizenAccess.error)} />
+          </Card>
+        )}
 
         {audits.data ? (
           <Card>

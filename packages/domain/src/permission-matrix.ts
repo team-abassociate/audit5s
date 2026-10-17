@@ -1,4 +1,5 @@
 import type { Resource, Role, ScopeResolverName, PermissionKey } from '@audit5s/contracts';
+import type { ActorContext } from './scope';
 
 /**
  * The authorization matrix of ARCHITECTURE.md §6.3, as data.
@@ -892,6 +893,34 @@ export function findPermission(key: string): PermissionDefinition | undefined {
 /** The scope resolver a role holds for a permission, or `null` when it holds none. */
 export function grantFor(role: Role, key: string): ScopeGrant | null {
   return BY_KEY.get(key)?.grants[role] ?? null;
+}
+
+/**
+ * `grantFor`, for a person rather than a role: Kaizen is held only by a Super Admin and by
+ * those a Super Admin granted it (0052). Every server check on a `kaizen:*` key goes
+ * through here, so revoking access closes the REST routes, the sync push and the workers.
+ */
+export function grantForActor(actor: Pick<ActorContext, 'role' | 'kaizenAccess'>, key: string): ScopeGrant | null {
+  if (key.startsWith('kaizen:') && !hasKaizenAccess(actor)) return null;
+  return grantFor(actor.role, key);
+}
+
+export function hasKaizenAccess(actor: Pick<ActorContext, 'role' | 'kaizenAccess'>): boolean {
+  return actor.role === 'SUPER_ADMIN' || actor.kaizenAccess === true;
+}
+
+/**
+ * Who may grant or revoke someone's Kaizen (R-57), the way 5S access is managed: a Super
+ * Admin for anyone but another Super Admin; a Coordinator who holds Kaizen for the Zone
+ * Leaders of their Unit (the Unit is the `user:update` scope's to enforce). Never oneself.
+ */
+export function mayGrantKaizen(
+  actor: Pick<ActorContext, 'role' | 'kaizenAccess'> & { userId: string },
+  target: { id: string; role: Role },
+): boolean {
+  if (actor.userId === target.id) return false;
+  if (actor.role === 'SUPER_ADMIN') return target.role !== 'SUPER_ADMIN';
+  return actor.role === 'COORDINATOR' && actor.kaizenAccess === true && target.role === 'ZONE_LEADER';
 }
 
 /** Every permission key a role holds. Drives the `scope.permissions` list on `/auth/me`. */

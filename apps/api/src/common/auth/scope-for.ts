@@ -1,4 +1,4 @@
-import { grantFor, type ScopeContext } from '@audit5s/domain';
+import { grantForActor, type ScopeContext } from '@audit5s/domain';
 
 /**
  * The scope for **another** resource than the one that admitted the request.
@@ -14,7 +14,7 @@ import { grantFor, type ScopeContext } from '@audit5s/domain';
  * an absent cell in the matrix means denied, and that is what it means here too.
  */
 export function scopeFor(scope: ScopeContext, permissionKey: string): ScopeContext {
-  const grant = grantFor(scope.actor.role, permissionKey);
+  const grant = grantForActor(scope.actor, permissionKey);
   if (!grant) {
     return {
       actor: { ...scope.actor, unitIds: [], activeUnitId: null },

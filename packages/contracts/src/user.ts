@@ -30,6 +30,8 @@ export const userSchema = z.object({
   lastLoginAt: isoDateTimeSchema.nullable(),
   createdByUserId: uuidSchema.nullable(),
   archivedAt: isoDateTimeSchema.nullable(),
+  /** 0052 (R-57): Kaizen, granted per person. A Super Admin has it regardless. */
+  kaizenAccess: z.boolean(),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 });
@@ -79,6 +81,8 @@ export const updateUserRequestSchema = z
     fullName: fullNameSchema.optional(),
     email: clearable(emailSchema),
     phone: optional(userPhoneSchema),
+    /** Grant or revoke Kaizen (R-57): a Super Admin's, or a Coordinator's for their Zone Leaders. */
+    kaizenAccess: z.boolean().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: 'No fields to update' });
 export type UpdateUserRequest = z.infer<typeof updateUserRequestSchema>;

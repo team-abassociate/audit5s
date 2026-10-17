@@ -1,6 +1,6 @@
 import { Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { grantFor, permissionKeyOf } from '@audit5s/domain';
+import { grantFor, grantForActor, permissionKeyOf } from '@audit5s/domain';
 import { AppError } from '../errors';
 import { getRequestContext } from '../observability/request-context';
 import type { FastifyRequest } from 'fastify';
@@ -69,6 +69,10 @@ export class PermissionGuard implements CanActivate {
 
     if (!grantFor(actor.role, key)) {
       throw AppError.forbidden('FORBIDDEN', `Your role may not ${requirement.action} a ${requirement.resource}`);
+    }
+    // The role holds it, but Kaizen is the Super Admin's to grant, person by person (0052).
+    if (!grantForActor(actor, key)) {
+      throw AppError.forbidden('FORBIDDEN', 'You need access to this feature');
     }
 
     return true;

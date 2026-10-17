@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '../lib/language-provider';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
@@ -7,12 +8,19 @@ import { Button } from './ui';
 
 /**
  * Opens a module and remembers it for this person: the picker's tiles and the sync bar's
- * 5S | KAIZEN switch both go through here.
+ * 5S | KAIZEN switch both go through here, so this is where Kaizen without the Super
+ * Admin's grant (0052) says so instead of opening.
  */
 export function useOpenModule() {
   const router = useRouter();
   const { user } = useSession();
+  const { language } = useLanguage();
   return (module: AppModule) => {
+    if (module === 'kaizen' && !user?.kaizenAccess) {
+      const t = KAIZEN_STRINGS[language];
+      Alert.alert(t.needAccess, t.needAccessBody);
+      return;
+    }
     if (user) void saveModule(user.id, module);
     router.replace(module === 'kaizen' ? '/kaizen/overview' : '/overview');
   };

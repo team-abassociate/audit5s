@@ -1,6 +1,7 @@
 import { randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  hasKaizenAccess,
   permissionsForRole,
   type ActorContext,
 } from '@audit5s/domain';
@@ -643,5 +644,6 @@ function toAuthenticatedUser(user: UserRow): AuthenticatedUser {
     mustResetPassword: user.mustResetPassword,
     bootstrapExpiresAt: user.bootstrapExpiresAt?.toISOString() ?? null,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+    kaizenAccess: hasKaizenAccess({ role: user.role as Role, kaizenAccess: user.kaizenAccess }),
   };
 }

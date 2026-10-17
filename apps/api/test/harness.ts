@@ -246,9 +246,11 @@ export async function makeActor(
   const loginId = `${fullName.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase()}${phone.slice(-4)}`;
 
   const { rows } = await owner.query(
+    // Fixtures hold Kaizen (0052) so the Kaizen suites test the matrix; the grant itself
+    // has its own test in kaizens.e2e.
     `INSERT INTO "user" (login_id, full_name, phone_e164, role, password_hash,
-                         must_reset_password, status)
-     VALUES ($1, $2, $3, $4, $5, false, 'ACTIVE') RETURNING id`,
+                         must_reset_password, status, kaizen_access)
+     VALUES ($1, $2, $3, $4, $5, false, 'ACTIVE', true) RETURNING id`,
     [loginId, fullName, phone, role, passwordHash],
   );
   const userId = rows[0].id as string;

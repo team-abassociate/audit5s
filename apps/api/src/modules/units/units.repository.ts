@@ -1,6 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, ilike, inArray, isNull, sql, type AnyColumn, type SQL } from 'drizzle-orm';
-import { auditLogs, crossAuditCalls, crossAuditRounds, units, zones, type Database, type Transaction } from '@audit5s/db';
+import {
+  auditLogs,
+  crossAuditCalls,
+  crossAuditRounds,
+  unitMemberships,
+  units,
+  users,
+  zones,
+  type Database,
+  type Transaction,
+} from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { CreateUnitRequest, CrossAuditCall, CrossAuditRound, ListUnitsQuery } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
@@ -130,6 +140,12 @@ export class UnitsRepository extends BaseRepository {
     });
   }
 
+  /**
+   * A Unit that is no longer a client takes its people's access with it (R-58): its
+   * Coordinator and Zone Leaders are disabled and lose Kaizen in the same transaction. M-1
+   * gives each of them this one Unit, so nothing else of theirs is cut off. A Consultant is
+   * independent of Units and is left alone. Returns who was disabled, and what they were.
+   */
   async archive(scope: ScopeContext, unitId: string) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
@@ -138,7 +154,28 @@ export class UnitsRepository extends BaseRepository {
         .set({ archivedAt: sql`now()`, version: sql`${units.version} + 1` })
         .where(and(eq(units.id, unitId), this.scoped(scope, { unitId: units.id })))
         .returning();
-      return row ?? null;
+      if (!row) return null;
+      const members = tx
+        .select({ userId: unitMemberships.userId })
+        .from(unitMemberships)
+        .where(
+          and(
+            eq(unitMemberships.unitId, unitId),
+            eq(unitMemberships.status, 'ACTIVE'),
+            inArray(unitMemberships.role, ['COORDINATOR', 'ZONE_LEADER']),
+          ),
+        );
+      const before = await tx
+        .select({ id: users.id, status: users.status, kaizenAccess: users.kaizenAccess })
+        .from(users)
+        .where(and(inArray(users.id, members), isNull(users.archivedAt)));
+      if (before.length > 0) {
+        await tx
+          .update(users)
+          .set({ status: 'DISABLED', kaizenAccess: false })
+          .where(inArray(users.id, before.map((person) => person.id)));
+      }
+      return { unit: row, disabled: before };
     });
   }
 

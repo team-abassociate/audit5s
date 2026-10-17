@@ -43,7 +43,7 @@ import { cn } from '@/lib/cn';
 import { Link, useSearch } from '@tanstack/react-router';
 import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, ROLE_LABEL, roleLabel } from '@/lib/labels';
-import { formatDate, formatDateTime, formatScore } from '@audit5s/domain';
+import { formatDate, formatDateTime, formatScore, mayGrantKaizen } from '@audit5s/domain';
 
 /** Least privileged first, so a slip of the hand never lands on Super Admin (US3). */
 const ROLES_BY_REACH: readonly Role[] = ['ZONE_LEADER', 'CONSULTANT', 'COORDINATOR', 'SUPER_ADMIN'];
@@ -236,6 +236,12 @@ function UserRow({
     onSuccess: refresh,
   });
 
+  /** 0052: Kaizen is the Super Admin's to grant or take back, person by person. */
+  const kaizenAccess = useMutation({
+    mutationFn: (granted: boolean) => api.patch<User>(`/users/${user.id}`, { kaizenAccess: granted }),
+    onSuccess: refresh,
+  });
+
   const reset = useMutation({
     mutationFn: () => api.post<{ loginId: string }>(`/users/${user.id}/reset-password`),
     onSuccess: refresh,
@@ -281,6 +287,24 @@ function UserRow({
           },
     );
   }
+  // R-57: a Super Admin for anyone; a Coordinator holding Kaizen for their Zone Leaders.
+  if (self && mayGrantKaizen({ ...self, userId: self.id }, user)) {
+    items.push(
+      user.kaizenAccess
+        ? {
+            label: 'Remove Kaizen access',
+            danger: true,
+            confirm: {
+              title: `Remove ${user.fullName}’s Kaizen access?`,
+              body: `${user.fullName} keeps 5S but can no longer open Kaizen, on the phone or here. Their Kaizens stay on record.`,
+              confirmLabel: 'Remove access',
+              pendingLabel: 'Removing…',
+              run: () => kaizenAccess.mutateAsync(false),
+            },
+          }
+        : { label: 'Give Kaizen access', disabled: kaizenAccess.isPending, onSelect: () => kaizenAccess.mutate(true) },
+    );
+  }
   if (can('user', 'archive') && !isSelf) {
     items.push({
       label: 'Archive',
@@ -304,7 +328,12 @@ function UserRow({
           </RowToggle>
         </Td>
         <Td className="font-mono text-xs">{user.loginId}</Td>
-        <Td>{ROLE_LABEL[user.role]}</Td>
+        <Td>
+          {ROLE_LABEL[user.role]}
+          {user.role !== 'SUPER_ADMIN' && (
+            <div className="mt-1 text-xs text-ink-3">{user.kaizenAccess ? 'Kaizen access' : 'No Kaizen access'}</div>
+          )}
+        </Td>
         <Td>
           {units === null ? (
             <span className="text-ink-3">Every Unit</span>
@@ -340,9 +369,9 @@ function UserRow({
             }
             items={items}
           />
-          {(restoreAccess.error || reset.error) && (
+          {(restoreAccess.error || reset.error || kaizenAccess.error) && (
             <div className="mt-2">
-              <ErrorNotice error={restoreAccess.error ?? reset.error} />
+              <ErrorNotice error={restoreAccess.error ?? reset.error ?? kaizenAccess.error} />
             </div>
           )}
         </Td>

@@ -142,7 +142,7 @@ export class UsersRepository extends BaseRepository {
   async update(
     scope: ScopeContext,
     userId: string,
-    patch: { fullName?: string; email?: string | null; phoneE164?: string },
+    patch: { fullName?: string; email?: string | null; phoneE164?: string; kaizenAccess?: boolean },
   ) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);

@@ -58,7 +58,7 @@ export default function ModulePicker() {
   const awaiting = useQuery({
     queryKey: ['kaizen-dashboard', 'overall'],
     queryFn: () => api.get<KaizenDashboard>('/kaizens/dashboard'),
-    enabled: reviews,
+    enabled: reviews && user?.kaizenAccess === true,
   });
 
   const counts = local.data;

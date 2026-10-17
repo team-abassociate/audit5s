@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '@audit5s/contracts';
-import { startWorld, stopWorld, type TestWorld } from './harness';
+import { makeActor, startWorld, stopWorld, type TestWorld } from './harness';
 
 /** Unit routes the sweep marks `coveredBy`, plus invariant U-1 in detail. */
 
@@ -135,5 +135,27 @@ describe('archive', () => {
     });
     const all = (withArchived.body as { data: Array<{ name: string }> }).data.map((u) => u.name);
     expect(all).toContain('Temporary');
+  });
+
+  it('takes its Coordinator’s and Zone Leaders’ access with it, and leaves a Consultant’s (R-58)', async () => {
+    const admin = world.actors.SUPER_ADMIN.accessToken;
+    const created = await world.request('POST', `${base}/units`, { token: admin, body: { name: 'Former Client' } });
+    const unitId = (created.body as { id: string }).id;
+    const coordinator = await makeActor(world.owner, world.request, 'COORDINATOR', 'Cy Closing', '+919000000201', unitId);
+    const leader = await makeActor(world.owner, world.request, 'ZONE_LEADER', 'Lu Leaving', '+919000000202', unitId);
+
+    expect((await world.request('POST', `${base}/units/${unitId}/archive`, { token: admin })).status).toBe(204);
+
+    for (const person of [coordinator, leader]) {
+      // Signed out at once: the next request is refused, and so is the refresh.
+      expect((await world.request('GET', `${base}/auth/me`, { token: person.accessToken })).status).toBe(401);
+      const refresh = await world.request('POST', `${base}/auth/refresh`, { body: { refreshToken: person.refreshToken } });
+      expect(refresh.status).not.toBe(200);
+      const user = await world.request('GET', `${base}/users/${person.userId}`, { token: admin });
+      expect(user.body).toMatchObject({ status: 'DISABLED', kaizenAccess: false });
+    }
+    // Everyone else is untouched.
+    expect((await world.request('GET', `${base}/auth/me`, { token: world.actors.CONSULTANT.accessToken })).status).toBe(200);
+    expect((await world.request('GET', `${base}/auth/me`, { token: world.actors.COORDINATOR.accessToken })).status).toBe(200);
   });
 });

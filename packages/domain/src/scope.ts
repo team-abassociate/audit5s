@@ -21,6 +21,8 @@ export interface ActorContext {
   unitIds: string[];
   /** From `X-Device-Id`. Required on mobile writes; `null` for web sessions. */
   deviceId: string | null;
+  /** 0052 (R-57): this person was granted Kaizen. Absent means not granted. */
+  kaizenAccess?: boolean;
 }
 
 /**
