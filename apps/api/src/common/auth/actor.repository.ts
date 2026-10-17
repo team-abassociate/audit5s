@@ -50,6 +50,7 @@ export class ActorRepository {
           archivedAt: users.archivedAt,
           fullName: users.fullName,
           loginId: users.loginId,
+          kaizenAccess: users.kaizenAccess,
         })
         .from(users)
         .where(eq(users.id, userId))
@@ -124,6 +125,7 @@ export class ActorRepository {
             user.role === 'COORDINATOR' || user.role === 'ZONE_LEADER' ? (unitIds[0] ?? null) : null,
           unitIds,
           deviceId,
+          kaizenAccess: user.kaizenAccess,
         },
         status: user.status as UserStatus,
         mustResetPassword: user.mustResetPassword,

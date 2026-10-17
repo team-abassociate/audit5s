@@ -2443,3 +2443,37 @@ cross-audit call (§2.6).
   required and kept. Its Zones stop standing for every Zone Leader. Only a cross audit
   completes this way; an external audit the Super Admin assigned is never completed by a
   Coordinator.
+
+## R-57 — Kaizen access is granted person by person, the way 5S access is
+
+**Settled 2026-10-17 by the product owner.** Changes R-48(b) and (c): holding a role no
+longer brings Kaizen with it.
+
+- **Who grants it follows 5S** (`user.kaizen_access`, migration `0052`): a Super Admin
+  grants or revokes Kaizen for any Coordinator, Zone Leader or Consultant; **a Coordinator
+  who holds Kaizen grants or revokes it for the Zone Leaders of their own Unit**, as they
+  manage those leaders' accounts. Nobody grants it to themselves (`mayGrantKaizen`,
+  packages/domain). It is on the Users page of the web and the person screen of the phone
+  ("Give Kaizen access" / "Remove Kaizen access"). A Super Admin always has Kaizen. Nobody
+  else holds it until granted, so existing accounts start without it. Revoking a
+  Coordinator's access leaves the Zone Leaders they granted as they are.
+- **The role's `kaizen:*` cells stay as R-48 wrote them; the grant is a second condition.**
+  `grantForActor` (packages/domain) is used by `PermissionGuard`, `ScopeGuard`, `scopeFor`
+  and the Kaizen photo worker, so a revoke closes the REST routes, the sync push and the
+  workers on the next request. A RESTRICTIVE policy on `kaizen`, `kaizen_review` and
+  `kaizen_photo` is the defence-in-depth.
+- **Without it the switch is still there and says so.** On the phone and the web, choosing
+  Kaizen answers "You need access to this feature" and stays in 5S; the phone lands on 5S
+  instead of the picker. `/auth/me` carries `user.kaizenAccess`.
+- **Their Kaizens stay on record** when access is removed; nothing is deleted.
+
+## R-58 — Archiving a Unit takes its people's access with it
+
+**Settled 2026-10-17 by the product owner.** A Unit is archived when the plant is no longer a
+client. In the same transaction its Coordinator and Zone Leaders (the ACTIVE memberships of
+the Unit) are disabled and lose Kaizen access; then, as "Revoke access" does, their refresh
+tokens and their place on every phone are revoked, and each is logged as `user.disabled`
+with the reason `unit.archived`. M-1 gives each of them only this Unit, so nothing else of
+theirs is cut off. A Consultant is independent of Units and is left alone. Nothing is
+deleted: their audits, Kaizens and history stay on record, and a Super Admin may restore a
+person's access (and grant Kaizen again) from Users.

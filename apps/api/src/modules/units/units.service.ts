@@ -14,6 +14,7 @@ import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
+import { AuthRepository } from '../auth/auth.repository';
 import { UnitsRepository, type UnitPatch } from './units.repository';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class UnitsService {
     private readonly repository: UnitsRepository,
     private readonly auditLog: AuditLogService,
     private readonly events: DomainEvents,
+    private readonly auth: AuthRepository,
   ) {}
 
   /**
@@ -183,8 +185,20 @@ export class UnitsService {
       resourceType: 'unit',
       resourceId: unitId,
       unitId,
-      after: { archivedAt: archived.archivedAt?.toISOString() ?? null },
+      after: { archivedAt: archived.unit.archivedAt?.toISOString() ?? null },
     });
+    // R-58: signed out of every phone, as "Revoke access" does, and logged the same way.
+    for (const person of archived.disabled) {
+      await this.auth.revokeUserAccess(person.id);
+      await this.auditLog.record({
+        action: 'user.disabled',
+        resourceType: 'user',
+        resourceId: person.id,
+        unitId,
+        before: { status: person.status, kaizenAccess: person.kaizenAccess },
+        after: { status: 'DISABLED', kaizenAccess: false, reason: 'unit.archived' },
+      });
+    }
   }
 }
 

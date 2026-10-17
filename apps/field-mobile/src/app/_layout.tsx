@@ -82,7 +82,8 @@ function AuthGate() {
     const land = () => {
       landed.current = true;
       void (async (): Promise<Href> => {
-        if (!user || !can('kaizen', 'read')) return '/overview';
+        // Without the Super Admin's Kaizen grant (0052) the switch is there, but 5S is home.
+        if (!user || !can('kaizen', 'read') || !user.kaizenAccess) return '/overview';
         const module = await loadModule(user.id);
         if (module === 'kaizen') return '/kaizen/overview';
         return module === 'five-s' ? '/overview' : '/module';

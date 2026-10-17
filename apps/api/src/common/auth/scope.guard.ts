@@ -1,7 +1,7 @@
 import { Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { ScopeContext } from '@audit5s/domain';
-import { grantFor, permissionKeyOf } from '@audit5s/domain';
+import { grantForActor, permissionKeyOf } from '@audit5s/domain';
 import type { FastifyRequest } from 'fastify';
 import { AppError } from '../errors';
 import { getRequestContext } from '../observability/request-context';
@@ -70,8 +70,8 @@ export class ScopeGuard implements CanActivate {
       throw AppError.unauthorized('TOKEN_INVALID', 'No authenticated actor');
     }
 
-    const grant = grantFor(
-      actor.role,
+    const grant = grantForActor(
+      actor,
       permissionKeyOf({
         resource: requirement.resource,
         action: requirement.action,

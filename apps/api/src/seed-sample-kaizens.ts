@@ -137,6 +137,7 @@ export async function seedSampleKaizens(
           passwordHash,
           mustResetPassword: false,
           status: 'ACTIVE',
+          kaizenAccess: true,
         })
         .returning({ id: users.id, loginId: users.loginId });
       await tx.insert(unitMemberships).values({ userId: row!.id, unitId, role, assignedByUserId: superAdminId });

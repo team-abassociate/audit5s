@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { grantFor, isAllowedImageType, sniffImageType, stripImageMetadata, type ScopeContext } from '@audit5s/domain';
+import { grantForActor, isAllowedImageType, sniffImageType, stripImageMetadata, type ScopeContext } from '@audit5s/domain';
 import { ActorRepository } from '../../common/auth/actor.repository';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
@@ -65,7 +65,7 @@ export class KaizenPhotoWorker {
   private async scopeFor(userId: string): Promise<ScopeContext | null> {
     const record = await this.actors.loadActor(userId, null);
     if (!record || !ActorRepository.isUsable(record)) return null;
-    const grant = grantFor(record.actor.role, 'kaizen:create');
+    const grant = grantForActor(record.actor, 'kaizen:create');
     if (!grant) return null;
     return { actor: record.actor, resolver: grant.resolver, ...(grant.condition ? { condition: grant.condition } : {}) };
   }

@@ -46,12 +46,12 @@ const IDLE: SyncResult = { accepted: 0, conflicted: 0, failed: 0, deferred: 0, p
 export function SyncProvider({ children }: { children: ReactNode }) {
   const database = useOptionalLocalDatabase();
   const queryClient = useQueryClient();
-  const { status, can } = useSession();
+  const { status, can, user } = useSession();
   const allowed = status === 'ready' && can('sync', 'push') && database !== null;
   const allowedRef = useRef(allowed);
   allowedRef.current = allowed;
   const kaizenRef = useRef(false);
-  kaizenRef.current = can('kaizen', 'create');
+  kaizenRef.current = can('kaizen', 'create') && user?.kaizenAccess === true;
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState(true);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);

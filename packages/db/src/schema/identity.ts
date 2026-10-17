@@ -38,6 +38,8 @@ export const users = pgTable(
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdByUserId: uuid('created_by_user_id'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /** 0052 (R-57): granted by a Super Admin, or a Coordinator for their Zone Leaders. */
+    kaizenAccess: boolean('kaizen_access').notNull().default(false),
     ...timestamps,
   },
   (table) => [

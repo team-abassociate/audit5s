@@ -208,6 +208,48 @@ describe('authorization: who reaches what (PART 6, owner 2026-10-07)', () => {
   });
 });
 
+describe('Kaizen access is the Super Admin’s to grant (0052)', () => {
+  it('without it a role that holds Kaizen is refused; only a Super Admin grants or revokes it', async () => {
+    const leader = await makeActor(world.owner, world.request, 'ZONE_LEADER', 'Nia Noaccess', '+919000000107', world.unitA);
+    const users = '/api/v1/users';
+    const setAccess = (actor: TestActor, kaizenAccess: boolean) =>
+      world.request('PATCH', `${users}/${leader.userId}`, { token: as(actor), body: { kaizenAccess } });
+
+    expect((await setAccess(world.actors.SUPER_ADMIN, false)).status).toBe(200);
+    const refused = await world.request('GET', base, { token: as(leader) });
+    expect(refused.status).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('You need access to this feature');
+    expect((await create(leader)).status).toBe(403);
+    const me = await world.request('GET', '/api/v1/auth/me', { token: as(leader) });
+    expect((me.body as { user: { kaizenAccess: boolean } }).user.kaizenAccess).toBe(false);
+
+    expect((await setAccess(world.actors.SUPER_ADMIN, true)).status).toBe(200);
+    expect((await world.request('GET', base, { token: as(leader) })).status).toBe(200);
+  });
+
+  it('a Coordinator who holds Kaizen grants it to their Unit’s Zone Leaders, and nobody else (R-57)', async () => {
+    const leader = await makeActor(world.owner, world.request, 'ZONE_LEADER', 'Ved Viacoord', '+919000000108', world.unitA);
+    const coordinator = world.actors.COORDINATOR;
+    const patch = (actor: TestActor, userId: string, kaizenAccess: boolean) =>
+      world.request('PATCH', `/api/v1/users/${userId}`, { token: as(actor), body: { kaizenAccess } });
+
+    expect((await patch(coordinator, leader.userId, false)).status).toBe(200);
+    expect((await world.request('GET', base, { token: as(leader) })).status).toBe(403);
+    expect((await patch(coordinator, leader.userId, true)).status).toBe(200);
+    expect((await world.request('GET', base, { token: as(leader) })).status).toBe(200);
+
+    // Not a Consultant, not themselves, not another Unit's leader.
+    expect((await patch(coordinator, world.actors.CONSULTANT.userId, true)).status).toBe(403);
+    expect((await patch(coordinator, coordinator.userId, true)).status).toBe(403);
+    expect((await patch(coordinator, world.outOfScopeUserId, true)).status).not.toBe(200);
+
+    // Without Kaizen themselves, a Coordinator gives none of it away.
+    expect((await patch(world.actors.SUPER_ADMIN, coordinator.userId, false)).status).toBe(200);
+    expect((await patch(coordinator, leader.userId, false)).status).toBe(403);
+    expect((await patch(world.actors.SUPER_ADMIN, coordinator.userId, true)).status).toBe(200);
+  });
+});
+
 describe('the author’s moves', () => {
   it('a sheet missing required steps is not submittable, and says which', async () => {
     const kaizen = await draft(world.actors.ZONE_LEADER, world.zoneA, { machine: 'Press' });

@@ -185,7 +185,7 @@ function UnitRow({
                       danger: true,
                       confirm: {
                         title: `Archive ${unit.name}?`,
-                        body: 'It leaves the Units list and every picker. Its audits, reports and history stay on record. The portal has no way to bring it back.',
+                        body: 'It leaves the Units list and every picker. Its Coordinator and Zone Leaders lose access to 5S and Kaizen and are signed out of every phone. Its audits, reports and history stay on record. The portal has no way to bring it back.',
                         confirmLabel: 'Archive',
                         pendingLabel: 'Archiving…',
                         run: () => archive.mutateAsync(),

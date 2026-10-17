@@ -9,7 +9,7 @@ import type {
   User,
 } from '@audit5s/contracts';
 import { ADMIN_EDITABLE_USER_FIELDS, SELF_EDITABLE_USER_FIELDS } from '@audit5s/contracts';
-import type { ScopeContext } from '@audit5s/domain';
+import { mayGrantKaizen, type ScopeContext } from '@audit5s/domain';
 import { CONFIG, type AppConfig } from '../../config/env';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
@@ -188,9 +188,10 @@ export class UsersService {
 
     // Field-level allow-list per role (§8.4). A Consultant or Zone Leader editing their
     // own record may change profile fields only.
+    // `kaizenAccess` is checked against the target below (R-57: `mayGrantKaizen`).
     const allowed: readonly string[] =
       actor.role === 'SUPER_ADMIN' || actor.role === 'COORDINATOR'
-        ? ADMIN_EDITABLE_USER_FIELDS
+        ? [...ADMIN_EDITABLE_USER_FIELDS, 'kaizenAccess']
         : SELF_EDITABLE_USER_FIELDS;
 
     if (!isSelf && (actor.role === 'CONSULTANT' || actor.role === 'ZONE_LEADER')) {
@@ -210,11 +211,15 @@ export class UsersService {
     if (actor.role === 'COORDINATOR' && before.role !== 'ZONE_LEADER' && !isSelf) {
       throw AppError.forbidden('FORBIDDEN', 'A Coordinator may only edit Zone Leaders');
     }
+    if (request.kaizenAccess !== undefined && !mayGrantKaizen(actor, before)) {
+      throw AppError.fieldNotEditable(['kaizenAccess']);
+    }
 
     const updated = await this.repository.update(scope, userId, {
       ...(request.fullName !== undefined ? { fullName: request.fullName } : {}),
       ...(request.email !== undefined ? { email: request.email } : {}),
       ...(request.phone !== undefined ? { phoneE164: request.phone } : {}),
+      ...(request.kaizenAccess !== undefined ? { kaizenAccess: request.kaizenAccess } : {}),
     });
 
     if (!updated) {
@@ -225,8 +230,8 @@ export class UsersService {
       action: 'user.updated',
       resourceType: 'user',
       resourceId: userId,
-      before: { fullName: before.fullName, email: before.email, phoneE164: before.phoneE164 },
-      after: { fullName: updated.fullName, email: updated.email, phoneE164: updated.phoneE164 },
+      before: { fullName: before.fullName, email: before.email, phoneE164: before.phoneE164, kaizenAccess: before.kaizenAccess },
+      after: { fullName: updated.fullName, email: updated.email, phoneE164: updated.phoneE164, kaizenAccess: updated.kaizenAccess },
     });
 
     return toUser(updated);
@@ -376,6 +381,7 @@ export function toUser(row: NonNullable<UserRow>): User {
     lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
     createdByUserId: row.createdByUserId,
     archivedAt: row.archivedAt?.toISOString() ?? null,
+    kaizenAccess: row.kaizenAccess,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

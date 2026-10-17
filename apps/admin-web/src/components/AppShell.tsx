@@ -14,7 +14,7 @@ import {
   type ScopeSearch,
   type UnitScope,
 } from '@/lib/scope';
-import { Combobox, Segmented } from '@/components/ui';
+import { Button, Combobox, Dialog, DialogActions, Segmented } from '@/components/ui';
 import { roleLabel } from '@/lib/labels';
 
 interface NavItem {
@@ -198,6 +198,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 /** 5S | Kaizen (§4.4): the two modules, for a role that holds both. */
 function ModuleSwitch({ kaizen }: { kaizen: boolean }) {
   const navigate = useNavigate();
+  const { user } = useSession();
+  const [refused, setRefused] = useState(false);
   return (
     <div className="gb-module">
       <Segmented
@@ -207,9 +209,25 @@ function ModuleSwitch({ kaizen }: { kaizen: boolean }) {
           { value: 'kaizen', label: 'Kaizen' },
         ]}
         value={kaizen ? 'kaizen' : '5s'}
-        onChange={(module) => void navigate({ to: module === 'kaizen' ? '/kaizen' : '/' })}
+        onChange={(module) => {
+          // Kaizen is the Super Admin's to grant, person by person (0052).
+          if (module === 'kaizen' && !user?.kaizenAccess) return setRefused(true);
+          void navigate({ to: module === 'kaizen' ? '/kaizen' : '/' });
+        }}
       />
+      <NoKaizenAccess open={refused} onClose={() => setRefused(false)} />
     </div>
+  );
+}
+
+/** What a person not granted Kaizen sees when they reach for it. */
+function NoKaizenAccess({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onClose={onClose} alert title="You need access to this feature" description="Ask your Super Admin or Coordinator to give you access to Kaizen.">
+      <DialogActions>
+        <Button onClick={onClose}>OK</Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 

@@ -80,6 +80,7 @@ const users: User[] = Array.from({ length: 200 }, (_, n) => ({
   lastLoginAt: n % 2 ? AT : null,
   createdByUserId: null,
   archivedAt: null,
+  kaizenAccess: n % 2 === 0,
   createdAt: AT,
   updatedAt: AT,
 }));

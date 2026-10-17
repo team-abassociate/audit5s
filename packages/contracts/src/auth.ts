@@ -55,6 +55,12 @@ export const authenticatedUserSchema = z.object({
   mustResetPassword: z.boolean(),
   bootstrapExpiresAt: isoDateTimeSchema.nullable(),
   lastLoginAt: isoDateTimeSchema.nullable(),
+  /**
+   * 0052: may this person open Kaizen? Always true for a Super Admin. The module switch is
+   * shown by `kaizen:read` as before; this decides whether it opens or says access is needed.
+   * Optional so a session cached by an older build still parses (and reads as no access).
+   */
+  kaizenAccess: z.boolean().optional(),
 });
 export type AuthenticatedUser = z.infer<typeof authenticatedUserSchema>;
 
