@@ -627,6 +627,33 @@ describe('§7.1 — every walk-by Zone needs a photograph, at the audit level to
     expect(completed.status, JSON.stringify(completed.body)).toBe(200);
   });
 
+  it('asks a synced Zone completion to wait for a photo still uploading, not hold it', async () => {
+    // The photo rides the phone's media queue; a slow upload lets the `complete` arrive first.
+    const auditId = await startWalkBy();
+    const { auditZoneId } = await addZone(auditId, await makeZone(), 1);
+
+    const push = async () => {
+      const response = await world.request('POST', `${base}/sync/batch`, {
+        token: consultantToken,
+        headers: { 'x-device-id': DEVICE_ID },
+        body: {
+          batchId: randomUUID(),
+          deviceId: DEVICE_ID,
+          clientTime: new Date().toISOString(),
+          items: [
+            { outboxId: randomUUID(), entityType: 'audit_zone', entityId: auditZoneId, operation: 'complete', payload: { auditId } },
+          ],
+        },
+      });
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      return (response.body as { results: Array<{ status: string }> }).results[0]!.status;
+    };
+
+    expect(await push()).toBe('RETRY_AFTER_PARENT');
+    await photograph(auditId, auditZoneId);
+    expect(await push()).toBe('ACCEPTED');
+  });
+
   it('does not impose the rule on a scored audit', async () => {
     // §7.2's two guards are alternatives, not a conjunction: a fifty-question Zone was
     // never asked for a photograph.

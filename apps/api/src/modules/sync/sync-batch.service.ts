@@ -290,6 +290,13 @@ export class SyncBatchService {
       return { ...base, status: 'RETRY_AFTER_PARENT', missingParent: `evidence_object:${item.entityId}` };
     }
 
+    if (code === 'EVIDENCE_REQUIRED') {
+      // A walk-by Zone's (or audit's) `complete` that overtook its photographs: they ride the
+      // media queue and may still be uploading. The phone refuses to finish a Zone with no
+      // photo, so the photo is on its way — wait for it rather than hold the completion.
+      return { ...base, status: 'RETRY_AFTER_PARENT', missingParent: `evidence:zone_photo:${item.entityId}` };
+    }
+
     const reason = QUARANTINE_REASONS[code ?? ''] ?? null;
     // `reason` is the category a Super Admin filters on; `detail` is the plain sentence that
     // tells them which rule refused the item. The raw failure — for a database error, the
