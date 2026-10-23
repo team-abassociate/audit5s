@@ -237,8 +237,25 @@ export function unsyncedPhotos(database: LocalDatabase) {
  * must not be unfinishable because of a single unreadable file.
  */
 export async function auditsAwaitingPhotos(database: LocalDatabase): Promise<Set<string>> {
-  const rows = await database
-    .select({ auditId: localEvidence.auditId })
+  return new Set((await photosAwaitingUpload(database)).map((row) => row.auditId));
+}
+
+/**
+ * Zones that still have a photograph on its way up.
+ *
+ * A walk-by Zone's *Save Zone* has the same race as *Finish audit*: sent ahead of its
+ * photos, the server refuses it as `EVIDENCE_REQUIRED`, quarantines it, and the audit's own
+ * completion is refused after it — "items need your attention" on a walk-by.
+ */
+export async function zonesAwaitingPhotos(database: LocalDatabase): Promise<Set<string>> {
+  return new Set(
+    (await photosAwaitingUpload(database)).flatMap((row) => (row.auditZoneId ? [row.auditZoneId] : [])),
+  );
+}
+
+function photosAwaitingUpload(database: LocalDatabase) {
+  return database
+    .select({ auditId: localEvidence.auditId, auditZoneId: localEvidence.auditZoneId })
     .from(outbox)
     .innerJoin(localEvidence, eq(localEvidence.id, outbox.entityId))
     .where(
@@ -248,5 +265,4 @@ export async function auditsAwaitingPhotos(database: LocalDatabase): Promise<Set
         isNull(localEvidence.deletedAt),
       ),
     );
-  return new Set(rows.map((row) => row.auditId));
 }

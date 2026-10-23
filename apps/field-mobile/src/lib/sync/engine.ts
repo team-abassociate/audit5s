@@ -23,6 +23,7 @@ import {
   itemsInState,
   markDeadLetter,
   auditsAwaitingPhotos,
+  zonesAwaitingPhotos,
   markPending,
   markSettled,
   markSyncing,
@@ -334,10 +335,11 @@ async function drainDataQueue(
   const all = (await readyItems(database, 'data', new Date(now()).toISOString())).filter(
     (row) => KAIZEN_ENTITY_TYPES.has(row.entityType) === (module === 'kaizen'),
   );
-  // An audit's `complete` waits for its photographs (see `auditsAwaitingPhotos`), and a
+  // An audit's or Zone's `complete` waits for its photographs (see `auditsAwaitingPhotos`), and a
   // Kaizen's submission for its before and after (`kaizensAwaitingPhotos`). Each stays
   // PENDING and goes in the first cycle after the last photo is committed.
   const holding = await auditsAwaitingPhotos(database);
+  const zonesHolding = await zonesAwaitingPhotos(database);
   const kaizensHolding = await kaizensAwaitingPhotos(database);
   const ready = (operations
     ? all.filter((row) => operations.includes(row.operation as SyncOperation))
@@ -345,6 +347,7 @@ async function drainDataQueue(
   ).filter(
     (row) =>
       !(row.entityType === 'audit' && row.operation === 'complete' && holding.has(row.entityId)) &&
+      !(row.entityType === 'audit_zone' && row.operation === 'complete' && zonesHolding.has(row.entityId)) &&
       !(
         row.entityType === 'kaizen_submission' &&
         kaizensHolding.has((JSON.parse(row.payload) as { kaizenId: string }).kaizenId)

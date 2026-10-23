@@ -24,7 +24,7 @@ import {
   zoneHasLocalEvidence,
 } from './evidence.repository';
 import { replaceCatalogue } from './catalogue.repository';
-import { auditsAwaitingPhotos, markDeadLetter } from './outbox.repository';
+import { auditsAwaitingPhotos, markDeadLetter, zonesAwaitingPhotos } from './outbox.repository';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
 import { LOCAL_SCHEMA_VERSION } from './migrations';
 import { createNodeExecutor } from './node-executor';
@@ -615,10 +615,13 @@ describe('an audit waits for its photographs before it is finished', () => {
 
     expect(await auditsAwaitingPhotos(database)).toEqual(new Set([auditId]));
     expect((await auditsAwaitingPhotos(database)).has(other.auditId)).toBe(false);
+    // Its Zone's `complete` waits too, or it overtakes the photo and is refused.
+    expect(await zonesAwaitingPhotos(database)).toEqual(new Set([auditZoneId]));
 
     // A photo waiting for a person must not make the audit unfinishable.
     const media = (await listOutbox(database)).find((row) => row.queue === 'media');
     await markDeadLetter(database, media!.id, { attempts: 8, lastError: 'unreadable file' });
     expect(await auditsAwaitingPhotos(database)).toEqual(new Set());
+    expect(await zonesAwaitingPhotos(database)).toEqual(new Set());
   });
 });
