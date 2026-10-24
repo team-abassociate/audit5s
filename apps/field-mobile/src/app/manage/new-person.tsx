@@ -3,6 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { CreateUserResponse, Page, Unit, Zone } from '@audit5s/contracts';
+import { zoneDisplayLabel } from '@audit5s/domain';
 import {
   ActionBar,
   Button,
@@ -201,7 +202,7 @@ export default function NewPersonScreen() {
               }
               options={(zones.data?.data ?? []).map((zone) => ({
                 value: zone.id,
-                label: `Zone ${zone.code} — ${zone.name}`,
+                label: zoneDisplayLabel(zone.code, zone.name),
                 detail: zone.zoneLeaderName ? `Now led by ${zone.zoneLeaderName}` : 'No leader yet',
               }))}
             />

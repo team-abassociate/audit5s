@@ -97,7 +97,8 @@ export async function seedSampleKaizens(
 ): Promise<void> {
   const kaizens = app.get(KaizensService);
   const scopeOf = (userId: string, role: Role, unitId: string): ScopeContext => ({
-    actor: { userId, role, activeUnitId: unitId, unitIds: [unitId], deviceId: null },
+    // Granted, as the rows below are: since R-57 an actor without it is refused every kaizen:* key.
+    actor: { userId, role, activeUnitId: unitId, unitIds: [unitId], deviceId: null, kaizenAccess: true },
     resolver: grantFor(role, 'kaizen:read')!.resolver,
   });
 

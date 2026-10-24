@@ -3,7 +3,7 @@ import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { CorrectiveActionDetail, EvidenceViewUrl } from '@audit5s/contracts';
-import { awaitsResponse, awaitsReview, isOverdue, isReviewable, isUnapprovedClosure, sectionLabel } from '@audit5s/domain';
+import { awaitsResponse, awaitsReview, isOverdue, isReviewable, isUnapprovedClosure, sectionLabel, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -104,11 +104,11 @@ export default function ReviewActionScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: `Zone ${action.zoneCode}` }} />
+      <Stack.Screen options={{ title: `Zone ${zoneLabelFromCode(action.zoneCode) ?? action.zoneCode}` }} />
       <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card rail={late ? 'crit' : reviewing ? 'warn' : 'none'}>
           <CardHeader
-            title={`Zone ${action.zoneCode} — ${action.zoneName}`}
+            title={zoneDisplayLabel(action.zoneCode, action.zoneName)}
             description={
               action.questionGlobalOrder
                 ? `${action.section ? `${sectionLabel(action.section)} · ` : ''}Q${action.questionGlobalOrder}: ${action.questionText ?? ''}`
@@ -243,6 +243,29 @@ export default function ReviewActionScreen() {
                 />
               </View>
             </View>
+          </Card>
+        ) : action.status === 'VERIFIED' && !closure && can('corrective_action', 'reopen') ? (
+          // R-43: an approved closure may still be disapproved, as on the web.
+          <Card>
+            <CardHeader
+              title="Disapprove this closure"
+              description="It is closed and approved. Disapprove takes it out of the next report and sends it back to the Zone leader with your note."
+            />
+            <Field
+              label="Reason for disapproving"
+              inputRef={required.input('note')}
+              error={required.error('note', 'Say why it is being disapproved.', note.trim() !== '')}
+              multiline
+              value={note}
+              onChangeText={setNote}
+            />
+            <ErrorBanner message={problemMessage(review.error)} />
+            <Button icon="cancel"
+              title="Disapprove"
+              variant="danger"
+              busy={review.isPending}
+              onPress={() => required.check([['note', note.trim() !== '']]) && review.mutate('reopen')}
+            />
           </Card>
         ) : awaitsResponse(action.status) ? (
           <Card>

@@ -41,7 +41,7 @@ export class ZonesService {
       if (isUniqueViolation(error, 'zone_unit_code_key')) {
         throw AppError.conflict(
           'DUPLICATE_CODE',
-          `Zone code '${request.code}' is already used in this Unit`,
+          `Zone ${zoneLabelFromCode(request.code) ?? request.code} is already used in this Unit`,
         );
       }
       throw error;
@@ -107,7 +107,7 @@ export class ZonesService {
       if (isUniqueViolation(error, 'zone_unit_code_key')) {
         throw AppError.conflict(
           'DUPLICATE_CODE',
-          `Zone code '${String(fields.code)}' is already used in this Unit`,
+          `Zone ${zoneLabelFromCode(String(fields.code)) ?? String(fields.code)} is already used in this Unit`,
         );
       }
       throw error;

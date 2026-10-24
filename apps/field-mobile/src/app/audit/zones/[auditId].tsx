@@ -551,8 +551,8 @@ export default function AuditZonesScreen() {
       {lockOnSelection ? (
         <Slip title="That Zone is taken">
           <SlipText>
-            {lockOnSelection.auditorName} is auditing Zone {lockOnSelection.zoneCode} —{' '}
-            {lockOnSelection.zoneName} in another audit of this Unit. Choose a
+            {lockOnSelection.auditorName} is auditing{' '}
+            {zoneDisplayLabel(lockOnSelection.zoneCode, lockOnSelection.zoneName)} in another audit of this Unit. Choose a
             different Zone; nothing you have recorded is lost.
           </SlipText>
         </Slip>

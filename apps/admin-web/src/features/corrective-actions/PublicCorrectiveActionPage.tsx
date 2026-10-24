@@ -5,7 +5,7 @@ import type {
   PublicCorrectiveAction,
   UploadIntentResponse,
 } from '@audit5s/contracts';
-import { formatDate, sectionLabel } from '@audit5s/domain';
+import { formatDate, sectionLabel, zoneDisplayLabel } from '@audit5s/domain';
 // The address only — not the client, which carries a session this page must never send.
 import { BASE_URL } from '@/lib/api';
 import { Field } from '@/components/ui';
@@ -221,7 +221,7 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
       )}
       <dl className="mt-4 grid gap-x-4 gap-y-3 text-sm min-[480px]:grid-cols-2">
         <Detail label="Unit" value={item.unitName} />
-        <Detail label="Zone" value={`${item.zoneCode} — ${item.zoneName}`} />
+        <Detail label="Zone" value={zoneDisplayLabel(item.zoneCode, item.zoneName)} />
         <Detail label="Audit date" value={formatDate(item.auditDate)} />
         <Detail label="Auditor" value={item.auditorName} />
         {item.section ? <Detail label="Section" value={sectionLabel(item.section)} /> : null}

@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Stack } from 'expo-router';
-import { awaitsResponse, isOverdue } from '@audit5s/domain';
+import { awaitsResponse, isOverdue, zoneDisplayLabel } from '@audit5s/domain';
 import { Card, Chip, EmptyState, ErrorBanner, Muted, Screen, SectionHead, Tape } from './ui';
 import { syncCatalogue } from '../lib/catalogue';
 import {
@@ -57,7 +57,7 @@ export function NonconformitiesScreen() {
           <Card rail={late ? 'crit' : open ? 'warn' : 'none'} accessibilityRole="button">
             <View style={styles.row}>
               <Text style={styles.zone}>
-                Zone {item.zoneCode} — {item.zoneName}
+                {zoneDisplayLabel(item.zoneCode, item.zoneName)}
               </Text>
               <Chip tone={open ? 'warn' : 'muted'}>{statusLabel(item)}</Chip>
             </View>

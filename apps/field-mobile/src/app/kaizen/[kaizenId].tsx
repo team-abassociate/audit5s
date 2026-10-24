@@ -3,7 +3,7 @@ import { Image, Linking, Pressable, ScrollView, Text, View } from 'react-native'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Kaizen, KaizenDetail, KaizenExport, KaizenFields, KaizenPhotoKind, KaizenReviewDecision, KaizenStatus, Page } from '@audit5s/contracts';
-import { formatDate, formatRupees } from '@audit5s/domain';
+import { formatDate, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
 import { KaizenPhotoViewer } from '../../components/kaizen-photo-viewer';
 import { Button, Card, CardHeader, ChoiceList, Chip, Data, ErrorBanner, Field, Hatch, Label, Muted, Screen, Slip, SlipText } from '../../components/ui';
 import { api, problemMessage } from '../../lib/api';
@@ -283,7 +283,7 @@ function sheetView(local: Awaited<ReturnType<typeof getLocalKaizen>>, online: Ka
       kaizenNo: local.kaizenNo,
       status: local.status,
       sheet: local.sheet,
-      zone: `${local.zoneCode} · ${local.zoneName}`,
+      zone: zoneDisplayLabel(local.zoneCode, local.zoneName),
       authorName: null,
       reviewComment: local.reviewComment,
       before: photo(local.before, online?.beforePhoto?.viewUrl),
@@ -296,7 +296,7 @@ function sheetView(local: Awaited<ReturnType<typeof getLocalKaizen>>, online: Ka
     kaizenNo: online.kaizenNo,
     status: online.status,
     sheet: sheetOf(online),
-    zone: `${online.zoneCode} · ${online.zoneName}`,
+    zone: zoneDisplayLabel(online.zoneCode, online.zoneName),
     authorName: online.authorName,
     reviewComment: online.latestReview?.comment ?? null,
     before: online.beforePhoto ? { uri: online.beforePhoto.viewUrl } : null,

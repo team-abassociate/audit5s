@@ -16,7 +16,7 @@ import {
   type KaizenRequiredField,
   type KaizenWaste,
 } from '@audit5s/contracts';
-import { formatDate, istDateKey } from '@audit5s/domain';
+import { formatDate, istDateKey, zoneDisplayLabel } from '@audit5s/domain';
 import type { ProcessedImage } from '../lib/capture/media';
 import { pickFromGallery } from '../lib/capture/gallery';
 import {
@@ -528,7 +528,7 @@ export function KaizenForm({
             {id === null && (zones.data?.length ?? 0) > 1 ? (
               <SelectField
                 label={t.zone}
-                options={(zones.data ?? []).map((z) => ({ value: z.id, label: `${z.code} · ${z.name}` }))}
+                options={(zones.data ?? []).map((z) => ({ value: z.id, label: zoneDisplayLabel(z.code, z.name) }))}
                 value={zoneId}
                 onChange={setZoneId}
               />

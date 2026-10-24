@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, type CSSProperties } from 'react';
 import type { Audit, AuditDetail, AuditZoneStatus } from '@audit5s/contracts';
-import { formatDateTime, formatScore } from '@audit5s/domain';
+import { formatDateTime, formatScore, zoneLabelFromCode } from '@audit5s/domain';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { api } from '@/lib/api';
@@ -67,7 +67,7 @@ export function AuditProgress({ auditId, compact = false }: { auditId: string; c
           <ul className={cn('gb-zonelist', compact && 'gb-zonelist--compact')}>
             {zones.map((zone) => (
               <li key={zone.id}>
-                <span className="gb-data">{zone.zoneCodeSnapshot}</span>
+                <span className="gb-data">{zoneLabelFromCode(zone.zoneCodeSnapshot) ?? zone.zoneCodeSnapshot}</span>
                 <span className="min-w-0 flex-1 truncate">
                   {zone.zoneNameSnapshot}
                   {zone.zoneLeaderNameSnapshot ? (

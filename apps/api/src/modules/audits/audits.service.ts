@@ -28,6 +28,7 @@ import {
   isScoredAuditType,
   restartsRemaining,
   MAX_AUDIT_RESTARTS,
+  zoneLabelFromCode,
   type ScopeContext,
   type TransitionGuard,
 } from '@audit5s/domain';
@@ -476,7 +477,7 @@ export class AuditsService {
       if (empty.length > 0) {
         throw AppError.conflict(
           'EVIDENCE_REQUIRED',
-          `Zone ${empty.map((zone) => zone.zoneCodeSnapshot).join(', ')} has no photograph. ` +
+          `Zone ${empty.map((zone) => zoneLabelFromCode(zone.zoneCodeSnapshot) ?? zone.zoneCodeSnapshot).join(', ')} has no photograph. ` +
             'A walk-by records what was seen, so every Zone needs at least one (§7.1, §7.2).',
         );
       }

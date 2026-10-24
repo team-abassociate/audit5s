@@ -43,7 +43,7 @@ import { cn } from '@/lib/cn';
 import { Link, useSearch } from '@tanstack/react-router';
 import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, ROLE_LABEL, roleLabel } from '@/lib/labels';
-import { formatDate, formatDateTime, formatScore, mayGrantKaizen } from '@audit5s/domain';
+import { formatDate, formatDateTime, formatScore, mayGrantKaizen, zoneDisplayLabel } from '@audit5s/domain';
 
 /** Least privileged first, so a slip of the hand never lands on Super Admin (US3). */
 const ROLES_BY_REACH: readonly Role[] = ['ZONE_LEADER', 'CONSULTANT', 'COORDINATOR', 'SUPER_ADMIN'];
@@ -774,7 +774,7 @@ function UserZones({ user }: { user: User }) {
                   onChange={(event) => assign.mutate({ zoneId: zone.id, leads: event.target.checked })}
                 />
                 <span>
-                  {`Zone ${zone.code} — ${zone.name}`}
+                  {zoneDisplayLabel(zone.code, zone.name)}
                   {other && <span className="text-ink-3"> (now {other})</span>}
                 </span>
               </label>
@@ -1004,7 +1004,7 @@ export function CreateUserForm({
               <option value="">{isCoordinator ? 'Choose a Zone' : 'No Zone yet'}</option>
               {(zones.data?.data ?? []).map((zone) => (
                 <option key={zone.id} value={zone.id}>
-                  {`Zone ${zone.code} — ${zone.name}`}
+                  {zoneDisplayLabel(zone.code, zone.name)}
                   {zone.zoneLeaderName ? ` (now ${zone.zoneLeaderName})` : ''}
                 </option>
               ))}

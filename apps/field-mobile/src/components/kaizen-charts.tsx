@@ -8,7 +8,7 @@ import type {
   KaizenKpi,
   KaizenTrendMonth,
 } from '@audit5s/contracts';
-import { formatKaizenRatio as ratio, formatRupees, formatYearMonth as monthLabel, textOn } from '@audit5s/domain';
+import { formatKaizenRatio as ratio, formatRupees, formatYearMonth as monthLabel, textOn, zoneLabelFromCode } from '@audit5s/domain';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
 import { createThemedStyles, useTheme, type Band } from '../lib/theme';
@@ -324,7 +324,7 @@ export function AnalysisTable({
             {rows.map((row) => (
               <View key={row.key} style={styles.tableRow}>
                 <Text style={[styles.td, styles.firstCol]} numberOfLines={2}>
-                  {row.zoneCode ? `${row.zoneCode} · ` : ''}
+                  {row.zoneCode ? `Zone ${zoneLabelFromCode(row.zoneCode) ?? row.zoneCode} · ` : ''}
                   {row.label ?? t.noDepartment}
                 </Text>
                 {columns.map(([label, value]) => (

@@ -11,7 +11,7 @@ import type {
   UnitOverview,
   User,
 } from '@audit5s/contracts';
-import { bandFor } from '@audit5s/domain';
+import { bandFor, zoneDisplayLabel } from '@audit5s/domain';
 import {
   ActionSheet,
   Card,
@@ -190,7 +190,7 @@ function ManagementOverview() {
             onPress={() => router.push('/review')}
           >
             <SlipText>
-              Oldest is Zone {oldest.zoneCode} — {oldest.zoneName}, due{' '}
+              Oldest is {zoneDisplayLabel(oldest.zoneCode, oldest.zoneName)}, due{' '}
               {oldest.dueAt ? formatDate(oldest.dueAt) : 'without a date'}, owned by{' '}
               {oldest.assignedZoneLeaderName ?? 'nobody'}.
             </SlipText>

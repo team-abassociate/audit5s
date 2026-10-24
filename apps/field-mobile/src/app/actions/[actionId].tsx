@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
 import type { CorrectiveOption, EvidenceViewUrl, SSection } from '@audit5s/contracts';
-import { awaitsResponse, sectionLabel } from '@audit5s/domain';
+import { awaitsResponse, sectionLabel, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
 import { CameraCapture } from '../../components/camera-capture';
 import {
   Button,
@@ -19,6 +19,7 @@ import {
   Screen,
 } from '../../components/ui';
 import { api } from '../../lib/api';
+import { syncCatalogue } from '../../lib/catalogue';
 import { useRequiredFields } from '../../lib/required-fields';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { pickFromGallery } from '../../lib/capture/gallery';
@@ -81,7 +82,11 @@ export default function CorrectiveActionScreen() {
 
   const action = useQuery({
     queryKey: ['local', 'corrective-action', actionId],
-    queryFn: () => getLocalCorrectiveAction(database, actionId),
+    // Opened from a live list (a Coordinator’s Record the fix) before the minute’s catalogue
+    // pull brought it down: pull once, then look again, rather than a dead end.
+    queryFn: async () =>
+      (await getLocalCorrectiveAction(database, actionId)) ??
+      (await syncCatalogue(database).then(() => getLocalCorrectiveAction(database, actionId), () => null)),
   });
 
   // The before photo needs the network; offline, the item still reads without it.
@@ -200,11 +205,11 @@ export default function CorrectiveActionScreen() {
   return (
     <Screen>
       {/* `headerLeft: undefined` puts the ordinary back arrow back after the camera's. */}
-      <Stack.Screen options={{ title: `Zone ${item.zoneCode}`, headerLeft: undefined }} />
+      <Stack.Screen options={{ title: `Zone ${zoneLabelFromCode(item.zoneCode) ?? item.zoneCode}`, headerLeft: undefined }} />
       <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card rail={open ? 'warn' : 'none'}>
           <CardHeader
-            title={`Zone ${item.zoneCode} — ${item.zoneName}`}
+            title={zoneDisplayLabel(item.zoneCode, item.zoneName)}
             description={
               overall
                 ? `Overall corrective action ${item.suggestionNo ?? ''}`
