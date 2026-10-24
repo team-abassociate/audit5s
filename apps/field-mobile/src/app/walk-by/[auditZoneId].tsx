@@ -28,6 +28,7 @@ import {
   SectionHead,
 } from '../../components/ui';
 import { useAbortMenu } from '../../components/abort-menu';
+import { useSelfieCheck } from '../../components/selfie-check';
 import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { pickFromGallery } from '../../lib/capture/gallery';
@@ -145,6 +146,8 @@ export default function WalkByScreen() {
       : 'this Zone',
     zoneFinished: zone.data?.status === 'COMPLETED',
   });
+  // Save asks first when the selfie has not reached the server (owner, 2026-10-24).
+  const selfie = useSelfieCheck(zone.data?.auditId);
 
   if (zone.isLoading || photos.isLoading) {
     return (
@@ -154,6 +157,7 @@ export default function WalkByScreen() {
     );
   }
   if (!zone.data) return <Screen><Muted>This walk-by Zone is not on the device.</Muted></Screen>;
+  if (selfie.camera) return selfie.camera;
   if (cameraOpen) {
     return (
       <>
@@ -186,6 +190,7 @@ export default function WalkByScreen() {
         options={{ title, headerLeft: undefined, headerRight: () => (editable ? abortMenu.trigger : null) }}
       />
       {abortMenu.sheet}
+      {selfie.sheet}
       <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
           {zone.data.zoneDescriptionSnapshot ? <Text style={styles.body}>{zone.data.zoneDescriptionSnapshot}</Text> : null}
@@ -262,7 +267,7 @@ export default function WalkByScreen() {
           <Button icon="save"
             title="Save Zone"
             busy={finish.isPending}
-            onPress={() => required.check([['photo', count > 0]]) && finish.mutate()}
+            onPress={() => required.check([['photo', count > 0]]) && selfie.gate(() => finish.mutate())}
           />
         </ActionBar>
       ) : null}

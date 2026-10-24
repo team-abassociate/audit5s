@@ -162,10 +162,75 @@ export async function captureLocalEvidence(
       ...(input.remark ? { remark: input.remark } : {}),
     },
     now,
-    { queue: 'media', priority: 200 },
+    // The selfie first (owner, 2026-10-24): it is what lets the server start the audit, so
+    // it goes out ahead of every other photograph the moment there is any signal.
+    { queue: 'media', priority: input.kind === 'AUDITOR_SELFIE' ? 100 : 200 },
   );
 
   return id;
+}
+
+/**
+ * Where each audit's selfie stands (owner, 2026-10-24): on the server, on its way, or failed
+ * for good. §7.1 starts the audit on the server only once a selfie arrives, and a lost one
+ * left the 21 Sep 2026 audit waiting a month with the auditor none the wiser.
+ *
+ * Per audit, the best of its selfies wins — a retake that arrived outranks the one that
+ * failed. FAILED means its upload or commit is dead-lettered; a retry in backoff is PENDING.
+ * An audit with no selfie row on this phone (one pulled from the server) is absent.
+ */
+export type SelfieStatus = 'CONFIRMED' | 'PENDING' | 'FAILED';
+
+const SELFIE_RANK: Record<SelfieStatus, number> = { FAILED: 0, PENDING: 1, CONFIRMED: 2 };
+
+export async function selfieStatuses(database: LocalDatabase): Promise<Map<string, SelfieStatus>> {
+  const selfies = await database
+    .select({ id: localEvidence.id, auditId: localEvidence.auditId, syncState: localEvidence.syncState })
+    .from(localEvidence)
+    .where(and(eq(localEvidence.kind, 'AUDITOR_SELFIE'), isNull(localEvidence.deletedAt)));
+  const dead = new Set(
+    (
+      await database
+        .select({ id: outbox.entityId })
+        .from(outbox)
+        .where(and(eq(outbox.entityType, 'evidence'), eq(outbox.state, 'DEAD_LETTER')))
+    ).map((row) => row.id),
+  );
+
+  const statuses = new Map<string, SelfieStatus>();
+  for (const selfie of selfies) {
+    const status: SelfieStatus =
+      selfie.syncState === 'SYNCED' ? 'CONFIRMED' : dead.has(selfie.id) ? 'FAILED' : 'PENDING';
+    const prior = statuses.get(selfie.auditId);
+    if (!prior || SELFIE_RANK[status] > SELFIE_RANK[prior]) statuses.set(selfie.auditId, status);
+  }
+  return statuses;
+}
+
+/**
+ * A new live selfie for an audit whose first one has not reached the server. The old one is
+ * withdrawn the way any photograph is (`deleteLocalEvidence`), so only the retake uploads; the
+ * answers are untouched. The audit's finish already waits for photos still queued, so it now
+ * waits for this one.
+ */
+export async function retakeLocalSelfie(
+  database: LocalDatabase,
+  auditId: string,
+  image: Pick<CaptureEvidenceInput, 'localFileUri' | 'byteSize' | 'width' | 'height' | 'checksumSha256'>,
+): Promise<string> {
+  const unsent = await database
+    .select({ id: localEvidence.id })
+    .from(localEvidence)
+    .where(
+      and(
+        eq(localEvidence.auditId, auditId),
+        eq(localEvidence.kind, 'AUDITOR_SELFIE'),
+        isNull(localEvidence.deletedAt),
+        sql`${localEvidence.syncState} <> 'SYNCED'`,
+      ),
+    );
+  for (const row of unsent) await deleteLocalEvidence(database, row.id);
+  return captureLocalEvidence(database, { ...image, auditId, kind: 'AUDITOR_SELFIE' });
 }
 
 /** Records the key `upload-intent` minted, so a retry can find the object again. */

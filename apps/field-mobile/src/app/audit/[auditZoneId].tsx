@@ -44,6 +44,7 @@ import {
 } from '../../components/evidence-photos';
 import { ResponseChips } from '../../components/response-chips';
 import { useAbortMenu } from '../../components/abort-menu';
+import { useSelfieCheck } from '../../components/selfie-check';
 import {
   assertZonePhotoCapacity,
   assertZonePhotoLimitForCompletion,
@@ -336,6 +337,8 @@ export default function QuestionnaireScreen() {
       : 'this Zone',
     zoneFinished: zone.data?.status === 'COMPLETED',
   });
+  // Submit asks first when the selfie has not reached the server (owner, 2026-10-24).
+  const selfie = useSelfieCheck(zone.data?.auditId);
 
   // Runs after the page holding the question has rendered, so the index is on this page.
   useEffect(() => {
@@ -471,7 +474,7 @@ export default function QuestionnaireScreen() {
       setScrollTo(missing[0]!.questionId);
       return;
     }
-    finish.mutate();
+    selfie.gate(() => finish.mutate());
   };
 
   return (
@@ -757,6 +760,9 @@ export default function QuestionnaireScreen() {
           />
         </View>
       ) : null}
+
+      {selfie.sheet}
+      {selfie.camera ? <View style={styles.cameraLayer}>{selfie.camera}</View> : null}
     </Screen>
   );
 }
