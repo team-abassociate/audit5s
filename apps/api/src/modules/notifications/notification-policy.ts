@@ -395,6 +395,7 @@ function integrityFindings(data: Record<string, unknown>): string {
     count(data.orphanEvidence, 'photo', 'recorded but never uploaded'),
     count(data.staleAudits, 'audit', 'open for more than a week'),
     count(data.unsyncedDevices, 'device', 'holding an audit and not syncing'),
+    count(data.awaitingSelfie, 'audit', 'waiting for the auditor’s selfie (see Sync health)'),
     count(data.scoreDrift, 'audit score', `that does not match a recomputation (of ${String(data.auditsSampled ?? 0)} checked)`),
   ]
     .filter((part): part is string => part !== null)

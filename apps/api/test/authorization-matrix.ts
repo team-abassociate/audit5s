@@ -1321,6 +1321,12 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'GET',
+    path: '/api/v1/sync-conflicts/awaiting-selfie',
+    description: 'sync_conflict:read — audits whose Zones arrived but whose selfie never did',
+    expected: { SUPER_ADMIN: { inScope: OK } },
+  },
+  {
+    method: 'GET',
     path: '/api/v1/sync-conflicts/:conflictId',
     description: 'sync_conflict:read — one quarantined item, with its full incoming payload',
     expected: { SUPER_ADMIN: { inScope: OK, outOfScope: OK } },

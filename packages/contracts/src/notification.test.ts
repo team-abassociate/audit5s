@@ -31,10 +31,15 @@ describe('overdueBundleDataSchema', () => {
 });
 
 describe('integrityDigestDataSchema', () => {
-  const unit = { unitId, unitName: 'Pune', orphanEvidence: 1, staleAudits: 0, unsyncedDevices: 0, scoreDrift: 0, auditsSampled: 20 };
+  const unit = { unitId, unitName: 'Pune', orphanEvidence: 1, staleAudits: 0, unsyncedDevices: 0, awaitingSelfie: 0, scoreDrift: 0, auditsSampled: 20 };
 
   it('accepts a night with the Units that had findings', () => {
     expect(integrityDigestDataSchema.parse({ night: '2026-10-05', units: [unit] })).toEqual({ night: '2026-10-05', units: [unit] });
+  });
+
+  it('reads an alert stored before the selfie check as zero audits awaiting one', () => {
+    const { awaitingSelfie: _, ...before } = unit;
+    expect(integrityDigestDataSchema.parse({ night: '2026-10-05', units: [before] }).units[0]!.awaitingSelfie).toBe(0);
   });
 
   it('rejects an empty summary, a negative count and a pre-D10 per-Unit row', () => {

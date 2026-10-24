@@ -1,7 +1,7 @@
 import { Fragment, useId, useState } from 'react';
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { SYNC_CONFLICT_REASONS, type Device, type Page, type SyncConflict, type SyncConflictReason, type SyncConflictSummary, type User } from '@audit5s/contracts';
+import { SYNC_CONFLICT_REASONS, type AwaitingSelfieAudit, type Device, type Page, type SyncConflict, type SyncConflictReason, type SyncConflictSummary, type User } from '@audit5s/contracts';
 import { formatAge, formatDateTime, formatWeekdayDate } from '@audit5s/domain';
 import { api } from '@/lib/api';
 import {
@@ -23,7 +23,7 @@ import {
 import { rowToggleProps } from '@/features/audits/AuditsPage';
 import { Changes, readable } from '@/features/audit-log/Changes';
 import { isWorstCase } from '@/features/audit-log/worst-case';
-import { humanize, syncEntityLabel } from '@/lib/labels';
+import { auditTypeLabel, humanize, syncEntityLabel } from '@/lib/labels';
 import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
 import { cn } from '@/lib/cn';
@@ -293,6 +293,8 @@ export function SyncHealthPage() {
         )}
       </Card>
 
+      <AwaitingSelfie phoneName={phoneName} />
+
       <Card>
         <CardHeader
           title="Devices"
@@ -314,6 +316,78 @@ export function SyncHealthPage() {
       </Card>
     </div>
   );
+}
+
+/**
+ * Audits whose Zones arrived but whose selfie never did (owner, 2026-10-24). Nothing was
+ * refused, so nothing is held above, and the audit can never finish until the auditor's
+ * phone sends the selfie (or the auditor retakes it). Shown only when there is one.
+ */
+function AwaitingSelfie({ phoneName }: { phoneName: (id: string | null) => string }) {
+  const waiting = useQuery({
+    queryKey: ['sync-conflicts', 'awaiting-selfie'],
+    queryFn: () => api.get<AwaitingSelfieAudit[]>('/sync-conflicts/awaiting-selfie'),
+    enabled: !isWorstCase(),
+    refetchInterval: 60_000,
+  });
+  if (!waiting.data?.length && !waiting.error) return null;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Waiting for the auditor’s selfie"
+        description={
+          'These audits reached the server without their selfie, so they cannot finish. Ask the ' +
+          'auditor to open the app and sync; if the selfie is gone, they can retake it there. ' +
+          'Nothing they recorded is lost.'
+        }
+      />
+      {waiting.error ? (
+        <div className="p-4">
+          <ErrorNotice error={waiting.error} />
+        </div>
+      ) : (
+        <Table variant="register" label="Audits waiting for a selfie">
+          <thead>
+            <tr>
+              <Th width={170}>Waiting since</Th>
+              <Th>Audit</Th>
+              <Th width="22%">Auditor</Th>
+              <Th width="22%">Phone</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {waiting.data!.map((row) => (
+              <tr key={row.auditId}>
+                <td className="gb-data">{formatDateTime(row.waitingSince)}</td>
+                <td>
+                  <Link to="/audits" search={{ audit: row.auditId } as never}>
+                    {auditTypeLabel(row.auditType)} · {row.unitName}
+                  </Link>
+                  <div className="text-xs text-ink-3">
+                    {row.zonesReceived} Zone{row.zonesReceived === 1 ? '' : 's'} received
+                  </div>
+                </td>
+                <td>{row.auditorName}</td>
+                <td>
+                  {phoneName(row.deviceId)}
+                  <div className="text-xs text-ink-3">
+                    {lastSynced(row.deviceLastSyncAt)}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
+  );
+}
+
+function lastSynced(at: string | null): string {
+  if (!at) return 'Never synced';
+  const age = formatAge(at);
+  return age === 'today' ? 'Last synced today' : `Last synced ${age} ago`;
 }
 
 /**
