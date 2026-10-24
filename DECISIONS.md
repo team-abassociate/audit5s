@@ -1495,6 +1495,10 @@ they must not be able to audit the same Zone.
   sync batch three days late — where it becomes a quarantined item with a readable reason
   (§9.5), never a silent second score.
 - This does not relax D7. One device still owns one audit; this is about two audits.
+- **Scored 5S audits only (owner, 2026-10-24; migration 0053).** A `WALK_BY` audit neither
+  claims a Zone nor is refused one, and its picker shows nothing as taken. An auditor is
+  often accompanied by a senior person who walks the same Zones at the same time, and a
+  walk-by has no score to duplicate. `EXTERNAL_5S` and `CROSS_5S` still lock each other out.
 
 ## R-30 — An auditor may correct their own completed audit
 
