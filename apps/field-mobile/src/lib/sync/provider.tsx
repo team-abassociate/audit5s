@@ -74,6 +74,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       // `allowed` guarantees a database; the guard is for the type.
       if (!database) return IDLE;
       const result = await runSync(database, transport, { deviceId: await getDeviceId() });
+      // The selfie chips move with the upload, not with the next screen that happens to refetch.
+      void queryClient.invalidateQueries({ queryKey: ['local', 'selfie-statuses'] });
       // The catalogue rides every cycle — app open, foreground, the tick and Sync now — so
       // nobody has to pull it by hand. An unchanged one costs one small response.
       if (result.error === undefined) {

@@ -18,6 +18,8 @@ import {
   queueEvidenceCommit,
   reclassifyLocalEvidence,
   responseIdFor,
+  retakeLocalSelfie,
+  selfieStatuses,
   setLocalEvidenceRemark,
   setLocalSummaryFlag,
   updateLocalWalkByEvidence,
@@ -623,5 +625,51 @@ describe('an audit waits for its photographs before it is finished', () => {
     await markDeadLetter(database, media!.id, { attempts: 8, lastError: 'unreadable file' });
     expect(await auditsAwaitingPhotos(database)).toEqual(new Set());
     expect(await zonesAwaitingPhotos(database)).toEqual(new Set());
+  });
+});
+
+describe('the selfie, watched rather than blocking (owner, 2026-10-24)', () => {
+  it('goes out ahead of every other photograph', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    await captureLocalEvidence(database, { auditId, auditZoneId, kind: 'WALK_BY_PHOTO', ...PHOTO });
+    const selfie = await captureLocalEvidence(database, { auditId, kind: 'AUDITOR_SELFIE', ...PHOTO });
+
+    const media = (await listOutbox(database)).filter((row) => row.queue === 'media');
+    expect(media.sort((a, b) => a.priority - b.priority)[0]!.entityId).toBe(selfie);
+  });
+
+  it('is PENDING on its way, FAILED once dead-lettered, CONFIRMED on the server', async () => {
+    const { auditId } = await auditWithZone();
+    const selfie = await captureLocalEvidence(database, { auditId, kind: 'AUDITOR_SELFIE', ...PHOTO });
+    expect((await selfieStatuses(database)).get(auditId)).toBe('PENDING');
+
+    const media = (await listOutbox(database)).find((row) => row.entityId === selfie)!;
+    await markDeadLetter(database, media.id, { attempts: 8, lastError: 'file missing' });
+    expect((await selfieStatuses(database)).get(auditId)).toBe('FAILED');
+
+    await markEvidenceSynced(database, selfie);
+    expect((await selfieStatuses(database)).get(auditId)).toBe('CONFIRMED');
+  });
+
+  it('retakes a failed selfie into the same audit, and the audit waits for the retake', async () => {
+    const { auditId } = await auditWithZone();
+    const failed = await captureLocalEvidence(database, { auditId, kind: 'AUDITOR_SELFIE', ...PHOTO });
+    const media = (await listOutbox(database)).find((row) => row.entityId === failed)!;
+    await markDeadLetter(database, media.id, { attempts: 8, lastError: 'file missing' });
+
+    const retaken = await retakeLocalSelfie(database, auditId, { ...PHOTO, localFileUri: 'file:///selfie-2.jpg' });
+
+    // The failed one is withdrawn with its queue rows; only the retake uploads.
+    expect((await getLocalEvidence(database, failed))[0]!.deletedAt).not.toBeNull();
+    const queued = (await listOutbox(database)).filter((row) => row.queue === 'media').map((row) => row.entityId);
+    expect(queued).toEqual([retaken]);
+    expect((await selfieStatuses(database)).get(auditId)).toBe('PENDING');
+    // Its finish is held for the retake, like any photo still on its way.
+    expect(await auditsAwaitingPhotos(database)).toEqual(new Set([auditId]));
+  });
+
+  it('says nothing about an audit with no selfie on this phone', async () => {
+    const { auditId } = await auditWithZone();
+    expect((await selfieStatuses(database)).has(auditId)).toBe(false);
   });
 });

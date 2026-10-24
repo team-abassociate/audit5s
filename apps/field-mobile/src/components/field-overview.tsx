@@ -34,6 +34,7 @@ import { formatDateTime } from '../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, isFinished } from '../lib/labels';
 import { useSession } from '../lib/session';
 import { createThemedStyles, useTheme } from '../lib/theme';
+import { SelfieChip, useSelfieStatuses } from './selfie-check';
 
 /**
  * The Overview a Consultant gets — the field counterpart of the management board.
@@ -69,6 +70,7 @@ export function FieldOverview() {
     queryKey: ['local', 'audits'],
     queryFn: () => listLocalAudits(database),
   });
+  const selfies = useSelfieStatuses();
 
   const pending = useQuery({
     queryKey: ['local', 'outbox-count'],
@@ -223,6 +225,7 @@ export function FieldOverview() {
                   : `${audit.zonesFinished} of ${audit.zonesTotal} Zone${audit.zonesTotal === 1 ? '' : 's'} finished`}
               </Data>
               <Data>Last worked on {formatDateTime(audit.clientUpdatedAt)}</Data>
+              <SelfieChip status={selfies.data?.get(audit.id)} />
               {/* N7: the reason an abort recorded, read back to the person who wrote it. */}
               {audit.pauseReason ? <Muted>{audit.pauseReason}</Muted> : null}
               <View style={styles.actions}>

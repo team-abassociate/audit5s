@@ -50,6 +50,7 @@ import { leaveScreen } from '../../../lib/leave-screen';
 import { useRequiredFields } from '../../../lib/required-fields';
 import { useSession } from '../../../lib/session';
 import { ZoneNumberField } from '../../../components/zone-number-field';
+import { useSelfieCheck } from '../../../components/selfie-check';
 
 type CatalogueZone = Awaited<ReturnType<typeof listCatalogueZones>>[number];
 
@@ -344,6 +345,9 @@ export default function AuditZonesScreen() {
     },
   });
 
+  // The selfie's notice, retake and Submit check (owner, 2026-10-24).
+  const selfie = useSelfieCheck(auditId);
+
   /*
    * Only an audit begun before one-Zone-per-audit can be here with every Zone done and the
    * audit still open; Submit on a Zone finishes the audit now. It still asks, because a
@@ -356,7 +360,7 @@ export default function AuditZonesScreen() {
         'become corrective actions.',
       [
         { text: 'Not yet', style: 'cancel' },
-        { text: 'Submit audit', onPress: () => finish.mutate() },
+        { text: 'Submit audit', onPress: () => selfie.gate(() => finish.mutate()) },
       ],
     );
 
@@ -367,6 +371,7 @@ export default function AuditZonesScreen() {
       </Screen>
     );
   }
+  if (selfie.camera) return selfie.camera;
 
   const zonesInAudit = auditZones.data ?? [];
   // A withdrawn Zone is still listed — it happened — but it is out of the audit: it does
@@ -639,6 +644,7 @@ export default function AuditZonesScreen() {
             ) : null,
         }}
       />
+      {selfie.sheet}
 
       <FlatList
         ref={required.scroll}
@@ -661,7 +667,12 @@ export default function AuditZonesScreen() {
                   <Button icon="play-arrow" title="Resume" busy={resume.isPending} onPress={() => resume.mutate()} />
                 </View>
               </Slip>
-            ) : null}
+            ) : (
+              // Otherwise the selfie's, when it has not reached the server: a retake slip if
+              // it failed, a line if it is on its way. Also on a finished audit, which cannot
+              // finish on the server without it.
+              selfie.notice
+            )}
             {/*
               The next Zone comes first, above the Zones already done. Below them it sank
               off the bottom of a phone by the sixth Zone, behind the Abort / Save & pause /

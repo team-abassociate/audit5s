@@ -10,6 +10,7 @@ import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, isFinished }
 import { createThemedStyles } from '../../lib/theme';
 import type { AuditStatus, AuditType } from '@audit5s/contracts';
 import { zoneDisplayLabel } from '@audit5s/domain';
+import { SelfieChip, useSelfieStatuses } from '../../components/selfie-check';
 
 type LocalAudit = Awaited<ReturnType<typeof listLocalAudits>>[number];
 
@@ -43,6 +44,7 @@ export default function HistoryScreen() {
     queryKey: ['local', 'outbox-count'],
     queryFn: () => pendingOutboxCount(database),
   });
+  const selfies = useSelfieStatuses();
 
   const renderItem = useCallback(
     ({ item }: { item: LocalAudit }) => (
@@ -57,6 +59,7 @@ export default function HistoryScreen() {
           }
         />
         <Data>Updated {formatDateTime(item.clientUpdatedAt)}</Data>
+        <SelfieChip status={selfies.data?.get(item.id)} />
         <View style={styles.actions}>
           {/*
             N6: a Consultant's read model, not a report. The official PDF is a Super
@@ -85,7 +88,7 @@ export default function HistoryScreen() {
         </View>
       </Card>
     ),
-    [styles, router],
+    [styles, router, selfies.data],
   );
 
   return (
