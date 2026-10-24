@@ -327,6 +327,30 @@ describe('§9.3 — per-item results', () => {
     expect((conflict.body as SyncConflict).detail).toMatch(/value/i);
   });
 
+  it('asks a Zone’s completion to wait for its Zone, rather than holding it as not found', async () => {
+    // 2026-10-18: the Zone's upsert was being refused, its complete was held as "not found",
+    // and a held item is settled on the phone — so it never came back when the Zone did.
+    const { auditId } = await startedAudit();
+    const notYetHere = randomUUID();
+
+    const response = await push([
+      {
+        outboxId: randomUUID(),
+        entityType: 'audit_zone',
+        entityId: notYetHere,
+        operation: 'complete',
+        payload: { auditId, completedAt: new Date().toISOString() },
+      },
+    ]);
+
+    expect(response.results[0]).toMatchObject({
+      status: 'RETRY_AFTER_PARENT',
+      missingParent: `audit_zone:${notYetHere}`,
+    });
+    const { rows } = await world.owner.query(`SELECT count(*)::int AS n FROM sync_conflict WHERE entity_id = $1`, [notYetHere]);
+    expect(rows[0].n).toBe(0);
+  });
+
   it('answers RETRY_AFTER_PARENT for a child whose parent is not there yet', async () => {
     const orphanZoneId = randomUUID();
 

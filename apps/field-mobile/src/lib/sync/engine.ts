@@ -30,6 +30,7 @@ import {
   readyItems,
   removeItem,
   removePrematureCommits,
+  requeueHeldZoneCompletions,
   resetDeadLetters,
   scheduleRetry,
   strandedUploads,
@@ -203,6 +204,10 @@ export async function recoverStaleWork(
   // A commit queued ahead of its own PUT — the old sweep's mistake — is dropped while the
   // photograph still waits to go up; the media pass queues it again once the bytes land.
   await removePrematureCommits(database);
+
+  // A Zone's completion held as "not found" before its Zone arrived goes once more, with
+  // the audit's finish behind it (2026-10-18; see `requeueHeldZoneCompletions`).
+  await requeueHeldZoneCompletions(database);
 
   // Evidence whose object went up but whose commit never did. Re-queued rather than
   // called here: the commit then rides the ordinary data batch with everything else.
