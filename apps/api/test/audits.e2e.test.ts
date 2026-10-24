@@ -1872,6 +1872,56 @@ describe('one Zone, one open audit (R-29)', () => {
     );
     expect(retaken.status, JSON.stringify(retaken.body)).toBe(200);
   });
+
+  /**
+   * Owner, 2026-10-24 (0053): a walk-by is exempt both ways. A senior person often walks the
+   * same Zones alongside the auditor, and a walk-by has no score to duplicate.
+   */
+  it('lets a walk-by share a Zone with a scored audit, and a scored audit share one with it', async () => {
+    const zoneId = await createZone('Z-67', 'Shared zone');
+    await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: (await assign(world.actors.CONSULTANT.userId)).id,
+    });
+
+    const walkById = randomUUID();
+    const created = await world.request('POST', `${base}/audits`, {
+      token: otherDeviceToken,
+      body: { id: walkById, auditType: 'WALK_BY', unitId: world.unitA, deviceId: OTHER_DEVICE },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    await captureEvidence(world, {
+      token: otherDeviceToken,
+      evidenceId: randomUUID(),
+      auditId: walkById,
+      kind: 'AUDITOR_SELFIE',
+      deviceId: OTHER_DEVICE,
+    });
+    await world.request('POST', `${base}/audits/${walkById}/start`, {
+      token: otherDeviceToken,
+      body: { deviceId: OTHER_DEVICE },
+    });
+
+    // The walk-by's picker shows nothing taken, and the Zone goes in.
+    const locks = await world.request('GET', `${base}/audits/${walkById}/zone-locks`, {
+      token: otherDeviceToken,
+    });
+    expect((locks.body as ZoneLocksResponse).locks).toEqual([]);
+    const added = await world.request('PUT', `${base}/audits/${walkById}/zones/${randomUUID()}`, {
+      token: otherDeviceToken,
+      body: { zoneId, sequenceNo: 1 },
+    });
+    expect(added.status, JSON.stringify(added.body)).toBe(200);
+
+    // And the walk-by holds nothing: a second scored audit is refused only by the first.
+    const { rows } = await world.owner.query(
+      `SELECT count(*)::int AS n FROM audit_zone WHERE zone_id = $1 AND audit_open`,
+      [zoneId],
+    );
+    expect(rows[0].n).toBe(1);
+  });
 });
 
 describe('the post-completion override (A-2)', () => {
