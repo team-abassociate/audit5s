@@ -6,6 +6,7 @@ import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { localDay } from '../analytics/analytics-rollup.worker';
 import { ScoringService } from '../audits/scoring.service';
+import { AWAITING_SELFIE_HOURS } from '../sync/sync.repository';
 import {
   IntegrityRepository,
   type StaleAuditRow,
@@ -43,6 +44,7 @@ export interface IntegrityFindings {
   orphanEvidence: number;
   staleAudits: number;
   unsyncedDevices: number;
+  awaitingSelfie: number;
   scoreDrift: number;
   /** How many audits the drift number was drawn from, so a zero can be read honestly. */
   auditsSampled: number;
@@ -53,6 +55,7 @@ export function hasFindings(findings: IntegrityFindings): boolean {
     findings.orphanEvidence > 0 ||
     findings.staleAudits > 0 ||
     findings.unsyncedDevices > 0 ||
+    findings.awaitingSelfie > 0 ||
     findings.scoreDrift > 0
   );
 }
@@ -80,13 +83,16 @@ export class IntegrityWorker {
   ) {}
 
   async sweep(scope: ScopeContext, unitId: string, now = new Date()): Promise<IntegrityFindings> {
-    const { findings, stale, quiet } = await this.check(scope, unitId, now);
+    const { findings, stale, quiet, noSelfie } = await this.check(scope, unitId, now);
 
     this.logger.log(
       `unit ${unitId}: ${findings.orphanEvidence} orphan evidence, ${findings.staleAudits} stale ` +
-        `audit(s), ${findings.unsyncedDevices} quiet device(s), ${findings.scoreDrift} score ` +
-        `drift(s) in ${findings.auditsSampled} sampled`,
+        `audit(s), ${findings.unsyncedDevices} quiet device(s), ${findings.awaitingSelfie} ` +
+        `awaiting a selfie, ${findings.scoreDrift} score drift(s) in ${findings.auditsSampled} sampled`,
     );
+    if (noSelfie.length > 0) {
+      this.logger.warn(`audits awaiting a selfie: ${noSelfie.map((row) => row.id).join(', ')}`);
+    }
     // The counts go to the Super Admin; the identifiers go to whoever has to chase one.
     // A notification saying "1 audit open for more than a week" is not actionable on its
     // own, and the log is where the "which one" belongs — it is not a Super Admin's to read.
@@ -152,11 +158,17 @@ export class IntegrityWorker {
     scope: ScopeContext,
     unitId: string,
     now: Date,
-  ): Promise<{ findings: IntegrityFindings; stale: StaleAuditRow[]; quiet: UnsyncedDeviceRow[] }> {
-    const [orphanEvidence, stale, quiet] = await Promise.all([
+  ): Promise<{
+    findings: IntegrityFindings;
+    stale: StaleAuditRow[];
+    quiet: UnsyncedDeviceRow[];
+    noSelfie: StaleAuditRow[];
+  }> {
+    const [orphanEvidence, stale, quiet, noSelfie] = await Promise.all([
       this.repository.orphanEvidenceCount(scope, unitId, new Date(now.getTime() - ORPHAN_EVIDENCE_HOURS * HOUR_MS)),
       this.repository.staleAudits(scope, unitId, new Date(now.getTime() - STALE_AUDIT_DAYS * 24 * HOUR_MS)),
       this.repository.unsyncedDevices(scope, unitId, new Date(now.getTime() - DEVICE_QUIET_HOURS * HOUR_MS)),
+      this.repository.awaitingSelfie(scope, unitId, new Date(now.getTime() - AWAITING_SELFIE_HOURS * HOUR_MS)),
     ]);
 
     const sample = await this.repository.recentScoredAudits(scope, unitId, SCORE_SAMPLE_SIZE);
@@ -170,11 +182,13 @@ export class IntegrityWorker {
         orphanEvidence,
         staleAudits: stale.length,
         unsyncedDevices: quiet.length,
+        awaitingSelfie: noSelfie.length,
         scoreDrift,
         auditsSampled: sample.length,
       },
       stale,
       quiet,
+      noSelfie,
     };
   }
 

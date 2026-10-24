@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type {
+  AwaitingSelfieAudit,
   ListSyncConflictsQuery,
   Page,
   ResolveSyncConflictRequest,
@@ -13,7 +14,12 @@ import { AppError } from '../../common/errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { AuditsService } from '../audits/audits.service';
 import { presentHeldDetail } from './held-item-detail';
-import { SyncRepository, zoneLabelOf, type SyncConflictRow } from './sync.repository';
+import {
+  AWAITING_SELFIE_HOURS,
+  SyncRepository,
+  zoneLabelOf,
+  type SyncConflictRow,
+} from './sync.repository';
 
 /**
  * The quarantine, read and resolved (§8.10, §9.5 Layer 3).
@@ -47,6 +53,18 @@ export class SyncConflictsService {
   async summary(scope: ScopeContext, query: SyncConflictSummaryQuery): Promise<SyncConflictSummary> {
     const { count, oldestAt, byDevice } = await this.repository.summarizeConflicts(scope, query);
     return { count, oldestAt: oldestAt ? new Date(oldestAt).toISOString() : null, byDevice };
+  }
+
+  async awaitingSelfie(scope: ScopeContext, now = new Date()): Promise<AwaitingSelfieAudit[]> {
+    const rows = await this.repository.listAwaitingSelfie(
+      scope,
+      new Date(now.getTime() - AWAITING_SELFIE_HOURS * 60 * 60 * 1000),
+    );
+    return rows.map((row) => ({
+      ...row,
+      deviceLastSyncAt: row.deviceLastSyncAt ? new Date(row.deviceLastSyncAt).toISOString() : null,
+      waitingSince: new Date(row.waitingSince).toISOString(),
+    }));
   }
 
   async get(scope: ScopeContext, conflictId: string): Promise<SyncConflict> {

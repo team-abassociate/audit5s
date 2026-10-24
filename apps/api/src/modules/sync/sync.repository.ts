@@ -4,10 +4,12 @@ import { and, desc, eq, gte, isNotNull, isNull, sql, type SQL } from 'drizzle-or
 import {
   auditZones,
   audits,
+  devices,
   deviceSyncRecords,
   evidence,
   questionResponses,
   syncConflicts,
+  units,
   users,
   type Database,
 } from '@audit5s/db';
@@ -72,6 +74,25 @@ function itemContext(entityType: SQL, entityId: SQL, payload: SQL): SQL {
     LEFT JOIN audit_zone az ON az.id = k.audit_zone_id
     LEFT JOIN audit a ON a.id = COALESCE(k.audit_id, az.audit_id)
     LEFT JOIN unit u ON u.id = a.unit_id)`;
+}
+
+/**
+ * An audit stuck before its start because the selfie never arrived (owner, 2026-10-24).
+ *
+ * Still ASSIGNED, so §7.1 never saw a live selfie; yet a Zone of it reached the server, so the
+ * auditor went past step 1 on the phone. Its finish waits on the selfie for ever without being
+ * held, which is why nothing else reports it. Shared by Sync health and the nightly check.
+ */
+/** A day: long enough for a phone to find a signal, short enough to chase the same week. */
+export const AWAITING_SELFIE_HOURS = 24;
+
+export function awaitingSelfie(arrivedBefore: Date): SQL {
+  return sql`${audits.status} = 'ASSIGNED'
+    AND NOT EXISTS (SELECT 1 FROM evidence e
+      WHERE e.audit_id = ${audits.id} AND e.kind = 'AUDITOR_SELFIE'
+        AND e.is_live_capture AND e.deleted_at IS NULL)
+    AND EXISTS (SELECT 1 FROM audit_zone az
+      WHERE az.audit_id = ${audits.id} AND az.created_at < ${arrivedBefore.toISOString()}::timestamptz)`;
 }
 
 /** The held-row context, read straight off `sync_conflict`. */
@@ -328,6 +349,36 @@ export class SyncRepository extends BaseRepository {
         .where(and(where, isNotNull(syncConflicts.deviceId)))
         .groupBy(syncConflicts.deviceId);
       return { count: totals?.count ?? 0, oldestAt: totals?.oldestAt ?? null, byDevice };
+    });
+  }
+
+  /** Sync health's "Waiting for the auditor's selfie", oldest first. */
+  async listAwaitingSelfie(scope: ScopeContext, arrivedBefore: Date) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      return tx
+        .select({
+          auditId: audits.id,
+          auditType: audits.auditType,
+          unitName: units.name,
+          auditorName: users.fullName,
+          deviceId: audits.owningDeviceId,
+          deviceLastSyncAt: devices.lastSyncAt,
+          zonesReceived: sql<number>`(SELECT count(*)::int FROM audit_zone az WHERE az.audit_id = ${audits.id})`,
+          waitingSince: sql<Date>`(SELECT min(az.created_at) FROM audit_zone az WHERE az.audit_id = ${audits.id})`,
+        })
+        .from(audits)
+        .innerJoin(units, eq(units.id, audits.unitId))
+        .innerJoin(users, eq(users.id, audits.auditorUserId))
+        .leftJoin(devices, eq(devices.id, audits.owningDeviceId))
+        .where(
+          this.scoped(
+            scope,
+            { unitId: audits.unitId, ownerUserId: audits.auditorUserId },
+            awaitingSelfie(arrivedBefore),
+          ),
+        )
+        .orderBy(audits.createdAt);
     });
   }
 

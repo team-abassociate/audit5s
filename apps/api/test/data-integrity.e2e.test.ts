@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { integrityDigestDataSchema } from '@audit5s/contracts';
+import { API_BASE_PATH, integrityDigestDataSchema, type AwaitingSelfieAudit } from '@audit5s/contracts';
 import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
 import { QueueService } from '../src/infrastructure/queue/queue.service';
 import { IntegrityWorker } from '../src/modules/maintenance/integrity.worker';
@@ -58,10 +58,30 @@ describe('nightly data-integrity checks (§16.4)', () => {
       // finding, not a stale-audit one.
       staleAudits: 1,
       unsyncedDevices: 1,
+      // The ASSIGNED walk-by whose Zone arrived three days ago with no selfie. The one with
+      // a selfie, and the one whose Zone is an hour old, are not findings.
+      awaitingSelfie: 1,
       // Of the two completed audits, the one whose stored raw score says 4 and whose
       // responses say 2.
       scoreDrift: 1,
       auditsSampled: 2,
+    });
+  });
+
+  it('lists the audits waiting for a selfie on Sync health, with who and which phone', async () => {
+    const response = await world.request('GET', `${API_BASE_PATH}/sync-conflicts/awaiting-selfie`, {
+      token: world.actors.SUPER_ADMIN.accessToken,
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const rows = response.body as AwaitingSelfieAudit[];
+
+    // One per Unit: the selfie-less audit whose Zone is three days old, and nothing else.
+    expect(rows.map((row) => row.unitName).sort()).toEqual(['Unit A', 'Unit B']);
+    expect(rows[0]).toMatchObject({
+      auditType: 'WALK_BY',
+      auditorName: 'Cara Consult',
+      deviceId: null,
+      zonesReceived: 1,
     });
   });
 
@@ -93,6 +113,7 @@ describe('nightly data-integrity checks (§16.4)', () => {
       '1 photo recorded but never uploaded; ' +
       '1 audit open for more than a week; ' +
       '1 device holding an audit and not syncing; ' +
+      '1 audit waiting for the auditor’s selfie (see Sync health); ' +
       '1 audit score that does not match a recomputation (of 2 checked)';
     expect(alert!.body).toBe(
       `Unit A: ${line}.\nUnit B: ${line}.\nThe check only reports these; it did not change anything.`,
@@ -137,6 +158,7 @@ describe('nightly data-integrity checks (§16.4)', () => {
       orphanEvidence: 0,
       staleAudits: 0,
       unsyncedDevices: 0,
+      awaitingSelfie: 0,
       scoreDrift: 0,
       auditsSampled: 0,
     });
@@ -235,7 +257,43 @@ async function seedUnit(unitId: string, zoneId: string, versionId: string): Prom
     [unitId, world.actors.CONSULTANT.userId, ago(1 * DAY_MS)],
   );
 
+  // Work arrived three days ago, the selfie never did: stuck at ASSIGNED (owner, 2026-10-24) …
+  await assignedWithZone(unitId, zoneId, { zoneAt: ago(3 * DAY_MS), selfie: false });
+  // … one whose live selfie is on the server, so it is only waiting on its start …
+  await assignedWithZone(unitId, zoneId, { zoneAt: ago(3 * DAY_MS), selfie: true });
+  // … and one whose Zone arrived an hour ago, still inside the day a phone gets to send it.
+  await assignedWithZone(unitId, zoneId, { zoneAt: ago(60 * 60 * 1000), selfie: false });
+
   return drifted;
+}
+
+/** A walk-by at ASSIGNED with one Zone on the server (a walk-by, so R-29 claims nothing). */
+async function assignedWithZone(
+  unitId: string,
+  zoneId: string,
+  options: { zoneAt: string; selfie: boolean },
+): Promise<string> {
+  const auditId = randomUUID();
+  await world.owner.query(
+    `INSERT INTO audit (id, unit_id, audit_type, status, auditor_user_id)
+     VALUES ($1, $2, 'WALK_BY', 'ASSIGNED', $3)`,
+    [auditId, unitId, world.actors.CONSULTANT.userId],
+  );
+  await world.owner.query(
+    `INSERT INTO audit_zone (id, audit_id, zone_id, sequence_no, status, zone_code_snapshot,
+       zone_name_snapshot, created_at)
+     VALUES (gen_random_uuid(), $1, $2, 1, 'IN_PROGRESS', 'Z-01', 'Press', $3)`,
+    [auditId, zoneId, options.zoneAt],
+  );
+  if (options.selfie) {
+    await world.owner.query(
+      `INSERT INTO evidence (id, kind, audit_id, object_key, content_type, byte_size,
+         checksum_sha256, captured_at, sync_state, is_live_capture)
+       VALUES (gen_random_uuid(), 'AUDITOR_SELFIE', $1, $2, 'image/jpeg', 1024, $3, now(), 'SYNCED', true)`,
+      [auditId, `selfie/${auditId}.jpg`, 'a'.repeat(64)],
+    );
+  }
+  return auditId;
 }
 
 async function completedAudit(

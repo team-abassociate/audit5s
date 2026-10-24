@@ -3,6 +3,7 @@ import { auditAssignmentSchema } from './audit';
 import { checklistTemplateSchema, checklistVersionDetailSchema } from './checklist';
 import { booleanQuery, isoDateTimeSchema, paginationQuerySchema, uuidSchema } from './common';
 import { correctiveActionSchema } from './corrective-action';
+import { auditTypeSchema } from './enums';
 import { unitSchema } from './unit';
 import { zoneSchema } from './zone';
 
@@ -324,6 +325,27 @@ export const syncConflictSummarySchema = z.object({
   byDevice: z.array(z.object({ deviceId: uuidSchema, count: z.number().int().nonnegative() })),
 });
 export type SyncConflictSummary = z.infer<typeof syncConflictSummarySchema>;
+
+/**
+ * `GET /sync-conflicts/awaiting-selfie` (owner, 2026-10-24).
+ *
+ * An audit whose Zones reached the server but whose selfie never did. §7.1's selfie is what
+ * moves it off ASSIGNED, so its finish waits for ever — not held, so never on the queue
+ * above. A phone that loses the selfie (or stops syncing) used to leave it there unseen.
+ */
+export const awaitingSelfieAuditSchema = z.object({
+  auditId: uuidSchema,
+  auditType: auditTypeSchema,
+  unitName: z.string(),
+  auditorName: z.string(),
+  /** The phone that holds the audit, and when it last synced; null if neither is known. */
+  deviceId: uuidSchema.nullable(),
+  deviceLastSyncAt: isoDateTimeSchema.nullable(),
+  zonesReceived: z.number().int().nonnegative(),
+  /** When the first of its Zones arrived: how long it has been waiting. */
+  waitingSince: isoDateTimeSchema,
+});
+export type AwaitingSelfieAudit = z.infer<typeof awaitingSelfieAuditSchema>;
 
 /**
  * `POST /sync-conflicts/{id}/resolve` (§8.10).

@@ -5,6 +5,7 @@ import { COMPLETED_AUDIT_STATUSES, SCORED_AUDIT_TYPES, type ScopeContext } from 
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
+import { awaitingSelfie } from '../sync/sync.repository';
 import { setActorContext } from '../users/users.repository';
 
 /** An audit still open on somebody's phone. Identified, so the log line can be acted on. */
@@ -112,6 +113,27 @@ export class IntegrityRepository extends BaseRepository {
           ),
         )
         .orderBy(audits.startedAt),
+    );
+  }
+
+  /**
+   * Audits whose Zones arrived but whose selfie never did (owner, 2026-10-24). They sit at
+   * ASSIGNED, which neither check above looks at, so the 21 Sep 2026 one went a month unseen.
+   */
+  async awaitingSelfie(scope: ScopeContext, unitId: string, arrivedBefore: Date): Promise<StaleAuditRow[]> {
+    return this.inScope(scope, (tx) =>
+      tx
+        .select({ id: audits.id, startedAt: audits.startedAt })
+        .from(audits)
+        .where(
+          this.scoped(
+            scope,
+            { unitId: audits.unitId, ownerUserId: audits.auditorUserId },
+            eq(audits.unitId, unitId),
+            awaitingSelfie(arrivedBefore),
+          ),
+        )
+        .orderBy(audits.createdAt),
     );
   }
 

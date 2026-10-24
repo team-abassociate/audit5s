@@ -13,6 +13,7 @@ import {
   listSyncConflictsQuerySchema,
   resolveSyncConflictRequestSchema,
   syncConflictSummaryQuerySchema,
+  type AwaitingSelfieAudit,
   type ListSyncConflictsQuery,
   type Page,
   type ResolveSyncConflictRequest,
@@ -54,6 +55,18 @@ export class SyncConflictsController {
     @Query(new ZodValidationPipe(syncConflictSummaryQuerySchema)) query: SyncConflictSummaryQuery,
   ): Promise<SyncConflictSummary> {
     return this.conflicts.summary(scope, query);
+  }
+
+  /**
+   * Audits whose work arrived but whose selfie never did (owner, 2026-10-24). Not held, so
+   * not on the queue, and waiting for ever; listed here so a Super Admin can chase them.
+   * Before `:conflictId`, which would otherwise read this path as an id.
+   */
+  @RequirePermission('sync_conflict', 'read')
+  @Scope({ intent: 'read' })
+  @Get('awaiting-selfie')
+  awaitingSelfie(@CurrentScope() scope: ScopeContext): Promise<AwaitingSelfieAudit[]> {
+    return this.conflicts.awaitingSelfie(scope);
   }
 
   @RequirePermission('sync_conflict', 'read')

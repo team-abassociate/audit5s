@@ -98,6 +98,8 @@ export const integrityDigestDataSchema = z.object({
         orphanEvidence: countSchema,
         staleAudits: countSchema,
         unsyncedDevices: countSchema,
+        /** Audits whose work arrived but whose selfie never did (2026-10-24; absent before). */
+        awaitingSelfie: countSchema.default(0),
         scoreDrift: countSchema,
         auditsSampled: countSchema,
       }),
