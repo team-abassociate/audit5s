@@ -34,7 +34,7 @@ import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
 import { SECTION_SHORT_LABEL } from '@/lib/labels';
 import { cn } from '@/lib/cn';
-import { formatDate, formatDayMonth, formatScore } from '@audit5s/domain';
+import { formatDate, formatDayMonth, formatScore, zoneDisplayLabel } from '@audit5s/domain';
 import { Trend } from '@/features/dashboard/DashboardPage';
 import { TARGET } from '@/features/dashboard/board';
 
@@ -370,7 +370,7 @@ function UnitDashboard({ unitId }: { unitId: string }) {
                     <option value="">{`Whole audit · ${zones.length} zones`}</option>
                     {zones.map((zone) => (
                       <option key={zone.zoneCode} value={zone.zoneCode}>
-                        {`${zone.zoneName} (${zone.zoneCode})`}
+                        {zoneDisplayLabel(zone.zoneCode, zone.zoneName)}
                       </option>
                     ))}
                   </Select>

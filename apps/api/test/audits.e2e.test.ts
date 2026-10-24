@@ -1790,7 +1790,7 @@ describe('one Zone, one open audit (R-29)', () => {
     expect(problem.code).toBe('ZONE_LOCKED_BY_ANOTHER_AUDIT');
     // The sentence has to be actionable to someone standing in the plant, so it names
     // both the Zone and the colleague already in it.
-    expect(problem.detail).toContain('Z-60');
+    expect(problem.detail).toContain('Zone 60');
     expect(problem.detail).toContain(CONSULTANT_NAME);
 
     // And the picker can see it coming, rather than learning from the refusal.

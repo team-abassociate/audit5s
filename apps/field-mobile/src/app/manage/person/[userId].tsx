@@ -112,6 +112,11 @@ export default function PersonScreen() {
     mutationFn: () => api.post(`/users/${userId}/disable`, {}),
     onSuccess: refresh,
   });
+  // Undoes Disable, under the same permission, as the web's Restore access does.
+  const enable = useMutation({
+    mutationFn: () => api.post(`/users/${userId}/enable`),
+    onSuccess: refresh,
+  });
   const reset = useMutation({
     mutationFn: () => api.post<ResetUserPasswordResponse>(`/users/${userId}/reset-password`),
     onSuccess: async (result) => {
@@ -341,7 +346,13 @@ export default function PersonScreen() {
                 onConfirm={() => reset.mutate()}
               />
               {p.status === 'DISABLED' ? (
-                <Muted>This account is disabled.</Muted>
+                <ConfirmAction
+                  title="Restore access"
+                  question={`Restore ${p.fullName}'s access? They can sign in again with their own password.`}
+                  confirmLabel="Restore"
+                  busy={enable.isPending}
+                  onConfirm={() => enable.mutate()}
+                />
               ) : (
                 <ConfirmAction
                   title="Disable account"
@@ -360,7 +371,7 @@ export default function PersonScreen() {
                   onConfirm={() => remove.mutate()}
                 />
               ) : null}
-              <ErrorBanner message={problemMessage(disable.error ?? reset.error ?? remove.error)} />
+              <ErrorBanner message={problemMessage(disable.error ?? enable.error ?? reset.error ?? remove.error)} />
             </View>
           </Card>
         ) : null}

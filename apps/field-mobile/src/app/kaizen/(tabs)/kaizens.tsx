@@ -3,6 +3,7 @@ import { FlatList, RefreshControl, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { Kaizen, KaizenStatus, Page } from '@audit5s/contracts';
+import { zoneLabelFromCode } from '@audit5s/domain';
 import { KaizenCard, cardFromServer } from '../../../components/kaizen-card';
 import { EmptyState, ErrorBanner, Screen, Segmented } from '../../../components/ui';
 import { api } from '../../../lib/api';
@@ -65,7 +66,7 @@ export default function KaizensScreen() {
         renderItem={({ item }) => (
           <KaizenCard
             kaizen={cardFromServer(item)}
-            author={`${item.authorName} · ${item.zoneCode}`}
+            author={`${item.authorName} · Zone ${zoneLabelFromCode(item.zoneCode) ?? item.zoneCode}`}
             onPress={() => router.push({ pathname: '/kaizen/[kaizenId]', params: { kaizenId: item.id } })}
           />
         )}

@@ -616,7 +616,7 @@ describe('§7.1 — every walk-by Zone needs a photograph, at the audit level to
     const problem = refused.body as { code: string; detail: string };
     expect(problem.code).toBe('EVIDENCE_REQUIRED');
     // Named, so the auditor knows which Zone to walk back to.
-    expect(problem.detail).toContain(`Z-${zoneCounter}`);
+    expect(problem.detail).toContain(`Zone ${zoneCounter} `);
 
     // Photograph it again and the audit completes.
     await photograph(auditId, auditZoneId);

@@ -14,6 +14,7 @@ import {
   zoneLabelFromCode,
   zoneSortOrder,
   zoneLeaderSnapshot,
+  zoneDisplayLabel,
   type ScopeContext,
   type TransitionGuard,
 } from '@audit5s/domain';
@@ -533,7 +534,7 @@ export class AuditZonesService {
     throw AppError.conflict(
       'ZONE_LOCKED_BY_ANOTHER_AUDIT',
       lock
-        ? `Zone ${lock.zoneCode} — ${lock.zoneName} is already being audited by ` +
+        ? `${zoneDisplayLabel(lock.zoneCode, lock.zoneName)} is already being audited by ` +
           `${lock.auditorName} in another audit of this Unit. Choose a different Zone; ` +
           'nothing you have recorded is lost.'
         : 'Another audit of this Unit is already covering this Zone. Choose a different ' +

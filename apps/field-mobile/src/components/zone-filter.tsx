@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import type { Page, Zone } from '@audit5s/contracts';
+import { zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
 import { api } from '../lib/api';
 import { createThemedStyles } from '../lib/theme';
 import { Button, CheckRow, HeaderAction, SectionHead } from './ui';
@@ -33,7 +34,7 @@ export interface ZoneOption {
 }
 
 export function zoneTitle(zone: Pick<ZoneOption, 'code' | 'name'>): string {
-  return `Zone ${zone.code} — ${zone.name}`;
+  return zoneDisplayLabel(zone.code, zone.name);
 }
 
 /** The Unit's Zones in its own order — the same query My Unit makes, so usually cached. */
@@ -163,7 +164,7 @@ export function ZoneFilterChips({
           style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
         >
           <Text style={styles.chipText} numberOfLines={1}>
-            {zone.code}
+            {`Zone ${zoneLabelFromCode(zone.code) ?? zone.code}`}
           </Text>
           <Text style={styles.chipX}>✕</Text>
         </Pressable>

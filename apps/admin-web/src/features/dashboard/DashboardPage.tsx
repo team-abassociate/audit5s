@@ -22,7 +22,7 @@ import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL, nameLang } from '@/lib/labels';
-import { daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime, formatScore } from '@audit5s/domain';
+import { daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime, formatScore, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
 import {
   TARGET,
   awaitingRollup,
@@ -384,7 +384,7 @@ export function DashboardPage() {
               </option>
               {scorableZones.map((zone) => (
                 <option key={zone.zoneCode} value={zone.zoneCode} lang={nameLang(zone.zoneName)}>
-                  {`${zone.zoneName} (${zone.zoneCode})`}
+                  {zoneDisplayLabel(zone.zoneCode, zone.zoneName)}
                 </option>
               ))}
             </select>
@@ -985,7 +985,7 @@ function DetailPanel({
           {zone.name}
         </h3>
         <p>
-          {zone.code} · leader {zone.leader ?? 'unassigned'} ·{' '}
+          Zone {zoneLabelFromCode(zone.code) ?? zone.code} · leader {zone.leader ?? 'unassigned'} ·{' '}
           {zone.lastAuditAt
             ? `audited ${formatDate(zone.lastAuditAt)}${zone.auditorName ? ` by ${zone.auditorName}` : ''}`
             : 'not audited in this period'}
