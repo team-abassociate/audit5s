@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addLocalZone,
   createLocalAudit,
+  enqueue,
   getLocalAuditZone,
   listOutbox,
   saveLocalResponse,
@@ -26,7 +27,13 @@ import {
   zoneHasLocalEvidence,
 } from './evidence.repository';
 import { replaceCatalogue } from './catalogue.repository';
-import { auditsAwaitingPhotos, markDeadLetter, zonesAwaitingPhotos } from './outbox.repository';
+import {
+  auditsAwaitingPhotos,
+  markDeadLetter,
+  markSettled,
+  requeueHeldZoneCompletions,
+  zonesAwaitingPhotos,
+} from './outbox.repository';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
 import { LOCAL_SCHEMA_VERSION } from './migrations';
 import { createNodeExecutor } from './node-executor';
@@ -671,5 +678,44 @@ describe('the selfie, watched rather than blocking (owner, 2026-10-24)', () => {
   it('says nothing about an audit with no selfie on this phone', async () => {
     const { auditId } = await auditWithZone();
     expect((await selfieStatuses(database)).has(auditId)).toBe(false);
+  });
+});
+
+describe('a Zone completion held before its Zone arrived (2026-10-18)', () => {
+  it('goes once more, with the audit’s refused finish behind it, and not for ever', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    await enqueue(database, 'audit_zone', auditZoneId, 'complete', { auditId });
+    await enqueue(database, 'audit', auditId, 'complete', {});
+    const rows = await listOutbox(database);
+    const zoneDone = rows.find((row) => row.entityType === 'audit_zone' && row.operation === 'complete')!;
+    const auditDone = rows.find((row) => row.entityType === 'audit' && row.operation === 'complete')!;
+
+    // What the phone that ran the bug holds: the Zone's complete settled as held, the
+    // audit's finish dead-lettered for the Zone it could not find.
+    const hold = () => markSettled(database, zoneDone.id, 'Held for review: SCOPE_REVOKED');
+    await hold();
+    await markDeadLetter(database, auditDone.id, { attempts: 8, lastError: 'all Zones completed' });
+
+    expect(await requeueHeldZoneCompletions(database)).toBe(1);
+    const after = await listOutbox(database);
+    expect(after.find((row) => row.id === zoneDone.id)!.state).toBe('PENDING');
+    expect(after.find((row) => row.id === auditDone.id)!.state).toBe('PENDING');
+
+    // Held again for a real reason, it stops after a few tries and is left for a person.
+    await hold();
+    expect(await requeueHeldZoneCompletions(database)).toBe(1);
+    await hold();
+    expect(await requeueHeldZoneCompletions(database)).toBe(1);
+    await hold();
+    expect(await requeueHeldZoneCompletions(database)).toBe(0);
+  });
+
+  it('leaves a held Zone completion alone once its audit has finished', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    await enqueue(database, 'audit_zone', auditZoneId, 'complete', { auditId });
+    const zoneDone = (await listOutbox(database)).find((row) => row.entityType === 'audit_zone')!;
+    await markSettled(database, zoneDone.id, 'Held for review: SCOPE_REVOKED');
+
+    expect(await requeueHeldZoneCompletions(database)).toBe(0);
   });
 });

@@ -212,6 +212,57 @@ export async function removePrematureCommits(database: LocalDatabase): Promise<n
   return premature.length;
 }
 
+/**
+ * Zone completions the server held as "not found" while their audit is still unfinished.
+ *
+ * 2026-10-18: a walk-by Zone's upsert was being refused (a Zone lock), its `complete` arrived
+ * for a Zone the server did not have and was held — and a held item is settled here, so it
+ * never went again. When the Zone did arrive the audit could not finish, and Retry could not
+ * help. The server now asks such a complete to wait; this sends the ones already settled
+ * once more, so the phone that ran the bug recovers by itself. A Zone already completed on
+ * the server answers the replay as a no-op.
+ */
+export async function requeueHeldZoneCompletions(database: LocalDatabase): Promise<number> {
+  const held = await database
+    .select({ id: outbox.id, auditId: sql<string>`json_extract(${outbox.payload}, '$.auditId')` })
+    .from(outbox)
+    .where(
+      and(
+        eq(outbox.entityType, 'audit_zone'),
+        eq(outbox.operation, 'complete'),
+        eq(outbox.state, 'SYNCED'),
+        sql`${outbox.lastError} = 'Held for review: SCOPE_REVOKED'`,
+        // A few times, not for ever: one held again for a real reason is a person's to read.
+        sql`${outbox.attempts} < 3`,
+        sql`EXISTS (
+          SELECT 1 FROM ${outbox} AS finish
+          WHERE finish.entity_type = 'audit' AND finish.operation = 'complete'
+            AND finish.entity_id = json_extract(outbox.payload, '$.auditId')
+            AND finish.state IN ('PENDING', 'SYNCING', 'FAILED', 'DEAD_LETTER')
+        )`,
+      ),
+    );
+  for (const row of held) {
+    await database
+      .update(outbox)
+      .set({ state: 'PENDING', startedAt: null, nextAttemptAt: null, attempts: sql`${outbox.attempts} + 1` })
+      .where(eq(outbox.id, row.id));
+    // The audit's finish was refused for the missing Zone, so it goes again behind it.
+    await database
+      .update(outbox)
+      .set({ state: 'PENDING', startedAt: null, nextAttemptAt: null })
+      .where(
+        and(
+          eq(outbox.entityType, 'audit'),
+          eq(outbox.operation, 'complete'),
+          eq(outbox.entityId, row.auditId),
+          eq(outbox.state, 'DEAD_LETTER'),
+        ),
+      );
+  }
+  return held.length;
+}
+
 export function evidenceById(database: LocalDatabase, evidenceId: string) {
   return database.select().from(localEvidence).where(eq(localEvidence.id, evidenceId)).limit(1);
 }

@@ -579,6 +579,10 @@ export class SyncBatchService {
 
     if (item.entityType === 'audit_zone') {
       parents.push(['audit', this.optionalString(item.payload, 'auditId')]);
+      // A Zone's `complete` or `withdraw` needs the Zone itself. Sent while its upsert was
+      // being refused (a Zone lock, 2026-10-18), the complete was held as "not found" — and a
+      // held item is settled on the phone, so it never came back once the Zone did arrive.
+      if (item.operation !== 'upsert') parents.push(['audit_zone', item.entityId]);
     }
     if (item.entityType === 'question_response') {
       parents.push(['audit_zone', this.optionalString(item.payload, 'auditZoneId')]);
