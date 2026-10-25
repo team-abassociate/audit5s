@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { CorrectiveAction, SyncCatalogue } from '@audit5s/contracts';
+import type { CorrectiveAction, SyncBatchRequest, SyncCatalogue } from '@audit5s/contracts';
+import { runSync } from '../sync/engine';
+import type { SyncTransport } from '../sync/transport';
 import { sortSyncItems } from '@audit5s/domain';
 import { listOutbox } from './audit.repository';
 import { replaceCatalogue } from './catalogue.repository';
@@ -176,6 +178,28 @@ describe('the server’s verdict', () => {
     await settleLocalSubmission(database, id);
     const local = await getLocalCorrectiveAction(database, ACTION);
     expect(local?.effectiveStatus).toBe('OPEN');
+  });
+
+  it('REJECTED opens it again instead of leaving it waiting to sync for ever', async () => {
+    await submitLocalCorrectiveAction(database, { actionId: ACTION, option: 'NOT_POSSIBLE', explanation: 'x' });
+    const transport = {
+      pushBatch: async (request: SyncBatchRequest) => ({
+        batchId: request.batchId,
+        serverTime: new Date().toISOString(),
+        replayed: false,
+        results: request.items.map((item) => ({
+          outboxId: item.outboxId,
+          entityId: item.entityId,
+          status: 'REJECTED' as const,
+          errors: ['Refused'],
+        })),
+      }),
+    } as unknown as SyncTransport;
+    await runSync(database, transport, { deviceId: 'device' });
+    expect(await getLocalCorrectiveAction(database, ACTION)).toMatchObject({
+      effectiveStatus: 'OPEN',
+      pendingSubmissionId: null,
+    });
   });
 });
 

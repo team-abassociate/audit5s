@@ -76,6 +76,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       const result = await runSync(database, transport, { deviceId: await getDeviceId() });
       // The selfie chips move with the upload, not with the next screen that happens to refetch.
       void queryClient.invalidateQueries({ queryKey: ['local', 'selfie-statuses'] });
+      // What landed changes the live boards too: a Coordinator's "Record the fix" left the
+      // review screen on "Waiting for a response" until it was opened again.
+      if (result.accepted > 0) {
+        for (const key of ['corrective-action', 'corrective-actions', 'audits']) {
+          void queryClient.invalidateQueries({ queryKey: [key] });
+        }
+      }
       // The catalogue rides every cycle — app open, foreground, the tick and Sync now — so
       // nobody has to pull it by hand. An unchanged one costs one small response.
       if (result.error === undefined) {

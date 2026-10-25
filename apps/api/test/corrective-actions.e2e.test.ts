@@ -788,6 +788,29 @@ describe('offline submission through the outbox (§9.2, §9.3)', () => {
     expect(history[0]!.submittedVia).toBe('MOBILE');
   });
 
+  it('holds an answer that arrives after someone else closed the action, rather than rejecting it', async () => {
+    // R-39 and R-54: any Zone Leader, the Coordinator or the link may answer, so a phone's
+    // offline answer can land on an action already closed. A REJECTED left the phone's own
+    // attempt pending for ever, in a dead letter no retry could clear.
+    const { actions } = await walkBy(1);
+    const action = actions[0]!;
+    expect((await submitOptionA(world, world.actors.COORDINATOR.accessToken, action)).status).toBe(201);
+
+    const late = await push([
+      {
+        outboxId: randomUUID(),
+        entityType: 'corrective_action_submission',
+        entityId: randomUUID(),
+        operation: 'submit',
+        payload: { correctiveActionId: action.id, option: 'NOT_POSSIBLE', explanation: 'Written offline' },
+      },
+    ]);
+    const verdict = (late.body as SyncBatchResponse).results[0]!;
+    expect(verdict.status, JSON.stringify(verdict)).toBe('CONFLICT');
+    expect(verdict.conflictId).toBeDefined();
+    expect((await detail(action.id)).submissions).toHaveLength(1);
+  });
+
   it('lets the media worker thumbnail an after-photo on a completed audit', async () => {
     const { actions } = await walkBy(1);
     const submissionId = randomUUID();

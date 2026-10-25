@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, RefreshControl, SectionList, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
-import type { CorrectiveAction, Page } from '@audit5s/contracts';
+import type { CorrectiveAction } from '@audit5s/contracts';
 import { awaitsResponse, awaitsReview, isOverdue, isReviewable, isUnapprovedClosure, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Card,
@@ -89,7 +89,7 @@ export default function ReviewScreen() {
 
   const actions = useQuery({
     queryKey: ['corrective-actions', 'all'],
-    queryFn: () => api.get<Page<CorrectiveAction>>('/corrective-actions?limit=200'),
+    queryFn: () => api.getAll<CorrectiveAction>('/corrective-actions?limit=200'),
     refetchInterval: 60_000,
   });
 

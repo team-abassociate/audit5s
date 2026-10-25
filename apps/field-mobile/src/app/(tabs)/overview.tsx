@@ -90,7 +90,7 @@ function ManagementOverview() {
   });
   const overdue = useQuery({
     queryKey: ['corrective-actions', 'overdue'],
-    queryFn: () => api.get<Page<CorrectiveAction>>('/corrective-actions?limit=200&overdue=true'),
+    queryFn: () => api.getAll<CorrectiveAction>('/corrective-actions?limit=200&overdue=true'),
     refetchInterval: 60_000,
   });
   const org = useQuery({

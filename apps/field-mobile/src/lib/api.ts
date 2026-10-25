@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
-import { HEADER_DEVICE_ID, HEADER_IDEMPOTENCY_KEY, type ProblemDetails } from '@audit5s/contracts';
+import { HEADER_DEVICE_ID, HEADER_IDEMPOTENCY_KEY, type Page, type ProblemDetails } from '@audit5s/contracts';
 import {
   clearSession,
   getDeviceId,
@@ -260,6 +260,19 @@ export const api = {
   /** Where this build points. The deep-link route derives the web app's origin from it. */
   baseUrl: () => apiBaseUrl(),
   get: <T>(path: string) => send<T>(path),
+  /** Every page of a list, as one: a board that reads only the first leaves the rest off. */
+  getAll: async <T>(path: string): Promise<Page<T>> => {
+    const data: T[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: Page<T> = await send<Page<T>>(
+        cursor ? `${path}${path.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(cursor)}` : path,
+      );
+      data.push(...page.data);
+      cursor = page.nextCursor;
+    } while (cursor);
+    return { data, nextCursor: null };
+  },
   post: <T>(path: string, body?: unknown) => send<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body: unknown) => send<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => send<T>(path, { method: 'DELETE' }),

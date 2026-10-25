@@ -4,13 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Stack } from 'expo-router';
 import { awaitsResponse, isOverdue, zoneDisplayLabel } from '@audit5s/domain';
 import { Card, Chip, EmptyState, ErrorBanner, Muted, Screen, SectionHead, Tape } from './ui';
-import { syncCatalogue } from '../lib/catalogue';
 import {
   listLocalCorrectiveActions,
   statusLabel,
   type LocalAction,
 } from '../lib/db/corrective-action.repository';
 import { useLocalDatabase } from '../lib/db/provider';
+import { useSync } from '../lib/sync/provider';
 import { formatDate } from '../lib/format';
 import { createThemedStyles, useTheme } from '../lib/theme';
 
@@ -34,8 +34,13 @@ export function NonconformitiesScreen() {
     queryKey: ['local', 'corrective-actions'],
     queryFn: () => listLocalCorrectiveActions(database),
   });
+  const { sync: syncNow } = useSync();
   const sync = useMutation({
-    mutationFn: () => syncCatalogue(database),
+    // The whole cycle, so answers waiting on this phone go up before the list comes down.
+    mutationFn: async () => {
+      const result = await syncNow();
+      if (result.error) throw new Error(result.error);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
     },
