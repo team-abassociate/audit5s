@@ -499,6 +499,10 @@ async function applyVerdict(
         // Back to its own status (draft or sent back), so the leader can fix and resubmit it.
         await settleLocalKaizenSubmission(database, row.entityId);
       }
+      if (row.entityType === 'corrective_action_submission') {
+        // Likewise open again, rather than "Waiting to sync" for an attempt that never will.
+        await settleLocalSubmission(database, row.entityId);
+      }
       await markDeadLetter(database, row.id, {
         attempts: MAX_SYNC_ATTEMPTS,
         lastError: (verdict.errors ?? ['Rejected by the server']).join('; '),

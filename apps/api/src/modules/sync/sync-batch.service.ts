@@ -290,7 +290,14 @@ export class SyncBatchService {
       return { ...base, status: 'RETRY_AFTER_PARENT', missingParent: `evidence_object:${item.entityId}` };
     }
 
-    const reason = QUARANTINE_REASONS[code ?? ''] ?? null;
+    // An answer to an action someone else answered first — another Zone Leader, the
+    // Coordinator, the link (R-39, R-54) — or that a correction withdrew (R-31). Held, so
+    // the phone settles its attempt and reads the action from the catalogue; REJECTED left
+    // the attempt pending on the phone for ever, in a dead letter no retry could clear.
+    const lateAnswer =
+      item.entityType === 'corrective_action_submission' &&
+      (code === 'INVALID_STATE_TRANSITION' || code === 'VERSION_CONFLICT');
+    const reason = lateAnswer ? 'AUDIT_ALREADY_COMPLETED' : (QUARANTINE_REASONS[code ?? ''] ?? null);
     // `reason` is the category a Super Admin filters on; `detail` is the plain sentence that
     // tells them which rule refused the item. The raw failure — for a database error, the
     // SQL and its parameters — goes to the server log and nowhere else (UX audit S1x).

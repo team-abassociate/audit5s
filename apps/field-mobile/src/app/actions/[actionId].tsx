@@ -353,7 +353,7 @@ export default function CorrectiveActionScreen() {
             <Muted>
               {item.pendingSubmissionId
                 ? 'Saved on this device. It will be sent when there is signal.'
-                : 'Submitted. The Super Admin reviews it; if it is reopened it will appear here again.'}
+                : 'Submitted. If it is disapproved or reopened it will appear here again.'}
             </Muted>
           </Card>
         )}
