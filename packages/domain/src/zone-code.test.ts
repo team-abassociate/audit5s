@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  mayAddZoneWhileAuditing,
   reportZoneLabel,
   zoneCodeChoices,
   zoneCodeForLabel,
@@ -146,5 +147,15 @@ describe('zoneLabelParts', () => {
     expect(zoneLabelParts('12b')).toEqual({ number: '12', subzone: 'B' });
     expect(zoneLabelParts('7')).toEqual({ number: '7', subzone: '' });
     expect(zoneLabelParts('')).toEqual({ number: '', subzone: '' });
+  });
+});
+
+describe('mayAddZoneWhileAuditing (R-59)', () => {
+  it('lets a Consultant add a Zone only to a Unit with no imported list', () => {
+    expect(mayAddZoneWhileAuditing('CONSULTANT', false)).toBe(true);
+    expect(mayAddZoneWhileAuditing('CONSULTANT', true)).toBe(false);
+    expect(mayAddZoneWhileAuditing('COORDINATOR', true)).toBe(true);
+    expect(mayAddZoneWhileAuditing('SUPER_ADMIN', true)).toBe(true);
+    expect(mayAddZoneWhileAuditing('ZONE_LEADER', false)).toBe(false);
   });
 });

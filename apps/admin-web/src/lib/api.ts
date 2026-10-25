@@ -106,7 +106,9 @@ interface RequestOptions {
 async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const current = loadSession();
   const headers: Record<string, string> = {};
-  if (options.body !== undefined) headers['content-type'] = 'application/json';
+  // A file goes as multipart, and the browser writes that content type with its boundary.
+  const form = options.body instanceof FormData;
+  if (options.body !== undefined && !form) headers['content-type'] = 'application/json';
   if (current) headers.authorization = `Bearer ${current.accessToken}`;
   if (options.idempotencyKey) headers[HEADER_IDEMPOTENCY_KEY] = options.idempotencyKey;
   if (options.deviceId) headers[HEADER_DEVICE_ID] = options.deviceId;
@@ -114,7 +116,7 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    ...(options.body !== undefined ? { body: form ? (options.body as FormData) : JSON.stringify(options.body) } : {}),
   });
 
   if (response.status === 204) {

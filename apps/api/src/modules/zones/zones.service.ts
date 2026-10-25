@@ -6,6 +6,7 @@ import type {
   Page,
   UpdateZoneRequest,
   Zone,
+  ZoneListImportResult,
 } from '@audit5s/contracts';
 import { zoneLabelFromCode, type ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
@@ -13,6 +14,7 @@ import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { UnitsRepository } from '../units/units.repository';
 import { ZonesRepository, type ZonePatch, type ZoneRow } from './zones.repository';
+import { readZoneList, ZoneListRejected } from './zone-list-reader';
 
 @Injectable()
 export class ZonesService {
@@ -195,6 +197,54 @@ export class ZonesService {
       unitId: zone.unitId,
       after: { archivedAt: new Date().toISOString() },
     });
+  }
+
+  /**
+   * R-59: replaces the Unit's Zone list with the one in an Excel or PDF file. The clients
+   * warn before a second import that it replaces the first; this does not ask again.
+   */
+  async importList(scope: ScopeContext, unitId: string, body: Buffer): Promise<ZoneListImportResult> {
+    const unit = await this.units.findById(scope, unitId);
+    if (!unit) {
+      throw AppError.notFound('No such Unit');
+    }
+
+    let list;
+    try {
+      list = await readZoneList(body);
+    } catch (error) {
+      if (error instanceof ZoneListRejected) throw AppError.validation(error.message);
+      throw error;
+    }
+
+    const result = await this.repository.importList(scope, unitId, list);
+    if (result.busy) {
+      const labels = result.busy.map((code) => `Zone ${zoneLabelFromCode(code) ?? code}`).join(', ');
+      throw AppError.conflict(
+        'ZONE_HAS_IN_PROGRESS_AUDIT',
+        `${labels} ${result.busy.length === 1 ? 'is' : 'are'} not in the file but ${result.busy.length === 1 ? 'has' : 'have'} an audit in progress. Finish or cancel it, or keep the Zone in the file.`,
+      );
+    }
+
+    await this.auditLog.record({
+      action: 'zone.list_imported',
+      resourceType: 'unit',
+      resourceId: unitId,
+      unitId,
+      before: { zoneListImportedAt: unit.zoneListImportedAt?.toISOString() ?? null },
+      after: {
+        zones: list.length,
+        created: result.created,
+        updated: result.updated,
+        archived: result.archived,
+      },
+    });
+    return {
+      created: result.created,
+      updated: result.updated,
+      archived: result.archived,
+      zoneListImportedAt: result.zoneListImportedAt.toISOString(),
+    };
   }
 
   private async mustFind(scope: ScopeContext, zoneId: string): Promise<ZoneRow> {

@@ -404,6 +404,18 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
        )`,
     ],
   },
+  {
+    /*
+     * 0054 on the phone (R-59): which Units have an imported Zone list. A Consultant may add a
+     * Zone while auditing a Unit without one. A table, for v8's reason; the catalogue token is
+     * forgotten so the next sync fills it.
+     */
+    version: 13,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS unit_zone_list (unit_id TEXT PRIMARY KEY, imported_at TEXT)`,
+      `DELETE FROM sync_meta WHERE key = 'catalogue_version'`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

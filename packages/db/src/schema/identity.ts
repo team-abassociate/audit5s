@@ -82,6 +82,8 @@ export const units = pgTable(
     industryId: uuid('industry_id'),
     /** CH-5 soft cap. */
     photoCapPerZone: integer('photo_cap_per_zone').notNull().default(30),
+    /** When the Zone list was last imported (0054). NULL: a Consultant may add Zones. */
+    zoneListImportedAt: timestamp('zone_list_imported_at', { withTimezone: true }),
     version: integer('version').notNull().default(1),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     ...timestamps,

@@ -314,7 +314,18 @@ describe('§2.7 — the ten steps, in order', () => {
 });
 
 describe('R-52 — a Consultant picks a Zone; a Coordinator may add one', () => {
-  it('refuses a Consultant a Zone the Unit does not have, and adds nothing', async () => {
+  it('R-59: lets a Consultant add a Zone while the Unit has no imported Zone list', async () => {
+    const auditId = await startWalkBy();
+
+    const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${randomUUID()}`, {
+      token: consultantToken,
+      body: { zoneNumber: 87, sequenceNo: 1 },
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+  });
+
+  it('refuses a Consultant a Zone the Unit does not have once its list is imported, and adds nothing', async () => {
+    await world.owner.query(`UPDATE unit SET zone_list_imported_at = now() WHERE id = $1`, [world.unitA]);
     const auditId = await startWalkBy();
 
     const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${randomUUID()}`, {

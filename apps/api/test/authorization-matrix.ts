@@ -342,6 +342,16 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'zones.e2e.test.ts',
   },
   {
+    method: 'POST',
+    path: '/api/v1/units/:id/zones/import',
+    description: 'zone:create — R-59: replace a Unit’s Zone list from an Excel or PDF file',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'zones.e2e.test.ts',
+  },
+  {
     method: 'GET',
     path: '/api/v1/units/:id/zones',
     description: 'zone:read — the Zone dropdown source, active Zones by default',

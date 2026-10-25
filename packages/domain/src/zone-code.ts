@@ -1,4 +1,4 @@
-import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN } from '@audit5s/contracts';
+import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN, type Role } from '@audit5s/contracts';
 
 /**
  * Zone codes.
@@ -129,4 +129,13 @@ export function zoneLeaderSnapshot(
   if (!typed) return { userId: ownId, name: ownName };
   const same = ownName !== null && ownName.trim().toLocaleLowerCase() === typed.toLocaleLowerCase();
   return { userId: same ? ownId : null, name: typed };
+}
+
+/**
+ * R-52, R-59: who may add a Zone on Select Zone — a Super Admin or a Coordinator always, a
+ * Consultant only while the Unit has no imported Zone list. `app_ensure_zone_for_audit`
+ * (0054) enforces the same rule on the server.
+ */
+export function mayAddZoneWhileAuditing(role: Role | undefined, unitHasZoneList: boolean): boolean {
+  return role === 'SUPER_ADMIN' || role === 'COORDINATOR' || (role === 'CONSULTANT' && !unitHasZoneList);
 }

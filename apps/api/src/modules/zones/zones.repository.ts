@@ -1,12 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, ilike, isNull, sql, type SQL } from 'drizzle-orm';
-import { unitMemberships, zones, type Database } from '@audit5s/db';
+import { unitMemberships, units, zones, type Database } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { CreateZoneRequest, ListZonesQuery } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { setActorContext } from '../users/users.repository';
+import type { ImportedZone } from './zone-list-reader';
 
 export type ZonePatch = Partial<{
   code: string;
@@ -167,6 +168,96 @@ export class ZonesRepository extends BaseRepository {
         .where(and(eq(zones.id, zoneId), this.scoped(scope, { unitId: zones.unitId })))
         .returning({ id: zones.id });
       return row?.id ?? null;
+    });
+  }
+
+  /**
+   * R-59: the file's Zones become the Unit's list, in one transaction. A Zone it names is
+   * added, or updated (and restored, if archived) by its code; a Zone it leaves out is
+   * archived — never deleted, its audits stay on record. A Zone's account leader is left
+   * alone: the imported name is its typed leader, which an account outranks (0015).
+   *
+   * Returns the codes of Zones it would archive that have an audit in progress, and
+   * changes nothing, when there are any (§8.4's archive guard).
+   */
+  async importList(scope: ScopeContext, unitId: string, list: readonly ImportedZone[]) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const existing = await tx
+        .select({
+          id: zones.id,
+          code: zones.code,
+          name: zones.name,
+          zoneLeaderName: zones.zoneLeaderName,
+          sortOrder: zones.sortOrder,
+          archivedAt: zones.archivedAt,
+        })
+        .from(zones)
+        .where(this.scoped(scope, { unitId: zones.unitId }, eq(zones.unitId, unitId)));
+
+      const kept = new Set(list.map((zone) => zone.code));
+      const leaving = existing.filter((zone) => zone.archivedAt === null && !kept.has(zone.code));
+      const busy: string[] = [];
+      for (const zone of leaving) {
+        const result = await tx.execute<{ busy: boolean }>(
+          sql`SELECT zone_has_in_progress_audit(${zone.id}::uuid) AS busy`,
+        );
+        if (result.rows[0]?.busy) busy.push(zone.code);
+      }
+      if (busy.length > 0) return { busy };
+
+      const byCode = new Map(existing.map((zone) => [zone.code, zone]));
+      let created = 0;
+      let updated = 0;
+      for (const zone of list) {
+        const found = byCode.get(zone.code);
+        if (!found) {
+          await tx.insert(zones).values({
+            unitId,
+            code: zone.code,
+            name: zone.name,
+            zoneLeaderName: zone.leaderName,
+            sortOrder: zone.sortOrder,
+          });
+          created += 1;
+        } else if (
+          found.name !== zone.name ||
+          found.zoneLeaderName !== zone.leaderName ||
+          found.sortOrder !== zone.sortOrder ||
+          found.archivedAt !== null
+        ) {
+          await tx
+            .update(zones)
+            .set({
+              name: zone.name,
+              zoneLeaderName: zone.leaderName,
+              sortOrder: zone.sortOrder,
+              archivedAt: null,
+              version: sql`${zones.version} + 1`,
+            })
+            .where(this.scoped(scope, { unitId: zones.unitId }, eq(zones.id, found.id)));
+          updated += 1;
+        }
+      }
+      for (const zone of leaving) {
+        await tx
+          .update(zones)
+          .set({ archivedAt: sql`now()`, version: sql`${zones.version} + 1` })
+          .where(this.scoped(scope, { unitId: zones.unitId }, eq(zones.id, zone.id)));
+      }
+
+      const [unit] = await tx
+        .update(units)
+        .set({ zoneListImportedAt: sql`now()` })
+        .where(this.scoped(scope, { unitId: units.id }, eq(units.id, unitId)))
+        .returning({ zoneListImportedAt: units.zoneListImportedAt });
+      return {
+        busy: null,
+        created,
+        updated,
+        archived: leaving.length,
+        zoneListImportedAt: unit!.zoneListImportedAt!,
+      };
     });
   }
 

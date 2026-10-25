@@ -30,6 +30,8 @@ export const AUDIT_LOG_ACTIONS = [
   'zone.updated',
   'zone.archived',
   'zone.leader_assigned',
+  /** R-59: a Unit's Zone list was imported from a file, replacing the one it had. */
+  'zone.list_imported',
   'checklist.imported',
   'checklist.translations_imported',
   /** A Super Admin corrected a Hindi or Marathi question by hand (0036). */
