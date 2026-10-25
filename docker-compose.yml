@@ -29,6 +29,11 @@ x-api-env: &api-env
   PGBOSS_SCHEMA: ${PGBOSS_SCHEMA:-pgboss}
   PGBOSS_JOB_RETENTION_DAYS: ${PGBOSS_JOB_RETENTION_DAYS:-7}
   SENTRY_DSN: ${SENTRY_DSN:-}
+  # Password-reset email (§12.1); blank leaves the API refusing reset links, as before.
+  EMAIL_API_URL: ${EMAIL_API_URL:-}
+  EMAIL_API_KEY: ${EMAIL_API_KEY:-}
+  EMAIL_FROM: ${EMAIL_FROM:-}
+  PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-60}
 
 services:
   postgres:
