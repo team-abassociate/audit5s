@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect, useRouter } from 'expo-router';
-import type { MembershipDetail, Page, Unit, User, Zone } from '@audit5s/contracts';
-import { zoneDisplayLabel } from '@audit5s/domain';
+import { File } from 'expo-file-system';
+import {
+  ZONE_LIST_IMPORT_MAX_BYTES,
+  type MembershipDetail,
+  type Page,
+  type Unit,
+  type User,
+  type Zone,
+  type ZoneListImportResult,
+} from '@audit5s/contracts';
+import { formatDate, zoneDisplayLabel } from '@audit5s/domain';
 import { UnitForm } from './unit-form';
 import { ZoneForm } from './zone-form';
 import {
@@ -200,6 +209,9 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
             ) : null
           }
         />
+        {mayAddZone && zoneOpen === null ? (
+          <ImportZoneList unitId={unitId} importedAt={unit.data?.zoneListImportedAt ?? null} />
+        ) : null}
         {zoneOpen === 'new' ? (
           <ZoneForm unitId={unitId} existing={zoneList} onDone={() => setZoneOpen(null)} />
         ) : null}
@@ -244,7 +256,7 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
           ),
         )}
         {zones.data && zoneList.length === 0 && zoneOpen !== 'new' ? (
-          <Muted>{mayAddZone ? 'No Zones yet. Add the first with + Zone.' : 'No Zones yet.'}</Muted>
+          <Muted>{mayAddZone ? 'No Zones yet. Import the Zone list, or add one with + Zone.' : 'No Zones yet.'}</Muted>
         ) : null}
         <ErrorBanner message={zones.error ? problemMessage(zones.error) : null} />
       </Card>
@@ -348,7 +360,77 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
   );
 }
 
+/**
+ * R-59: the Unit's Zone list from an Excel or PDF file — only Zone No., Zone Name (or
+ * Description) and Leader are read. A second import replaces the first, archiving the Zones
+ * it leaves out, so it asks first. The template is the one the web serves.
+ */
+function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: string | null }) {
+  const styles = useStyles();
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState<string | null>(null);
+  const importList = useMutation({
+    mutationFn: async (): Promise<ZoneListImportResult | null> => {
+      setMessage(null);
+      let picked;
+      try {
+        picked = await File.pickFileAsync({
+          mimeTypes: ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        });
+      } catch {
+        setMessage('This phone cannot choose files yet. Update the app, or import from the web.');
+        return null;
+      }
+      if (picked.canceled) return null;
+      const file = picked.result;
+      if (file.size > ZONE_LIST_IMPORT_MAX_BYTES) {
+        setMessage('The file is larger than 5 MB.');
+        return null;
+      }
+      const form = new FormData();
+      // React Native's fetch reads a file part from its uri.
+      form.append('file', { uri: file.uri, name: file.name, type: file.type || 'application/octet-stream' } as unknown as Blob);
+      return api.post<ZoneListImportResult>(`/units/${unitId}/zones/import`, form);
+    },
+    onSuccess: async (result) => {
+      if (!result) return;
+      setMessage(`Zone list imported: ${result.created} added, ${result.updated} updated, ${result.archived} archived.`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['zones'] }),
+        queryClient.invalidateQueries({ queryKey: ['unit', unitId] }),
+      ]);
+    },
+  });
+  const openTemplate = () => {
+    try {
+      void Linking.openURL(`${new URL(api.baseUrl()).origin}/zone-list-template.xlsx`);
+    } catch {
+      setMessage('Could not open the template.');
+    }
+  };
+
+  return (
+    <View style={styles.importBlock}>
+      {importedAt ? (
+        <ConfirmAction
+          title="Import Zone list"
+          question={`A Zone list was imported on ${formatDate(importedAt)}. A new file replaces it: Zones not in it are archived. Their audits stay on record.`}
+          confirmLabel="Choose file"
+          busy={importList.isPending}
+          onConfirm={() => importList.mutate()}
+        />
+      ) : (
+        <Button title="Import Zone list" variant="secondary" busy={importList.isPending} onPress={() => importList.mutate()} />
+      )}
+      <Button title="Zone list template" icon="file-download" variant="secondary" onPress={openTemplate} />
+      {message ? <Muted>{message}</Muted> : null}
+      <ErrorBanner message={importList.error ? problemMessage(importList.error) : null} />
+    </View>
+  );
+}
+
 const useStyles = createThemedStyles((theme) => ({
+  importBlock: { gap: theme.space.sm, marginBottom: theme.space.md },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { paddingBottom: theme.space.xl },
   item: {

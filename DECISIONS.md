@@ -50,6 +50,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-54 | Photos from the gallery in the audit too; a Coordinator closes nonconformities | Settled |
 | R-55 | A called cross audit has a deadline and stands until anyone does it | Settled |
 | R-56 | A cross audit covers several Zones; the Coordinator moves its date and completes it | Settled |
+| R-59 | A Unit's Zone list is imported from Excel or PDF; until it is, a Consultant adds Zones | Settled |
 
 ---
 
@@ -2481,3 +2482,33 @@ with the reason `unit.archived`. M-1 gives each of them only this Unit, so nothi
 theirs is cut off. A Consultant is independent of Units and is left alone. Nothing is
 deleted: their audits, Kaizens and history stay on record, and a Super Admin may restore a
 person's access (and grant Kaizen again) from Users.
+
+---
+
+## R-59 — A Unit's Zone list is imported from Excel or PDF; until it is, a Consultant adds Zones
+
+**Settled 2026-10-25 by the product owner.** Narrows R-52's "a Consultant cannot add a Zone"
+to Units that have an imported Zone list.
+
+- **Import.** A Super Admin, or a Coordinator for their Unit, imports the Zone list on the web
+  (Units & zones → the Unit's Zones) or the phone (the Unit's page, My Unit) from an `.xlsx`
+  or a PDF: `POST /units/{id}/zones/import`, multipart, `zone:create`. Only three columns are
+  read, found by their headings: **Zone No.**, **Zone Name** — "Zone Description" is the same
+  column — and **Leader**. Anything else in the file (Location, Sub-Leader, Members) is
+  ignored. A PDF is read from the positions of its text, so a spreadsheet printed to PDF
+  works; a scanned PDF does not.
+- **An import replaces the list.** A Zone in the file is added, or updated (and restored if
+  archived) by its number; a Zone not in it is archived, never deleted — its audits stay on
+  record. A Zone with an audit in progress cannot be dropped this way: the import is refused
+  and names it. Both clients warn before a second import that it replaces the first. The
+  leader is the Zone's typed leader name; an account assigned as Zone Leader still outranks
+  it (0015). Logged as `zone.list_imported`.
+- **Adding Zones by hand stays.** After an import, a Super Admin or Coordinator adds a Zone as
+  before (New Zone, or "+ New Zone" on Select Zone), or imports the longer list again.
+- **A Unit nobody has imported a list for** (`unit.zone_list_imported_at` is null): the
+  Consultant auditing it may add a Zone on Select Zone as a Coordinator does.
+  `app_ensure_zone_for_audit` (0054) enforces it; `mayAddZoneWhileAuditing` in
+  `packages/domain` is the one copy of the rule for both clients.
+- **Template.** `zone-list-template.xlsx` — the owner's three-column sheet, Zone 01–30 numbered
+  and blank — is served beside the web app; both clients offer it. A row with a Zone number
+  and nothing else is a blank template row, not a Zone.

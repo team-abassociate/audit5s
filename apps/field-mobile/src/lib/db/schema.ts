@@ -85,6 +85,12 @@ export const unitIndustries = sqliteTable('unit_industry', {
   industryId: text('industry_id'),
 });
 
+/** The Units whose Zone list was imported (0054, R-59), and when. Absent: never. */
+export const unitZoneLists = sqliteTable('unit_zone_list', {
+  unitId: text('unit_id').primaryKey(),
+  importedAt: text('imported_at'),
+});
+
 export const templateIndustries = sqliteTable('template_industry', {
   templateId: text('template_id').notNull(),
   industryId: text('industry_id').notNull(),

@@ -54,6 +54,7 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'zone.updated': 'Edited a Zone',
   'zone.archived': 'Archived a Zone',
   'zone.leader_assigned': 'Set a Zone Leader',
+  'zone.list_imported': 'Imported a Zone list',
   'checklist.imported': 'Imported a checklist',
   'checklist.translations_imported': 'Imported checklist translations',
   'checklist.translation_updated': 'Corrected a translation',

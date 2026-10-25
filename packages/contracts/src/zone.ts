@@ -99,6 +99,21 @@ export const listZonesQuerySchema = paginationQuerySchema.extend({
 });
 export type ListZonesQuery = z.infer<typeof listZonesQuerySchema>;
 
+/**
+ * What `POST /units/{id}/zones/import` did (R-59). The file replaces the Unit's list: its
+ * Zones are added or updated, and the Unit's other Zones are archived.
+ */
+export const zoneListImportResultSchema = z.object({
+  created: z.number().int(),
+  updated: z.number().int(),
+  archived: z.number().int(),
+  zoneListImportedAt: isoDateTimeSchema,
+});
+export type ZoneListImportResult = z.infer<typeof zoneListImportResultSchema>;
+
+/** The largest Zone-list file the import reads. Both clients check it before uploading. */
+export const ZONE_LIST_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
+
 /** `null` clears the pointer, which is how a Zone is left without a leader. */
 export const assignZoneLeaderRequestSchema = z.object({
   zoneLeaderId: uuidSchema.nullable(),

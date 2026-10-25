@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH, type Page, type Zone } from '@audit5s/contracts';
 import { zoneCodeForNumber } from '@audit5s/domain';
@@ -454,5 +455,102 @@ describe('editing a Zone (field report 2026-10-13)', () => {
     const zone = response.body as Zone;
     expect(zone.zoneLeaderName).toBe('Ravi Kumar');
     expect(zone.name).toBe('Paint shop');
+  });
+});
+
+describe('R-59 — importing a Unit’s Zone list', () => {
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  /** The template's shape: a title row, the three headings, then one Zone a row. */
+  async function workbook(rows: Array<[string, string, string]>): Promise<Buffer> {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('Table 1');
+    sheet.addRow(['Name Of Your Unit']);
+    sheet.addRow(['Zone No.', 'Zone Discription(Name)', 'Leader']);
+    for (const row of rows) sheet.addRow(row);
+    return Buffer.from(await book.xlsx.writeBuffer());
+  }
+
+  async function importList(token: string, unitId: string, body: Buffer) {
+    return world.upload(
+      `${base}/units/${unitId}/zones/import`,
+      { filename: 'zones.xlsx', contentType: XLSX, body },
+      { token },
+    );
+  }
+
+  async function activeZones(unitId: string): Promise<Zone[]> {
+    const response = await world.request('GET', `${base}/units/${unitId}/zones?limit=200`, {
+      token: asSuperAdmin(),
+    });
+    return (response.body as Page<Zone>).data;
+  }
+
+  it('replaces the Unit’s list: adds, updates, archives, and marks the Unit imported', async () => {
+    const first = await importList(
+      asCoordinator(),
+      world.unitA,
+      await workbook([
+        ['Zone 01', 'Maintenance Room', 'Mr. A. Sharma'],
+        ['Zone 02', 'Boiler Room', 'Ms. B. Rao\nMr. C. Das'],
+        ['Zone 03', '', ''],
+      ]),
+    );
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    // The fixture's Unit may already have a Zone 01; either way the file's two are there.
+    const { created, updated } = first.body as { created: number; updated: number };
+    expect(created + updated).toBe(2);
+
+    const zones = await activeZones(world.unitA);
+    expect(zones.map((zone) => zone.code).sort()).toEqual(['Z-01', 'Z-02']);
+    expect(zones.find((zone) => zone.code === 'Z-02')).toMatchObject({
+      name: 'Boiler Room',
+      zoneLeaderName: 'Ms. B. Rao, Mr. C. Das',
+    });
+    const unit = await world.request('GET', `${base}/units/${world.unitA}`, { token: asCoordinator() });
+    expect((unit.body as { zoneListImportedAt: string | null }).zoneListImportedAt).not.toBeNull();
+
+    const second = await importList(
+      asSuperAdmin(),
+      world.unitA,
+      await workbook([
+        ['1', 'Maintenance Room & Press Pit', 'Mr. A. Sharma'],
+        ['Zone 04', 'Canteen', ''],
+      ]),
+    );
+    expect(second.body).toMatchObject({ created: 1, updated: 1, archived: 1 });
+    expect((await activeZones(world.unitA)).map((zone) => zone.name).sort()).toEqual([
+      'Canteen',
+      'Maintenance Room & Press Pit',
+    ]);
+  });
+
+  it('restores an archived Zone the next file names again', async () => {
+    const response = await importList(
+      asCoordinator(),
+      world.unitA,
+      await workbook([
+        ['Zone 01', 'Maintenance Room & Press Pit', 'Mr. A. Sharma'],
+        ['Zone 02', 'Boiler Room', ''],
+        ['Zone 04', 'Canteen', ''],
+      ]),
+    );
+    expect(response.body).toMatchObject({ created: 0, updated: 1, archived: 0 });
+    const restored = (await activeZones(world.unitA)).find((zone) => zone.code === 'Z-02');
+    expect(restored?.archivedAt).toBeNull();
+  });
+
+  it('refuses a file without the three headings, and changes nothing', async () => {
+    const book = new ExcelJS.Workbook();
+    book.addWorksheet('Sheet1').addRow(['Area', 'Owner']);
+    const response = await importList(asCoordinator(), world.unitA, Buffer.from(await book.xlsx.writeBuffer()));
+    expect(response.status).toBe(422);
+    expect(await activeZones(world.unitA)).toHaveLength(3);
+  });
+
+  it('is not a Coordinator’s for another Unit, nor a Consultant’s', async () => {
+    const body = await workbook([['Zone 01', 'Trespass', '']]);
+    expect((await importList(asCoordinator(), world.unitB, body)).status).toBe(404);
+    expect((await importList(world.actors.CONSULTANT.accessToken, world.unitA, body)).status).toBe(403);
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Controller, useForm } from 'react-hook-form';
 import type {
@@ -10,13 +10,15 @@ import type {
   UpdateZoneRequest,
   User,
   Zone,
+  ZoneListImportResult,
 } from '@audit5s/contracts';
-import { ZONE_NUMBER_MIN } from '@audit5s/contracts';
-import { zoneCodeChoices, zoneCodeForLabel, zoneDisplayLabel, zoneLabelFromCode, zoneSortOrder } from '@audit5s/domain';
+import { ZONE_LIST_IMPORT_MAX_BYTES, ZONE_NUMBER_MIN } from '@audit5s/contracts';
+import { formatDate, zoneCodeChoices, zoneCodeForLabel, zoneDisplayLabel, zoneLabelFromCode, zoneSortOrder } from '@audit5s/domain';
 import { ApiError, api } from '@/lib/api';
 import { devGet } from '@/features/units/worst-case';
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
   ErrorNotice,
   Field,
@@ -75,7 +77,7 @@ export function UnitZones({ unitId }: { unitId: string }) {
         <span className="gb-label">
           Zones{zones.data ? ` · ${list.length}` : ''}
         </span>
-        <div className="flex flex-1 items-center justify-end gap-2">
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
           <Input
             type="search"
             className="max-w-xs"
@@ -85,9 +87,12 @@ export function UnitZones({ unitId }: { unitId: string }) {
             aria-label="Search Zones"
           />
           {can('zone', 'create') && (
-            <Button variant="secondary" onClick={() => setCreating((open) => !open)}>
-              {creating ? 'Cancel' : 'New Zone'}
-            </Button>
+            <>
+              <ImportZoneList unitId={unitId} />
+              <Button variant="secondary" onClick={() => setCreating((open) => !open)}>
+                {creating ? 'Cancel' : 'New Zone'}
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -112,7 +117,7 @@ export function UnitZones({ unitId }: { unitId: string }) {
           {query
             ? null
             : can('zone', 'create')
-              ? 'An auditor adds one by naming it in the field, or create one here with New Zone.'
+              ? 'Import the Zone list, or add one with New Zone.'
               : 'An auditor adds one by naming it in the field.'}
         </EmptyState>
       )}
@@ -139,6 +144,93 @@ export function UnitZones({ unitId }: { unitId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * R-59: the Unit's Zone list from an Excel or PDF file. Only Zone No., Zone Name (or
+ * Description) and Leader are read. A second import replaces the first — Zones it leaves
+ * out are archived — so it asks before the file is chosen.
+ */
+function ImportZoneList({ unitId }: { unitId: string }) {
+  const queryClient = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [tooLarge, setTooLarge] = useState(false);
+  const unit = useQuery({
+    queryKey: ['unit', unitId],
+    queryFn: () => api.get<Unit>(`/units/${unitId}`),
+  });
+  const importList = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      return api.post<ZoneListImportResult>(`/units/${unitId}/zones/import`, form, crypto.randomUUID());
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['zones'] }),
+        queryClient.invalidateQueries({ queryKey: ['unit', unitId] }),
+      ]);
+    },
+  });
+  const importedAt = unit.data?.zoneListImportedAt ?? null;
+  const result = importList.data;
+
+  return (
+    <>
+      <a className="gb-btn" href={`${import.meta.env.BASE_URL}zone-list-template.xlsx`} download>
+        Template
+      </a>
+      <Button
+        variant="secondary"
+        disabled={importList.isPending || unit.isPending}
+        onClick={() => (importedAt ? setConfirming(true) : input.current?.click())}
+      >
+        {importList.isPending ? 'Importing…' : 'Import Zone list'}
+      </Button>
+      <input
+        ref={input}
+        type="file"
+        hidden
+        accept=".xlsx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (!file) return;
+          setTooLarge(file.size > ZONE_LIST_IMPORT_MAX_BYTES);
+          if (file.size <= ZONE_LIST_IMPORT_MAX_BYTES) importList.mutate(file);
+        }}
+      />
+      <ConfirmDialog
+        open={confirming}
+        title="Replace this Unit’s Zone list?"
+        confirmLabel="Choose file"
+        onConfirm={() => {
+          setConfirming(false);
+          input.current?.click();
+        }}
+        onCancel={() => setConfirming(false)}
+      >
+        A Zone list was imported on {importedAt ? formatDate(importedAt) : ''}. The new file
+        replaces it: its Zones are added or updated, and Zones not in it are archived. Their
+        audits, scores and photographs stay on record.
+      </ConfirmDialog>
+      {(result || importList.error || tooLarge) && (
+        <div className="basis-full" role="status">
+          {tooLarge ? (
+            <p className="gb-notice" role="alert">The file is larger than 5 MB.</p>
+          ) : importList.error ? (
+            <ErrorNotice error={importList.error} />
+          ) : result ? (
+            <span className="text-ink-2">
+              Zone list imported: {result.created} added, {result.updated} updated,{' '}
+              {result.archived} archived.
+            </span>
+          ) : null}
+        </div>
+      )}
+    </>
   );
 }
 

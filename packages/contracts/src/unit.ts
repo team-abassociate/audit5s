@@ -33,6 +33,12 @@ export const unitSchema = z.object({
   industryId: uuidSchema.nullable(),
   industryName: z.string().nullable(),
   photoCapPerZone: z.number().int(),
+  /**
+   * When a Super Admin or Coordinator last imported the Zone list (0054, R-59). `null`:
+   * never — the Consultant auditing it may add Zones, and an import replaces nothing.
+   * Optional so a device's cached Unit from before 0054 still parses.
+   */
+  zoneListImportedAt: isoDateTimeSchema.nullable().optional(),
   version: z.number().int(),
   archivedAt: isoDateTimeSchema.nullable(),
   createdAt: isoDateTimeSchema,

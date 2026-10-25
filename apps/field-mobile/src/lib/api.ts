@@ -135,7 +135,9 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
     [HEADER_DEVICE_ID]: await getDeviceId(),
   };
 
-  if (options.body !== undefined) headers['content-type'] = 'application/json';
+  // A file goes as multipart, and fetch writes that content type with its boundary.
+  const form = options.body instanceof FormData;
+  if (options.body !== undefined && !form) headers['content-type'] = 'application/json';
   if (options.method && options.method !== 'GET') {
     options.idempotencyKey ??= randomUUID();
     headers[HEADER_IDEMPOTENCY_KEY] = options.idempotencyKey;
@@ -145,7 +147,7 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    ...(options.body !== undefined ? { body: form ? (options.body as FormData) : JSON.stringify(options.body) } : {}),
   });
 
   if (response.status === 204) {

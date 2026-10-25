@@ -10,6 +10,7 @@ import {
   syncMeta,
   templateIndustries,
   unitIndustries,
+  unitZoneLists,
   units,
   zones,
 } from './schema';
@@ -44,6 +45,7 @@ export async function replaceCatalogue(
   await database.delete(zones);
   await database.delete(units);
   await database.delete(unitIndustries);
+  await database.delete(unitZoneLists);
   await database.delete(templateIndustries);
 
   const syncedAt = new Date().toISOString();
@@ -61,6 +63,13 @@ export async function replaceCatalogue(
         syncedAt,
       })),
     );
+  }
+
+  const imported = catalogue.units.filter((unit) => unit.zoneListImportedAt);
+  if (imported.length > 0) {
+    await database
+      .insert(unitZoneLists)
+      .values(imported.map((unit) => ({ unitId: unit.id, importedAt: unit.zoneListImportedAt! })));
   }
 
   if (catalogue.units.length > 0) {
@@ -200,6 +209,16 @@ export function listLocalUnits(database: LocalDatabase) {
 
 export function getLocalUnit(database: LocalDatabase, unitId: string) {
   return database.select().from(units).where(eq(units.id, unitId)).limit(1);
+}
+
+/** R-59: whether a Super Admin or Coordinator has imported this Unit's Zone list. */
+export async function unitHasZoneList(database: LocalDatabase, unitId: string): Promise<boolean> {
+  const rows = await database
+    .select({ unitId: unitZoneLists.unitId })
+    .from(unitZoneLists)
+    .where(eq(unitZoneLists.unitId, unitId))
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** Active Zones of one Unit, in the order the dropdown shows them. */

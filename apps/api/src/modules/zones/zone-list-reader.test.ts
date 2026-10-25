@@ -1,0 +1,100 @@
+import ExcelJS from 'exceljs';
+import { describe, expect, it } from 'vitest';
+import { readZoneList, ZoneListRejected } from './zone-list-reader';
+
+/** A one-page PDF of Helvetica text, each piece at its own x and y. */
+function pdfWith(pieces: Array<[text: string, x: number, y: number]>): Buffer {
+  const stream = pieces
+    .map(([text, x, y]) => `BT /F1 9 Tf ${x} ${y} Td (${text.replace(/[()\\]/g, '\\$&')}) Tj ET`)
+    .join('\n');
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1190 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let out = '%PDF-1.4\n';
+  const offsets = objects.map((object, index) => {
+    const offset = out.length;
+    out += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  out += offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, 'latin1');
+}
+
+describe('readZoneList', () => {
+  it('reads Zone No., Zone Name and Leader from a printed table, ignoring the other columns', async () => {
+    const pdf = pdfWith([
+      ['Location', 60, 750],
+      ['Zone No.', 170, 750],
+      ['Zone Name', 300, 750],
+      ['Leader', 480, 750],
+      ['Sub-Leader', 700, 750],
+      ['Members', 950, 750],
+      // Zone 01: one line each; its Sub-Leader cell is left-aligned, close to Leader's.
+      ['Unit 1', 60, 700],
+      ['Zone 01', 172, 700],
+      ['Maintenance Room', 285, 700],
+      ['Mr. A. Sharma', 465, 700],
+      ['Mr. K. Pal', 560, 713],
+      ['Mr. Yogesh Patil', 560, 700],
+      ['Mr. Dnyandev Barhate', 560, 687],
+      ['All trainees', 900, 700],
+      // Zone 02: a name and two leaders over two lines, centred on the Zone number.
+      ['Zone 02', 172, 640],
+      ['Quality (In-process) &', 280, 646],
+      ['Inspection Room', 295, 634],
+      ['Mr. B. Rao', 470, 646],
+      ['Mr. C. Das', 470, 634],
+      ['Mr. D. Joshi (Lab area)', 560, 640],
+      ['Company | Zone Wise Leader List', 440, 40],
+    ]);
+
+    expect(await readZoneList(pdf)).toEqual([
+      { code: 'Z-01', name: 'Maintenance Room', leaderName: 'Mr. A. Sharma', sortOrder: 1 },
+      {
+        code: 'Z-02',
+        name: 'Quality (In-process) & Inspection Room',
+        leaderName: 'Mr. B. Rao, Mr. C. Das',
+        sortOrder: 2,
+      },
+    ]);
+  });
+
+  it('reads the template workbook, skipping rows only numbered', async () => {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('Table 1');
+    sheet.addRow(['Name Of Your Unit']);
+    sheet.addRow(['Zone No.', 'Zone Discription(Name)', 'Leader', 'Members']);
+    sheet.addRow(['Zone 01', 'Press Pit', 'Mr. A\nMs. B', 'Everyone']);
+    sheet.addRow([7, 'Canteen', '']);
+    sheet.addRow(['Zone 08', '', '']);
+
+    expect(await readZoneList(Buffer.from(await book.xlsx.writeBuffer()))).toEqual([
+      { code: 'Z-01', name: 'Press Pit', leaderName: 'Mr. A, Ms. B', sortOrder: 1 },
+      { code: 'Z-07', name: 'Canteen', leaderName: null, sortOrder: 7 },
+    ]);
+  });
+
+  it('names every row it cannot read', async () => {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('Zones');
+    sheet.addRow(['Zone No', 'Zone Name', 'Leader']);
+    sheet.addRow(['Zone 01', 'Press Pit', '']);
+    sheet.addRow(['1', 'Press Pit again', '']);
+    sheet.addRow(['', 'Unnumbered', '']);
+
+    await expect(readZoneList(Buffer.from(await book.xlsx.writeBuffer()))).rejects.toThrow(
+      'row 3: Zone 1 is listed twice (also row 2); row 4: the Zone number is missing',
+    );
+  });
+
+  it('refuses a file that is neither a workbook nor a PDF', async () => {
+    await expect(readZoneList(Buffer.from('Zone No.,Zone Name,Leader'))).rejects.toBeInstanceOf(ZoneListRejected);
+  });
+});

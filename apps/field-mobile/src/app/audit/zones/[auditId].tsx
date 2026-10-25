@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ZoneLock, ZoneLocksResponse } from '@audit5s/contracts';
-import { MAX_AUDIT_RESTARTS, restartsRemaining, zoneCodeForLabel, zoneDisplayLabel } from '@audit5s/domain';
+import { MAX_AUDIT_RESTARTS, mayAddZoneWhileAuditing, restartsRemaining, zoneCodeForLabel, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -42,6 +42,7 @@ import {
 import {
   listLocalChecklistVersions,
   listLocalZones as listCatalogueZones,
+  unitHasZoneList,
 } from '../../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
 import { api, problemMessage } from '../../../lib/api';
@@ -110,7 +111,8 @@ function isEmptyDraft(draft: ZoneDraft): boolean {
  *
  * R-52: only a Super Admin or a Coordinator adds a Zone here — "+ New Zone" opens its label
  * (at most three letters or digits) and name on one line — and the server adds it to the
- * Unit when this audit syncs. Everyone else picks from the list.
+ * Unit when this audit syncs. R-59: so does a Consultant, while the Unit has no imported
+ * Zone list. Everyone else picks from the list.
  *
  * The resume banner of §9.8 is rendered from the local cursors, so reopening an audit
  * aborted three days ago costs no round trip.
@@ -139,8 +141,7 @@ export default function AuditZonesScreen() {
     [navigation, database, auditId, queryClient],
   );
 
-  const { can } = useSession();
-  const mayAddZone = can('zone', 'create');
+  const { can, scope } = useSession();
   const [zoneCode, setZoneCode] = useState<string | null>(null);
   const [newZone, setNewZone] = useState<NewZone | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ZoneDraft>>({});
@@ -173,6 +174,13 @@ export default function AuditZonesScreen() {
   });
 
   // Narrowed to the Unit's industry (0042), so a hospital is never offered a press shop.
+  const zoneList = useQuery({
+    enabled: Boolean(audit.data?.unitId),
+    queryKey: ['local', 'zone-list', audit.data?.unitId],
+    queryFn: () => unitHasZoneList(database, audit.data!.unitId),
+  });
+  // R-59: a Consultant adds Zones only to a Unit nobody has imported a Zone list for.
+  const mayAddZone = mayAddZoneWhileAuditing(scope?.role, zoneList.data ?? true);
   const versions = useQuery({
     enabled: Boolean(audit.data?.unitId),
     queryKey: ['local', 'checklist-versions', audit.data?.unitId],

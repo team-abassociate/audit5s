@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import type { AuditDetail, ZoneLocksResponse } from '@audit5s/contracts';
-import { MAX_AUDIT_RESTARTS, isAuditCompleted, restartsRemaining, uuidv7, zoneCodeForLabel, zoneDisplayLabel } from '@audit5s/domain';
+import { MAX_AUDIT_RESTARTS, isAuditCompleted, mayAddZoneWhileAuditing, restartsRemaining, uuidv7, zoneCodeForLabel, zoneDisplayLabel } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
 import {
   Button,
@@ -50,8 +50,11 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const audit = detail.data;
   useDocumentTitle(audit ? `${AUDIT_TYPE_LABEL[audit.auditType]} · ${audit.unitName}` : 'Audit');
 
-  const { can } = useSession();
-  const mayAddZone = can('zone', 'create');
+  const { scope } = useSession();
+  const mayAddZone = mayAddZoneWhileAuditing(
+    scope?.role,
+    Boolean(catalogue.data?.units.find((unit) => unit.id === audit?.unitId)?.zoneListImportedAt),
+  );
   const [zoneCode, setZoneCode] = useState<string | null>(null);
   // R-52: a Zone added here — its label (`1A`, at most 3) and name, on one line.
   const [newZone, setNewZone] = useState<{ label: string; name: string } | null>(null);
