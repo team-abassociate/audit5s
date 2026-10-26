@@ -373,6 +373,8 @@ export async function captureEvidence(
     bytes?: Buffer;
     /** Skips the commit, leaving the row SYNCING — §9.4's `orphan_metadata` case. */
     skipCommit?: boolean;
+    /** When the phone says it was taken; now by default. */
+    capturedAt?: string;
   },
 ): Promise<{ evidenceId: string; objectKey: string; uploadUrl: string; checksum: string }> {
   const bytes = options.bytes ?? TINY_JPEG;
@@ -398,7 +400,7 @@ export async function captureEvidence(
       contentType: 'image/jpeg',
       byteSize: bytes.byteLength,
       checksumSha256: checksum,
-      capturedAt: new Date().toISOString(),
+      capturedAt: options.capturedAt ?? new Date().toISOString(),
       isLiveCapture: options.isLiveCapture ?? true,
     },
   });

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import {
   audits,
   auditZones,
@@ -618,6 +618,8 @@ export class EvidenceRepository extends BaseRepository {
           auditType: audits.auditType,
           auditorUserId: audits.auditorUserId,
           owningDeviceId: audits.owningDeviceId,
+          startedAt: audits.startedAt,
+          completedAt: audits.completedAt,
           unitName: units.name,
         })
         .from(audits)
@@ -665,6 +667,8 @@ export class EvidenceRepository extends BaseRepository {
             evidenceScopeColumns,
             eq(evidence.localDeviceId, deviceId),
             inArray(evidence.syncState, ['SYNCING', 'PENDING', 'FAILED']),
+            // An aborted audit's photos are dropped on the phone; they will never arrive.
+            ne(audits.status, 'CANCELLED'),
             isNull(evidence.deletedAt),
           ),
         );

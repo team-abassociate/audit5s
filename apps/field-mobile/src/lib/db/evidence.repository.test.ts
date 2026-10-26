@@ -32,12 +32,14 @@ import {
   markDeadLetter,
   markSettled,
   requeueHeldZoneCompletions,
+  resetDeadLetters,
   zonesAwaitingPhotos,
 } from './outbox.repository';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
 import { LOCAL_SCHEMA_VERSION } from './migrations';
 import { createNodeExecutor } from './node-executor';
 import { FIXTURE_UNIT as UNIT, catalogue } from './test-fixtures';
+import { readSyncStatus } from '../sync/status';
 
 /**
  * The device's evidence store, against **real SQLite**.
@@ -717,5 +719,23 @@ describe('a Zone completion held before its Zone arrived (2026-10-18)', () => {
     await markSettled(database, zoneDone.id, 'Held for review: SCOPE_REVOKED');
 
     expect(await requeueHeldZoneCompletions(database)).toBe(0);
+  });
+});
+
+describe('photos stuck after every automatic try', () => {
+  it('are counted as photos, apart from other stuck items, until Retry re-queues them', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    const stuck = await captureLocalEvidence(database, { auditId, auditZoneId, kind: 'WALK_BY_PHOTO', ...PHOTO });
+    await captureLocalEvidence(database, { auditId, auditZoneId, kind: 'WALK_BY_PHOTO', ...PHOTO });
+    const rows = await listOutbox(database);
+    const media = rows.find((row) => row.entityId === stuck && row.queue === 'media')!;
+    const zone = rows.find((row) => row.entityType === 'audit_zone')!;
+    await markDeadLetter(database, media.id, { attempts: 8, lastError: 'timeout' });
+    await markDeadLetter(database, zone.id, { attempts: 8, lastError: 'timeout' });
+
+    expect(await readSyncStatus(database)).toMatchObject({ deadLettered: 2, deadLetteredPhotos: 1 });
+
+    expect(await resetDeadLetters(database)).toBe(2);
+    expect(await readSyncStatus(database)).toMatchObject({ deadLettered: 0, deadLetteredPhotos: 0 });
   });
 });

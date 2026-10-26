@@ -20,7 +20,8 @@ import { LocalDatabaseProvider, useLocalDatabase } from '../lib/db/provider';
 import { LanguageProvider } from '../lib/language-provider';
 import { SessionProvider, useSession } from '../lib/session';
 import { SyncProvider, useSync } from '../lib/sync/provider';
-import { SyncStatusBar } from '../components/sync-status-bar';
+import { StuckPhotosPrompt, SyncStatusBar } from '../components/sync-status-bar';
+import { PhotoBackupPrompt } from '../components/photo-backup-prompt';
 import { HeaderTitle } from '../components/ui';
 import { ThemedStatusBar, ThemeProvider } from '../lib/theme-provider';
 import { useTheme } from '../lib/theme';
@@ -220,6 +221,8 @@ function AuthGate() {
   return (
     <>
       {showBar && <SyncStatusBar />}
+      {signedIn && !cameraOpen && <StuckPhotosPrompt />}
+      {signedIn && !cameraOpen && <PhotoBackupPrompt />}
       {/* The sync bar already pads for the status bar; headers below it must not pad again. */}
       <SafeAreaInsetsContext.Provider value={showBar ? { ...insets, top: 0 } : insets}>
         <Stack

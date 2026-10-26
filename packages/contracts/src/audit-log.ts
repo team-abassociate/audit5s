@@ -42,6 +42,8 @@ export const AUDIT_LOG_ACTIONS = [
   'audit_assignment.created',
   'audit_assignment.cancelled',
   'audit.changed_after_completion',
+  /** R-62: a photo that joined a finished audit — stuck on the phone, or added within 24 h of the start. */
+  'evidence.added_after_completion',
   'audit.cancelled',
   /** §9.5 Layer 1's force-release: a Super Admin breaks a device's single-writer lock. */
   'audit.device_released',

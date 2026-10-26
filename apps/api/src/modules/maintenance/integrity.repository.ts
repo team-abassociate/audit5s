@@ -71,7 +71,9 @@ export class IntegrityRepository extends BaseRepository {
    * `commit` moves it to `SYNCED` with an `uploaded_at`, so anything else, old enough, is
    * a row describing a photograph that is not in the bucket. Redacted and deleted rows are
    * excluded: their object is *supposed* to be gone (R-5), and reporting them nightly
-   * would make every erasure look like a fault.
+   * would make every erasure look like a fault. So are a cancelled audit's: Abort audit drops
+   * its queued photos on the phone, so a row the intent opened stays SYNCING for ever, and
+   * a nightly alert for it would bury the photo that is really missing.
    *
    * The scope predicate reaches the Unit through the audit, which is the second hop §12.5
    * allows.
@@ -88,6 +90,7 @@ export class IntegrityRepository extends BaseRepository {
             { unitId: audits.unitId },
             eq(audits.unitId, unitId),
             ne(evidence.syncState, 'SYNCED'),
+            ne(audits.status, 'CANCELLED'),
             lt(evidence.createdAt, olderThan),
             isNull(evidence.deletedAt),
             isNull(evidence.redactedAt),

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EVIDENCE_KINDS, RESPONSE_VALUES } from '@audit5s/contracts';
 import {
   ALLOWED_IMAGE_TYPES,
+  photoMayJoinFinishedAudit,
   auditorChoosesClassification,
   canBeSummaryFlagged,
   classifyEvidence,
@@ -230,5 +231,22 @@ describe('thumbnail keys', () => {
 
   it('still produces a key for something with no extension', () => {
     expect(thumbnailObjectKey('evidence/u/a/z/e')).toBe('evidence/u/a/z/e.thumb.jpg');
+  });
+});
+
+describe('a photo joining a finished audit (R-62)', () => {
+  const startedAt = '2026-10-26T08:00:00.000Z';
+  const completedAt = '2026-10-26T10:00:00.000Z';
+  const may = (capturedAt: string, kind: 'WALK_BY_PHOTO' | 'CORRECTIVE_AFTER' = 'WALK_BY_PHOTO') =>
+    photoMayJoinFinishedAudit({ kind, capturedAt, startedAt, completedAt });
+
+  it('takes one taken before Finish, or within 24 hours of the start', () => {
+    expect(may('2026-10-26T09:59:00.000Z')).toBe(true);
+    expect(may('2026-10-27T07:59:00.000Z')).toBe(true);
+  });
+
+  it('refuses one taken later, and an after-photo, which has its own path', () => {
+    expect(may('2026-10-27T08:01:00.000Z')).toBe(false);
+    expect(may('2026-10-26T09:00:00.000Z', 'CORRECTIVE_AFTER')).toBe(false);
   });
 });

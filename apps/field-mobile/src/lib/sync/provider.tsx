@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { runSync, type SyncResult } from './engine';
 import { createSyncTransport } from './http-transport';
 import { readFileBytes } from '../capture/media';
+import { backUpPhotos, recoverPhotos } from '../capture/photo-backup';
 import { getDeviceId } from '../secure-storage';
 import { useOptionalLocalDatabase } from '../db/provider';
 import { useSession } from '../session';
@@ -52,6 +53,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   allowedRef.current = allowed;
   const kaizenRef = useRef(false);
   kaizenRef.current = can('kaizen', 'create') && user?.kaizenAccess === true;
+  const userIdRef = useRef<string | null>(null);
+  userIdRef.current = user?.id ?? null;
   const [syncing, setSyncing] = useState(false);
   const [online, setOnline] = useState(true);
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
@@ -73,7 +76,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       const transport = createSyncTransport(readFileBytes);
       // `allowed` guarantees a database; the guard is for the type.
       if (!database) return IDLE;
-      const result = await runSync(database, transport, { deviceId: await getDeviceId() });
+      const deviceId = await getDeviceId();
+      const userId = userIdRef.current;
+      // The backup copy first, so a photo has one before its upload is tried. A folder that
+      // is gone or no longer granted must not stop the sync itself.
+      if (userId) await backUpPhotos(database, userId).catch(() => undefined);
+      const result = await runSync(database, transport, { deviceId });
+      if (userId && result.error === undefined) {
+        await recoverPhotos(database, transport, { userId, deviceId }).catch(() => 0);
+      }
       // The selfie chips move with the upload, not with the next screen that happens to refetch.
       void queryClient.invalidateQueries({ queryKey: ['local', 'selfie-statuses'] });
       // What landed changes the live boards too: a Coordinator's "Record the fix" left the

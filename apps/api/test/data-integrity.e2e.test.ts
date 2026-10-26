@@ -51,8 +51,9 @@ describe('nightly data-integrity checks (§16.4)', () => {
     const findings = await integrity.sweep(SYSTEM_SCOPE, world.unitA);
 
     expect(findings).toEqual({
-      // The `SYNCING` evidence row from three days ago. The `SYNCED` one and the redacted
-      // one are not faults: one arrived, and the other's object is gone on purpose (R-5).
+      // The `SYNCING` evidence row from three days ago. The `SYNCED` one, the redacted one
+      // and the cancelled audit's are not faults: one arrived, and the others' objects are
+      // gone on purpose (R-5) or were never going to come.
       orphanEvidence: 1,
       // The audit started ten days ago. The paused one is two days old and is a device
       // finding, not a stale-audit one.
@@ -230,6 +231,14 @@ async function seedUnit(unitId: string, zoneId: string, versionId: string): Prom
   await evidenceRow(drifted, 'SYNCED', ago(3 * DAY_MS));
   // … and one erased on purpose, whose object is *meant* to be gone (R-5).
   await evidenceRow(honest, 'SYNCING', ago(3 * DAY_MS), { redacted: true });
+  // … and an aborted audit's selfie, which the phone dropped with the audit: not a fault.
+  const aborted = randomUUID();
+  await world.owner.query(
+    `INSERT INTO audit (id, unit_id, audit_type, status, auditor_user_id, checklist_version_id, started_at)
+     VALUES ($1, $2, 'EXTERNAL_5S', 'CANCELLED', $3, $4, $5)`,
+    [aborted, unitId, world.actors.CONSULTANT.userId, versionId, ago(3 * DAY_MS)],
+  );
+  await evidenceRow(aborted, 'SYNCING', ago(3 * DAY_MS));
 
   await world.owner.query(
     `INSERT INTO audit (id, unit_id, audit_type, status, auditor_user_id, checklist_version_id, started_at)

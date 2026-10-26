@@ -14,6 +14,8 @@ import { unsettledItems, unsyncedPhotos } from '../db/outbox.repository';
  *
  * So `LocalSyncStatus` has two counts and a dot, and no field that could be read as "done".
  */
+const PHOTO_ENTITIES = new Set(['evidence', 'kaizen_photo']);
+
 export type SyncDot = 'synced' | 'pending' | 'syncing' | 'failed';
 
 export interface LocalSyncStatus {
@@ -23,6 +25,8 @@ export interface LocalSyncStatus {
   pendingPhotos: number;
   /** Items that need a person: dead-lettered, with a reason. */
   deadLettered: number;
+  /** The photographs among them, counted once each (upload and commit are two rows). */
+  deadLetteredPhotos: number;
   syncing: boolean;
   lastSuccessfulPushAt: string | null;
   /**
@@ -36,7 +40,11 @@ export async function readSyncStatus(database: LocalDatabase): Promise<LocalSync
   const rows = await unsettledItems(database);
   const photos = await unsyncedPhotos(database);
 
-  const deadLettered = rows.filter((row) => row.state === 'DEAD_LETTER').length;
+  const dead = rows.filter((row) => row.state === 'DEAD_LETTER');
+  const deadLettered = dead.length;
+  const deadLetteredPhotos = new Set(
+    dead.filter((row) => PHOTO_ENTITIES.has(row.entityType)).map((row) => row.entityId),
+  ).size;
   const syncing = rows.some((row) => row.state === 'SYNCING');
 
   return {
@@ -44,6 +52,7 @@ export async function readSyncStatus(database: LocalDatabase): Promise<LocalSync
     pendingItems: rows.length,
     pendingPhotos: photos.length,
     deadLettered,
+    deadLetteredPhotos,
     syncing,
     lastSuccessfulPushAt: await getSyncMeta(database, SYNC_META_KEYS.lastSuccessfulPushAt),
     lastCheckedAt: await getSyncMeta(database, SYNC_META_KEYS.lastCatalogueSyncAt),

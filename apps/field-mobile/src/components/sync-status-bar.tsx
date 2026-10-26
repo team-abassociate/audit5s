@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSegments } from 'expo-router';
@@ -36,10 +37,9 @@ export function SyncStatusBar() {
   const router = useRouter();
   const inKaizen = (useSegments() as string[])[0] === 'kaizen';
   const database = useLocalDatabase();
-  const queryClient = useQueryClient();
   const { user, can } = useSession();
   const showSwitch = can('kaizen', 'read');
-  const { sync, online } = useSync();
+  const { online } = useSync();
 
   const status = useQuery({
     queryKey: ['local', 'sync-status'],
@@ -47,20 +47,7 @@ export function SyncStatusBar() {
     refetchInterval: 5_000,
   });
 
-  const syncNow = useMutation({
-    mutationFn: async () => {
-      // STACK.md §5's "N failed — tap to retry". A dead letter waits for a person, and this
-      // tap is that person: without it an item the server once refused — and everything
-      // queued behind it — could never be sent again, even after the cause was fixed.
-      if (status.data?.deadLettered) {
-        await retryDeadLetters(database);
-      }
-      return sync();
-    },
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-    },
-  });
+  const syncNow = useRetrySync();
 
   const data = status.data;
   // Keep the status-bar inset until the first read: the navigator below has had its top inset zeroed.
@@ -128,6 +115,63 @@ export function SyncStatusBar() {
 }
 
 /**
+ * STACK.md §5's "N failed — tap to retry". A dead letter waits for a person, and this tap
+ * is that person: without it an item the server once refused — and everything queued
+ * behind it — could never be sent again, even after the cause was fixed.
+ */
+function useRetrySync() {
+  const database = useLocalDatabase();
+  const queryClient = useQueryClient();
+  const { sync } = useSync();
+  return useMutation({
+    mutationFn: async () => {
+      await retryDeadLetters(database);
+      return sync();
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['local'] });
+    },
+  });
+}
+
+/**
+ * Photos that gave up after every automatic attempt, told to the auditor where they are.
+ *
+ * The red bar alone sits on the tabs, and an auditor mid-audit or with no wish to sign out
+ * never sees the logout gate. So once a photo dead-letters — on any screen — the phone says
+ * so and offers the retry. It asks again only when more photos join the stuck ones.
+ */
+export function StuckPhotosPrompt() {
+  const database = useLocalDatabase();
+  const { mutate: retry } = useRetrySync();
+  const stuck =
+    useQuery({
+      queryKey: ['local', 'sync-status'],
+      queryFn: () => readSyncStatus(database),
+      refetchInterval: 5_000,
+    }).data?.deadLetteredPhotos ?? 0;
+  const told = useRef(0);
+
+  useEffect(() => {
+    if (stuck <= told.current) {
+      told.current = Math.min(told.current, stuck);
+      return;
+    }
+    told.current = stuck;
+    Alert.alert(
+      stuck === 1 ? 'A photo could not be uploaded' : `${stuck} photos could not be uploaded`,
+      'They are safe on this phone. The automatic tries have stopped; check the connection and tap Retry upload.',
+      [
+        { text: 'Later', style: 'cancel' },
+        { text: 'Retry upload', onPress: () => retry() },
+      ],
+    );
+  }, [stuck, retry]);
+
+  return null;
+}
+
+/**
  * 5S | KAIZEN, one tap from every tab: the module open now is filled in ink, the other is the
  * one to tap. A 2px ink border and square ends, like the bar and the tab bar around it.
  */
@@ -176,7 +220,12 @@ function describe(status: {
   pendingItems: number;
   pendingPhotos: number;
   deadLettered: number;
+  deadLetteredPhotos: number;
 }): string {
+  if (status.deadLetteredPhotos > 0) {
+    const n = status.deadLetteredPhotos;
+    return `${n} photo${n === 1 ? '' : 's'} not uploaded — tap Retry`;
+  }
   if (status.deadLettered > 0) {
     return `${status.deadLettered} item${status.deadLettered === 1 ? '' : 's'} need attention`;
   }

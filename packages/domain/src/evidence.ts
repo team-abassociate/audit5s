@@ -200,3 +200,28 @@ export function thumbnailObjectKey(objectKey: string): string {
     ? `${objectKey}.thumb.jpg`
     : `${objectKey.slice(0, dot)}.thumb${objectKey.slice(dot)}`;
 }
+
+/** R-62: for 24 hours from an audit's start, a photo may still be added once it is finished. */
+export const LATE_PHOTO_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** When the auditor's "Add photo" on a finished audit closes (R-62). */
+export function latePhotoWindowEndsAt(startedAt: string | Date): Date {
+  return new Date(new Date(startedAt).getTime() + LATE_PHOTO_WINDOW_MS);
+}
+
+/**
+ * R-62: whether a photo may join an audit that is already finished. One taken before Finish
+ * was pressed — stuck on the phone — or within 24 hours of the start. An after-photo has its
+ * own path (R-13) and is not this.
+ */
+export function photoMayJoinFinishedAudit(input: {
+  kind: EvidenceKind;
+  capturedAt: string | Date;
+  startedAt: string | Date | null;
+  completedAt: string | Date | null;
+}): boolean {
+  if (input.kind === 'CORRECTIVE_AFTER') return false;
+  const captured = new Date(input.capturedAt).getTime();
+  if (input.completedAt && captured <= new Date(input.completedAt).getTime()) return true;
+  return input.startedAt !== null && captured <= latePhotoWindowEndsAt(input.startedAt).getTime();
+}

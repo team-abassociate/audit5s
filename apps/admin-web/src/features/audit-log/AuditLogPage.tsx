@@ -64,6 +64,7 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'audit_assignment.created': 'Assigned an audit',
   'audit_assignment.cancelled': 'Cancelled an assignment',
   'audit.changed_after_completion': 'Corrected a finished audit',
+  'evidence.added_after_completion': 'Added a photo to a finished audit',
   'audit.cancelled': 'Cancelled an audit',
   'audit.device_released': 'Released an audit from its phone',
   'audit.restarted': 'Restarted a finished audit',
