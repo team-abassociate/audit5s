@@ -408,3 +408,10 @@ export const localKaizenSubmissions = sqliteTable('kaizen_submission', {
   kaizenId: text('kaizen_id').notNull(),
   createdAt: text('created_at').notNull(),
 });
+
+/** A photo copied to the backup folder by this store (local migration v14). */
+export const photoBackups = sqliteTable('photo_backup', {
+  evidenceId: text('evidence_id').primaryKey(),
+  photoUri: text('photo_uri').notNull(),
+  sidecarUri: text('sidecar_uri').notNull(),
+});

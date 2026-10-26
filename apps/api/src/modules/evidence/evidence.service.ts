@@ -19,10 +19,13 @@ import {
   classifyEvidence,
   evidenceObjectKey,
   isAuditCompleted,
+  photoMayJoinFinishedAudit,
   sniffImageType,
   type ScopeContext,
 } from '@audit5s/domain';
 import type { Transaction } from '@audit5s/db';
+import { AuditLogService } from '../../common/audit-log/audit-log.service';
+import { SYSTEM_SCOPE } from '../../common/auth/system-scope';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { CONFIG, type AppConfig } from '../../config/env';
@@ -56,6 +59,7 @@ export class EvidenceService {
     private readonly storage: ObjectStorage,
     private readonly queue: QueueService,
     private readonly correctiveActions: CorrectiveActionsService,
+    private readonly auditLog: AuditLogService,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -106,7 +110,17 @@ export class EvidenceService {
       // AZ-3: an audit outside scope reads as absent, so ids cannot be probed.
       throw AppError.notFound('No such audit');
     }
-    this.assertWritable(audit.status, scope, audit.owningDeviceId);
+    // R-62: a photo may still join a finished audit — taken before Finish, or within 24 hours
+    // of the start — and its arrival is written to the audit log.
+    const late =
+      isAuditCompleted(audit.status) &&
+      photoMayJoinFinishedAudit({
+        kind: request.kind,
+        capturedAt: request.capturedAt,
+        startedAt: audit.startedAt,
+        completedAt: audit.completedAt,
+      });
+    if (!late) this.assertWritable(audit.status, scope, audit.owningDeviceId);
 
     const auditZoneId = await this.resolveZone(scope, request, audit.id);
     const linkedResponse = await this.resolveResponse(scope, request, audit.id);
@@ -150,7 +164,15 @@ export class EvidenceService {
       location: null,
     });
 
-    if (auditZoneId) {
+    if (late) {
+      await this.auditLog.record({
+        action: 'evidence.added_after_completion',
+        resourceType: 'audit',
+        resourceId: audit.id,
+        unitId: audit.unitId,
+        after: { evidenceId: request.id, kind: request.kind, capturedAt: request.capturedAt },
+      });
+    } else if (auditZoneId) {
       // §7.2: a Zone starts on the first response *or the first photograph*. The response
       // upsert covers the scored case; a walk-by has no questionnaire, so this is the only
       // thing that ever moves its Zone off DRAFT.
@@ -386,6 +408,12 @@ export class EvidenceService {
       // no-op once set, so a retake or a replayed commit cannot move the pointer the
       // report will render from.
       await this.repository.attachSelfieToAudit(scope, row.auditId, evidenceId);
+    }
+
+    // R-62: a problem photo that reached a finished audit late raises the corrective action
+    // its completion would have raised, and tells the Zone Leader.
+    if (isAuditCompleted(row.auditStatus) && classification === 'NONCONFORMITY') {
+      await this.correctiveActions.raiseMissing(SYSTEM_SCOPE, row.auditId);
     }
 
     return this.get(scope, evidenceId);

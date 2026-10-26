@@ -416,6 +416,19 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
       `DELETE FROM sync_meta WHERE key = 'catalogue_version'`,
     ],
   },
+  {
+    /*
+     * The photos this person's store has copied to the backup folder (owner, 2026-10-26), so
+     * a copy it made is deleted once the photo is on the server, and a copy it did *not*
+     * make — left from before a reinstall — is recognised as one to recover.
+     */
+    version: 14,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS photo_backup (
+         evidence_id TEXT PRIMARY KEY, photo_uri TEXT NOT NULL, sidecar_uri TEXT NOT NULL
+       )`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

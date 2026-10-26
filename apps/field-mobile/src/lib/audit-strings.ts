@@ -64,6 +64,8 @@ export interface AuditStrings {
   doneCorrecting: string;
   finishedTitle: string;
   finishedBody: string;
+  /** R-62: a finished audit still takes photos until 24 hours after its start. */
+  latePhotosUntil: (time: string) => string;
   reasonLabel: string;
   reasonPlaceholder: string;
   reasonHint: string;
@@ -151,6 +153,7 @@ const EN: AuditStrings = {
   finishedTitle: 'This audit is finished',
   finishedBody:
     'The marks below are the record. You may still correct one you got wrong — it is logged with your reason, and nothing is overwritten quietly (A-2).',
+  latePhotosUntil: (time) => `You can still add photos until ${time}.`,
   reasonLabel: 'Why the correction is needed',
   reasonPlaceholder: 'What was wrong with the mark, in your words',
   reasonHint: 'At least ten characters. It is written to the audit log.',
@@ -241,6 +244,7 @@ const HI: AuditStrings = {
   finishedTitle: 'यह ऑडिट पूरा हो चुका है',
   finishedBody:
     'नीचे दिए अंक ही रिकॉर्ड हैं। अगर कोई अंक ग़लत दिया गया है तो आप अब भी उसे सुधार सकते हैं — यह आपके कारण के साथ दर्ज होता है, चुपचाप कुछ नहीं बदला जाता (A-2)।',
+  latePhotosUntil: (time) => `आप ${time} तक अभी भी फ़ोटो जोड़ सकते हैं।`,
   reasonLabel: 'सुधार की ज़रूरत क्यों है',
   reasonPlaceholder: 'अंक में क्या ग़लत था, अपने शब्दों में',
   reasonHint: 'कम से कम दस अक्षर। यह ऑडिट लॉग में दर्ज होता है।',
@@ -331,6 +335,7 @@ const MR: AuditStrings = {
   finishedTitle: 'हे ऑडिट पूर्ण झाले आहे',
   finishedBody:
     'खालील गुण हीच नोंद आहे. एखादा गुण चुकीचा दिला असेल तर तुम्ही तो अजूनही दुरुस्त करू शकता — तो तुमच्या कारणासह नोंदवला जातो, काहीही गुपचूप बदलले जात नाही (A-2).',
+  latePhotosUntil: (time) => `तुम्ही ${time} पर्यंत अजूनही फोटो जोडू शकता.`,
   reasonLabel: 'दुरुस्ती का आवश्यक आहे',
   reasonPlaceholder: 'गुणात काय चुकले होते, तुमच्या शब्दांत',
   reasonHint: 'किमान दहा अक्षरे. हे ऑडिट लॉगमध्ये नोंदवले जाते.',

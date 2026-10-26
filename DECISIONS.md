@@ -52,6 +52,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-56 | A cross audit covers several Zones; the Coordinator moves its date and completes it | Settled |
 | R-59 | A Unit's Zone list is imported from Excel or PDF; until it is, a Consultant adds Zones | Settled |
 | R-60 | An audit keeps the Zone label it was taken under; a rename or import never relabels it | Settled |
+| R-62 | A photo survives the app being removed, and may join a finished audit | Settled |
 | R-61 | A Zone Leader may correct their own completed audit | Settled |
 
 ---
@@ -2548,3 +2549,37 @@ mark in an audit they conducted corrects it on the phone, the way a Consultant d
   same `PATCH /audits/{id}/post-completion`, justification required and logged (A-2), with
   R-31's cascade. The database carve-out (0022) already checks the auditor, not the role, so
   no migration.
+
+## R-62 — A photo survives the app being removed, and may join a finished audit
+
+**Settled 2026-10-26 by the product owner**, after test photos from one phone never arrived
+because the app was gone before they uploaded.
+
+- **Stuck photos are told to the auditor.** Once a photo has used its eight automatic tries,
+  the phone says so on any screen and offers **Retry upload**; the sync bar reads "N photos
+  not uploaded". It asks again only when more photos get stuck.
+- **A photo may join a finished audit** if it was taken before Finish was pressed (stuck on
+  the phone) or within 24 hours of the audit's start. On the phone, a finished audit's
+  question photo buttons stay until 24 hours after the start. Each such photo writes an
+  `evidence.added_after_completion` log entry. A-2 is narrowed, not dropped: nothing else
+  about a finished audit changes, the photo cannot then be deleted or edited, and a photo
+  outside the window is refused. The rule is `photoMayJoinFinishedAudit` in the domain
+  package, judged on the capture time the phone reports.
+- **A late problem photo raises its corrective action**, as completion would have: the
+  Zone Leader is notified, and an audit that had closed with no actions reopens
+  (`CorrectiveActionsService.raiseMissing`). Migration 0056 lets the photo's arrival — not
+  yet uploaded to uploaded, once — through the completed-audit guard.
+- **Every audit photo is kept in the phone's gallery.** It is written as a JPEG to a folder
+  the auditor chooses once through Android's folder picker (Pictures/Audit5S). No storage
+  permission is added; the manifest still blocks them. The copy stays for good. While the
+  photo waits to upload, a recovery file sits beside it; it is deleted once the photo is on
+  the server. After a reinstall, choosing the same folder sends that person's photos whose
+  recovery file is still there; another person's are left alone. Local migration v14
+  records which copies each person's store made.
+- **Accepted costs.** Anyone using the phone can see the client site photos in its gallery,
+  and storage grows with every photo.
+- **Not covered.** An audit whose answers never left the phone is lost with the phone's
+  store; its photos stay in the gallery. Walk-by Zones and Kaizen photos do not get the
+  late-photo buttons, and Kaizen photos are not copied.
+- Photos of an aborted audit no longer count as missing in the nightly check or in the
+  phone's sync status.

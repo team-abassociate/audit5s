@@ -14,6 +14,7 @@ import {
   S_SECTION_SHORT_LABELS,
   TOTAL_QUESTIONS,
   bandFor,
+  latePhotoWindowEndsAt,
   zoneDisplayLabel,
 } from '@audit5s/domain';
 import {
@@ -68,7 +69,7 @@ import {
   scoreLocalZone,
 } from '../../lib/db/audit.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { formatPct } from '../../lib/format';
+import { formatDateTime, formatPct } from '../../lib/format';
 import { questionWording } from '../../lib/language';
 import { useLanguage } from '../../lib/language-provider';
 import { isFinished } from '../../lib/labels';
@@ -451,6 +452,11 @@ export default function QuestionnaireScreen() {
     !auditOpen &&
     can('audit', 'edit_after_completion');
   const editable = auditOpen || correcting !== null;
+  // R-62: a finished audit still takes photos until 24 hours after its start.
+  const finished = audit.data ? isFinished(audit.data.status) && zone.data.status !== 'WITHDRAWN' : false;
+  const latePhotosUntil =
+    finished && audit.data?.startedAt ? latePhotoWindowEndsAt(audit.data.startedAt) : null;
+  const photosOpen = auditOpen || (latePhotosUntil !== null && Date.now() < latePhotosUntil.getTime());
   const reasonGiven = reasonDraft.trim().length >= MIN_JUSTIFICATION;
   const reviewingFinishedZone = auditOpen && zone.data.status === 'COMPLETED';
 
@@ -582,6 +588,9 @@ export default function QuestionnaireScreen() {
             ) : !auditOpen ? (
               <Slip title={t.finishedTitle}>
                 <SlipText>{t.finishedBody}</SlipText>
+                {photosOpen && latePhotosUntil ? (
+                  <SlipText>{t.latePhotosUntil(formatDateTime(latePhotosUntil))}</SlipText>
+                ) : null}
                 {correctable ? (
                   <View style={styles.slipAction}>
                     <Field
@@ -635,7 +644,7 @@ export default function QuestionnaireScreen() {
             onPreview={setPreviewId}
             missing={showMissing && valueOf(item) === null}
             readOnly={!editable}
-            canPhoto={auditOpen && photos.isSuccess && zonePhotoCount < ZONE_PHOTO_LIMIT}
+            canPhoto={photosOpen && photos.isSuccess && zonePhotoCount < ZONE_PHOTO_LIMIT}
             onAnswer={(value, remark) => {
               setPicked((current) => ({ ...current, [item.questionId]: value }));
               // The same tap, two doors: an open audit takes an answer, a finished one

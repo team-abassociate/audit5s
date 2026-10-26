@@ -913,6 +913,52 @@ describe('invariant E-4 — deletion is soft, and only before completion', () =>
     expect(deleted.status).toBe(409);
     expect((deleted.body as { code: string }).code).toBe('AUDIT_ALREADY_COMPLETED');
   });
+
+  it('still accepts a photo whose bytes arrive after the audit is completed', async () => {
+    // A photo that gave up on the phone does not hold the audit's finish, so its commit
+    // can come after completion: the auditor's Retry, or a recovered backup copy.
+    const { auditId, auditZoneId } = await runningAudit({ auditType: 'WALK_BY' });
+    await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId: randomUUID(),
+      auditId,
+      auditZoneId,
+      kind: 'WALK_BY_PHOTO',
+      deviceId: DEVICE_ID,
+    });
+    const late = await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId: randomUUID(),
+      auditId,
+      auditZoneId,
+      kind: 'WALK_BY_PHOTO',
+      deviceId: DEVICE_ID,
+      skipCommit: true,
+    });
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    const completed = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(completed.status, JSON.stringify(completed.body)).toBe(200);
+
+    const commit = await world.request('POST', `${base}/evidence/${late.evidenceId}/commit`, {
+      token: consultantToken,
+      headers: { 'x-device-id': DEVICE_ID },
+      body: { checksumSha256: late.checksum },
+    });
+    expect(commit.status, JSON.stringify(commit.body)).toBe(200);
+    expect((commit.body as Evidence).syncState).toBe('SYNCED');
+
+    // Arriving is the one change it gets: everything else stays frozen (A-2).
+    // (R-62 below covers a photo whose request itself arrives late.)
+    await expect(
+      world.owner.query(`UPDATE evidence SET remark = 'changed' WHERE id = $1`, [late.evidenceId]),
+    ).rejects.toThrow(/may not be updated after completion/);
+  });
 });
 
 describe('§7.2 — a walk-by Zone needs a photograph', () => {
@@ -996,5 +1042,117 @@ describe('the device lock reaches evidence too (D7)', () => {
 
     // Restore the fixture token for the suites that follow.
     consultantToken = await loginFromDevice(world, world.actors.CONSULTANT, DEVICE_ID);
+  });
+});
+
+describe('R-62 — a photo joining a finished audit', () => {
+  /** A walk-by with one committed photo, finished. Its first photo is GOOD, so it closes. */
+  async function finishedWalkBy(options: { startedDaysAgo?: number } = {}) {
+    const { auditId, auditZoneId } = await runningAudit({ auditType: 'WALK_BY' });
+    if (options.startedDaysAgo) {
+      await world.owner.query(`UPDATE audit SET started_at = now() - make_interval(days => $2) WHERE id = $1`, [
+        auditId,
+        options.startedDaysAgo,
+      ]);
+    }
+    await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId: randomUUID(),
+      auditId,
+      auditZoneId,
+      kind: 'WALK_BY_PHOTO',
+      classification: 'GOOD',
+      deviceId: DEVICE_ID,
+    });
+    await world.request('POST', `${base}/audits/${auditId}/zones/${auditZoneId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    const done = await world.request('POST', `${base}/audits/${auditId}/complete`, {
+      token: consultantToken,
+      body: {},
+    });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    return { auditId, auditZoneId, completedAt: (done.body as Audit).completedAt! };
+  }
+
+  it('takes a stuck photo taken before Finish, and logs it', async () => {
+    const before = new Date(Date.now() - 60_000).toISOString();
+    const { auditId, auditZoneId } = await finishedWalkBy({ startedDaysAgo: 3 });
+    const evidenceId = randomUUID();
+    await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId,
+      auditId,
+      auditZoneId,
+      kind: 'WALK_BY_PHOTO',
+      classification: 'GOOD',
+      deviceId: DEVICE_ID,
+      capturedAt: before,
+    });
+
+    const { rows } = await world.owner.query(
+      `SELECT sync_state FROM evidence WHERE id = $1`,
+      [evidenceId],
+    );
+    expect(rows[0].sync_state).toBe('SYNCED');
+    const log = await world.owner.query(
+      `SELECT after FROM audit_log WHERE action = 'evidence.added_after_completion' AND resource_id = $1`,
+      [auditId],
+    );
+    expect(log.rows).toEqual([{ after: expect.objectContaining({ evidenceId }) }]);
+  });
+
+  it('takes a new photo within 24 hours of the start, and refuses one after', async () => {
+    const fresh = await finishedWalkBy();
+    await expect(
+      captureEvidence(world, {
+        token: consultantToken,
+        evidenceId: randomUUID(),
+        auditId: fresh.auditId,
+        auditZoneId: fresh.auditZoneId,
+        kind: 'WALK_BY_PHOTO',
+        classification: 'GOOD',
+        deviceId: DEVICE_ID,
+      }),
+    ).resolves.toBeDefined();
+
+    const old = await finishedWalkBy({ startedDaysAgo: 2 });
+    await expect(
+      captureEvidence(world, {
+        token: consultantToken,
+        evidenceId: randomUUID(),
+        auditId: old.auditId,
+        auditZoneId: old.auditZoneId,
+        kind: 'WALK_BY_PHOTO',
+        classification: 'GOOD',
+        deviceId: DEVICE_ID,
+      }),
+    ).rejects.toThrow(/AUDIT_ALREADY_COMPLETED/);
+  });
+
+  it('raises the corrective action of a late problem photo and reopens the audit', async () => {
+    const { auditId, auditZoneId } = await finishedWalkBy();
+    const closed = await world.owner.query(`SELECT status FROM audit WHERE id = $1`, [auditId]);
+    expect(closed.rows[0].status).toBe('CLOSED');
+
+    const evidenceId = randomUUID();
+    await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId,
+      auditId,
+      auditZoneId,
+      kind: 'WALK_BY_PHOTO',
+      classification: 'NONCONFORMITY',
+      deviceId: DEVICE_ID,
+    });
+
+    const actions = await world.owner.query(
+      `SELECT count(*)::int AS n FROM corrective_action WHERE audit_id = $1`,
+      [auditId],
+    );
+    expect(actions.rows[0].n).toBe(1);
+    const reopened = await world.owner.query(`SELECT status FROM audit WHERE id = $1`, [auditId]);
+    expect(reopened.rows[0].status).toBe('CORRECTIVE_ACTION_OPEN');
   });
 });
