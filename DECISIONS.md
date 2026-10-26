@@ -51,6 +51,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-55 | A called cross audit has a deadline and stands until anyone does it | Settled |
 | R-56 | A cross audit covers several Zones; the Coordinator moves its date and completes it | Settled |
 | R-59 | A Unit's Zone list is imported from Excel or PDF; until it is, a Consultant adds Zones | Settled |
+| R-60 | An audit keeps the Zone label it was taken under; a rename or import never relabels it | Settled |
 
 ---
 
@@ -2344,7 +2345,7 @@ add a Zone by naming its number, and, for a Zone's code and name only, D6's snap
   as `Z-07`, `Z-1A`, `Z-12B` and shown as "Zone 1A" everywhere (`zoneCodeForLabel`,
   `zoneDisplayLabel`). A Coordinator or Super Admin may renumber and rename an existing Zone
   (Zone 1 → Zone 1A) from the Unit's Zones on the web or the phone.
-- **A rename reaches history.** Asked whether last month's report should keep "Zone 1" after
+- **A rename reaches history.** *(Withdrawn by R-60: an audit keeps the label it was taken under.)* Asked whether last month's report should keep "Zone 1" after
   the rename, the owner chose "everything shows the new name": a trigger on `zone` rewrites
   `audit_zone.zone_code_snapshot` / `zone_name_snapshot` for every audit of the Zone,
   finished ones included, so reports and corrective actions read the new label. The
@@ -2512,3 +2513,25 @@ to Units that have an imported Zone list.
 - **Template.** `zone-list-template.xlsx` — the owner's three-column sheet, Zone 01–30 numbered
   and blank — is served beside the web app; both clients offer it. A row with a Zone number
   and nothing else is a blank template row, not a Zone.
+
+---
+
+## R-60 — An audit keeps the Zone label it was taken under; a rename or import never relabels it
+
+**Settled 2026-10-26 by the product owner.** Withdraws R-52's "a rename reaches history" and
+restores D6's snapshot for the Zone's code and name.
+
+- **Why.** An auditor reports Zone 1 today. A fortnight later the Unit renumbers it Zone 7 —
+  by hand or by importing a Zone list (R-59) — while its corrective actions are still open.
+  Relabelling that audit leaves the Zone Leader, the auditor and the Super Admin reading a
+  report and actions that no longer say what was audited.
+- **The rule.** An audit Zone's code and name are taken when the Zone joins the audit and are
+  never rewritten by a change to the Unit's Zone — finished audits and open ones alike. Its
+  corrective actions, the board, and every report, including one regenerated later, read
+  that snapshot. Migration 0055 drops the relabelling trigger and the append-only guard's
+  carve-out for it.
+- **Renaming a Zone** stays on the Unit's Zones list (web and phone) and changes the Zone for
+  audits started afterwards. The phone's "Rename" on a finished audit's Zone is gone: its only
+  purpose was relabelling that audit.
+- **Not changed back.** Audits relabelled while R-52 was in force (2026-10-12 to 2026-10-26)
+  keep their current label; each rename's before and after is in the audit log.

@@ -604,7 +604,7 @@ function EditZoneFields({
             error={labelError ?? fieldErrors.code}
             hint={zoneLabelFromCode(zone.code) === null ? `Now ${zone.code}` : undefined}
           >
-            <Field label="Name" error={fieldErrors.name} hint="Renaming relabels this Zone’s past audits and reports too.">
+            <Field label="Name" error={fieldErrors.name} hint="Past audits and their reports keep the name they were taken under.">
               <Input {...register('name')} />
             </Field>
           </ZoneNumberInput>

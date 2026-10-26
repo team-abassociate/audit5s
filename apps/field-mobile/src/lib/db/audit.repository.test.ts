@@ -19,7 +19,6 @@ import {
   listResumableAudits,
   pauseLocalAudit,
   pendingOutboxCount,
-  renameLocalZone,
   restartLocalAudit,
   resumeCursor,
   resumeLocalAudit,
@@ -773,14 +772,6 @@ describe('the Overview tab’s resumable audits', () => {
     const open = await listResumableAudits(database);
     expect(open).toHaveLength(1);
     expect(open[0]).toMatchObject({ status: 'PAUSED', pauseReason: 'Aborted by auditor' });
-  });
-});
-
-describe('a Zone renamed on the server', () => {
-  it('shows its new name on this device’s audits', async () => {
-    const { auditZoneId } = await startAudit();
-    await renameLocalZone(database, { unitId: UNIT, code: 'Z-01', name: 'Paint line' });
-    expect((await getLocalAuditZone(database, auditZoneId))[0]!.zoneNameSnapshot).toBe('Paint line');
   });
 });
 

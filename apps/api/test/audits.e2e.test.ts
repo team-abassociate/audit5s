@@ -1469,8 +1469,8 @@ describe('cancellation retains everything (A-1, D8)', () => {
   });
 });
 
-describe('snapshot isolation (D6), and the rename that crosses it (R-52)', () => {
-  it('relabels a completed audit when its Zone is renamed, and keeps everything else', async () => {
+describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)', () => {
+  it('keeps a completed audit’s Zone label when the Zone is renumbered and renamed', async () => {
     const zoneId = await createZone('Z-46', 'Press', 'Press shop, bay 3');
     const { auditId, auditZoneId } = await completedAuditForZone(zoneId);
 
@@ -1481,8 +1481,8 @@ describe('snapshot isolation (D6), and the rename that crosses it (R-52)', () =>
     expect(beforeZone.zoneNameSnapshot).toBe('Press');
     expect(beforeZone.zoneDescriptionSnapshot).toBe('Press shop, bay 3');
 
-    // Zone 46 becomes Zone 46A, through the real endpoint. The owner's rule (R-52): the old
-    // report reads the new label. The description the auditor saw stays what it was.
+    // Zone 46 becomes Zone 46A, through the real endpoint. The owner's rule (R-60): the audit,
+    // its corrective actions and any regenerated report still say what was audited.
     const edited = await world.request('PATCH', `${base}/zones/${zoneId}`, {
       token: asSuperAdmin(),
       body: { code: 'Z-46A', name: 'Press Shop (renamed)', description: 'Moved to bay 7 in June' },
@@ -1493,19 +1493,24 @@ describe('snapshot isolation (D6), and the rename that crosses it (R-52)', () =>
       token: consultantToken,
     });
     const afterZone = (after.body as AuditDetail).zones.find((z) => z.id === auditZoneId)!;
-    expect(afterZone.zoneNameSnapshot).toBe('Press Shop (renamed)');
-    expect(afterZone.zoneCodeSnapshot).toBe('Z-46A');
+    expect(afterZone.zoneNameSnapshot).toBe('Press');
+    expect(afterZone.zoneCodeSnapshot).toBe('Z-46');
     expect(afterZone.zoneDescriptionSnapshot).toBe('Press shop, bay 3');
     expect(afterZone.totals).toEqual(beforeZone.totals);
 
-    // The carve-out is the Zone's own label and nothing else: history still refuses any
-    // other text, even from the table owner.
+    // Nor may anything else rewrite it, even the table owner — the Zone's live label included.
     await expect(
       world.owner.query(`UPDATE audit_zone SET zone_name_snapshot = 'Forged' WHERE id = $1`, [auditZoneId]),
     ).rejects.toThrow(/may not be updated after completion/);
+    await expect(
+      world.owner.query(
+        `UPDATE audit_zone SET zone_code_snapshot = 'Z-46A', zone_name_snapshot = 'Press Shop (renamed)' WHERE id = $1`,
+        [auditZoneId],
+      ),
+    ).rejects.toThrow(/may not be updated after completion/);
   });
 
-  it('keeps a rename on a later upsert, and is not re-pointed by the stale code a phone repeats', async () => {
+  it('keeps the label an open audit took through a rename, and is not re-pointed by the code a phone repeats', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
     const zoneId = await createZone('Z-47', 'Original name', 'Original description');
     const { auditId, auditZoneId } = await startAuditWithZone({
@@ -1520,9 +1525,9 @@ describe('snapshot isolation (D6), and the rename that crosses it (R-52)', () =>
       body: { name: 'Changed mid-audit', description: 'Changed too' },
     });
 
-    // A second upsert — the device saving a Zone remark — keeps the rename (R-52) and the
-    // description the auditor saw. It repeats the code the phone snapshotted, which the
-    // rename has moved on from; that must not re-point the audit Zone or add Z-47 back.
+    // A second upsert — the device saving a Zone remark — keeps the label and description the
+    // audit took (R-60). It repeats the code the phone snapshotted, which the rename has moved
+    // on from; that must not re-point the audit Zone or add Z-47 back.
     await world.request('PATCH', `${base}/zones/${zoneId}`, {
       token: asSuperAdmin(),
       body: { code: 'Z-47B' },
@@ -1533,8 +1538,8 @@ describe('snapshot isolation (D6), and the rename that crosses it (R-52)', () =>
     });
     expect(second.status, JSON.stringify(second.body)).toBe(200);
     expect((second.body as AuditZone).zoneId).toBe(zoneId);
-    expect((second.body as AuditZone).zoneNameSnapshot).toBe('Changed mid-audit');
-    expect((second.body as AuditZone).zoneCodeSnapshot).toBe('Z-47B');
+    expect((second.body as AuditZone).zoneNameSnapshot).toBe('Original name');
+    expect((second.body as AuditZone).zoneCodeSnapshot).toBe('Z-47');
     expect((second.body as AuditZone).zoneDescriptionSnapshot).toBe('Original description');
     expect((second.body as AuditZone).zoneRemark).toBe('Tidy');
   });
