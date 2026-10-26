@@ -28,7 +28,7 @@ import {
   LedgerRow,
   Muted,
 } from './ui';
-import { api, problemMessage } from '../lib/api';
+import { api, ApiError, problemMessage } from '../lib/api';
 import { ROLE_LABELS } from '../lib/labels';
 import { useSession } from '../lib/session';
 import { createThemedStyles, useTheme } from '../lib/theme';
@@ -383,14 +383,23 @@ function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: st
       }
       if (picked.canceled) return null;
       const file = picked.result;
-      if (file.size > ZONE_LIST_IMPORT_MAX_BYTES) {
+      let bytes: Uint8Array;
+      try {
+        bytes = await file.bytes();
+      } catch (cause) {
+        setMessage(`Could not read the file: ${cause instanceof Error ? cause.message : String(cause)}`);
+        return null;
+      }
+      if (bytes.length > ZONE_LIST_IMPORT_MAX_BYTES) {
         setMessage('The file is larger than 5 MB.');
         return null;
       }
-      const form = new FormData();
-      // React Native's fetch reads a file part from its uri.
-      form.append('file', { uri: file.uri, name: file.name, type: file.type || 'application/octet-stream' } as unknown as Blob);
-      return api.post<ZoneListImportResult>(`/units/${unitId}/zones/import`, form);
+      // The server tells a PDF from a workbook by its first bytes, not by this name.
+      return api.upload<ZoneListImportResult>(`/units/${unitId}/zones/import`, 'file', {
+        bytes,
+        name: file.name || 'zone-list',
+        type: file.type || 'application/octet-stream',
+      });
     },
     onSuccess: async (result) => {
       if (!result) return;
@@ -424,7 +433,13 @@ function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: st
       )}
       <Button title="Zone list template" icon="file-download" variant="secondary" onPress={openTemplate} />
       {message ? <Muted>{message}</Muted> : null}
-      <ErrorBanner message={importList.error ? problemMessage(importList.error) : null} />
+      <ErrorBanner
+        message={
+          importList.error instanceof ApiError || !importList.error
+            ? problemMessage(importList.error)
+            : `The file could not be sent: ${importList.error.message}`
+        }
+      />
     </View>
   );
 }

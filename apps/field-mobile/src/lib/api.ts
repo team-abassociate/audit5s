@@ -10,6 +10,7 @@ import {
   saveSession,
   type StoredSession,
 } from './secure-storage';
+import { multipartBody } from './multipart';
 import { clearLastMe } from './last-me';
 import { proposeRefreshToken } from './refresh-token';
 
@@ -125,6 +126,8 @@ interface RequestOptions {
   raw?: boolean;
   /** Minted once per write and reused by the token-refresh retry, so a replay is one change. */
   idempotencyKey?: string;
+  /** For a byte body; anything else is JSON. */
+  contentType?: string;
 }
 
 async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -135,9 +138,9 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
     [HEADER_DEVICE_ID]: await getDeviceId(),
   };
 
-  // A file goes as multipart, and fetch writes that content type with its boundary.
-  const form = options.body instanceof FormData;
-  if (options.body !== undefined && !form) headers['content-type'] = 'application/json';
+  // A file goes as a ready-made byte body (see `api.upload`), under its own content type.
+  const bytes = options.body instanceof Uint8Array;
+  if (options.body !== undefined) headers['content-type'] = options.contentType ?? 'application/json';
   if (options.method && options.method !== 'GET') {
     options.idempotencyKey ??= randomUUID();
     headers[HEADER_IDEMPOTENCY_KEY] = options.idempotencyKey;
@@ -147,7 +150,10 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    ...(options.body !== undefined ? { body: form ? (options.body as FormData) : JSON.stringify(options.body) } : {}),
+    // React Native's `fetch` types name the body differently from the DOM's (as in http-transport).
+    ...(options.body !== undefined
+      ? { body: bytes ? (options.body as unknown as string) : JSON.stringify(options.body) }
+      : {}),
   });
 
   if (response.status === 204) {
@@ -278,6 +284,11 @@ export const api = {
   post: <T>(path: string, body?: unknown) => send<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body: unknown) => send<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => send<T>(path, { method: 'DELETE' }),
+  /** One file as `multipart/form-data` under `field`. */
+  upload: <T>(path: string, field: string, file: { bytes: Uint8Array; name: string; type: string }) => {
+    const { body, contentType } = multipartBody(field, file, `audit5s-${randomUUID()}`);
+    return send<T>(path, { method: 'POST', body, contentType });
+  },
 };
 
 /** The words to show for a failed request: the server's sentence and its field messages. */
