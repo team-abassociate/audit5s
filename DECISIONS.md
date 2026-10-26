@@ -2569,12 +2569,15 @@ because the app was gone before they uploaded.
   Zone Leader is notified, and an audit that had closed with no actions reopens
   (`CorrectiveActionsService.raiseMissing`). Migration 0056 lets the photo's arrival — not
   yet uploaded to uploaded, once — through the completed-audit guard.
-- **Every audit photo is kept in the phone's gallery.** It is written as a JPEG to a folder
-  the auditor chooses once through Android's folder picker (Pictures/Audit5S). No storage
-  permission is added; the manifest still blocks them. The copy stays for good. While the
-  photo waits to upload, a recovery file sits beside it; it is deleted once the photo is on
-  the server. After a reinstall, choosing the same folder sends that person's photos whose
-  recovery file is still there; another person's are left alone. Local migration v14
+- **Every audit photo is kept in the phone's gallery**, as a JPEG in Pictures/Audit5S. Once
+  per install, Android's folder picker opens on Pictures and the auditor taps "Use this
+  folder" and "Allow"; the app finds or makes its `Audit5S` folder inside (owner,
+  2026-10-26: making the folder by hand was too much). No storage permission is added; the
+  manifest still blocks them, which the owner chose over a fully automatic save that would
+  need the photo permission and a new APK. The copy stays for good. While the photo waits
+  to upload, a recovery file sits beside it; it is deleted once the photo is on the server.
+  After a reinstall, the same two taps find the old folder and send that person's photos
+  whose recovery file is still there; another person's are left alone. Local migration v14
   records which copies each person's store made.
 - **Accepted costs.** Anyone using the phone can see the client site photos in its gallery,
   and storage grows with every photo.

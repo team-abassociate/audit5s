@@ -24,10 +24,10 @@ export function PhotoBackupPrompt() {
       if (folder) return;
       Alert.alert(
         'Keep your photos in the gallery',
-        'Every audit photo is also saved to a folder in this phone’s gallery, so it is not ' +
-          'lost if the app is removed or reinstalled.\n\nOn the next screen, open "Pictures", ' +
-          'create a folder named "Audit5S" and tap "Use this folder". After a reinstall, choose ' +
-          'the same folder and any photo not yet uploaded is sent again.',
+        'Every audit photo is also saved to this phone’s gallery, in Pictures › Audit5S, so it ' +
+          'is not lost if the app is removed or reinstalled.\n\nOn the next screen, tap "Use this ' +
+          'folder", then "Allow". After a reinstall, do the same and any photo not yet uploaded is ' +
+          'sent again.',
         [
           { text: 'Not now', style: 'cancel' },
           {

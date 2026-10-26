@@ -46,11 +46,23 @@ export async function backupFolder(): Promise<string | null> {
   }
 }
 
-/** Android's folder picker. Returns whether a folder was chosen. */
+const FOLDER_NAME = 'Audit5S';
+
+/**
+ * Android's folder picker, opened on Pictures so the auditor only taps "Use this folder" and
+ * "Allow". The app's own `Audit5S` folder inside is found — after a reinstall, the old one —
+ * or made. Returns whether a folder was granted.
+ */
 export async function chooseBackupFolder(): Promise<boolean> {
-  const result = await SAF.requestDirectoryPermissionsAsync();
+  const result = await SAF.requestDirectoryPermissionsAsync(SAF.getUriForDirectoryInRoot('Pictures'));
   if (!result.granted) return false;
-  await FileSystem.writeAsStringAsync(SETTINGS, JSON.stringify({ folderUri: result.directoryUri }));
+  const granted = result.directoryUri;
+  const folderUri =
+    fileName(granted).endsWith(FOLDER_NAME)
+      ? granted
+      : ((await SAF.readDirectoryAsync(granted)).find((uri) => fileName(uri) === FOLDER_NAME) ??
+        (await SAF.makeDirectoryAsync(granted, FOLDER_NAME)));
+  await FileSystem.writeAsStringAsync(SETTINGS, JSON.stringify({ folderUri }));
   return true;
 }
 
