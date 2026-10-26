@@ -820,10 +820,12 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description:
       'audit:edit_after_completion — A-2’s only door, always audit-logged. R-30 gives it a ' +
       'second key: a Consultant may correct an audit they conducted (own_audits), and is ' +
-      'refused a colleague’s exactly as any other out-of-scope read is',
+      'refused a colleague’s exactly as any other out-of-scope read is. R-61 gives a Zone ' +
+      'Leader the same key to their own',
     expected: {
       SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
     },
     coveredBy: 'audits.e2e.test.ts',
   },

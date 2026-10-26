@@ -52,6 +52,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-56 | A cross audit covers several Zones; the Coordinator moves its date and completes it | Settled |
 | R-59 | A Unit's Zone list is imported from Excel or PDF; until it is, a Consultant adds Zones | Settled |
 | R-60 | An audit keeps the Zone label it was taken under; a rename or import never relabels it | Settled |
+| R-61 | A Zone Leader may correct their own completed audit | Settled |
 
 ---
 
@@ -2535,3 +2536,15 @@ restores D6's snapshot for the Zone's code and name.
   purpose was relabelling that audit.
 - **Not changed back.** Audits relabelled while R-52 was in force (2026-10-12 to 2026-10-26)
   keep their current label; each rename's before and after is in the audit log.
+
+## R-61 — A Zone Leader may correct their own completed audit
+
+**Settled 2026-10-26 by the product owner.** R-30 for a Zone Leader: one who finds a wrong
+mark in an audit they conducted corrects it on the phone, the way a Consultant does.
+
+- `audit:edit_after_completion` is granted to `ZONE_LEADER` with `own_audits`. Another
+  auditor's finished audit stays a 404 (AZ-3).
+- Nothing else changes. The correction is the same `audit:override` sync operation and the
+  same `PATCH /audits/{id}/post-completion`, justification required and logged (A-2), with
+  R-31's cascade. The database carve-out (0022) already checks the auditor, not the role, so
+  no migration.
