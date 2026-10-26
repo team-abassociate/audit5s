@@ -2207,13 +2207,23 @@ describe('the post-completion override (A-2)', () => {
       },
     );
     expect(response.status).toBe(404);
+
+    // R-61: the Zone Leader who conducted it corrects it themselves.
+    const own = await world.request('PATCH', `${base}/audits/${leaderAuditId}/post-completion`, {
+      token: leaderToken,
+      body: {
+        justification: 'I wrote the wrong remark against this Zone',
+        changes: { zoneRemark: { auditZoneId: leaderZoneId, remark: 'Corrected remark' } },
+      },
+    });
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
   });
 
-  it('is closed to a Zone Leader, and to a Coordinator for an audit they did not conduct', async () => {
+  it('is closed to a Zone Leader or a Coordinator for an audit they did not conduct', async () => {
     const { auditId } = await completedAudit('Z-65', 'Not theirs to change');
-    // R-52: a Coordinator corrects their own audits, so a Consultant's is out of scope — a
-    // 404, as a colleague's audit is for a Consultant (AZ-3).
-    for (const [role, status] of [['COORDINATOR', 404], ['ZONE_LEADER', 403]] as const) {
+    // R-52, R-61: a Coordinator and a Zone Leader correct their own audits, so a
+    // Consultant's is out of scope — a 404, as a colleague's audit is for a Consultant (AZ-3).
+    for (const [role, status] of [['COORDINATOR', 404], ['ZONE_LEADER', 404]] as const) {
       const response = await world.request('PATCH', `${base}/audits/${auditId}/post-completion`, {
         token: world.actors[role].accessToken,
         body: {

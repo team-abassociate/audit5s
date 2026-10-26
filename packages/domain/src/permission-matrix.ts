@@ -493,6 +493,11 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
         resolver: 'own_audits',
         condition: 'the actor conducted this audit; justification required and logged (R-30)',
       },
+      // R-61: a Zone Leader corrects their own audits the same way.
+      ZONE_LEADER: {
+        resolver: 'own_audits',
+        condition: 'the actor conducted this audit; justification required and logged (R-61)',
+      },
     },
   },
   {

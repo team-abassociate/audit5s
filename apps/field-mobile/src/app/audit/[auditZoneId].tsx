@@ -76,6 +76,7 @@ import { useSync } from '../../lib/sync/provider';
 import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
 import { leaveScreen } from '../../lib/leave-screen';
 import { useRequiredFields } from '../../lib/required-fields';
+import { useSession } from '../../lib/session';
 
 /** Ten questions to a page: with a five-by-ten checklist, a page is one S. */
 const PAGE_SIZE = 10;
@@ -107,6 +108,7 @@ export default function QuestionnaireScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const { sync } = useSync();
+  const { can } = useSession();
   const { strings: t } = useLanguage();
   const list = useRef<FlatList<Row>>(null);
 
@@ -439,9 +441,15 @@ export default function QuestionnaireScreen() {
    * R-30: a finished audit is correctable by the auditor who conducted it, through A-2's
    * override — and every audit in this device's store is one this device's user conducted
    * (§9.7 ties the database to the signed-in user). A cancelled audit is not: it was
-   * voided, and correcting a void is not a thing to offer.
+   * voided, and correcting a void is not a thing to offer. Nor is a correction the server
+   * would refuse at sync: the role must hold `audit:edit_after_completion` (every auditing
+   * role does since R-61).
    */
-  const correctable = Boolean(audit.data) && audit.data!.status !== 'CANCELLED' && !auditOpen;
+  const correctable =
+    Boolean(audit.data) &&
+    audit.data!.status !== 'CANCELLED' &&
+    !auditOpen &&
+    can('audit', 'edit_after_completion');
   const editable = auditOpen || correcting !== null;
   const reasonGiven = reasonDraft.trim().length >= MIN_JUSTIFICATION;
   const reviewingFinishedZone = auditOpen && zone.data.status === 'COMPLETED';
