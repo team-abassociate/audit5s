@@ -261,13 +261,13 @@ describe('invariant A-1 / D8 — nothing in the audit trail is deleted', () => {
 });
 
 describe('decision D6 — history is immutable by snapshot, not by locking master data', () => {
-  it('a rename reaches the finished audit Zone (R-52); a re-description does not', async () => {
+  it('a renumbered, renamed, re-described Zone leaves its finished audit alone (R-60)', async () => {
     const { zoneId, auditZoneId, auditId } = await seedAuditFixture(owner);
     await complete(auditId);
 
-    // R-52 (owner, 2026-10-12): the name follows the Zone everywhere; what the auditor saw stays.
+    // R-60 (owner, 2026-10-26): the audit keeps the label it was taken under.
     await owner.query(
-      `UPDATE zone SET name = 'Press Shop (renamed)', description = 'Now bay 7' WHERE id = $1`,
+      `UPDATE zone SET code = 'Z-77', name = 'Press Shop (renamed)', description = 'Now bay 7' WHERE id = $1`,
       [zoneId],
     );
 
@@ -277,7 +277,7 @@ describe('decision D6 — history is immutable by snapshot, not by locking maste
       [auditZoneId],
     );
     expect(rows[0]).toEqual({
-      zone_name_snapshot: 'Press Shop (renamed)',
+      zone_name_snapshot: 'Press',
       zone_description_snapshot: 'Press shop, bay 3',
       zone_leader_name_snapshot: 'Leader One',
     });

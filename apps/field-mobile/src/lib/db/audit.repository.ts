@@ -224,32 +224,6 @@ export async function addLocalZone(
 }
 
 /**
- * A Zone renamed on the server (the rename reaches finished audits too, R-52): this device's
- * catalogue and its audits of that Zone show the new name without waiting for a sync.
- */
-export async function renameLocalZone(
-  database: LocalDatabase,
-  input: { unitId: string; code: string; name: string },
-): Promise<void> {
-  await database
-    .update(zones)
-    .set({ name: input.name })
-    .where(and(eq(zones.unitId, input.unitId), eq(zones.code, input.code)));
-  await database
-    .update(localAuditZones)
-    .set({ zoneNameSnapshot: input.name })
-    .where(
-      and(
-        eq(localAuditZones.zoneCodeSnapshot, input.code),
-        inArray(
-          localAuditZones.auditId,
-          database.select({ id: audits.id }).from(audits).where(eq(audits.unitId, input.unitId)),
-        ),
-      ),
-    );
-}
-
-/**
  * R-34: correcting the Zone details the auditor typed, on a Zone already in the audit.
  *
  * `addLocalZone` writes these once and this is how they change afterwards — the

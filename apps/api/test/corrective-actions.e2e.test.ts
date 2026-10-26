@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   API_BASE_PATH,
   HEADER_IDEMPOTENCY_KEY,
   type Audit,
+  type AuditDetail,
   type CorrectiveAction,
   type CorrectiveActionDetail,
   type CorrectiveActionSubmission,
@@ -13,7 +15,7 @@ import {
 } from '@audit5s/contracts';
 import { captureEvidence, loginFromDevice, sha256Hex, startWorld, stopWorld, TINY_JPEG, type TestActor, type TestWorld } from './harness';
 import { afterPhoto, completedWalkBy, submit, submitOptionA } from './corrective-fixtures';
-import { isReviewable } from '@audit5s/domain';
+import { isReviewable, zoneLabelFromCode } from '@audit5s/domain';
 import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
 import { CorrectiveActionsService } from '../src/modules/corrective-actions/corrective-actions.service';
 
@@ -894,4 +896,43 @@ describe('restarting an audit withdraws what it raised (R-33)', () => {
     // action, dated from this completion rather than the first one.
     expect(reraised.rows.length).toBeGreaterThan(0);
   }, 240_000);
+});
+
+describe('R-60 — a Zone renamed by an import leaves its audits and actions alone', () => {
+  it('keeps the Zone label the audit and its open action were taken under', async () => {
+    const { auditId, auditZoneId, zoneId, actions } = await completedWalkBy(world, {
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      unitId: world.unitB,
+      zoneLeaderUserId: null,
+      nonconformities: 1,
+    });
+    const { rows } = await world.owner.query(`SELECT code, name FROM zone WHERE id = $1`, [zoneId]);
+    const { code, name } = rows[0] as { code: string; name: string };
+
+    // The Unit's list arrives a fortnight later and calls this Zone something else.
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('Zones');
+    sheet.addRow(['Zone No.', 'Zone Name', 'Leader']);
+    sheet.addRow([`Zone ${zoneLabelFromCode(code)}`, 'Renumbered area', 'Mr. New Leader']);
+    const imported = await world.upload(
+      `${base}/units/${world.unitB}/zones/import`,
+      {
+        filename: 'zones.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        body: Buffer.from(await book.xlsx.writeBuffer()),
+      },
+      { token: superAdmin },
+    );
+    expect(imported.status, JSON.stringify(imported.body)).toBe(200);
+
+    const audit = await world.request('GET', `${base}/audits/${auditId}`, { token: superAdmin });
+    const audited = (audit.body as AuditDetail).zones.find((zone) => zone.id === auditZoneId)!;
+    expect([audited.zoneCodeSnapshot, audited.zoneNameSnapshot]).toEqual([code, name]);
+
+    const action = await world.request('GET', `${base}/corrective-actions/${actions[0]!.id}`, {
+      token: superAdmin,
+    });
+    expect((action.body as CorrectiveActionDetail).zoneName).toBe(name);
+  });
 });

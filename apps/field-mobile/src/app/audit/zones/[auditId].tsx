@@ -34,7 +34,6 @@ import {
   restartLocalAudit,
   listLocalAuditZones,
   pauseLocalAudit,
-  renameLocalZone,
   withdrawLocalZone,
   resumeCursor,
   resumeLocalAudit,
@@ -45,7 +44,7 @@ import {
   unitHasZoneList,
 } from '../../../lib/db/catalogue.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
-import { api, problemMessage } from '../../../lib/api';
+import { api } from '../../../lib/api';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 import { leaveScreen } from '../../../lib/leave-screen';
 import { useRequiredFields } from '../../../lib/required-fields';
@@ -141,7 +140,7 @@ export default function AuditZonesScreen() {
     [navigation, database, auditId, queryClient],
   );
 
-  const { can, scope } = useSession();
+  const { scope } = useSession();
   const [zoneCode, setZoneCode] = useState<string | null>(null);
   const [newZone, setNewZone] = useState<NewZone | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ZoneDraft>>({});
@@ -320,26 +319,6 @@ export default function AuditZonesScreen() {
       }),
     onSuccess: () => {
       setEditing(null);
-      return queryClient.invalidateQueries({ queryKey: ['local'] });
-    },
-  });
-
-  /**
-   * Renaming the Zone once the audit is done — "Zone 7" added in the field becomes "Press
-   * shop". Online: the server renames the Unit's Zone, and the rename reaches every audit
-   * of it, finished ones included (R-52).
-   */
-  const [renaming, setRenaming] = useState<{ zoneId: string; label: string; name: string } | null>(null);
-  const rename = useMutation({
-    mutationFn: async (next: { zoneId: string; name: string }) => {
-      const zone = catalogueZones.data?.find((candidate) => candidate.id === next.zoneId);
-      if (!zone) throw new Error('This Zone has not reached the server yet. Sync, then rename it.');
-      const name = next.name.trim();
-      await api.patch(`/zones/${zone.id}`, { name });
-      await renameLocalZone(database, { unitId: audit.data!.unitId, code: zone.code, name });
-    },
-    onSuccess: () => {
-      setRenaming(null);
       return queryClient.invalidateQueries({ queryKey: ['local'] });
     },
   });
@@ -778,21 +757,6 @@ export default function AuditZonesScreen() {
                     />
                   </View>
                 ) : null}
-                {!auditOpen && can('zone', 'update') && item.status === 'COMPLETED' ? (
-                  <View style={styles.zoneAction}>
-                    <Button icon="drive-file-rename-outline"
-                      title="Rename"
-                      variant="secondary"
-                      onPress={() =>
-                        setRenaming({
-                          zoneId: item.zoneId,
-                          label: zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot),
-                          name: item.zoneNameSnapshot,
-                        })
-                      }
-                    />
-                  </View>
-                ) : null}
                 {/* Abort one Zone without leaving the audit (0031). Unfinished Zones only. */}
                 {auditOpen && item.status !== 'COMPLETED' ? (
                   <View style={styles.zoneAction}>
@@ -827,18 +791,6 @@ export default function AuditZonesScreen() {
         onChange={setEditing}
         onCancel={() => setEditing(null)}
         onSave={() => editing && editZone.mutate(editing)}
-      />
-
-      <RenamePrompt
-        rename={renaming}
-        busy={rename.isPending}
-        error={problemMessage(rename.error) ?? (rename.error ? rename.error.message : null)}
-        onChange={(name) => renaming && setRenaming({ ...renaming, name })}
-        onCancel={() => {
-          setRenaming(null);
-          rename.reset();
-        }}
-        onSave={() => renaming && renaming.name.trim() && rename.mutate(renaming)}
       />
 
       <RestartPrompt
@@ -925,52 +877,6 @@ function ZoneDetailsPrompt({
             />
             <ErrorBanner message={error} />
             <Button icon="save" title="Save details" busy={busy} onPress={onSave} />
-            <Button icon="close" title="Cancel" variant="secondary" onPress={onCancel} />
-          </View>
-        ) : null}
-      </View>
-    </Modal>
-  );
-}
-
-/** Renaming a done audit's Zone: one field, the name as it should read everywhere. */
-function RenamePrompt({
-  rename,
-  busy,
-  error,
-  onChange,
-  onCancel,
-  onSave,
-}: {
-  rename: { label: string; name: string } | null;
-  busy: boolean;
-  error: string | null;
-  onChange: (name: string) => void;
-  onCancel: () => void;
-  onSave: () => void;
-}) {
-  const styles = useStyles();
-  const inset = useSheetInset();
-
-  return (
-    <Modal visible={rename !== null} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
-      <Pressable style={styles.scrim} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Close" />
-      <View style={[styles.sheet, inset]}>
-        <Text style={styles.sheetTitle} accessibilityRole="header">
-          Rename {rename?.label ?? 'Zone'}
-        </Text>
-        {rename ? (
-          <View style={styles.restartBody}>
-            <Field
-              label="Zone name"
-              value={rename.name}
-              onChangeText={onChange}
-              placeholder="e.g. Press shop"
-              autoCapitalize="words"
-              hint="Changes the name on this audit, its other audits and any report regenerated."
-            />
-            <ErrorBanner message={error} />
-            <Button icon="save" title="Save name" busy={busy} disabled={!rename.name.trim()} onPress={onSave} />
             <Button icon="close" title="Cancel" variant="secondary" onPress={onCancel} />
           </View>
         ) : null}
