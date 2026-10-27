@@ -54,6 +54,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-60 | An audit keeps the Zone label it was taken under; a rename or import never relabels it | Settled |
 | R-62 | A photo survives the app being removed, and may join a finished audit | Settled |
 | R-61 | A Zone Leader may correct their own completed audit | Settled |
+| R-63 | An imported Zone list makes its leaders' accounts; two leaders make subzones | Settled |
 
 ---
 
@@ -2495,9 +2496,9 @@ to Units that have an imported Zone list.
 
 - **Import.** A Super Admin, or a Coordinator for their Unit, imports the Zone list on the web
   (Units & zones → the Unit's Zones) or the phone (the Unit's page, My Unit) from an `.xlsx`
-  or a PDF: `POST /units/{id}/zones/import`, multipart, `zone:create`. Only three columns are
+  or a PDF: `POST /units/{id}/zones/import`, multipart, `zone:create`. Three columns are
   read, found by their headings: **Zone No.**, **Zone Name** — "Zone Description" is the same
-  column — and **Leader**. Anything else in the file (Location, Sub-Leader, Members) is
+  column — and **Leader**, and **Mobile No.** when it is there (R-63). Anything else in the file (Location, Sub-Leader, Members) is
   ignored. A PDF is read from the positions of its text, so a spreadsheet printed to PDF
   works; a scanned PDF does not.
 - **An import replaces the list.** A Zone in the file is added, or updated (and restored if
@@ -2514,7 +2515,7 @@ to Units that have an imported Zone list.
   Consultant auditing it may add a Zone on Select Zone as a Coordinator does.
   `app_ensure_zone_for_audit` (0054) enforces it; `mayAddZoneWhileAuditing` in
   `packages/domain` is the one copy of the rule for both clients.
-- **Template.** `zone-list-template.xlsx` — the owner's three-column sheet, Zone 01–30 numbered
+- **Template.** `zone-list-template.xlsx` — the owner's sheet, with Mobile No. added (R-63), Zone 01–30 numbered
   and blank — is served beside the web app; both clients offer it. A row with a Zone number
   and nothing else is a blank template row, not a Zone.
 
@@ -2588,3 +2589,37 @@ because the app was gone before they uploaded.
   late-photo buttons, and Kaizen photos are not copied.
 - Photos of an aborted audit no longer count as missing in the nightly check or in the
   phone's sync status.
+
+---
+
+## R-63 — An imported Zone list makes its leaders' accounts; two leaders make subzones
+
+**Settled 2026-10-27 by the product owner.** Extends R-59, so a Coordinator no longer adds
+each Zone Leader by hand after importing the list.
+
+- **Mobile No.** The template gains a fourth column, **Mobile No.** (also read as Phone,
+  Contact or Cell No.). A file without it imports as before, with typed leader names only. A
+  number is read as ten digits; `+91` or a leading `0` is dropped.
+- **Two leaders, two subzones.** A Leader cell naming two people — on two lines, between `/`,
+  `,`, `&` or `;`, or each starting with Mr./Ms./Mrs./Dr./Shri/Smt. as the owner's sample sheet
+  writes them — makes subzones: Zone 1 with two leaders becomes **Zone 1A** and **Zone 1B**,
+  one leader each, both named as the row. Their numbers are taken in the same order from the
+  Mobile No. cell, one a line or between separators. A Zone already lettered (1A) is not split
+  again; its names stay typed.
+- **Accounts.** Each leader is matched to one of the Unit's Zone Leaders **by name** (case and
+  spacing aside), then by number. A match is made the Zone's leader. Only a name nobody has,
+  with a number, makes a new Zone Leader account, exactly as one added by hand (R-39): the
+  number is the first password, it expires as any bootstrap credential does, and a new
+  password is chosen at first sign-in. One person named on several rows gets one account
+  leading all their Zones. The People tab lists them with the leaders added by hand, and they
+  are edited there.
+- **A changed number is not a new person.** Matching by name means a re-import with a new
+  number for the same name changes nothing, and nobody signs in again. A number is changed
+  in People; for the rare different person with the same name, the Coordinator changes the
+  number there and resets the password, which then uses it.
+- **What cannot be made is named, not refused.** A row whose names and numbers do not pair,
+  a number that is not ten digits, or a number already belonging to another account outside
+  the Unit's Zone Leaders: that leader stays the Zone's typed name, the rest of the import
+  stands, and both clients list the reasons after the import.
+- The endpoint stays `POST /units/{id}/zones/import`; its handler moved to the users module,
+  which owns accounts and already depends on the Zones module.

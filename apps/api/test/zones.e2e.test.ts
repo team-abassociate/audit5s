@@ -462,11 +462,11 @@ describe('R-59 — importing a Unit’s Zone list', () => {
   const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
   /** The template's shape: a title row, the three headings, then one Zone a row. */
-  async function workbook(rows: Array<[string, string, string]>): Promise<Buffer> {
+  async function workbook(rows: string[][]): Promise<Buffer> {
     const book = new ExcelJS.Workbook();
     const sheet = book.addWorksheet('Table 1');
     sheet.addRow(['Name Of Your Unit']);
-    sheet.addRow(['Zone No.', 'Zone Discription(Name)', 'Leader']);
+    sheet.addRow(['Zone No.', 'Zone Discription(Name)', 'Leader', ...(rows.some((row) => row.length > 3) ? ['Mobile No.'] : [])]);
     for (const row of rows) sheet.addRow(row);
     return Buffer.from(await book.xlsx.writeBuffer());
   }
@@ -492,7 +492,7 @@ describe('R-59 — importing a Unit’s Zone list', () => {
       world.unitA,
       await workbook([
         ['Zone 01', 'Maintenance Room', 'Mr. A. Sharma'],
-        ['Zone 02', 'Boiler Room', 'Ms. B. Rao\nMr. C. Das'],
+        ['Zone 02', 'Boiler Room', 'Ms. B. Rao'],
         ['Zone 03', '', ''],
       ]),
     );
@@ -505,7 +505,7 @@ describe('R-59 — importing a Unit’s Zone list', () => {
     expect(zones.map((zone) => zone.code).sort()).toEqual(['Z-01', 'Z-02']);
     expect(zones.find((zone) => zone.code === 'Z-02')).toMatchObject({
       name: 'Boiler Room',
-      zoneLeaderName: 'Ms. B. Rao, Mr. C. Das',
+      zoneLeaderName: 'Ms. B. Rao',
     });
     const unit = await world.request('GET', `${base}/units/${world.unitA}`, { token: asCoordinator() });
     expect((unit.body as { zoneListImportedAt: string | null }).zoneListImportedAt).not.toBeNull();
@@ -576,5 +576,86 @@ describe('R-59 — importing a Unit’s Zone list', () => {
     const body = await workbook([['Zone 01', 'Trespass', '']]);
     expect((await importList(asCoordinator(), world.unitB, body)).status).toBe(404);
     expect((await importList(world.actors.CONSULTANT.accessToken, world.unitA, body)).status).toBe(403);
+  });
+
+  describe('R-63 — the leaders it names get accounts', () => {
+    type Result = { leadersCreated: number; leadersLinked: number; notes: string[] };
+    const leaderOf = async (code: string) =>
+      (await activeZones(world.unitA)).find((zone) => zone.code === code)?.zoneLeaderId ?? null;
+    async function leaders(): Promise<Array<{ id: string; fullName: string; phoneE164: string; mustResetPassword: boolean }>> {
+      const response = await world.request('GET', `${base}/users?role=ZONE_LEADER&limit=200`, { token: asCoordinator() });
+      return (response.body as Page<never>).data;
+    }
+
+    it('makes an account for each named leader with a number; two names make subzones', async () => {
+      const response = await importList(
+        asCoordinator(),
+        world.unitA,
+        await workbook([
+          ['Zone 01', 'Press', 'Mr. Ravi Kumar', '7000000101'],
+          ['Zone 02', 'Boiler', 'Mr. Ajay Singh Ms. Neha Rao', '7000000102\n+91 70000 00103'],
+          ['Zone 03', 'Stores', 'mr. ravi  kumar', ''],
+          ['Zone 04', 'Canteen', 'Zoe Leader', ''],
+        ]),
+      );
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body).toMatchObject({ leadersCreated: 3, leadersLinked: 2, notes: [] });
+
+      const people = await leaders();
+      const ravi = people.find((user) => user.fullName === 'Mr. Ravi Kumar')!;
+      expect(ravi).toMatchObject({ phoneE164: '7000000101', mustResetPassword: true });
+      expect(await leaderOf('Z-01')).toBe(ravi.id);
+      // The same person, by name, leads both of their Zones from one account.
+      expect(await leaderOf('Z-03')).toBe(ravi.id);
+      expect(await leaderOf('Z-2A')).toBe(people.find((user) => user.fullName === 'Mr. Ajay Singh')!.id);
+      expect(await leaderOf('Z-2B')).toBe(people.find((user) => user.fullName === 'Ms. Neha Rao')!.id);
+      expect(await leaderOf('Z-04')).toBe(world.actors.ZONE_LEADER.userId);
+      expect(await leaderOf('Z-02')).toBeNull();
+    });
+
+    it('a changed number is not a new person; a changed name is', async () => {
+      const response = await importList(
+        asCoordinator(),
+        world.unitA,
+        await workbook([
+          ['Zone 01', 'Press', 'Mr. Ravi Kumar', '7000000999'],
+          ['Zone 02', 'Boiler', 'Mr. Ajay Singh Ms. Neha Rao', '7000000102\n7000000103'],
+          ['Zone 03', 'Stores', 'Mr. Vikram Shah', '7000000104'],
+          ['Zone 04', 'Canteen', 'Zoe Leader', ''],
+        ]),
+      );
+      expect(response.body).toMatchObject({ leadersCreated: 1, leadersLinked: 0, notes: [] });
+      const people = await leaders();
+      expect(people.find((user) => user.fullName === 'Mr. Ravi Kumar')!.phoneE164).toBe('7000000101');
+      expect(people.filter((user) => user.fullName === 'Mr. Ravi Kumar')).toHaveLength(1);
+      expect(await leaderOf('Z-03')).toBe(people.find((user) => user.fullName === 'Mr. Vikram Shah')!.id);
+    });
+
+    it('names a leader whose number belongs to someone else, and imports the rest', async () => {
+      const elsewhere = await world.request('POST', `${base}/users`, {
+        token: asSuperAdmin(),
+        body: { fullName: 'Bina Other', phone: '7000000105', role: 'ZONE_LEADER', unitId: world.unitB },
+      });
+      expect(elsewhere.status, JSON.stringify(elsewhere.body)).toBe(201);
+
+      const response = await importList(
+        asCoordinator(),
+        world.unitA,
+        await workbook([
+          ['Zone 01', 'Press', 'Mr. Ravi Kumar', ''],
+          ['Zone 02', 'Boiler', 'Mr. Ajay Singh Ms. Neha Rao', ''],
+          ['Zone 03', 'Stores', 'Mr. Vikram Shah', ''],
+          ['Zone 04', 'Canteen', 'Mr. Tarun Mehta', '7000000105'],
+        ]),
+      );
+      expect(response.status).toBe(200);
+      const { notes } = response.body as Result;
+      expect(notes).toHaveLength(1);
+      expect(notes[0]).toMatch(/^Zone 4: no account for Mr\. Tarun Mehta\. This phone number already belongs/);
+      expect((await activeZones(world.unitA)).find((zone) => zone.code === 'Z-04')).toMatchObject({
+        zoneLeaderId: null,
+        zoneLeaderName: 'Mr. Tarun Mehta',
+      });
+    });
   });
 });

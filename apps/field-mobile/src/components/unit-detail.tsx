@@ -361,8 +361,9 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
 }
 
 /**
- * R-59: the Unit's Zone list from an Excel or PDF file — only Zone No., Zone Name (or
- * Description) and Leader are read. A second import replaces the first, archiving the Zones
+ * R-59: the Unit's Zone list from an Excel or PDF file — Zone No., Zone Name (or
+ * Description), Leader and Mobile No. are read; a leader with a number gets a Zone Leader
+ * account (R-63). A second import replaces the first, archiving the Zones
  * it leaves out, so it asks first. The template is the one the web serves.
  */
 function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: string | null }) {
@@ -403,10 +404,17 @@ function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: st
     },
     onSuccess: async (result) => {
       if (!result) return;
-      setMessage(`Zone list imported: ${result.created} added, ${result.updated} updated, ${result.archived} archived.`);
+      setMessage(
+        [
+          `Zone list imported: ${result.created} added, ${result.updated} updated, ${result.archived} archived.`,
+          `Zone Leaders: ${result.leadersCreated} new accounts, who sign in with their mobile number; ${result.leadersLinked} existing linked.`,
+          ...result.notes,
+        ].join('\n'),
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['zones'] }),
         queryClient.invalidateQueries({ queryKey: ['unit', unitId] }),
+        queryClient.invalidateQueries({ queryKey: ['users'] }),
       ]);
     },
   });

@@ -5,9 +5,13 @@ import { WorkbookReader, WorkbookRejected } from '../checklists/import/workbook-
 /**
  * Reads a Unit's Zone list from an Excel workbook or a PDF (R-59).
  *
- * Only three columns are read — Zone No., Zone Name (or Zone Description) and Leader — and
- * found by their headings, so a file carrying more (Location, Sub-Leader, Members, as the
- * Sahney Kirkwood list does) is read for those three and the rest ignored.
+ * Three columns are read — Zone No., Zone Name (or Zone Description) and Leader — and a
+ * fourth, Mobile No., if it is there (R-63). They are found by their headings, so a file
+ * carrying more (Location, Sub-Leader, Members, as the Sahney Kirkwood list does) is read
+ * for those and the rest ignored.
+ *
+ * A Leader cell naming two people makes two subzones, 1A and 1B, one leader each, their
+ * mobile numbers taken in the same order from the Mobile No. cell.
  *
  * A PDF has no cells, only positioned text. A row is a Zone number in the Zone No. column;
  * the text of the other two columns belongs to the nearest Zone number above or below it,
@@ -20,7 +24,15 @@ export interface ImportedZone {
   code: string;
   name: string;
   leaderName: string | null;
+  /** Ten digits, when the file gives this leader a usable one (R-63). */
+  leaderPhone: string | null;
   sortOrder: number;
+}
+
+export interface ZoneList {
+  zones: ImportedZone[];
+  /** Rows imported without a leader account, and why — shown to whoever imported. */
+  notes: string[];
 }
 
 export class ZoneListRejected extends Error {}
@@ -29,7 +41,10 @@ export class ZoneListRejected extends Error {}
 interface RawRow {
   zoneNo: string;
   name: string;
-  leader: string;
+  /** One person a line, or between `/`, `,`, `&` or `;`. */
+  leaders: string[];
+  /** The Mobile No. cell as written; empty without the column. */
+  phones: string;
   where: string;
 }
 
@@ -41,11 +56,15 @@ const HEADINGS = {
   zoneNo: /^zone\s*(no\.?|number|#|code)?$/i,
   name: /^(zone\s*)?(name|d[ei]s?c?ription|desc)/i,
   leader: /^(zone\s*)?leaders?(\s*name)?$/i,
+  phone: /^(leaders?'?s?\s*)?(mobile|phone|contact|cell)(\s*(no\.?|number|#))?$/i,
 } as const;
 type Column = keyof typeof HEADINGS;
 const COLUMNS = Object.keys(HEADINGS) as Column[];
+/** Mobile No. is optional: a file from before R-63 still imports, without accounts. */
+const REQUIRED: Column[] = ['zoneNo', 'name', 'leader'];
+type Found<T> = Record<Exclude<Column, 'phone'>, T> & { phone?: T };
 
-export async function readZoneList(body: Buffer): Promise<ImportedZone[]> {
+export async function readZoneList(body: Buffer): Promise<ZoneList> {
   if (body.byteLength === 0) throw new ZoneListRejected('The file is empty');
   if (body.byteLength > ZONE_LIST_IMPORT_MAX_BYTES) {
     throw new ZoneListRejected('The file is larger than 5 MB');
@@ -86,26 +105,39 @@ async function readWorkbook(body: Buffer): Promise<RawRow[]> {
     return sheet.rows.slice(headerIndex + 1).map((row, offset) => ({
       zoneNo: clean(text(row[columns.zoneNo])),
       name: clean(text(row[columns.name])),
-      leader: leaderText(text(row[columns.leader]).split(/\r?\n/)),
+      leaders: people(text(row[columns.leader]).split(/\r?\n/)),
+      phones: columns.phone === undefined ? '' : text(row[columns.phone]),
       where: `row ${headerIndex + offset + 2}`,
     }));
   }
   throw noHeadings();
 }
 
-/** Each column's index in a header row, or `null` unless all three are there. */
-function headerColumns(cells: string[]): Record<Column, number> | null {
+/** Each column's index in a header row, or `null` unless the three required are there. */
+function headerColumns(cells: string[]): Found<number> | null {
   const found: Partial<Record<Column, number>> = {};
   cells.forEach((cell, index) => {
     const column = heading(cell);
     if (column && found[column] === undefined) found[column] = index;
   });
-  return COLUMNS.every((column) => found[column] !== undefined) ? (found as Record<Column, number>) : null;
+  return REQUIRED.every((column) => found[column] !== undefined) ? (found as Found<number>) : null;
 }
 
-/** "Mr. A\nMs. B" — two people in one cell — reads "Mr. A, Ms. B". */
-function leaderText(lines: string[]): string {
-  return lines.map(clean).filter(Boolean).join(', ');
+/**
+ * "Mr. A\nMs. B", "Mr. A / Ms. B" or "Mr. A Ms. B" — two people in one cell. The last is
+ * how the owner's sample sheet writes them, letting the column width wrap the line.
+ */
+function people(lines: string[]): string[] {
+  return lines
+    .flatMap((line) => line.split(/[/,&;]|\s+(?=(?:mr|mrs|ms|miss|dr|shri|smt)\.?\s)/i))
+    .map(clean)
+    .filter(Boolean);
+}
+
+/** `+91 98765-43210` → `9876543210`; `null` unless it is a ten-digit mobile number. */
+function mobileNumber(text: string): string | null {
+  const digits = text.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
+  return /^\d{10}$/.test(digits) ? digits : null;
 }
 
 function noHeadings(): ZoneListRejected {
@@ -163,8 +195,8 @@ async function readPdf(body: Buffer): Promise<RawRow[]> {
   return rows;
 }
 
-/** The three read headings, and every heading on their line: the others bound the columns. */
-type Headings = Record<Column, TextItem> & { line: TextItem[] };
+/** The read headings, and every heading on their line: the others bound the columns. */
+type Headings = Found<TextItem> & { line: TextItem[] };
 
 function pageHeadings(items: TextItem[]): Headings | null {
   for (const candidate of items) {
@@ -175,7 +207,7 @@ function pageHeadings(items: TextItem[]): Headings | null {
       const column = heading(item.text);
       if (column && !found[column]) found[column] = item;
     }
-    if (COLUMNS.every((column) => found[column])) return { ...(found as Record<Column, TextItem>), line };
+    if (REQUIRED.every((column) => found[column])) return { ...(found as Found<TextItem>), line };
   }
   return null;
 }
@@ -201,10 +233,17 @@ function pageRows(items: TextItem[], headings: Headings, pageNumber: number): Ra
   const edges = columnEdges(banded, headings.line);
   const columnOf = (item: TextItem) => {
     const centre = (item.left + item.right) / 2;
-    return COLUMNS.find((column) => centre >= edges[column][0] && centre < edges[column][1]) ?? null;
+    return (
+      COLUMNS.find((column) => {
+        const edge = edges[column];
+        return edge !== undefined && centre >= edge[0] && centre < edge[1];
+      }) ?? null
+    );
   };
 
-  const cells = new Map(bands.map((band) => [band, { zoneNo: [], name: [], leader: [] } as Record<Column, TextItem[]>]));
+  const cells = new Map(
+    bands.map((band) => [band, { zoneNo: [], name: [], leader: [], phone: [] } as Record<Column, TextItem[]>]),
+  );
   for (const item of banded) {
     const column = columnOf(item);
     if (column) cells.get(inBand(item)!)![column].push(item);
@@ -212,7 +251,8 @@ function pageRows(items: TextItem[], headings: Headings, pageNumber: number): Ra
   return bands.map((band) => ({
     zoneNo: clean(band.anchor.text),
     name: lines(cells.get(band)!.name).join(' '),
-    leader: leaderText(lines(cells.get(band)!.leader)),
+    leaders: people(lines(cells.get(band)!.leader)),
+    phones: lines(cells.get(band)!.phone).join('\n'),
     where: `page ${pageNumber}, ${clean(band.anchor.text)}`,
   }));
 }
@@ -237,7 +277,7 @@ function lines(cell: TextItem[]): string[] {
  * to the next text that starts clear of it. A heading's midpoint would not do: a left-aligned
  * Sub-Leader column starts well short of its centred heading, and would read as Leader.
  */
-function columnEdges(items: TextItem[], line: TextItem[]): Record<Column, [number, number]> {
+function columnEdges(items: TextItem[], line: TextItem[]): Partial<Record<Column, [number, number]>> {
   const sorted = [...line].sort((a, b) => a.left - b.left);
   const centre = (item: TextItem) => (item.left + item.right) / 2;
   const edgeBetween = (a: TextItem, b: TextItem) => {
@@ -253,9 +293,10 @@ function columnEdges(items: TextItem[], line: TextItem[]): Record<Column, [numbe
     return cursor < to ? (cursor + to) / 2 : (a.right + b.left) / 2;
   };
 
-  const edges = {} as Record<Column, [number, number]>;
+  const edges: Partial<Record<Column, [number, number]>> = {};
   for (const column of COLUMNS) {
     const index = sorted.findIndex((item) => heading(item.text) === column);
+    if (index === -1) continue;
     const self = sorted[index]!;
     const before = sorted[index - 1];
     const after = sorted[index + 1];
@@ -269,17 +310,21 @@ function columnEdges(items: TextItem[], line: TextItem[]): Record<Column, [numbe
 
 // ------------------------------------------------------------------------------ Checks
 
-function checkRows(rows: RawRow[]): ImportedZone[] {
+function checkRows(rows: RawRow[]): ZoneList {
   const problems: string[] = [];
+  const notes: string[] = [];
   const zones: ImportedZone[] = [];
   const seen = new Map<string, string>();
 
   for (const row of rows) {
     // A number alone is a template row nobody filled in, not a Zone.
-    if (!row.name && !row.leader) continue;
-    const label = row.zoneNo.replace(/^zone\s*(no\.?)?\s*[-:#.]?\s*/i, '').replace(/^z-/i, '');
-    const code = zoneCodeForLabel(label);
-    if (!code) {
+    if (!row.name && row.leaders.length === 0) continue;
+    const label = row.zoneNo
+      .replace(/^zone\s*(no\.?)?\s*[-:#.]?\s*/i, '')
+      .replace(/^z-/i, '')
+      .replace(/^0+(?=.)/, '')
+      .toUpperCase();
+    if (!zoneCodeForLabel(label)) {
       problems.push(
         row.zoneNo
           ? `${row.where}: "${row.zoneNo}" is not a Zone number like 7 or 1A`
@@ -287,17 +332,52 @@ function checkRows(rows: RawRow[]): ImportedZone[] {
       );
       continue;
     }
-    if (seen.has(code)) {
-      problems.push(`${row.where}: Zone ${label} is listed twice (also ${seen.get(code)})`);
-      continue;
+
+    // R-63: two leaders of Zone 1 make subzones 1A and 1B. A subzone is not split again.
+    const split = row.leaders.length > 1 && /^\d+$/.test(label);
+    const entries = split
+      ? row.leaders.map((leader, index) => ({ label: label + String.fromCharCode(65 + index), leader }))
+      : [{ label, leader: row.leaders.join(', ') }];
+    const phoneTexts = row.phones.split(/[\n/,&;]/).map(clean).filter(Boolean);
+    let phones: Array<string | null> = entries.map(() => null);
+    if (phoneTexts.length > 0) {
+      if (!split && row.leaders.length > 1) {
+        notes.push(`${row.where}: Zone ${label} names ${row.leaders.length} leaders but is already a subzone, so no account was made`);
+      } else if (phoneTexts.length !== entries.length) {
+        notes.push(`${row.where}: ${entries.length} leader(s) but ${phoneTexts.length} mobile numbers, so no account was made`);
+      } else {
+        phones = phoneTexts.map((text) => {
+          const phone = mobileNumber(text);
+          if (!phone) notes.push(`${row.where}: "${text}" is not a 10-digit mobile number, so no account was made for it`);
+          return phone;
+        });
+      }
     }
-    seen.set(code, row.where);
-    const name = row.name || `Zone ${label.replace(/^0+(?=.)/, '').toUpperCase()}`;
-    if (name.length > MAX_NAME || row.leader.length > MAX_NAME) {
-      problems.push(`${row.where}: the Zone name or leader is longer than ${MAX_NAME} characters`);
-      continue;
-    }
-    zones.push({ code, name, leaderName: row.leader || null, sortOrder: zoneSortOrder(label) });
+
+    entries.forEach((entry, index) => {
+      const code = zoneCodeForLabel(entry.label);
+      if (!code) {
+        problems.push(`${row.where}: Zone ${label} has too many leaders to split into subzones`);
+        return;
+      }
+      if (seen.has(code)) {
+        problems.push(`${row.where}: Zone ${entry.label} is listed twice (also ${seen.get(code)})`);
+        return;
+      }
+      seen.set(code, row.where);
+      const name = row.name || `Zone ${entry.label}`;
+      if (name.length > MAX_NAME || entry.leader.length > MAX_NAME) {
+        problems.push(`${row.where}: the Zone name or leader is longer than ${MAX_NAME} characters`);
+        return;
+      }
+      zones.push({
+        code,
+        name,
+        leaderName: entry.leader || null,
+        leaderPhone: phones[index] ?? null,
+        sortOrder: zoneSortOrder(entry.label),
+      });
+    });
   }
 
   if (problems.length > 0) {
@@ -308,5 +388,5 @@ function checkRows(rows: RawRow[]): ImportedZone[] {
   }
   if (zones.length === 0) throw new ZoneListRejected('The file lists no Zones');
   if (zones.length > MAX_ZONES) throw new ZoneListRejected(`The file lists more than ${MAX_ZONES} Zones`);
-  return zones;
+  return { zones, notes };
 }

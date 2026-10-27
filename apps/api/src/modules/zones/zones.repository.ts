@@ -21,6 +21,15 @@ export type ZonePatch = Partial<{
   sortOrder: number;
 }>;
 
+/** "Mr. A.  Sharma" and "mr. a. sharma" are one person: the key a leader is matched on. */
+export function leaderNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function sameName(a: string | null, b: string): boolean {
+  return a !== null && leaderNameKey(a) === leaderNameKey(b);
+}
+
 /**
  * `zone` joined to the Zone Leader's name.
  *
@@ -28,12 +37,6 @@ export type ZonePatch = Partial<{
  * caches it for offline browsing (PART 9.1's local `zone` table). It is a display value,
  * never an authorization input — the leader pointer grants nothing (C2).
  */
-/** "Mr. A.  Sharma" and "mr. a. sharma" are one person. */
-function sameName(a: string | null, b: string): boolean {
-  const norm = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
-  return a !== null && norm(a) === norm(b);
-}
-
 const zoneColumns = {
   id: zones.id,
   unitId: zones.unitId,
@@ -221,16 +224,22 @@ export class ZonesRepository extends BaseRepository {
       const byCode = new Map(existing.map((zone) => [zone.code, zone]));
       let created = 0;
       let updated = 0;
+      /** The file's Zones as they now stand, for R-63's leader accounts. */
+      const imported: Array<{ id: string; code: string; zoneLeaderId: string | null }> = [];
       for (const zone of list) {
         const found = byCode.get(zone.code);
         if (!found) {
-          await tx.insert(zones).values({
-            unitId,
-            code: zone.code,
-            name: zone.name,
-            zoneLeaderName: zone.leaderName,
-            sortOrder: zone.sortOrder,
-          });
+          const [row] = await tx
+            .insert(zones)
+            .values({
+              unitId,
+              code: zone.code,
+              name: zone.name,
+              zoneLeaderName: zone.leaderName,
+              sortOrder: zone.sortOrder,
+            })
+            .returning({ id: zones.id });
+          imported.push({ id: row!.id, code: zone.code, zoneLeaderId: null });
           created += 1;
           continue;
         }
@@ -238,6 +247,7 @@ export class ZonesRepository extends BaseRepository {
           found.zoneLeaderId !== null &&
           zone.leaderName !== null &&
           !sameName(found.accountLeaderName, zone.leaderName);
+        imported.push({ id: found.id, code: zone.code, zoneLeaderId: replacesAccount ? null : found.zoneLeaderId });
         if (
           replacesAccount ||
           found.name !== zone.name ||
@@ -273,6 +283,7 @@ export class ZonesRepository extends BaseRepository {
         .returning({ zoneListImportedAt: units.zoneListImportedAt });
       return {
         busy: null,
+        imported,
         created,
         updated,
         archived: leaving.length,
