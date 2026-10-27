@@ -388,5 +388,11 @@ function checkRows(rows: RawRow[]): ZoneList {
   }
   if (zones.length === 0) throw new ZoneListRejected('The file lists no Zones');
   if (zones.length > MAX_ZONES) throw new ZoneListRejected(`The file lists more than ${MAX_ZONES} Zones`);
+  // Otherwise an import of names alone reads as accounts that silently failed (2026-10-27).
+  if (zones.some((zone) => zone.leaderName) && rows.every((row) => row.phones.trim() === '')) {
+    notes.unshift(
+      'This file has no Mobile No. column, so no Zone Leader accounts were made. Add the leaders’ mobile numbers in a Mobile No. column (the template has one) and import again.',
+    );
+  }
   return { zones, notes };
 }
