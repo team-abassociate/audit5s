@@ -8,7 +8,7 @@ import {
 import { HEADER_IDEMPOTENCY_KEY } from '@audit5s/contracts';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { from, switchMap, tap, catchError, throwError, type Observable } from 'rxjs';
+import { from, concatMap, switchMap, catchError, throwError, type Observable } from 'rxjs';
 import { getRequestContext } from '../observability/request-context';
 import { IdempotencyService } from './idempotency.service';
 
@@ -63,10 +63,16 @@ export class IdempotencyInterceptor implements NestInterceptor {
         if (replay) {
           return from(Promise.resolve(replay.body));
         }
+        // The key is completed (or released) before the response leaves: otherwise a retry
+        // sent the moment the first answer arrives finds it still in progress and gets a 409.
         return next.handle().pipe(
-          tap((body) => {
+          catchError((error: unknown) =>
+            // A failed operation must not poison the key: the client's retry should run.
+            from(this.idempotency.release(key, actor.userId)).pipe(switchMap(() => throwError(() => error))),
+          ),
+          concatMap((body) => {
             const omit = this.reflector.get<string[] | undefined>(OMIT_ON_REPLAY, context.getHandler());
-            void this.idempotency.complete({
+            const stored = this.idempotency.complete({
               key,
               userId: actor.userId,
               status: 200,
@@ -74,11 +80,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
                 ? { ...body, ...Object.fromEntries(omit.map((field) => [field, null])) }
                 : body,
             });
-          }),
-          catchError((error: unknown) => {
-            // A failed operation must not poison the key: the client's retry should run.
-            void this.idempotency.release(key, actor.userId);
-            return throwError(() => error);
+            // The operation has committed: failing to store its replay must not fail it, nor
+            // release the key for a retry to run it again.
+            return from(stored.catch(() => undefined).then(() => body));
           }),
         );
       }),
