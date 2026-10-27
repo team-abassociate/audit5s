@@ -111,7 +111,7 @@ export default function NewPersonScreen() {
           <Card>
             <CardHeader title={created.user.fullName} />
             <LedgerRow label="Login ID" value={created.loginId} />
-            <LedgerRow label="Phone" value={created.user.phoneE164} last />
+            <LedgerRow label="Phone" value={created.user.phoneE164 ?? ''} last />
           </Card>
         </ScrollView>
         <ActionBar>

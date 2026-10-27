@@ -21,13 +21,14 @@ export const users = pgTable(
   'user',
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-    loginId: text('login_id').notNull(),
+    /** R-65 (0058): null, with phone and password, until the account's number is added. */
+    loginId: text('login_id'),
     fullName: text('full_name').notNull(),
-    phoneE164: text('phone_e164').notNull(),
+    phoneE164: text('phone_e164'),
     email: text('email'),
     role: roleEnum('role').notNull(),
-    /** Argon2id. Never null, never plaintext, never returned by an API. */
-    passwordHash: text('password_hash').notNull(),
+    /** Argon2id. Never plaintext, never returned by an API. Null only without a number (0058). */
+    passwordHash: text('password_hash'),
     passwordAlgo: text('password_algo').notNull().default('argon2id'),
     /** CH-1: the phone number is a bootstrap credential only. */
     mustResetPassword: boolean('must_reset_password').notNull().default(true),

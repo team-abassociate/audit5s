@@ -48,7 +48,7 @@ import { formatDate, formatDateTime, formatScore, mayGrantKaizen, zoneDisplayLab
 /** Least privileged first, so a slip of the hand never lands on Super Admin (US3). */
 const ROLES_BY_REACH: readonly Role[] = ['ZONE_LEADER', 'CONSULTANT', 'COORDINATOR', 'SUPER_ADMIN'];
 
-const mobileDigits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
+const mobileDigits = (phone: string | null) => (phone ?? '').replace(/\D/g, '').slice(-10);
 
 /*
  * US1: below 54rem of its own width (1024 beside the sidebar) the register drops Last
@@ -331,7 +331,10 @@ function UserRow({
             {user.fullName}
           </RowToggle>
         </Td>
-        <Td className="font-mono text-xs">{user.loginId}</Td>
+        <Td className="font-mono text-xs">
+          {/* R-65: imported without a number; adding it in Edit makes the login. */}
+          {user.loginId ?? <span className="font-sans text-ink-3">No mobile number yet</span>}
+        </Td>
         <Td>
           {ROLE_LABEL[user.role]}
           {user.role !== 'SUPER_ADMIN' && (

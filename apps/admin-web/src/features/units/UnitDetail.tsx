@@ -269,7 +269,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
             {memberships.data.data.map((m) => (
               <tr key={m.id}>
                 <Td className="font-medium">{m.userFullName}</Td>
-                <Td className="font-mono text-xs">{m.userLoginId}</Td>
+                <Td className="font-mono text-xs">{m.userLoginId ?? 'No mobile number yet'}</Td>
                 <Td>{roleLabel(m.role)}</Td>
                 <Td className="text-xs text-ink-3">
                   {formatDate(m.validFrom)}

@@ -25,9 +25,11 @@ describe('readAuditorList', () => {
       auditors: [
         { name: 'Mr. A. Sharma', phone: '9876543210' },
         { name: 'Ms. B. Rao', phone: '9876543211' },
+        // R-65: a number that is not one is dropped; the account waits for it.
+        { name: 'Mr. C. Das', phone: null },
         { name: 'Dr. External Auditor', phone: '9876543213' },
       ],
-      notes: ['Zone 2 ZL1: "12345" is not a 10-digit mobile number, so Mr. C. Das has no account'],
+      notes: [`Zone 2 ZL1: "12345" is not a 10-digit mobile number. Add Mr. C. Das's number in People.`],
     });
   });
 

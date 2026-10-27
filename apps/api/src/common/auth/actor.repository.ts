@@ -56,7 +56,8 @@ export class ActorRepository {
         .where(eq(users.id, userId))
         .limit(1);
 
-      if (!user) {
+      // R-65: an account still waiting for its mobile number has no login, so no actor.
+      if (!user || user.loginId === null) {
         return null;
       }
 

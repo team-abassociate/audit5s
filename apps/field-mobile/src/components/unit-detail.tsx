@@ -301,7 +301,7 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
               <View style={styles.rowText}>
                 <Text style={styles.itemTitle}>{member.userFullName}</Text>
                 <Data>
-                  {ROLE_LABELS[member.role]}, {member.userLoginId}
+                  {ROLE_LABELS[member.role]}, {member.userLoginId ?? 'no mobile number yet'}
                 </Data>
               </View>
               {mayRevoke ? (

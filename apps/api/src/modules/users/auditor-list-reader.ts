@@ -8,18 +8,19 @@ import { WorkbookReader, WorkbookRejected } from '../checklists/import/workbook-
  *
  * Name and Mobile No. are read, found by their headings. Zone No. and ZL, when there, only
  * name the row in a note: an account is not tied to a Zone, whose leaders are the names the
- * Zone list gives it.
+ * Zone list gives it. A name with no usable number is still read (R-65): its account waits
+ * for the number, which the Coordinator adds in People.
  */
 
 export interface ImportedAuditor {
   name: string;
-  /** Ten digits. */
-  phone: string;
+  /** Ten digits; null when the row has none, or none that is a mobile number (R-65). */
+  phone: string | null;
 }
 
 export interface AuditorList {
   auditors: ImportedAuditor[];
-  /** Rows that make no account, and why — shown to whoever imported. */
+  /** Rows that make no account, or one without its number, and why — shown to whoever imported. */
   notes: string[];
 }
 
@@ -83,13 +84,13 @@ export async function readAuditorList(body: Buffer): Promise<AuditorList> {
       const phone = mobileNumber(phoneText);
       if (!name) notes.push(`${where}: a mobile number with no name, so no account was made`);
       else if (name.length > MAX_NAME) notes.push(`${where}: the name is longer than ${MAX_NAME} characters`);
-      else if (!phone) {
-        notes.push(
-          phoneText
-            ? `${where}: "${phoneText}" is not a 10-digit mobile number, so ${name} has no account`
-            : `${where}: no mobile number, so ${name} has no account`,
-        );
-      } else auditors.push({ name, phone });
+      else {
+        // R-65: a number that is not one is dropped, and said so; the account waits for it.
+        if (phoneText && !phone) {
+          notes.push(`${where}: "${phoneText}" is not a 10-digit mobile number. Add ${name}'s number in People.`);
+        }
+        auditors.push({ name, phone });
+      }
     });
     if (auditors.length === 0 && notes.length === 0) throw new AuditorListRejected('The file lists nobody');
     if (auditors.length > MAX_PEOPLE) throw new AuditorListRejected(`The file lists more than ${MAX_PEOPLE} people`);

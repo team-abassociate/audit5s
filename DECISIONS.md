@@ -2672,3 +2672,26 @@ required a Coordinator to give a new Zone Leader a Zone. Narrows `user:read` and
   holding two — the dummy Unit "Xyz", which the owner said to resolve — keeps the Coordinator
   who signed in last (MR2345) and the other's membership (CO7690) is revoked, not deleted.
 
+
+## R-65 — An Auditor-list name without a mobile number gets an account that waits for it
+
+**Settled 2026-10-27 by the product owner.** Extends R-64. In the owner's words:
+
+> if in the auditor template there are some names without a number let their account be
+> created only the coordinator will have to add the mobile number manually
+
+- **The account is made, without a login.** A name on the Auditor list with no mobile number,
+  or one that is not ten digits, becomes a Zone Leader of the Unit as any other row does, but
+  with no login ID and no password (migration 0058: `login_id`, `phone_e164` and
+  `password_hash` may be null, and a CHECK sets the three together). It cannot sign in; to
+  signing in it does not exist. The import says how many wait, and names each bad number.
+- **Adding the number makes the login.** When the Coordinator (or a Super Admin) adds the
+  number in People — the phone's person screen, or Edit on the web's Users — the login ID is
+  allocated from the name and the number as any account's is (R-64's "Mr. No Number" with
+  7000000210 becomes MR0210), and the number is the first password, expiring and changed at
+  first sign-in as any bootstrap credential is (CH-1). Logged as `user.updated` with the new
+  login ID. A login ID, once made, is never changed or reused, as before.
+- **Until then** People lists them as "No mobile number yet", Reset password refuses ("Add
+  their mobile number first"), and a Unit's member list shows the same in place of a login ID.
+- The forms that add one person still require the number; only the Auditor list makes an
+  account without one.

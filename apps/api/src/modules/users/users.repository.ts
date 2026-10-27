@@ -12,11 +12,12 @@ import { isUniqueViolation } from '../../common/pg-errors';
 
 export interface CreateUserInput {
   fullName: string;
-  phoneE164: string;
+  /** R-65: null for an account waiting for its number — then no login ID and no password. */
+  phoneE164: string | null;
   email: string | null;
   role: Role;
-  passwordHash: string;
-  bootstrapExpiresAt: Date;
+  passwordHash: string | null;
+  bootstrapExpiresAt: Date | null;
   createdByUserId: string;
   /** Needed by the RLS insert policy, which checks the actor's role. */
   createdByRole: string;
@@ -46,12 +47,14 @@ export class UsersRepository extends BaseRepository {
    * The savepoint matters: in PostgreSQL a constraint violation aborts the surrounding
    * transaction, so without one the second attempt could not run.
    */
-  async createWithLoginId(input: CreateUserInput): Promise<{ userId: string; loginId: string }> {
+  async createWithLoginId(input: CreateUserInput): Promise<{ userId: string; loginId: string | null }> {
+    const phoneE164 = input.phoneE164;
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, input.createdByUserId, input.createdByRole);
 
-      for (let attempt = 0; attempt < LOGIN_ID_MAX_ATTEMPTS; attempt += 1) {
-        const candidate = loginIdCandidate(input.fullName, input.phoneE164, attempt);
+      // R-65: without a number there is no login ID to allocate; `addLogin` does it later.
+      for (let attempt = 0; attempt < (phoneE164 ? LOGIN_ID_MAX_ATTEMPTS : 1); attempt += 1) {
+        const candidate = phoneE164 ? loginIdCandidate(input.fullName, phoneE164, attempt) : null;
 
         // The id is minted here rather than read back with RETURNING. That is not a
         // micro-optimisation: `INSERT ... RETURNING` additionally requires the SELECT
@@ -97,6 +100,50 @@ export class UsersRepository extends BaseRepository {
         }
       }
 
+      throw new AppError(
+        'LOGIN_ID_ALLOCATION_FAILED',
+        500,
+        'Could not allocate a login ID',
+        `Exhausted ${LOGIN_ID_MAX_ATTEMPTS} candidates for this name and phone number`,
+      );
+    });
+  }
+
+  /**
+   * R-65: gives an account that was made without a mobile number its login — the number, the
+   * login ID allocated from it as `createWithLoginId` does, and the bootstrap credential — in
+   * one statement, so 0058's CHECK never sees half of it. `null` if the account is out of
+   * scope or already has a login.
+   */
+  async addLogin(
+    scope: ScopeContext,
+    userId: string,
+    input: { fullName: string; phoneE164: string; passwordHash: string; bootstrapExpiresAt: Date },
+  ) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      for (let attempt = 0; attempt < LOGIN_ID_MAX_ATTEMPTS; attempt += 1) {
+        const loginId = loginIdCandidate(input.fullName, input.phoneE164, attempt);
+        try {
+          return await tx.transaction(async (savepoint) => {
+            const [row] = await savepoint
+              .update(users)
+              .set({
+                loginId,
+                phoneE164: input.phoneE164,
+                passwordHash: input.passwordHash,
+                mustResetPassword: true,
+                bootstrapExpiresAt: input.bootstrapExpiresAt,
+                status: 'INVITED',
+              })
+              .where(and(eq(users.id, userId), isNull(users.loginId), isNull(users.archivedAt), this.userScope(scope)))
+              .returning();
+            return row ?? null;
+          });
+        } catch (error) {
+          if (!isUniqueViolation(error, 'user_login_id_key')) throw error;
+        }
+      }
       throw new AppError(
         'LOGIN_ID_ALLOCATION_FAILED',
         500,

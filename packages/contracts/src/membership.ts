@@ -43,7 +43,8 @@ export type ListMembershipsQuery = z.infer<typeof listMembershipsQuerySchema>;
 /** Membership with the joined labels the admin UI lists. */
 export const membershipDetailSchema = unitMembershipSchema.extend({
   userFullName: z.string(),
-  userLoginId: z.string(),
+  /** R-65: null for an account still waiting for its mobile number. */
+  userLoginId: z.string().nullable(),
   unitName: z.string(),
 });
 export type MembershipDetail = z.infer<typeof membershipDetailSchema>;

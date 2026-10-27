@@ -19,9 +19,13 @@ const userPhoneSchema = z.union([
 
 export const userSchema = z.object({
   id: uuidSchema,
-  loginId: loginIdSchema,
+  /**
+   * R-65: null until the account's mobile number is added — an Auditor-list name imported
+   * without one. Such an account cannot sign in; adding the number allocates this.
+   */
+  loginId: loginIdSchema.nullable(),
   fullName: z.string(),
-  phoneE164: userPhoneSchema,
+  phoneE164: userPhoneSchema.nullable(),
   email: z.email().nullable(),
   role: roleSchema,
   status: userStatusSchema,

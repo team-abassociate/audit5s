@@ -95,7 +95,7 @@ export default function PeopleScreen() {
             <Avatar name={item.fullName} size={40} />
             <View style={styles.text}>
               <Text style={styles.name}>{item.fullName}</Text>
-              <Data>{item.loginId}</Data>
+              <Data>{item.loginId ?? 'No mobile number yet'}</Data>
               {audit ? <Data>Auditing {audit.unitName}</Data> : null}
             </View>
             <View style={styles.chips}>
