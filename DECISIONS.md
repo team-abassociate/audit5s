@@ -2504,8 +2504,10 @@ to Units that have an imported Zone list.
   archived) by its number; a Zone not in it is archived, never deleted — its audits stay on
   record. A Zone with an audit in progress cannot be dropped this way: the import is refused
   and names it. Both clients warn before a second import that it replaces the first. The
-  leader is the Zone's typed leader name; an account assigned as Zone Leader still outranks
-  it (0015). Logged as `zone.list_imported`.
+  leader is the Zone's typed leader name. An account assigned as Zone Leader is kept while the
+  file names that same person or leaves Leader blank; a file naming someone else replaces the
+  account (2026-10-27: an assigned account had hidden the imported name). Logged as
+  `zone.list_imported`.
 - **Adding Zones by hand stays.** After an import, a Super Admin or Coordinator adds a Zone as
   before (New Zone, or "+ New Zone" on Select Zone), or imports the longer list again.
 - **A Unit nobody has imported a list for** (`unit.zone_list_imported_at` is null): the

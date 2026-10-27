@@ -540,6 +540,30 @@ describe('R-59 — importing a Unit’s Zone list', () => {
     expect(restored?.archivedAt).toBeNull();
   });
 
+  it('a file naming a different leader replaces the Zone’s account leader', async () => {
+    const zone = (await activeZones(world.unitA)).find((z) => z.code === 'Z-01')!;
+    const assigned = await world.request('POST', `${base}/zones/${zone.id}/leader`, {
+      token: asCoordinator(),
+      body: { zoneLeaderId: world.actors.ZONE_LEADER.userId },
+    });
+    expect((assigned.body as Zone).zoneLeaderName).toBe('Zoe Leader');
+
+    const response = await importList(
+      asCoordinator(),
+      world.unitA,
+      await workbook([
+        ['Zone 01', 'Maintenance Room & Press Pit', 'Mr. D. Mehta'],
+        ['Zone 02', 'Boiler Room', ''],
+        ['Zone 04', 'Canteen', ''],
+      ]),
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect((await activeZones(world.unitA)).find((z) => z.code === 'Z-01')).toMatchObject({
+      zoneLeaderId: null,
+      zoneLeaderName: 'Mr. D. Mehta',
+    });
+  });
+
   it('refuses a file without the three headings, and changes nothing', async () => {
     const book = new ExcelJS.Workbook();
     book.addWorksheet('Sheet1').addRow(['Area', 'Owner']);
