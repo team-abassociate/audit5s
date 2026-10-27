@@ -28,6 +28,12 @@ export type ZonePatch = Partial<{
  * caches it for offline browsing (PART 9.1's local `zone` table). It is a display value,
  * never an authorization input — the leader pointer grants nothing (C2).
  */
+/** "Mr. A.  Sharma" and "mr. a. sharma" are one person. */
+function sameName(a: string | null, b: string): boolean {
+  const norm = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+  return a !== null && norm(a) === norm(b);
+}
+
 const zoneColumns = {
   id: zones.id,
   unitId: zones.unitId,
@@ -174,8 +180,10 @@ export class ZonesRepository extends BaseRepository {
   /**
    * R-59: the file's Zones become the Unit's list, in one transaction. A Zone it names is
    * added, or updated (and restored, if archived) by its code; a Zone it leaves out is
-   * archived — never deleted, its audits stay on record. A Zone's account leader is left
-   * alone: the imported name is its typed leader, which an account outranks (0015).
+   * archived — never deleted, its audits stay on record. The imported name is the Zone's
+   * typed leader; an account leader is kept only while the file names that same person (or
+   * no one). A file naming someone else replaces the account — the list is the Unit's
+   * own record, not an auditor's guess (0015's precedence guards the latter).
    *
    * Returns the codes of Zones it would archive that have an audit in progress, and
    * changes nothing, when there are any (§8.4's archive guard).
@@ -188,6 +196,10 @@ export class ZonesRepository extends BaseRepository {
           id: zones.id,
           code: zones.code,
           name: zones.name,
+          zoneLeaderId: zones.zoneLeaderId,
+          accountLeaderName: sql<
+            string | null
+          >`app_zone_leader_name(${zones.unitId}, ${zones.zoneLeaderId})`,
           zoneLeaderName: zones.zoneLeaderName,
           sortOrder: zones.sortOrder,
           archivedAt: zones.archivedAt,
@@ -220,7 +232,14 @@ export class ZonesRepository extends BaseRepository {
             sortOrder: zone.sortOrder,
           });
           created += 1;
-        } else if (
+          continue;
+        }
+        const replacesAccount =
+          found.zoneLeaderId !== null &&
+          zone.leaderName !== null &&
+          !sameName(found.accountLeaderName, zone.leaderName);
+        if (
+          replacesAccount ||
           found.name !== zone.name ||
           found.zoneLeaderName !== zone.leaderName ||
           found.sortOrder !== zone.sortOrder ||
@@ -231,6 +250,7 @@ export class ZonesRepository extends BaseRepository {
             .set({
               name: zone.name,
               zoneLeaderName: zone.leaderName,
+              ...(replacesAccount ? { zoneLeaderId: null } : {}),
               sortOrder: zone.sortOrder,
               archivedAt: null,
               version: sql`${zones.version} + 1`,
