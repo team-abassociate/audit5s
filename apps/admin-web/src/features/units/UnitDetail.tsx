@@ -203,6 +203,42 @@ function UnitMemberships({ unitId }: { unitId: string }) {
     },
   });
 
+  const [targetUnitId, setTargetUnitId] = useState('');
+  const units = useQuery({
+    queryKey: ['units'],
+    queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
+    enabled: can('unit_membership', 'create') && can('unit_membership', 'revoke'),
+  });
+  const leaders = (memberships.data?.data ?? []).filter((m) => m.role === 'ZONE_LEADER');
+
+  /**
+   * R-68: a Unit's Zone Leaders, imported into the wrong Unit, move to the right one with
+   * their login IDs and passwords. A Zone Leader holds one Unit, so each is removed here
+   * before being added there; a re-import elsewhere cannot do it, as their numbers are taken.
+   */
+  // ponytail: two calls a person, not one transaction; a failed add leaves that person in
+  // no Unit, named below, for "Add to a Unit" in People. A server move if it ever bites.
+  const move = useMutation({
+    mutationFn: async () => {
+      const failed: string[] = [];
+      for (const m of leaders) {
+        try {
+          await api.delete<void>(`/units/${unitId}/memberships/${m.id}`);
+          await api.post<MembershipDetail>(`/units/${targetUnitId}/memberships`, { userId: m.userId });
+        } catch {
+          failed.push(m.userFullName);
+        }
+      }
+      if (failed.length > 0) {
+        throw new Error(`Not moved, add them by hand in People: ${failed.join(', ')}`);
+      }
+    },
+    onSettled: async () => {
+      setTargetUnitId('');
+      await queryClient.invalidateQueries({ queryKey: ['memberships'] });
+    },
+  });
+
   return (
     <Card>
       <CardHeader
@@ -240,9 +276,34 @@ function UnitMemberships({ unitId }: { unitId: string }) {
         </div>
       )}
 
-      {assign.error && (
+      {can('unit_membership', 'create') && can('unit_membership', 'revoke') && leaders.length > 0 && (
+        <div className="flex items-end gap-2 border-b border-edge-soft bg-board p-4">
+          <div className="flex-1">
+            <Field
+              label={`Move all ${leaders.length} Zone Leaders to another Unit`}
+              hint="They keep their login IDs and passwords, sign in again, and see only the new Unit. Open assignments here are cancelled."
+            >
+              <Select value={targetUnitId} onChange={(e) => setTargetUnitId(e.target.value)}>
+                <option value="">Select a Unit…</option>
+                {(units.data?.data ?? [])
+                  .filter((u) => u.id !== unitId && !u.archivedAt)
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+          </div>
+          <Button disabled={!targetUnitId || move.isPending} onClick={() => move.mutate()}>
+            {move.isPending ? 'Moving…' : 'Move'}
+          </Button>
+        </div>
+      )}
+
+      {(assign.error || move.error) && (
         <div className="p-4">
-          <ErrorNotice error={assign.error} />
+          <ErrorNotice error={assign.error ?? move.error} />
         </div>
       )}
 
