@@ -15,10 +15,8 @@
     reverse_proxy api:3000
   }
 
+  # R-66: the APK is public, so a QR code opens it straight away.
   handle /downloads/* {
-    basic_auth {
-      auditor {$APK_DOWNLOAD_PASSWORD_HASH}
-    }
     root * /srv
     file_server
   }
