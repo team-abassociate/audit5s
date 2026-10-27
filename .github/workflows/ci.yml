@@ -180,15 +180,12 @@ jobs:
 
       - name: Validate Caddy and production Compose
         run: |
-          CI_APK_HASH="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext 'ci-test-only-password')"
-
           docker run --rm \
             -v "$PWD/infra/Caddyfile:/etc/caddy/Caddyfile:ro" \
             -e APP_HOST=app.example.test \
             -e API_HOSTNAME=api.example.test \
             -e OBJECTS_HOST=objects.example.test \
             -e ACME_EMAIL=ops@example.test \
-            -e APK_DOWNLOAD_PASSWORD_HASH="$CI_APK_HASH" \
             audit5s-web:ci \
             caddy validate --config /etc/caddy/Caddyfile
 

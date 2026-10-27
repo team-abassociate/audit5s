@@ -51,7 +51,7 @@ done
   die "DATABASE_MIGRATION_URL must contain the matching owner password and point to postgres:5432/audit5s."
 for _key in POSTGRES_SUPERUSER_PASSWORD PGBACKREST_CIPHER_PASS \
   S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY MINIO_ROOT_USER MINIO_ROOT_PASSWORD \
-  APP_HOST API_HOSTNAME OBJECTS_HOST ACME_EMAIL APK_DOWNLOAD_PASSWORD_HASH; do
+  APP_HOST API_HOSTNAME OBJECTS_HOST ACME_EMAIL; do
   [[ -n "$(env_value "$_key")" ]] || die "$_key is empty in .env."
 done
 for _key in APP_HOST API_HOSTNAME OBJECTS_HOST; do

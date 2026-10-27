@@ -32,11 +32,7 @@ work. The former five-minute disaster RPO and four-hour RTO do not apply (R-27).
    packages are private; bootstrap runs Docker as root. The production Compose file derives
    `WEB_APP_URL` and `S3_ENDPOINT` from
    these hosts.
-6. Generate an APK download password hash with
-   `docker run --rm caddy:2-alpine caddy hash-password --plaintext 'chosen-password'`.
-   Put the resulting bcrypt hash in `APK_DOWNLOAD_PASSWORD_HASH` using single quotes in
-   `.env`, so Compose treats its dollar signs literally. Store the plain password only
-   in the password manager.
+6. Nothing to set for the APK download: it is public (DECISIONS.md R-66).
 7. Create a GitHub **production** environment with required reviewer approval. Add
    `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, and `VPS_KNOWN_HOSTS` as environment secrets.
    `VPS_USER` must be able to run `sudo -n /opt/audit5s/infra/bootstrap.sh`, access
@@ -91,8 +87,8 @@ Configure the Expo production environment for the `vps` build profile with
 `eas build --platform android --profile vps`; its internal distribution profile emits
 an APK. Download the completed APK, verify its signing certificate and SHA-256, then
 place it at `/opt/audit5s/infra/.local/releases/field.apk` with mode 644. Auditors
-download it from `https://<app-host>/downloads/field.apk` using the separate download
-password. Test installation and an upgrade on a real field device before sharing it.
+download it from `https://<app-host>/downloads/field.apk`, which needs no password.
+Test installation and an upgrade on a real field device before sharing it.
 
 For verified Android corrective-action links, put an `assetlinks.json` with the
 `in.abassociate.audit5s` package and release signing-certificate SHA-256 fingerprint at

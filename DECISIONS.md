@@ -2695,3 +2695,14 @@ required a Coordinator to give a new Zone Leader a Zone. Narrows `user:read` and
   their mobile number first"), and a Unit's member list shows the same in place of a login ID.
 - The forms that add one person still require the number; only the Auditor list makes an
   account without one.
+
+## R-66 — The Android APK downloads without a password
+
+**Settled 2026-10-27 by the product owner.** In the owner's words:
+
+> remove the password from the download link
+
+- `https://<app-host>/downloads/field.apk` is public, so a QR code of it installs the app in
+  one scan. The Caddy basic-auth and `APK_DOWNLOAD_PASSWORD_HASH` are gone.
+- It gives away the installer only: the app still needs a login ID and password, and every
+  request is authorised on the server as before.
