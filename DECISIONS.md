@@ -2664,8 +2664,9 @@ required a Coordinator to give a new Zone Leader a Zone. Narrows `user:read` and
   `unit_membership:read` at `own_unit` admit, for a Coordinator, only the Unit's Zone Leaders
   and their own record; a Consultant or another Coordinator reads as absent (404). People (the
   phone's tab, the web's Users) is one list, "Zone leaders / Auditors"; Overview's Consultants
-  tile is their Auditors count. Audits a Consultant conducted in the Unit stay on the Audits
-  tab with their scores.
+  tile is their "Zone leaders / Auditors" count. Audits a Consultant conducted in the Unit stay
+  on the Audits tab with their scores, and while an external audit is under way the Auditing
+  tile names it ("External audit · Cara Consult", or "2 external audits").
 - **A Unit has one Coordinator.** `unit_membership_one_coordinator` (migration 0057), a partial
   unique index; Create user and Assign to a Unit both refuse a second. Before it, the one Unit
   holding two — the dummy Unit "Xyz", which the owner said to resolve — keeps the Coordinator

@@ -201,8 +201,14 @@ function ManagementOverview() {
 
         <View style={styles.kpis}>
           <Kpi label={organizationWide ? 'Units' : 'Unit'} icon={TAB_ICON.units} value={count(units.data)} onPress={() => router.push('/units')} />
-          <Kpi label={peopleRole === 'CONSULTANT' ? 'Consultants' : 'Auditors'} icon={TAB_ICON.people} value={count(consultants.data)} onPress={() => router.push('/people')} />
-          <Kpi label="Auditing" icon={TAB_ICON.audits} value={active.data ? String(running.length) : '—'} onPress={() => router.push('/audits')} />
+          <Kpi label={peopleRole === 'CONSULTANT' ? 'Consultants' : 'Zone leaders / Auditors'} icon={TAB_ICON.people} value={count(consultants.data)} onPress={() => router.push('/people')} />
+          <Kpi
+            label="Auditing"
+            icon={TAB_ICON.audits}
+            value={active.data ? String(running.length) : '—'}
+            detail={externalNote(running)}
+            onPress={() => router.push('/audits')}
+          />
         </View>
 
         <SectionHead
@@ -273,6 +279,16 @@ function ManagementOverview() {
   );
 }
 
+/**
+ * An external audit under way, named on the Auditing tile (owner, 2026-10-27): who is running
+ * it, or how many there are. The Auditing now list below carries the Zones.
+ */
+function externalNote(running: Audit[]): string | undefined {
+  const external = running.filter((audit) => audit.auditType === 'EXTERNAL_5S');
+  if (external.length === 0) return undefined;
+  return external.length === 1 ? `External audit · ${external[0]!.auditorName}` : `${external.length} external audits`;
+}
+
 function count(page: Page<unknown> | undefined): string {
   return page ? String(page.data.length) : '—';
 }
@@ -282,7 +298,19 @@ function count(page: Page<unknown> | undefined): string {
  * shadow with its ink band. The row stretches every tile to the tallest, so a label that
  * shrinks to fit never leaves one shorter than its neighbours. A tap goes to that tab.
  */
-function Kpi({ label, value, icon, onPress }: { label: string; value: string; icon: IconName; onPress: () => void }) {
+function Kpi({
+  label,
+  value,
+  icon,
+  detail,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  icon: IconName;
+  detail?: string;
+  onPress: () => void;
+}) {
   const styles = useStyles();
   const theme = useTheme();
   const { width } = useWindowDimensions();
@@ -290,16 +318,21 @@ function Kpi({ label, value, icon, onPress }: { label: string; value: string; ic
     <Magnet offset={LIFT} style={styles.kpi}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}: ${value}`}
+        accessibilityLabel={`${label}: ${value}${detail ? `. ${detail}` : ''}`}
         onPress={onPress}
         style={({ pressed }) => [styles.kpiFace, pressed && styles.kpiPressed]}
       >
         <Icon name={icon} color={theme.color.ink3} size={20} />
         <View style={styles.kpiText}>
-          <Text style={[styles.kpiLabel, { fontSize: kpiLabelSize(width) }]} numberOfLines={1}>
+          <Text style={[styles.kpiLabel, { fontSize: kpiLabelSize(width) }]} numberOfLines={2}>
             {label}
           </Text>
           <Figure size={32}>{value}</Figure>
+          {detail ? (
+            <Text style={styles.kpiDetail} numberOfLines={2}>
+              {detail}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.kpiBand} />
       </Pressable>
@@ -312,15 +345,16 @@ const LIFT = 5;
 const KPI_PAD = 10;
 
 /**
- * One label size for all three tiles, fitted to the longest label ("CONSULTANTS") in a third
- * of the screen, so no tile's label shrinks on its own and makes it look smaller.
+ * One label size for all three tiles, fitted to the longest line of a label ("ZONE LEADERS",
+ * which wraps before "/ AUDITORS") in a third of the screen, so no tile's label shrinks on its
+ * own and makes it look smaller.
  * ponytail: 0.72em is an average uppercase glyph width; measure with onTextLayout if a
  * longer label or another font ever clips.
  */
 function kpiLabelSize(screenWidth: number): number {
   // Screen padding 14 each side, two 8dp gaps, each tile's 5dp shadow margin, 2dp border, padding.
   const inner = (screenWidth - 28 - 16 - 3 * LIFT) / 3 - 4 - 2 * KPI_PAD;
-  const perGlyph = inner / 'CONSULTANTS'.length - KPI_TRACKING;
+  const perGlyph = inner / 'ZONE LEADERS'.length - KPI_TRACKING;
   return Math.max(8, Math.min(11, perGlyph / 0.72));
 }
 const KPI_TRACKING = 0.6;
@@ -332,7 +366,7 @@ const useStyles = createThemedStyles((theme) => ({
   kpi: { flex: 1 },
   kpiFace: {
     flex: 1,
-    height: 112,
+    minHeight: 112,
     justifyContent: 'space-between',
     backgroundColor: theme.color.tile,
     borderWidth: 2,
@@ -350,6 +384,7 @@ const useStyles = createThemedStyles((theme) => ({
     textTransform: 'uppercase',
     letterSpacing: KPI_TRACKING,
   },
+  kpiDetail: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink, marginTop: theme.space.xs },
   kpiBand: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 5, backgroundColor: theme.color.ink },
   section: { marginTop: theme.space.lg },
   scoreRow: {
