@@ -22,6 +22,8 @@ on:
 permissions:
   contents: read
   packages: write
+  # The field-app step reads the last successful deploy, to know what has reached phones.
+  actions: read
 
 jobs:
   publish-and-deploy:
@@ -123,10 +125,19 @@ jobs:
 
       - name: Did this release change the field app?
         id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # A merge's first parent is main as it was, so this is the whole pull request. A
-          # change to this workflow counts too: a fix to the publishing itself should publish.
-          if git diff --quiet "$RELEASE_SHA^1" "$RELEASE_SHA" -- \
+          # Changed since the last release that reached production, not since this commit's
+          # parent: on 2026-10-27 a newer push cancelled #155's CI, its deploy was skipped, and
+          # the next release — a server-only fix — published nothing, so #155's app changes
+          # never reached a phone. Without a previous deploy, the parent is the base.
+          base="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=20" \
+            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)][0].head_sha // empty")"
+          git cat-file -e "${base:-none}^{commit}" 2>/dev/null || base="$RELEASE_SHA^1"
+          echo "Comparing with $base"
+          # A change to this workflow counts too: a fix to the publishing itself should publish.
+          if git diff --quiet "$base" "$RELEASE_SHA" -- \
               apps/field-mobile packages/contracts packages/domain pnpm-lock.yaml \
               .github/workflows/deploy.yml; then
             echo "The field app did not change in this release; nothing to publish."
