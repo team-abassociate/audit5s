@@ -108,6 +108,12 @@ export const zoneListImportResultSchema = z.object({
   updated: z.number().int(),
   archived: z.number().int(),
   zoneListImportedAt: isoDateTimeSchema,
+  /** R-63: Zone Leader accounts made from the file's names and mobile numbers. */
+  leadersCreated: z.number().int(),
+  /** Zones now led by an account that already existed, matched by name, then by number. */
+  leadersLinked: z.number().int(),
+  /** Leaders left as a typed name, and why: "row 4: 9876 is not a 10-digit mobile number". */
+  notes: z.array(z.string()),
 });
 export type ZoneListImportResult = z.infer<typeof zoneListImportResultSchema>;
 

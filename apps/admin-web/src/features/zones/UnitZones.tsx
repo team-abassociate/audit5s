@@ -148,9 +148,10 @@ export function UnitZones({ unitId }: { unitId: string }) {
 }
 
 /**
- * R-59: the Unit's Zone list from an Excel or PDF file. Only Zone No., Zone Name (or
- * Description) and Leader are read. A second import replaces the first — Zones it leaves
- * out are archived — so it asks before the file is chosen.
+ * R-59: the Unit's Zone list from an Excel or PDF file. Zone No., Zone Name (or
+ * Description), Leader and Mobile No. are read; a leader with a number gets a Zone Leader
+ * account (R-63). A second import replaces the first — Zones it leaves out are archived —
+ * so it asks before the file is chosen.
  */
 function ImportZoneList({ unitId }: { unitId: string }) {
   const queryClient = useQueryClient();
@@ -171,6 +172,7 @@ function ImportZoneList({ unitId }: { unitId: string }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['zones'] }),
         queryClient.invalidateQueries({ queryKey: ['unit', unitId] }),
+        queryClient.invalidateQueries({ queryKey: ['users'] }),
       ]);
     },
   });
@@ -223,10 +225,20 @@ function ImportZoneList({ unitId }: { unitId: string }) {
           ) : importList.error ? (
             <ErrorNotice error={importList.error} />
           ) : result ? (
-            <span className="text-ink-2">
-              Zone list imported: {result.created} added, {result.updated} updated,{' '}
-              {result.archived} archived.
-            </span>
+            <>
+              <span className="text-ink-2">
+                Zone list imported: {result.created} added, {result.updated} updated,{' '}
+                {result.archived} archived. Zone Leaders: {result.leadersCreated} new accounts, who
+                sign in with their mobile number; {result.leadersLinked} existing linked.
+              </span>
+              {result.notes.length > 0 && (
+                <ul className="gb-notice">
+                  {result.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
+            </>
           ) : null}
         </div>
       )}

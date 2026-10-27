@@ -9,11 +9,7 @@ import {
   Patch,
   Post,
   Query,
-  Req,
 } from '@nestjs/common';
-import type { FastifyRequest } from 'fastify';
-// The type augmentation that puts `request.file()` on FastifyRequest.
-import '@fastify/multipart';
 import {
   assignZoneLeaderRequestSchema,
   createZoneRequestSchema,
@@ -24,12 +20,10 @@ import {
   type Page,
   type UpdateZoneRequest,
   type Zone,
-  type ZoneListImportResult,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { RequirePermission, Scope } from '../../common/auth/decorators';
 import { CurrentScope } from '../../common/auth/current-scope.decorator';
-import { AppError } from '../../common/errors';
 import { ZodValidationPipe } from '../auth/zod.pipe';
 import { ZonesService } from './zones.service';
 
@@ -55,26 +49,6 @@ export class ZonesController {
     @Body(new ZodValidationPipe(createZoneRequestSchema)) body: CreateZoneRequest,
   ): Promise<Zone> {
     return this.zones.create(scope, unitId, body);
-  }
-
-  /**
-   * R-59: the Unit's Zone list from an Excel or PDF file, as a multipart field `file`.
-   * Replaces the list — Super Admin and Coordinator only, as creating a Zone is.
-   */
-  @RequirePermission('zone', 'create')
-  @Scope({ intent: 'write' })
-  @Post('units/:id/zones/import')
-  @HttpCode(HttpStatus.OK)
-  async importList(
-    @CurrentScope() scope: ScopeContext,
-    @Param('id', ParseUUIDPipe) unitId: string,
-    @Req() request: FastifyRequest,
-  ): Promise<ZoneListImportResult> {
-    const file = await request.file();
-    if (!file) {
-      throw AppError.validation('Send the Zone list as a multipart file field named `file`');
-    }
-    return this.zones.importList(scope, unitId, await file.toBuffer());
   }
 
   /** `?active=true` by default — this is the Zone dropdown source. */

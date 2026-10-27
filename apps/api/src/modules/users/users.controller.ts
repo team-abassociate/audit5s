@@ -9,7 +9,11 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
+// The type augmentation that puts `request.file()` on FastifyRequest.
+import '@fastify/multipart';
 import {
   createUserRequestSchema,
   listUsersQuerySchema,
@@ -20,10 +24,12 @@ import {
   type ResetUserPasswordResponse,
   type UpdateUserRequest,
   type User,
+  type ZoneListImportResult,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { RequirePermission, Scope } from '../../common/auth/decorators';
 import { CurrentScope } from '../../common/auth/current-scope.decorator';
+import { AppError } from '../../common/errors';
 import { ZodValidationPipe } from '../auth/zod.pipe';
 import { UsersService } from './users.service';
 
@@ -103,5 +109,32 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ResetUserPasswordResponse> {
     return this.users.resetPassword(scope, id);
+  }
+}
+
+/**
+ * R-59: the Unit's Zone list from an Excel or PDF file, as a multipart field `file`.
+ * Replaces the list — Super Admin and Coordinator only, as creating a Zone is — and makes
+ * the accounts of the leaders it names (R-63). Here, not in the Zones module, because the
+ * accounts are this module's and it already depends on that one.
+ */
+@Controller()
+export class ZoneListImportController {
+  constructor(private readonly users: UsersService) {}
+
+  @RequirePermission('zone', 'create')
+  @Scope({ intent: 'write' })
+  @Post('units/:id/zones/import')
+  @HttpCode(HttpStatus.OK)
+  async importList(
+    @CurrentScope() scope: ScopeContext,
+    @Param('id', ParseUUIDPipe) unitId: string,
+    @Req() request: FastifyRequest,
+  ): Promise<ZoneListImportResult> {
+    const file = await request.file();
+    if (!file) {
+      throw AppError.validation('Send the Zone list as a multipart file field named `file`');
+    }
+    return this.users.importZoneList(scope, unitId, await file.toBuffer());
   }
 }

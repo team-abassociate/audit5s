@@ -7,9 +7,10 @@ import type {
   Role,
   UpdateUserRequest,
   User,
+  ZoneListImportResult,
 } from '@audit5s/contracts';
 import { ADMIN_EDITABLE_USER_FIELDS, SELF_EDITABLE_USER_FIELDS } from '@audit5s/contracts';
-import { mayGrantKaizen, type ScopeContext } from '@audit5s/domain';
+import { mayGrantKaizen, zoneLabelFromCode, type ScopeContext } from '@audit5s/domain';
 import { CONFIG, type AppConfig } from '../../config/env';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
@@ -17,7 +18,7 @@ import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { PasswordService } from '../auth/password.service';
 import { AuthRepository } from '../auth/auth.repository';
 import { scopeFor } from '../../common/auth/scope-for';
-import { ZonesRepository } from '../zones/zones.repository';
+import { leaderNameKey, ZonesRepository } from '../zones/zones.repository';
 import { ZonesService } from '../zones/zones.service';
 import { UsersRepository } from './users.repository';
 
@@ -161,6 +162,62 @@ export class UsersService {
       loginId: created.loginId,
       bootstrapExpiresAt: bootstrapExpiresAt.toISOString(),
     };
+  }
+
+  /**
+   * R-63: imports a Unit's Zone list (R-59), then gives each leader it names an account.
+   *
+   * A leader is matched to one of the Unit's Zone Leaders by name first, then by mobile
+   * number; only a name nobody has, with a number, makes a new account — through `create`,
+   * so it is a Zone Leader like one added by hand (the number is the first password).
+   * Matching by name means a changed number in the file never makes the person sign in
+   * again: a number is changed in People, and a password reset then uses it.
+   *
+   * A leader that cannot have an account is left as the Zone's typed name and named in
+   * `notes`; the rest of the import stands.
+   */
+  async importZoneList(scope: ScopeContext, unitId: string, body: Buffer): Promise<ZoneListImportResult> {
+    const { leaders, notes, ...result } = await this.zones.importList(scope, unitId, body);
+    const existing = await this.repository.list(scopeFor(scope, 'user:read'), {
+      limit: 1000,
+      role: 'ZONE_LEADER',
+      unitId,
+    } as ListUsersQuery);
+    const byName = new Map(existing.map((user) => [leaderNameKey(user.fullName), user.id]));
+    const byPhone = new Map(existing.map((user) => [user.phoneE164.slice(-10), user.id]));
+
+    let leadersCreated = 0;
+    let leadersLinked = 0;
+    for (const leader of leaders) {
+      const accountId =
+        byName.get(leaderNameKey(leader.leaderName)) ??
+        (leader.leaderPhone ? byPhone.get(leader.leaderPhone) : undefined);
+      try {
+        if (accountId) {
+          if (accountId === leader.zoneLeaderId) continue;
+          await this.zones.assignLeader(scopeFor(scope, 'zone:assign_leader'), leader.zoneId, {
+            zoneLeaderId: accountId,
+          });
+          leadersLinked += 1;
+        } else if (leader.leaderPhone) {
+          const { user } = await this.create(scopeFor(scope, 'user:create'), {
+            fullName: leader.leaderName,
+            phone: leader.leaderPhone,
+            role: 'ZONE_LEADER',
+            unitId,
+            zoneId: leader.zoneId,
+          });
+          byName.set(leaderNameKey(user.fullName), user.id);
+          byPhone.set(leader.leaderPhone, user.id);
+          leadersCreated += 1;
+        }
+      } catch (error) {
+        if (!(error instanceof AppError)) throw error;
+        const zone = `Zone ${zoneLabelFromCode(leader.code) ?? leader.code}`;
+        notes.push(`${zone}: no account for ${leader.leaderName}. ${error.detail ?? error.title}`);
+      }
+    }
+    return { ...result, leadersCreated, leadersLinked, notes };
   }
 
   async list(scope: ScopeContext, query: ListUsersQuery): Promise<Page<User>> {
