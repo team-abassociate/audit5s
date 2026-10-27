@@ -239,7 +239,8 @@ describe('Kaizen access is the Super Admin’s to grant (0052)', () => {
     expect((await world.request('GET', base, { token: as(leader) })).status).toBe(200);
 
     // Not a Consultant, not themselves, not another Unit's leader.
-    expect((await patch(coordinator, world.actors.CONSULTANT.userId, true)).status).toBe(403);
+    // R-64: a Coordinator cannot see the Unit's Consultant at all, so it reads as absent.
+    expect((await patch(coordinator, world.actors.CONSULTANT.userId, true)).status).toBe(404);
     expect((await patch(coordinator, coordinator.userId, true)).status).toBe(403);
     expect((await patch(coordinator, world.outOfScopeUserId, true)).status).not.toBe(200);
 

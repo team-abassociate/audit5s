@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, gt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, or, sql, type SQL } from 'drizzle-orm';
 import { unitMemberships, units, users, type Database, type Transaction } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { ListMembershipsQuery, Role } from '@audit5s/contracts';
@@ -94,6 +94,11 @@ export class MembershipsRepository extends BaseRepository {
         query.role ? eq(unitMemberships.role, query.role) : undefined,
         query.status ? eq(unitMemberships.status, query.status) : undefined,
         query.cursor ? gt(unitMemberships.id, query.cursor) : undefined,
+        // R-64: a Coordinator sees their Unit's Zone Leaders and themselves — not its
+        // Consultants, nor another Coordinator.
+        scope.actor.role === 'COORDINATOR'
+          ? or(eq(unitMemberships.role, 'ZONE_LEADER'), eq(unitMemberships.userId, scope.actor.userId))
+          : undefined,
       ];
 
       return tx

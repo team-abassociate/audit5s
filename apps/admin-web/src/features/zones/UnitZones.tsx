@@ -11,6 +11,7 @@ import type {
   User,
   Zone,
   ZoneListImportResult,
+  AuditorListImportResult,
 } from '@audit5s/contracts';
 import { ZONE_LIST_IMPORT_MAX_BYTES, ZONE_NUMBER_MIN } from '@audit5s/contracts';
 import { formatDate, zoneCodeChoices, zoneCodeForLabel, zoneDisplayLabel, zoneLabelFromCode, zoneSortOrder } from '@audit5s/domain';
@@ -89,6 +90,7 @@ export function UnitZones({ unitId }: { unitId: string }) {
           {can('zone', 'create') && (
             <>
               <ImportZoneList unitId={unitId} />
+              {can('user', 'create') && <ImportAuditorList unitId={unitId} />}
               <Button variant="secondary" onClick={() => setCreating((open) => !open)}>
                 {creating ? 'Cancel' : 'New Zone'}
               </Button>
@@ -149,9 +151,9 @@ export function UnitZones({ unitId }: { unitId: string }) {
 
 /**
  * R-59: the Unit's Zone list from an Excel or PDF file. Zone No., Zone Name (or
- * Description), Leader and Mobile No. are read; a leader with a number gets a Zone Leader
- * account (R-63). A second import replaces the first — Zones it leaves out are archived —
- * so it asks before the file is chosen.
+ * Description) and Leader are read; a Zone's several leaders are all its leader names
+ * (R-64). A second import replaces the first — Zones it leaves out are archived — so it
+ * asks before the file is chosen.
  */
 function ImportZoneList({ unitId }: { unitId: string }) {
   const queryClient = useQueryClient();
@@ -228,8 +230,74 @@ function ImportZoneList({ unitId }: { unitId: string }) {
             <>
               <span className="text-ink-2">
                 Zone list imported: {result.created} added, {result.updated} updated,{' '}
-                {result.archived} archived. Zone Leaders: {result.leadersCreated} new accounts, who
-                sign in with their mobile number; {result.leadersLinked} existing linked.
+                {result.archived} archived.
+              </span>
+              {result.notes.length > 0 && (
+                <ul className="gb-notice">
+                  {result.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * R-64: the Unit's Auditor list from an Excel file — Zone No., ZL, Name and Mobile No. Each
+ * named person the Unit has no account for becomes a Zone Leader with no Zone, who signs in
+ * with their mobile number. It only adds people, so it asks nothing first.
+ */
+function ImportAuditorList({ unitId }: { unitId: string }) {
+  const queryClient = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const [tooLarge, setTooLarge] = useState(false);
+  const importList = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      return api.post<AuditorListImportResult>(`/units/${unitId}/auditors/import`, form, crypto.randomUUID());
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+  const result = importList.data;
+
+  return (
+    <>
+      <a className="gb-btn" href={`${import.meta.env.BASE_URL}auditor-list-template.xlsx`} download>
+        Auditor template
+      </a>
+      <Button variant="secondary" disabled={importList.isPending} onClick={() => input.current?.click()}>
+        {importList.isPending ? 'Importing…' : 'Import Auditor list'}
+      </Button>
+      <input
+        ref={input}
+        type="file"
+        hidden
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (!file) return;
+          setTooLarge(file.size > ZONE_LIST_IMPORT_MAX_BYTES);
+          if (file.size <= ZONE_LIST_IMPORT_MAX_BYTES) importList.mutate(file);
+        }}
+      />
+      {(result || importList.error || tooLarge) && (
+        <div className="basis-full" role="status">
+          {tooLarge ? (
+            <p className="gb-notice" role="alert">The file is larger than 5 MB.</p>
+          ) : importList.error ? (
+            <ErrorNotice error={importList.error} />
+          ) : result ? (
+            <>
+              <span className="text-ink-2">
+                Auditor list imported: {result.created} new accounts, who sign in with their mobile
+                number; {result.existing} already had one.
               </span>
               {result.notes.length > 0 && (
                 <ul className="gb-notice">

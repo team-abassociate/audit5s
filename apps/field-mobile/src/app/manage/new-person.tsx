@@ -14,6 +14,7 @@ import {
   Field,
   Label,
   LedgerRow,
+  Muted,
   Screen,
   Segmented,
   Slip,
@@ -41,9 +42,9 @@ const ROLES = [
  * A Coordinator (R-24) creates Zone leaders only, in their own Unit — the server takes the
  * Unit from their membership, whatever is chosen here (AZ-2).
  *
- * A Zone leader is created with the Zone they lead (R-39): required of a Coordinator,
- * optional for a Super Admin, whose Unit may have no Zones yet (R-19). It names who answers
- * for the Zone and grants nothing — they still audit, and fix, every Zone of the Unit.
+ * A Zone leader may be created with the Zone they lead (R-39). It is optional for everyone
+ * since R-64: a senior person or an external auditor audits with no Zone of their own. It
+ * names who answers for the Zone and grants nothing — they still audit, and fix, every Zone.
  */
 export default function NewPersonScreen() {
   const styles = useStyles();
@@ -68,7 +69,6 @@ export default function NewPersonScreen() {
   // A Zone belongs to one Unit, so a Unit change drops the Zone picked under the last one.
   const zoneId = zonePick && zonePick.unitId === unitId ? zonePick.zoneId : null;
   const picksZone = role === 'ZONE_LEADER' && unitId !== null;
-  const zoneRequired = picksZone && scope?.role === 'COORDINATOR';
   const zones = useQuery({
     queryKey: ['zones', unitId, 'active'],
     queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?active=true&limit=200`),
@@ -92,7 +92,7 @@ export default function NewPersonScreen() {
       ),
   });
 
-  const required = useRequiredFields<'name' | 'phone' | 'unit' | 'zone'>();
+  const required = useRequiredFields<'name' | 'phone' | 'unit'>();
   const nameGiven = fullName.trim() !== '';
   const phoneValid = /^\d{10}$/.test(phone.trim());
 
@@ -187,11 +187,9 @@ export default function NewPersonScreen() {
         />
         </View>
         {picksZone ? (
-          <View ref={required.anchor('zone')} collapsable={false}>
-            <Label>{zoneRequired ? 'Leads Zone' : 'Leads Zone (optional)'}</Label>
-            {required.flagged('zone', !zoneRequired || zoneId !== null) ? (
-              <ErrorBanner message="Choose the Zone they lead." />
-            ) : null}
+          <View>
+            <Label>Leads Zone (optional)</Label>
+            <Muted>Leave it empty for someone who only audits. Either way they may audit every Zone.</Muted>
             <ChoiceList
               value={zoneId}
               onChange={(picked) => setZonePick(unitId && picked ? { unitId, zoneId: picked } : null)}
@@ -221,7 +219,6 @@ export default function NewPersonScreen() {
               ['name', nameGiven],
               ['phone', phoneValid],
               ['unit', unitId !== null],
-              ['zone', !zoneRequired || zoneId !== null],
             ]) && create.mutate()
           }
         />

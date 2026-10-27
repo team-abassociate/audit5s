@@ -352,6 +352,16 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     coveredBy: 'zones.e2e.test.ts',
   },
   {
+    method: 'POST',
+    path: '/api/v1/units/:id/auditors/import',
+    description: 'user:create — R-64: a Unit’s Zone Leader and auditor accounts from an Excel file',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'zones.e2e.test.ts',
+  },
+  {
     method: 'GET',
     path: '/api/v1/units/:id/zones',
     description: 'zone:read — the Zone dropdown source, active Zones by default',

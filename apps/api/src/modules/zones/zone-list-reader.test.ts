@@ -57,10 +57,9 @@ describe('readZoneList', () => {
 
     const room = 'Quality (In-process) & Inspection Room';
     expect((await readZoneList(pdf)).zones).toEqual([
-      { code: 'Z-01', name: 'Maintenance Room', leaderName: 'Mr. A. Sharma', leaderPhone: null, sortOrder: 1 },
-      // R-63: two leaders, two subzones.
-      { code: 'Z-2A', name: room, leaderName: 'Mr. B. Rao', leaderPhone: null, sortOrder: 2 },
-      { code: 'Z-2B', name: room, leaderName: 'Mr. C. Das', leaderPhone: null, sortOrder: 2 },
+      { code: 'Z-01', name: 'Maintenance Room', leaderName: 'Mr. A. Sharma', sortOrder: 1 },
+      // R-64: two leaders are both the Zone's leaders, not subzones.
+      { code: 'Z-02', name: room, leaderName: 'Mr. B. Rao, Mr. C. Das', sortOrder: 2 },
     ]);
   });
 
@@ -75,63 +74,32 @@ describe('readZoneList', () => {
 
     expect(await readZoneList(Buffer.from(await book.xlsx.writeBuffer()))).toEqual({
       zones: [
-        { code: 'Z-1A', name: 'Press Pit', leaderName: 'Mr. A', leaderPhone: null, sortOrder: 1 },
-        { code: 'Z-1B', name: 'Press Pit', leaderName: 'Ms. B', leaderPhone: null, sortOrder: 1 },
-        { code: 'Z-07', name: 'Canteen', leaderName: null, leaderPhone: null, sortOrder: 7 },
+        { code: 'Z-01', name: 'Press Pit', leaderName: 'Mr. A, Ms. B', sortOrder: 1 },
+        { code: 'Z-07', name: 'Canteen', leaderName: null, sortOrder: 7 },
       ],
-      // Names alone make no accounts, and the import says so.
-      notes: [expect.stringMatching(/^This file has no Mobile No\. column, so no Zone Leader accounts were made/)],
+      notes: [],
     });
   });
 
-  it('reads Mobile No., one number per leader in order, and notes a row it cannot pair', async () => {
+  it('keeps every leader a cell names, however they are separated, and reads no mobile number', async () => {
     const book = new ExcelJS.Workbook();
     const sheet = book.addWorksheet('Table 1');
     sheet.addRow(['Zone No.', 'Zone Name', 'Leader', 'Mobile No.']);
     sheet.addRow(['Zone 01', 'Press Pit', 'Mr. A. Sharma', 9876543210]);
-    sheet.addRow(['Zone 02', 'Boiler', 'Ms. B. Rao / Mr. C. Das', '+91 98765-43211\n09876543212']);
-    sheet.addRow(['Zone 03', 'Stores', 'Mr. D. Patil', '12345']);
+    sheet.addRow(['Zone 02', 'Boiler', 'Ms. B. Rao / Mr. C. Das & Mr. D. Patil', '9876543211']);
     // As the owner's sample sheet writes two people: one line, wrapped by the column width.
-    sheet.addRow(['Zone 6', 'Dispatch', 'Mr. Sunil Gaikwad Ms. Deepali Sawadekar', '9876543216 / 9876543217']);
-    sheet.addRow(['Zone 04', 'Canteen', 'Mr. E\nMr. F', '9876543213']);
-    sheet.addRow(['Zone 5A', 'Gate', 'Mr. G, Mr. H', '9876543214, 9876543215']);
+    sheet.addRow(['Zone 6', 'Dispatch', 'Mr. Sunil Gaikwad Ms. Deepali Sawadekar', '']);
+    sheet.addRow(['Zone 5A', 'Gate', 'Mr. G, Mr. H', '']);
 
     const { zones, notes } = await readZoneList(Buffer.from(await book.xlsx.writeBuffer()));
-    expect(zones.map((zone) => [zone.code, zone.leaderName, zone.leaderPhone])).toEqual([
-      ['Z-01', 'Mr. A. Sharma', '9876543210'],
-      ['Z-2A', 'Ms. B. Rao', '9876543211'],
-      ['Z-2B', 'Mr. C. Das', '9876543212'],
-      ['Z-03', 'Mr. D. Patil', null],
-      ['Z-6A', 'Mr. Sunil Gaikwad', '9876543216'],
-      ['Z-6B', 'Ms. Deepali Sawadekar', '9876543217'],
-      ['Z-4A', 'Mr. E', null],
-      ['Z-4B', 'Mr. F', null],
-      ['Z-5A', 'Mr. G, Mr. H', null],
+    expect(zones.map((zone) => [zone.code, zone.leaderName])).toEqual([
+      ['Z-01', 'Mr. A. Sharma'],
+      ['Z-02', 'Ms. B. Rao, Mr. C. Das, Mr. D. Patil'],
+      ['Z-06', 'Mr. Sunil Gaikwad, Ms. Deepali Sawadekar'],
+      ['Z-5A', 'Mr. G, Mr. H'],
     ]);
-    expect(notes).toEqual([
-      'row 4: "12345" is not a 10-digit mobile number, so no account was made for it',
-      'row 6: 2 leader(s) but 1 mobile numbers, so no account was made',
-      'row 7: Zone 5A names 2 leaders but is already a subzone, so no account was made',
-    ]);
-  });
-
-  it('reads a printed Mobile No. column, a number a line beside its leader', async () => {
-    const pdf = pdfWith([
-      ['Zone No.', 170, 750],
-      ['Zone Name', 300, 750],
-      ['Leader', 480, 750],
-      ['Mobile No.', 650, 750],
-      ['Zone 01', 172, 700],
-      ['Press', 300, 700],
-      ['Mr. A. Sharma', 465, 706],
-      ['Ms. B. Rao', 465, 694],
-      ['9876543210', 640, 706],
-      ['9876543211', 640, 694],
-    ]);
-    expect((await readZoneList(pdf)).zones.map((zone) => [zone.code, zone.leaderName, zone.leaderPhone])).toEqual([
-      ['Z-1A', 'Mr. A. Sharma', '9876543210'],
-      ['Z-1B', 'Ms. B. Rao', '9876543211'],
-    ]);
+    // Accounts come from the Auditor list; the import says so rather than ignoring the column.
+    expect(notes).toEqual([expect.stringMatching(/^Mobile numbers are not read from the Zone list/)]);
   });
 
   it('names every row it cannot read', async () => {

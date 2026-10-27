@@ -224,22 +224,16 @@ export class ZonesRepository extends BaseRepository {
       const byCode = new Map(existing.map((zone) => [zone.code, zone]));
       let created = 0;
       let updated = 0;
-      /** The file's Zones as they now stand, for R-63's leader accounts. */
-      const imported: Array<{ id: string; code: string; zoneLeaderId: string | null }> = [];
       for (const zone of list) {
         const found = byCode.get(zone.code);
         if (!found) {
-          const [row] = await tx
-            .insert(zones)
-            .values({
-              unitId,
-              code: zone.code,
-              name: zone.name,
-              zoneLeaderName: zone.leaderName,
-              sortOrder: zone.sortOrder,
-            })
-            .returning({ id: zones.id });
-          imported.push({ id: row!.id, code: zone.code, zoneLeaderId: null });
+          await tx.insert(zones).values({
+            unitId,
+            code: zone.code,
+            name: zone.name,
+            zoneLeaderName: zone.leaderName,
+            sortOrder: zone.sortOrder,
+          });
           created += 1;
           continue;
         }
@@ -247,7 +241,6 @@ export class ZonesRepository extends BaseRepository {
           found.zoneLeaderId !== null &&
           zone.leaderName !== null &&
           !sameName(found.accountLeaderName, zone.leaderName);
-        imported.push({ id: found.id, code: zone.code, zoneLeaderId: replacesAccount ? null : found.zoneLeaderId });
         if (
           replacesAccount ||
           found.name !== zone.name ||
@@ -283,7 +276,6 @@ export class ZonesRepository extends BaseRepository {
         .returning({ zoneListImportedAt: units.zoneListImportedAt });
       return {
         busy: null,
-        imported,
         created,
         updated,
         archived: leaving.length,

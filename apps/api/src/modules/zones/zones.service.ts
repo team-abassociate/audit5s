@@ -6,6 +6,7 @@ import type {
   Page,
   UpdateZoneRequest,
   Zone,
+  ZoneListImportResult,
 } from '@audit5s/contracts';
 import { zoneLabelFromCode, type ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
@@ -14,16 +15,6 @@ import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { UnitsRepository } from '../units/units.repository';
 import { ZonesRepository, type ZonePatch, type ZoneRow } from './zones.repository';
 import { readZoneList, ZoneListRejected } from './zone-list-reader';
-
-/** A Zone the file names a leader for, as R-63's account step needs it. */
-export interface ImportedLeader {
-  zoneId: string;
-  code: string;
-  leaderName: string;
-  leaderPhone: string | null;
-  /** The account leading the Zone after the import, if one still does. */
-  zoneLeaderId: string | null;
-}
 
 @Injectable()
 export class ZonesService {
@@ -211,11 +202,8 @@ export class ZonesService {
   /**
    * R-59: replaces the Unit's Zone list with the one in an Excel or PDF file. The clients
    * warn before a second import that it replaces the first; this does not ask again.
-   *
-   * The leaders it returns are for `UsersService.importZoneList`, which makes their accounts
-   * (R-63): this module cannot reach the users module, which already depends on it.
    */
-  async importList(scope: ScopeContext, unitId: string, body: Buffer) {
+  async importList(scope: ScopeContext, unitId: string, body: Buffer): Promise<ZoneListImportResult> {
     const unit = await this.units.findById(scope, unitId);
     if (!unit) {
       throw AppError.notFound('No such Unit');
@@ -251,19 +239,11 @@ export class ZonesService {
         archived: result.archived,
       },
     });
-    const ids = new Map(result.imported.map((zone) => [zone.code, zone]));
-    const leaders: ImportedLeader[] = list.flatMap((zone) => {
-      const row = ids.get(zone.code)!;
-      return zone.leaderName
-        ? [{ zoneId: row.id, code: zone.code, leaderName: zone.leaderName, leaderPhone: zone.leaderPhone, zoneLeaderId: row.zoneLeaderId }]
-        : [];
-    });
     return {
       created: result.created,
       updated: result.updated,
       archived: result.archived,
       zoneListImportedAt: result.zoneListImportedAt.toISOString(),
-      leaders,
       notes,
     };
   }

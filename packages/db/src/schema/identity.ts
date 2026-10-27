@@ -127,6 +127,10 @@ export const unitMemberships = pgTable(
     uniqueIndex('unit_membership_one_active_admin')
       .on(table.userId)
       .where(sql`status = 'ACTIVE' AND role IN ('COORDINATOR','ZONE_LEADER')`),
+    // R-64 (0057): and a Unit has at most one ACTIVE Coordinator.
+    uniqueIndex('unit_membership_one_coordinator')
+      .on(table.unitId)
+      .where(sql`status = 'ACTIVE' AND role = 'COORDINATOR'`),
     index('unit_membership_unit_role_status_idx').on(table.unitId, table.role, table.status),
     index('unit_membership_user_status_idx').on(table.userId, table.status),
   ],
