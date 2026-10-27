@@ -186,7 +186,9 @@ export class ZonesRepository extends BaseRepository {
    * archived — never deleted, its audits stay on record. The imported name is the Zone's
    * typed leader; an account leader is kept only while the file names that same person (or
    * no one). A file naming someone else replaces the account — the list is the Unit's
-   * own record, not an auditor's guess (0015's precedence guards the latter).
+   * own record, not an auditor's guess (0015's precedence guards the latter). The file has
+   * no description, so an imported Zone has none: an old one would prefill the auditor's
+   * form with a past audit's words (R-67).
    *
    * Returns the codes of Zones it would archive that have an audit in progress, and
    * changes nothing, when there are any (§8.4's archive guard).
@@ -199,6 +201,7 @@ export class ZonesRepository extends BaseRepository {
           id: zones.id,
           code: zones.code,
           name: zones.name,
+          description: zones.description,
           zoneLeaderId: zones.zoneLeaderId,
           accountLeaderName: sql<
             string | null
@@ -244,6 +247,7 @@ export class ZonesRepository extends BaseRepository {
         if (
           replacesAccount ||
           found.name !== zone.name ||
+          found.description !== null ||
           found.zoneLeaderName !== zone.leaderName ||
           found.sortOrder !== zone.sortOrder ||
           found.archivedAt !== null
@@ -252,6 +256,7 @@ export class ZonesRepository extends BaseRepository {
             .update(zones)
             .set({
               name: zone.name,
+              description: null,
               zoneLeaderName: zone.leaderName,
               ...(replacesAccount ? { zoneLeaderId: null } : {}),
               sortOrder: zone.sortOrder,

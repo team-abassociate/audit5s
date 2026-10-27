@@ -526,6 +526,23 @@ describe('R-59 — importing a Unit’s Zone list', () => {
     ]);
   });
 
+  it('clears the description of a Zone the file names (R-67)', async () => {
+    // The list the test before left, so nothing is archived for the tests after.
+    const rows = [
+      ['Zone 01', 'Maintenance Room & Press Pit', 'Mr. A. Sharma'],
+      ['Zone 04', 'Canteen', ''],
+    ];
+    const canteen = (await activeZones(world.unitA)).find((zone) => zone.code === 'Z-04')!;
+    await world.request('PATCH', `${base}/zones/${canteen.id}`, {
+      token: asCoordinator(),
+      body: { description: 'Typed by an earlier auditor' },
+    });
+
+    const response = await importList(asCoordinator(), world.unitA, await workbook(rows));
+    expect(response.body).toMatchObject({ updated: 1 });
+    expect((await activeZones(world.unitA)).find((zone) => zone.code === 'Z-04')?.description).toBeNull();
+  });
+
   it('restores an archived Zone the next file names again', async () => {
     const response = await importList(
       asCoordinator(),
