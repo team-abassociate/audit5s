@@ -79,7 +79,8 @@ describe('readZoneList', () => {
         { code: 'Z-1B', name: 'Press Pit', leaderName: 'Ms. B', leaderPhone: null, sortOrder: 1 },
         { code: 'Z-07', name: 'Canteen', leaderName: null, leaderPhone: null, sortOrder: 7 },
       ],
-      notes: [],
+      // Names alone make no accounts, and the import says so.
+      notes: [expect.stringMatching(/^This file has no Mobile No\. column, so no Zone Leader accounts were made/)],
     });
   });
 
