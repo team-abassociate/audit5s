@@ -273,7 +273,8 @@ export class ReportsRepository extends BaseRepository {
         auditStartedAt: audits.startedAt,
         auditCompletedAt: audits.completedAt,
         auditorName: users.fullName,
-        auditorLoginId: users.loginId,
+        // An auditor has signed in, so has a login ID; R-65's waiting accounts conduct nothing.
+        auditorLoginId: sql<string>`coalesce(${users.loginId}, '')`,
         applicableQuestions: auditZones.applicableQuestions,
         naQuestions: auditZones.naQuestions,
         rawScore: auditZones.rawScore,

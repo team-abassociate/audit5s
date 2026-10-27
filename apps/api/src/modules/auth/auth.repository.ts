@@ -34,14 +34,14 @@ export class AuthRepository {
         .from(users)
         .where(and(eq(users.loginId, loginId), isNull(users.archivedAt)))
         .limit(1);
-      return user ?? null;
+      return withLogin(user);
     });
   }
 
   async findById(userId: string) {
     return withAuthPhase(this.db, async (tx) => {
       const [user] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
-      return user ?? null;
+      return withLogin(user);
     });
   }
 
@@ -439,4 +439,18 @@ export class AuthRepository {
   runInAuthPhase<T>(work: (tx: Transaction) => Promise<T>): Promise<T> {
     return withAuthPhase(this.db, work);
   }
+}
+
+type UserLogin = { loginId: string | null; phoneE164: string | null; passwordHash: string | null };
+
+/**
+ * R-65: an account still waiting for its mobile number has no login ID and no password, so
+ * to signing in it does not exist. 0058's CHECK sets the three together.
+ */
+function withLogin<T extends UserLogin>(
+  user: T | undefined,
+): (T & { loginId: string; phoneE164: string; passwordHash: string }) | null {
+  return user && user.loginId !== null && user.phoneE164 !== null && user.passwordHash !== null
+    ? (user as T & { loginId: string; phoneE164: string; passwordHash: string })
+    : null;
 }

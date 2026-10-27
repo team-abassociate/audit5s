@@ -46,6 +46,19 @@ export class UsersService {
    * carries the login ID and the expiry, and nothing else.
    */
   async create(scope: ScopeContext, request: CreateUserRequest): Promise<CreateUserResponse> {
+    const { user, loginId, bootstrapExpiresAt } = await this.createAccount(scope, request);
+    // A number was given, so the login was made from it.
+    return { user, loginId: loginId!, bootstrapExpiresAt: bootstrapExpiresAt! };
+  }
+
+  /**
+   * `create`, and R-65's account with no mobile number yet: no login ID and no password until
+   * the number is added (`update`). Only the Auditor list makes one; the forms require a number.
+   */
+  private async createAccount(
+    scope: ScopeContext,
+    request: Omit<CreateUserRequest, 'phone'> & { phone: string | null },
+  ) {
     const actor = scope.actor;
 
     // A Coordinator may create Zone Leaders and only in their own Unit. The Unit comes
@@ -92,11 +105,8 @@ export class UsersService {
       }
     }
 
-    const bootstrapExpiresAt = new Date(
-      Date.now() + this.config.BOOTSTRAP_PASSWORD_TTL_HOURS * 60 * 60 * 1000,
-    );
-
-    const passwordHash = await this.passwords.hash(request.phone);
+    const bootstrapExpiresAt = request.phone ? this.bootstrapExpiry() : null;
+    const passwordHash = request.phone ? await this.passwords.hash(request.phone) : null;
     const created = await this.repository
       .createWithLoginId({
         fullName: request.fullName,
@@ -170,13 +180,18 @@ export class UsersService {
     return {
       user: toUser(user),
       loginId: created.loginId,
-      bootstrapExpiresAt: bootstrapExpiresAt.toISOString(),
+      bootstrapExpiresAt: bootstrapExpiresAt?.toISOString() ?? null,
     };
+  }
+
+  private bootstrapExpiry(): Date {
+    return new Date(Date.now() + this.config.BOOTSTRAP_PASSWORD_TTL_HOURS * 60 * 60 * 1000);
   }
 
   /**
    * R-64: makes the accounts the Unit's Auditor list names — Zone Leaders and anyone
-   * auditing on an ad hoc basis — each a Zone Leader of the Unit with no Zone.
+   * auditing on an ad hoc basis — each a Zone Leader of the Unit with no Zone. A name with
+   * no usable number gets an account that waits for it (R-65).
    *
    * A person is matched to one of the Unit's Zone Leaders by name first, then by mobile
    * number, and left as they are; only someone the Unit has no account for gets one, through
@@ -201,32 +216,39 @@ export class UsersService {
       unitId,
     } as ListUsersQuery);
     const byName = new Set(existing.map((user) => leaderNameKey(user.fullName)));
-    const byPhone = new Set(existing.map((user) => user.phoneE164.slice(-10)));
+    const byPhone = new Set(existing.flatMap((user) => (user.phoneE164 ? [user.phoneE164.slice(-10)] : [])));
 
     let created = 0;
     let matched = 0;
+    let awaitingNumber = 0;
     const notes = [...list.notes];
     for (const person of list.auditors) {
-      if (byName.has(leaderNameKey(person.name)) || byPhone.has(person.phone)) {
+      if (byName.has(leaderNameKey(person.name)) || (person.phone && byPhone.has(person.phone))) {
         matched += 1;
         continue;
       }
       try {
-        const { user } = await this.create(scopeFor(scope, 'user:create'), {
+        const { user } = await this.createAccount(scopeFor(scope, 'user:create'), {
           fullName: person.name,
           phone: person.phone,
           role: 'ZONE_LEADER',
           unitId,
         });
         byName.add(leaderNameKey(user.fullName));
-        byPhone.add(person.phone);
+        if (person.phone) byPhone.add(person.phone);
+        else awaitingNumber += 1;
         created += 1;
       } catch (error) {
         if (!(error instanceof AppError)) throw error;
         notes.push(`No account for ${person.name}. ${error.detail ?? error.title}`);
       }
     }
-    return { created, existing: matched, notes };
+    if (awaitingNumber > 0) {
+      notes.unshift(
+        `${awaitingNumber} ${awaitingNumber === 1 ? 'account was' : 'accounts were'} made without a mobile number and cannot sign in yet. Add each number in People: that makes their login ID, and the number is their first password.`,
+      );
+    }
+    return { created, existing: matched, awaitingNumber, notes };
   }
 
   async list(scope: ScopeContext, query: ListUsersQuery): Promise<Page<User>> {
@@ -281,12 +303,31 @@ export class UsersService {
       throw AppError.fieldNotEditable(['kaizenAccess']);
     }
 
-    const updated = await this.repository.update(scope, userId, {
+    // R-65: the number an account was waiting for makes its login — login ID and first
+    // password — rather than only changing the number.
+    const addsLogin = request.phone !== undefined && before.loginId === null;
+    if (addsLogin) {
+      const login = await this.repository
+        .addLogin(scope, userId, {
+          fullName: request.fullName ?? before.fullName,
+          phoneE164: request.phone!,
+          passwordHash: await this.passwords.hash(request.phone!),
+          bootstrapExpiresAt: this.bootstrapExpiry(),
+        })
+        .catch(phoneTaken);
+      if (!login) throw AppError.notFound('No such user');
+    }
+    const patch = {
       ...(request.fullName !== undefined ? { fullName: request.fullName } : {}),
       ...(request.email !== undefined ? { email: request.email } : {}),
-      ...(request.phone !== undefined ? { phoneE164: request.phone } : {}),
+      ...(request.phone !== undefined && !addsLogin ? { phoneE164: request.phone } : {}),
       ...(request.kaizenAccess !== undefined ? { kaizenAccess: request.kaizenAccess } : {}),
-    });
+    };
+    // Adding the number alone leaves nothing else to set, and an empty UPDATE is an error.
+    const updated =
+      Object.keys(patch).length > 0
+        ? await this.repository.update(scope, userId, patch).catch(phoneTaken)
+        : await this.repository.findById(scope, userId);
 
     if (!updated) {
       throw AppError.notFound('No such user');
@@ -297,7 +338,13 @@ export class UsersService {
       resourceType: 'user',
       resourceId: userId,
       before: { fullName: before.fullName, email: before.email, phoneE164: before.phoneE164, kaizenAccess: before.kaizenAccess },
-      after: { fullName: updated.fullName, email: updated.email, phoneE164: updated.phoneE164, kaizenAccess: updated.kaizenAccess },
+      after: {
+        fullName: updated.fullName,
+        email: updated.email,
+        phoneE164: updated.phoneE164,
+        kaizenAccess: updated.kaizenAccess,
+        ...(addsLogin ? { loginId: updated.loginId } : {}),
+      },
     });
 
     return toUser(updated);
@@ -409,10 +456,12 @@ export class UsersService {
     if (actor.role === 'COORDINATOR' && user.role !== 'ZONE_LEADER' && actor.userId !== userId) {
       throw AppError.forbidden('FORBIDDEN', 'A Coordinator may only reset Zone Leaders');
     }
+    // R-65: the number is the password; without one there is nothing to reset to.
+    if (!user.phoneE164 || !user.loginId) {
+      throw AppError.conflict('CONFLICT', 'Add their mobile number first. That makes their login ID and first password.');
+    }
 
-    const bootstrapExpiresAt = new Date(
-      Date.now() + this.config.BOOTSTRAP_PASSWORD_TTL_HOURS * 60 * 60 * 1000,
-    );
+    const bootstrapExpiresAt = this.bootstrapExpiry();
 
     await this.repository.setBootstrapCredential(
       scope,
@@ -451,4 +500,14 @@ export function toUser(row: NonNullable<UserRow>): User {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+/** Two active accounts cannot share a number: it is each one's bootstrap credential. */
+function phoneTaken(error: unknown): never {
+  if (isUniqueViolation(error, 'user_phone_active_key')) {
+    throw AppError.validation('This phone number already belongs to another active user', [
+      { field: 'phone', message: 'Already used by another active account. Each person needs their own number.' },
+    ]);
+  }
+  throw error;
 }

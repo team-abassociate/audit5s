@@ -180,7 +180,7 @@ export default function PersonScreen() {
             <Avatar name={p.fullName} />
             <View style={styles.whoText}>
               <Text style={styles.name}>{p.fullName}</Text>
-              <Data>{p.loginId}</Data>
+              <Data>{p.loginId ?? 'No login yet: add their mobile number'}</Data>
               <View style={styles.chips}>
                 <Chip>{ROLE_LABELS[p.role]}</Chip>
                 <Chip tone={USER_STATUS[p.status].tone}>{USER_STATUS[p.status].label}</Chip>
@@ -200,7 +200,7 @@ export default function PersonScreen() {
                 manages ? <HeaderAction icon="edit" title="Edit" accessibilityLabel="Edit details" onPress={() => setEditing(true)} /> : null
               }
             />
-            <LedgerRow label="Phone" value={p.phoneE164} />
+            <LedgerRow label="Phone" value={p.phoneE164 ?? 'Not added yet'} />
             <LedgerRow label="Email" value={p.email ?? '—'} />
             <LedgerRow label="Last sign-in" value={p.lastLoginAt ? formatDateTime(p.lastLoginAt) : 'Never'} />
             <LedgerRow label="Added" value={formatDate(p.createdAt)} last />
@@ -384,7 +384,7 @@ function EditPerson({ user, onDone }: { user: User; onDone: () => void }) {
   const styles = useStyles();
   const queryClient = useQueryClient();
   const [fullName, setFullName] = useState(user.fullName);
-  const [phone, setPhone] = useState(user.phoneE164);
+  const [phone, setPhone] = useState(user.phoneE164 ?? '');
   const [email, setEmail] = useState(user.email ?? '');
   // No scroll ref here: focusing the box is enough, Android scrolls a focused input into view.
   const required = useRequiredFields<'name'>();
@@ -393,7 +393,8 @@ function EditPerson({ user, onDone }: { user: User; onDone: () => void }) {
     mutationFn: () =>
       api.patch<User>(`/users/${user.id}`, {
         fullName: fullName.trim(),
-        phone: phone.trim(),
+        // R-65: an account waiting for its number keeps waiting until one is typed.
+        ...(phone.trim() ? { phone: phone.trim() } : {}),
         email: email.trim() || null,
       }),
     onSuccess: async () => {
@@ -414,7 +415,13 @@ function EditPerson({ user, onDone }: { user: User; onDone: () => void }) {
         onChangeText={setFullName}
         autoCapitalize="words"
       />
-      <Field label="Mobile number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+      <Field
+        label="Mobile number"
+        hint={user.loginId ? undefined : 'Adding it makes their login ID, and the number is their first password.'}
+        value={phone}
+        onChangeText={setPhone}
+        keyboardType="phone-pad"
+      />
       <Field label="Email (optional)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
       <ErrorBanner message={problemMessage(save.error)} />
       <View style={styles.accountActions}>

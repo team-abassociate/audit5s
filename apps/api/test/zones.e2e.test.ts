@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_BASE_PATH, type Page, type Zone } from '@audit5s/contracts';
@@ -641,15 +642,37 @@ describe('R-64 — the Auditor list makes the Unit’s Zone Leader and auditor a
     );
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     expect(response.body).toEqual({
-      created: 3,
+      created: 4,
       existing: 1,
-      notes: ['Zone 3 ZL1: no mobile number, so Mr. No Number has no account'],
+      awaitingNumber: 1,
+      notes: [expect.stringMatching(/^1 account was made without a mobile number and cannot sign in yet/)],
     });
     const om = (await people()).find((user) => user.fullName === 'Mr. Om Prakash')!;
     expect(om).toMatchObject({ role: 'ZONE_LEADER', phoneE164: '7000000201', mustResetPassword: true });
     // An account is not tied to a Zone: the Zone's leaders stay the names the Zone list gave.
     const zones = await world.request('GET', `${base}/units/${world.unitA}/zones?limit=200`, { token: asSuperAdmin() });
     expect((zones.body as Page<Zone>).data.some((zone) => zone.zoneLeaderId === om.id)).toBe(false);
+  });
+
+  it('R-65: a name without a number waits for it; adding it makes the login, which signs in', async () => {
+    const waiting = (await people()).find((user) => user.fullName === 'Mr. No Number')!;
+    expect(waiting).toMatchObject({ loginId: null, phoneE164: null, role: 'ZONE_LEADER' });
+    const reset = await world.request('POST', `${base}/users/${waiting.id}/reset-password`, { token: asCoordinator() });
+    expect(reset.status).toBe(409);
+
+    const added = await world.request('PATCH', `${base}/users/${waiting.id}`, {
+      token: asCoordinator(),
+      body: { phone: '7000000210' },
+    });
+    expect(added.status, JSON.stringify(added.body)).toBe(200);
+    const login = added.body as Person & { loginId: string };
+    expect(login).toMatchObject({ loginId: 'MR0210', phoneE164: '7000000210', mustResetPassword: true });
+
+    const signIn = await world.request('POST', `${base}/auth/login`, {
+      body: { loginId: 'MR0210', password: '7000000210', deviceId: randomUUID(), platform: 'android' },
+    });
+    // The number is the first password: it signs in, and must be changed (CH-1).
+    expect(signIn.status, JSON.stringify(signIn.body)).toBe(200);
   });
 
   it('again makes nobody twice, and names a number another Unit’s account holds', async () => {

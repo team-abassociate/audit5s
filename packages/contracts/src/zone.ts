@@ -122,6 +122,11 @@ export const auditorListImportResultSchema = z.object({
   created: z.number().int(),
   /** People the Unit already had an account for, matched by name, then by number. */
   existing: z.number().int(),
+  /**
+   * R-65: of `created`, the accounts made without a mobile number. They cannot sign in until
+   * it is added in People, which makes their login ID. Optional, for a response from an older API.
+   */
+  awaitingNumber: z.number().int().optional(),
   /** Rows that made no account, and why: "Zone 4 ZL2: 9876 is not a 10-digit mobile number". */
   notes: z.array(z.string()),
 });
