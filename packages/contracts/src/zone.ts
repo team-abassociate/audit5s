@@ -108,16 +108,26 @@ export const zoneListImportResultSchema = z.object({
   updated: z.number().int(),
   archived: z.number().int(),
   zoneListImportedAt: isoDateTimeSchema,
-  /** R-63: Zone Leader accounts made from the file's names and mobile numbers. */
-  leadersCreated: z.number().int(),
-  /** Zones now led by an account that already existed, matched by name, then by number. */
-  leadersLinked: z.number().int(),
-  /** Leaders left as a typed name, and why: "row 4: 9876 is not a 10-digit mobile number". */
+  /** What the file carried that the Zone list does not read, such as mobile numbers. */
   notes: z.array(z.string()),
 });
 export type ZoneListImportResult = z.infer<typeof zoneListImportResultSchema>;
 
-/** The largest Zone-list file the import reads. Both clients check it before uploading. */
+/**
+ * What `POST /units/{id}/auditors/import` did (R-64): the Zone Leader and auditor accounts
+ * made from the Auditor list. It adds people; it never replaces or removes anyone.
+ */
+export const auditorListImportResultSchema = z.object({
+  /** New accounts. Each signs in with their mobile number and chooses a password. */
+  created: z.number().int(),
+  /** People the Unit already had an account for, matched by name, then by number. */
+  existing: z.number().int(),
+  /** Rows that made no account, and why: "Zone 4 ZL2: 9876 is not a 10-digit mobile number". */
+  notes: z.array(z.string()),
+});
+export type AuditorListImportResult = z.infer<typeof auditorListImportResultSchema>;
+
+/** The largest Zone-list or Auditor-list file an import reads. Both clients check it first. */
 export const ZONE_LIST_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 
 /** `null` clears the pointer, which is how a Zone is left without a leader. */

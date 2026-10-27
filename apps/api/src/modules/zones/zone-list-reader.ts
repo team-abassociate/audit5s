@@ -5,13 +5,12 @@ import { WorkbookReader, WorkbookRejected } from '../checklists/import/workbook-
 /**
  * Reads a Unit's Zone list from an Excel workbook or a PDF (R-59).
  *
- * Three columns are read — Zone No., Zone Name (or Zone Description) and Leader — and a
- * fourth, Mobile No., if it is there (R-63). They are found by their headings, so a file
- * carrying more (Location, Sub-Leader, Members, as the Sahney Kirkwood list does) is read
- * for those and the rest ignored.
+ * Three columns are read — Zone No., Zone Name (or Zone Description) and Leader. They are
+ * found by their headings, so a file carrying more (Location, Sub-Leader, Members, as the
+ * Sahney Kirkwood list does) is read for those and the rest ignored.
  *
- * A Leader cell naming two people makes two subzones, 1A and 1B, one leader each, their
- * mobile numbers taken in the same order from the Mobile No. cell.
+ * A Leader cell naming several people keeps them all, as one Zone's leaders (R-64). Their
+ * accounts come from the Auditor list, not from here.
  *
  * A PDF has no cells, only positioned text. A row is a Zone number in the Zone No. column;
  * the text of the other two columns belongs to the nearest Zone number above or below it,
@@ -24,14 +23,12 @@ export interface ImportedZone {
   code: string;
   name: string;
   leaderName: string | null;
-  /** Ten digits, when the file gives this leader a usable one (R-63). */
-  leaderPhone: string | null;
   sortOrder: number;
 }
 
 export interface ZoneList {
   zones: ImportedZone[];
-  /** Rows imported without a leader account, and why — shown to whoever imported. */
+  /** What the import left out, and why — shown to whoever imported. */
   notes: string[];
 }
 
@@ -43,8 +40,8 @@ interface RawRow {
   name: string;
   /** One person a line, or between `/`, `,`, `&` or `;`. */
   leaders: string[];
-  /** The Mobile No. cell as written; empty without the column. */
-  phones: string;
+  /** The file has a Mobile No. column, which this list does not read (R-64). */
+  phones: boolean;
   where: string;
 }
 
@@ -60,7 +57,7 @@ const HEADINGS = {
 } as const;
 type Column = keyof typeof HEADINGS;
 const COLUMNS = Object.keys(HEADINGS) as Column[];
-/** Mobile No. is optional: a file from before R-63 still imports, without accounts. */
+/** Mobile No. is only noticed, so the import can say where accounts are made instead. */
 const REQUIRED: Column[] = ['zoneNo', 'name', 'leader'];
 type Found<T> = Record<Exclude<Column, 'phone'>, T> & { phone?: T };
 
@@ -106,7 +103,7 @@ async function readWorkbook(body: Buffer): Promise<RawRow[]> {
       zoneNo: clean(text(row[columns.zoneNo])),
       name: clean(text(row[columns.name])),
       leaders: people(text(row[columns.leader]).split(/\r?\n/)),
-      phones: columns.phone === undefined ? '' : text(row[columns.phone]),
+      phones: columns.phone !== undefined,
       where: `row ${headerIndex + offset + 2}`,
     }));
   }
@@ -132,12 +129,6 @@ function people(lines: string[]): string[] {
     .flatMap((line) => line.split(/[/,&;]|\s+(?=(?:mr|mrs|ms|miss|dr|shri|smt)\.?\s)/i))
     .map(clean)
     .filter(Boolean);
-}
-
-/** `+91 98765-43210` → `9876543210`; `null` unless it is a ten-digit mobile number. */
-function mobileNumber(text: string): string | null {
-  const digits = text.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
-  return /^\d{10}$/.test(digits) ? digits : null;
 }
 
 function noHeadings(): ZoneListRejected {
@@ -252,7 +243,7 @@ function pageRows(items: TextItem[], headings: Headings, pageNumber: number): Ra
     zoneNo: clean(band.anchor.text),
     name: lines(cells.get(band)!.name).join(' '),
     leaders: people(lines(cells.get(band)!.leader)),
-    phones: lines(cells.get(band)!.phone).join('\n'),
+    phones: headings.phone !== undefined,
     where: `page ${pageNumber}, ${clean(band.anchor.text)}`,
   }));
 }
@@ -324,7 +315,8 @@ function checkRows(rows: RawRow[]): ZoneList {
       .replace(/^z-/i, '')
       .replace(/^0+(?=.)/, '')
       .toUpperCase();
-    if (!zoneCodeForLabel(label)) {
+    const code = zoneCodeForLabel(label);
+    if (!code) {
       problems.push(
         row.zoneNo
           ? `${row.where}: "${row.zoneNo}" is not a Zone number like 7 or 1A`
@@ -333,51 +325,19 @@ function checkRows(rows: RawRow[]): ZoneList {
       continue;
     }
 
-    // R-63: two leaders of Zone 1 make subzones 1A and 1B. A subzone is not split again.
-    const split = row.leaders.length > 1 && /^\d+$/.test(label);
-    const entries = split
-      ? row.leaders.map((leader, index) => ({ label: label + String.fromCharCode(65 + index), leader }))
-      : [{ label, leader: row.leaders.join(', ') }];
-    const phoneTexts = row.phones.split(/[\n/,&;]/).map(clean).filter(Boolean);
-    let phones: Array<string | null> = entries.map(() => null);
-    if (phoneTexts.length > 0) {
-      if (!split && row.leaders.length > 1) {
-        notes.push(`${row.where}: Zone ${label} names ${row.leaders.length} leaders but is already a subzone, so no account was made`);
-      } else if (phoneTexts.length !== entries.length) {
-        notes.push(`${row.where}: ${entries.length} leader(s) but ${phoneTexts.length} mobile numbers, so no account was made`);
-      } else {
-        phones = phoneTexts.map((text) => {
-          const phone = mobileNumber(text);
-          if (!phone) notes.push(`${row.where}: "${text}" is not a 10-digit mobile number, so no account was made for it`);
-          return phone;
-        });
-      }
+    if (seen.has(code)) {
+      problems.push(`${row.where}: Zone ${label} is listed twice (also ${seen.get(code)})`);
+      continue;
     }
-
-    entries.forEach((entry, index) => {
-      const code = zoneCodeForLabel(entry.label);
-      if (!code) {
-        problems.push(`${row.where}: Zone ${label} has too many leaders to split into subzones`);
-        return;
-      }
-      if (seen.has(code)) {
-        problems.push(`${row.where}: Zone ${entry.label} is listed twice (also ${seen.get(code)})`);
-        return;
-      }
-      seen.set(code, row.where);
-      const name = row.name || `Zone ${entry.label}`;
-      if (name.length > MAX_NAME || entry.leader.length > MAX_NAME) {
-        problems.push(`${row.where}: the Zone name or leader is longer than ${MAX_NAME} characters`);
-        return;
-      }
-      zones.push({
-        code,
-        name,
-        leaderName: entry.leader || null,
-        leaderPhone: phones[index] ?? null,
-        sortOrder: zoneSortOrder(entry.label),
-      });
-    });
+    seen.set(code, row.where);
+    // R-64: several leaders are one Zone's leaders, not subzones.
+    const leaderName = row.leaders.join(', ');
+    const name = row.name || `Zone ${label}`;
+    if (name.length > MAX_NAME || leaderName.length > MAX_NAME) {
+      problems.push(`${row.where}: the Zone name or leader is longer than ${MAX_NAME} characters`);
+      continue;
+    }
+    zones.push({ code, name, leaderName: leaderName || null, sortOrder: zoneSortOrder(label) });
   }
 
   if (problems.length > 0) {
@@ -388,10 +348,9 @@ function checkRows(rows: RawRow[]): ZoneList {
   }
   if (zones.length === 0) throw new ZoneListRejected('The file lists no Zones');
   if (zones.length > MAX_ZONES) throw new ZoneListRejected(`The file lists more than ${MAX_ZONES} Zones`);
-  // Otherwise an import of names alone reads as accounts that silently failed (2026-10-27).
-  if (zones.some((zone) => zone.leaderName) && rows.every((row) => row.phones.trim() === '')) {
-    notes.unshift(
-      'This file has no Mobile No. column, so no Zone Leader accounts were made. Add the leaders’ mobile numbers in a Mobile No. column (the template has one) and import again.',
+  if (rows.some((row) => row.phones)) {
+    notes.push(
+      'Mobile numbers are not read from the Zone list. Zone Leader and auditor accounts are made from the Auditor list, which has its own template.',
     );
   }
   return { zones, notes };

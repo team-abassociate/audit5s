@@ -207,7 +207,12 @@ function UnitMemberships({ unitId }: { unitId: string }) {
     <Card>
       <CardHeader
         title="People in this Unit"
-        description="Its Coordinator and Zone Leaders, and any Consultant given standing access. A Consultant sent here on an audit assignment reaches it through that and is not listed."
+        description={
+          // R-64: a Coordinator is shown their Zone Leaders and themselves, nobody else.
+          can('unit_membership', 'create')
+            ? 'Its Coordinator and Zone Leaders, and any Consultant given standing access. A Consultant sent here on an audit assignment reaches it through that and is not listed. A Unit has one Coordinator.'
+            : 'You and the Unit’s Zone Leaders and auditors.'
+        }
       />
 
       {can('unit_membership', 'create') && (

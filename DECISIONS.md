@@ -2498,7 +2498,7 @@ to Units that have an imported Zone list.
   (Units & zones → the Unit's Zones) or the phone (the Unit's page, My Unit) from an `.xlsx`
   or a PDF: `POST /units/{id}/zones/import`, multipart, `zone:create`. Three columns are
   read, found by their headings: **Zone No.**, **Zone Name** — "Zone Description" is the same
-  column — and **Leader**, and **Mobile No.** when it is there (R-63). Anything else in the file (Location, Sub-Leader, Members) is
+  column — and **Leader** (every name in it, R-64). Anything else in the file (Location, Sub-Leader, Members) is
   ignored. A PDF is read from the positions of its text, so a spreadsheet printed to PDF
   works; a scanned PDF does not.
 - **An import replaces the list.** A Zone in the file is added, or updated (and restored if
@@ -2515,7 +2515,7 @@ to Units that have an imported Zone list.
   Consultant auditing it may add a Zone on Select Zone as a Coordinator does.
   `app_ensure_zone_for_audit` (0054) enforces it; `mayAddZoneWhileAuditing` in
   `packages/domain` is the one copy of the rule for both clients.
-- **Template.** `zone-list-template.xlsx` — the owner's sheet, with Mobile No. added (R-63), Zone 01–30 numbered
+- **Template.** `zone-list-template.xlsx` — the owner's sheet, Zone 01–30 numbered
   and blank — is served beside the web app; both clients offer it. A row with a Zone number
   and nothing else is a blank template row, not a Zone.
 
@@ -2594,6 +2594,9 @@ because the app was gone before they uploaded.
 
 ## R-63 — An imported Zone list makes its leaders' accounts; two leaders make subzones
 
+*(Withdrawn the same day by R-64: a Zone's several leaders stay one Zone, and accounts come
+from the Auditor list. Subzones already made keep their numbers.)*
+
 **Settled 2026-10-27 by the product owner.** Extends R-59, so a Coordinator no longer adds
 each Zone Leader by hand after importing the list.
 
@@ -2623,3 +2626,48 @@ each Zone Leader by hand after importing the list.
   stands, and both clients list the reasons after the import.
 - The endpoint stays `POST /units/{id}/zones/import`; its handler moved to the users module,
   which owns accounts and already depends on the Zones module.
+
+## R-64 — A Zone's leaders are all named; an Auditor list makes the accounts; a Coordinator sees only them
+
+**Settled 2026-10-27 by the product owner.** Withdraws R-63, and the half of R-39(b) that
+required a Coordinator to give a new Zone Leader a Zone. Narrows `user:read` and
+`unit_membership:read` for the Coordinator (ARCHITECTURE.md §6.3). In the owner's words:
+
+> 1 zone can have multiple leaders … all those names should be added in the box of zone
+> leader · to create the zone leader's login ID and password, there should be a separate
+> template … the auditor's template · this compulsion should be removed … they might not be
+> the zone leaders of any zone, but still they should be able to audit · coordinators should
+> not be able to see the consultants · there should be only one coordinator in a particular
+> unit · in people tab, you keep only and only the zone leaders slash auditors
+
+- **The Zone list names every leader.** A Leader cell naming several people — on separate
+  lines, between `/`, `,`, `&` or `;`, or each starting Mr./Ms./Dr./Shri/Smt. — is one Zone,
+  its leader box reading "Mr. A, Ms. B, Mr. C". No subzone, no account. A Mobile No. column is
+  not read; the import says accounts come from the Auditor list. The template loses it.
+- **The Auditor list makes accounts.** `auditor-list-template.xlsx`, beside the Zone list on
+  the web (the Unit's Zones) and the phone (the Unit's page, My Unit): **Zone No.**, **ZL**,
+  **Name**, **Mobile No.** — Zone 01–30, each with ZL1, ZL2 and ZL3, then twenty "Auditor"
+  rows with no Zone for senior staff and external auditors. `POST /units/{id}/auditors/import`,
+  `user:create`, Excel only. A row with a name and a ten-digit number makes a Zone Leader of
+  the Unit, as one added by hand: the number is the first password. Someone the Unit already
+  has, by name and then by number, is left alone, so a second import makes nobody twice. A row
+  without a usable number, or with a number another account holds, is named after the import;
+  the rest stands. Only Name and Mobile No. are required headings.
+- **An account is not tied to a Zone.** The Auditor list never points a Zone at an account:
+  that pointer would replace the leader box's several names with one. Zone No. and ZL only
+  name the row in a note. A Zone keeps its typed names; a corrective-action link for it acts
+  as the Super Admin who generated the report, as for any typed leader (R-47).
+- **Auditors need no Zone.** "Leads Zone" is optional on both clients for everyone, a
+  Coordinator included. An auditor is a Zone Leader account (no new role): they audit any Zone
+  of the Unit and join cross audits, as R-39(b) already allowed every Zone Leader.
+- **A Coordinator sees their Zone Leaders and themselves.** `user:read` and
+  `unit_membership:read` at `own_unit` admit, for a Coordinator, only the Unit's Zone Leaders
+  and their own record; a Consultant or another Coordinator reads as absent (404). People (the
+  phone's tab, the web's Users) is one list, "Zone leaders / Auditors"; Overview's Consultants
+  tile is their Auditors count. Audits a Consultant conducted in the Unit stay on the Audits
+  tab with their scores.
+- **A Unit has one Coordinator.** `unit_membership_one_coordinator` (migration 0057), a partial
+  unique index; Create user and Assign to a Unit both refuse a second. Before it, the one Unit
+  holding two — the dummy Unit "Xyz", which the owner said to resolve — keeps the Coordinator
+  who signed in last (MR2345) and the other's membership (CO7690) is revoked, not deleted.
+

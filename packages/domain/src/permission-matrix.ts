@@ -70,7 +70,8 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: {
       SUPER_ADMIN: org,
       CONSULTANT: ownRecord,
-      COORDINATOR: ownUnit,
+      // R-64: never the Unit's Consultants, nor another Coordinator.
+      COORDINATOR: { resolver: 'own_unit', condition: 'Zone Leaders of the Unit, and themselves' },
       ZONE_LEADER: ownRecord,
     },
   },
@@ -206,7 +207,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     grants: {
       SUPER_ADMIN: org,
       CONSULTANT: ownRecord,
-      COORDINATOR: ownUnit,
+      COORDINATOR: { resolver: 'own_unit', condition: 'Zone Leaders of the Unit, and themselves (R-64)' },
       ZONE_LEADER: ownUnit,
     },
   },

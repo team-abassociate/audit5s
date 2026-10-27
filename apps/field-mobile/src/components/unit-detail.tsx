@@ -10,6 +10,7 @@ import {
   type Unit,
   type User,
   type Zone,
+  type AuditorListImportResult,
   type ZoneListImportResult,
 } from '@audit5s/contracts';
 import { formatDate, zoneDisplayLabel } from '@audit5s/domain';
@@ -210,8 +211,9 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
           }
         />
         {mayAddZone && zoneOpen === null ? (
-          <ImportZoneList unitId={unitId} importedAt={unit.data?.zoneListImportedAt ?? null} />
+          <ImportList kind="zones" unitId={unitId} importedAt={unit.data?.zoneListImportedAt ?? null} />
         ) : null}
+        {can('user', 'create') && zoneOpen === null ? <ImportList kind="auditors" unitId={unitId} importedAt={null} /> : null}
         {zoneOpen === 'new' ? (
           <ZoneForm unitId={unitId} existing={zoneList} onDone={() => setZoneOpen(null)} />
         ) : null}
@@ -360,24 +362,33 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
   );
 }
 
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Each list's file, endpoint and template, as the web serves them. */
+const LISTS = {
+  zones: { title: 'Zone list', path: 'zones', template: 'zone-list-template.xlsx', mimeTypes: ['application/pdf', XLSX] },
+  auditors: { title: 'Auditor list', path: 'auditors', template: 'auditor-list-template.xlsx', mimeTypes: [XLSX] },
+} as const;
+
 /**
  * R-59: the Unit's Zone list from an Excel or PDF file — Zone No., Zone Name (or
- * Description), Leader and Mobile No. are read; a leader with a number gets a Zone Leader
- * account (R-63). A second import replaces the first, archiving the Zones
- * it leaves out, so it asks first. The template is the one the web serves.
+ * Description) and Leader; a Zone's several leaders are all its names (R-64). A second
+ * import replaces the first, archiving the Zones it leaves out, so it asks first.
+ *
+ * R-64: the Auditor list from Excel — Zone No., ZL, Name and Mobile No. Each person the
+ * Unit has no account for becomes a Zone Leader with no Zone. It only adds people.
  */
-function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: string | null }) {
+function ImportList({ kind, unitId, importedAt }: { kind: keyof typeof LISTS; unitId: string; importedAt: string | null }) {
+  const list = LISTS[kind];
   const styles = useStyles();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<string | null>(null);
   const importList = useMutation({
-    mutationFn: async (): Promise<ZoneListImportResult | null> => {
+    mutationFn: async (): Promise<ZoneListImportResult | AuditorListImportResult | null> => {
       setMessage(null);
       let picked;
       try {
-        picked = await File.pickFileAsync({
-          mimeTypes: ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-        });
+        picked = await File.pickFileAsync({ mimeTypes: [...list.mimeTypes] });
       } catch {
         setMessage('This phone cannot choose files yet. Update the app, or import from the web.');
         return null;
@@ -396,9 +407,9 @@ function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: st
         return null;
       }
       // The server tells a PDF from a workbook by its first bytes, not by this name.
-      return api.upload<ZoneListImportResult>(`/units/${unitId}/zones/import`, 'file', {
+      return api.upload<ZoneListImportResult | AuditorListImportResult>(`/units/${unitId}/${list.path}/import`, 'file', {
         bytes,
-        name: file.name || 'zone-list',
+        name: file.name || kind,
         type: file.type || 'application/octet-stream',
       });
     },
@@ -406,8 +417,9 @@ function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: st
       if (!result) return;
       setMessage(
         [
-          `Zone list imported: ${result.created} added, ${result.updated} updated, ${result.archived} archived.`,
-          `Zone Leaders: ${result.leadersCreated} new accounts, who sign in with their mobile number; ${result.leadersLinked} existing linked.`,
+          'existing' in result
+            ? `Auditor list imported: ${result.created} new accounts, who sign in with their mobile number; ${result.existing} already had one.`
+            : `Zone list imported: ${result.created} added, ${result.updated} updated, ${result.archived} archived.`,
           ...result.notes,
         ].join('\n'),
       );
@@ -420,7 +432,7 @@ function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: st
   });
   const openTemplate = () => {
     try {
-      void Linking.openURL(`${new URL(api.baseUrl()).origin}/zone-list-template.xlsx`);
+      void Linking.openURL(`${new URL(api.baseUrl()).origin}/${list.template}`);
     } catch {
       setMessage('Could not open the template.');
     }
@@ -430,16 +442,16 @@ function ImportZoneList({ unitId, importedAt }: { unitId: string; importedAt: st
     <View style={styles.importBlock}>
       {importedAt ? (
         <ConfirmAction
-          title="Import Zone list"
+          title={`Import ${list.title}`}
           question={`A Zone list was imported on ${formatDate(importedAt)}. A new file replaces it: Zones not in it are archived. Their audits stay on record.`}
           confirmLabel="Choose file"
           busy={importList.isPending}
           onConfirm={() => importList.mutate()}
         />
       ) : (
-        <Button title="Import Zone list" variant="secondary" busy={importList.isPending} onPress={() => importList.mutate()} />
+        <Button title={`Import ${list.title}`} variant="secondary" busy={importList.isPending} onPress={() => importList.mutate()} />
       )}
-      <Button title="Zone list template" icon="file-download" variant="secondary" onPress={openTemplate} />
+      <Button title={`${list.title} template`} icon="file-download" variant="secondary" onPress={openTemplate} />
       {message ? <Muted>{message}</Muted> : null}
       <ErrorBanner
         message={

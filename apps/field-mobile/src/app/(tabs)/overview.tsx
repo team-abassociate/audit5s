@@ -79,9 +79,11 @@ function ManagementOverview() {
   // ponytail: counts are the first 200 rows of each list, as the web does; switch to a count
   // endpoint if an organization outgrows that.
   const units = useQuery({ queryKey: ['units'], queryFn: () => api.get<Page<Unit>>('/units?limit=200') });
+  // R-64: a Coordinator counts their Zone Leaders and auditors; they see no Consultant.
+  const peopleRole = scope?.role === 'COORDINATOR' ? 'ZONE_LEADER' : 'CONSULTANT';
   const consultants = useQuery({
-    queryKey: ['users', 'CONSULTANT', 'ACTIVE'],
-    queryFn: () => api.get<Page<User>>('/users?limit=200&role=CONSULTANT&status=ACTIVE'),
+    queryKey: ['users', peopleRole, 'ACTIVE'],
+    queryFn: () => api.get<Page<User>>(`/users?limit=200&role=${peopleRole}&status=ACTIVE`),
   });
   const active = useQuery({
     queryKey: ['audits', 'active'],
@@ -137,7 +139,7 @@ function ManagementOverview() {
   }
   if (can('user', 'create')) {
     addActions.push({
-      label: coordinator ? 'Add a Zone Leader' : 'New zone leader',
+      label: coordinator ? 'Add a Zone Leader or auditor' : 'New zone leader',
       onPress: () => router.push({ pathname: '/manage/new-person', params: { role: 'ZONE_LEADER' } }),
     });
   }
@@ -199,7 +201,7 @@ function ManagementOverview() {
 
         <View style={styles.kpis}>
           <Kpi label={organizationWide ? 'Units' : 'Unit'} icon={TAB_ICON.units} value={count(units.data)} onPress={() => router.push('/units')} />
-          <Kpi label="Consultants" icon={TAB_ICON.people} value={count(consultants.data)} onPress={() => router.push('/people')} />
+          <Kpi label={peopleRole === 'CONSULTANT' ? 'Consultants' : 'Auditors'} icon={TAB_ICON.people} value={count(consultants.data)} onPress={() => router.push('/people')} />
           <Kpi label="Auditing" icon={TAB_ICON.audits} value={active.data ? String(running.length) : '—'} onPress={() => router.push('/audits')} />
         </View>
 

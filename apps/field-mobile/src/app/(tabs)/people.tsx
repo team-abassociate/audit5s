@@ -35,10 +35,14 @@ const ABOUT: Record<PeopleRole, string> = {
   ZONE_LEADER: 'Zone leaders keep their Zone in order and answer its corrective actions.',
 };
 
+/** R-64: a Coordinator's people — their Zone Leaders and anyone auditing with no Zone. */
+const COORDINATOR_ABOUT = 'Anyone you add may audit any Zone of your Unit, cross audits included, with or without a Zone of their own.';
+
 /**
  * Everyone the organization has given an account, one role at a time, with one search.
  * Consultants on an audit right now come first, because that is who a Super Admin looks for.
- * A Coordinator (R-24) sees the people of their own Unit and adds Zone leaders only.
+ * A Coordinator sees only their Unit's Zone leaders and auditors, and adds them (R-64): no
+ * Consultants, and no other Coordinator — a Unit has one.
  */
 export default function PeopleScreen() {
   const styles = useStyles();
@@ -46,7 +50,8 @@ export default function PeopleScreen() {
   const router = useRouter();
   const { scope, can } = useSession();
   const isSuperAdmin = scope?.role === 'SUPER_ADMIN';
-  const [role, setRole] = useState<PeopleRole>(isSuperAdmin ? 'CONSULTANT' : 'ZONE_LEADER');
+  const [picked, setRole] = useState<PeopleRole>(isSuperAdmin ? 'CONSULTANT' : 'ZONE_LEADER');
+  const role: PeopleRole = isSuperAdmin ? picked : 'ZONE_LEADER';
   const [search, setSearch] = useState('');
   // A Coordinator creates Zone Leaders and nobody else (§6.3); the server holds the same line.
   const mayAdd = can('user', 'create') && (isSuperAdmin || role === 'ZONE_LEADER');
@@ -76,7 +81,7 @@ export default function PeopleScreen() {
         Number(auditing.has(b.id)) - Number(auditing.has(a.id)) || a.fullName.localeCompare(b.fullName),
     );
   const onAudit = list.filter((user) => auditing.has(user.id)).length;
-  const label = SEGMENTS.find((segment) => segment.value === role)!.label;
+  const label = isSuperAdmin ? SEGMENTS.find((segment) => segment.value === role)!.label : 'Zone leaders / Auditors';
 
   const renderItem = useCallback(
     ({ item }: { item: User }) => {
@@ -129,13 +134,15 @@ export default function PeopleScreen() {
         refreshControl={<RefreshControl refreshing={users.isRefetching} onRefresh={() => void users.refetch()} />}
         ListHeaderComponent={
           <>
-            <Segmented options={SEGMENTS} value={role} onChange={setRole} />
+            {isSuperAdmin ? <Segmented options={SEGMENTS} value={role} onChange={setRole} /> : null}
             <SearchField value={search} onChangeText={setSearch} placeholder="Search by name, login ID or phone" />
             <ErrorBanner message={users.error ? 'People could not load. This needs a connection; pull down to try again.' : null} />
             {users.data ? (
               <SectionHead
-                title={`${list.length} ${(list.length === 1 ? ROLE_LABELS[role] : label).toLowerCase()}`}
-                description={role === 'CONSULTANT' ? `${onAudit} on an audit right now. ${ABOUT[role]}` : ABOUT[role]}
+                title={`${list.length} ${(list.length === 1 && isSuperAdmin ? ROLE_LABELS[role] : label).toLowerCase()}`}
+                description={
+                  role === 'CONSULTANT' ? `${onAudit} on an audit right now. ${ABOUT[role]}` : isSuperAdmin ? ABOUT[role] : COORDINATOR_ABOUT
+                }
               />
             ) : null}
           </>

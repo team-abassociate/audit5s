@@ -250,6 +250,12 @@ export class UsersRepository extends BaseRepository {
         return eq(users.id, scope.actor.userId);
       case 'own_unit':
         if (!scope.actor.activeUnitId) return sql`false`;
+        // R-64: a Coordinator's Unit is its Zone Leaders and themselves — never a
+        // Consultant, nor another Coordinator.
+        if (scope.actor.role === 'COORDINATOR') {
+          return sql`(${membershipFilter(sql`m.unit_id = ${scope.actor.activeUnitId}`)}
+            AND (${users.role} = 'ZONE_LEADER' OR ${users.id} = ${scope.actor.userId}))`;
+        }
         return membershipFilter(sql`m.unit_id = ${scope.actor.activeUnitId}`);
       case 'assigned_units':
         if (scope.actor.unitIds.length === 0) return sql`false`;

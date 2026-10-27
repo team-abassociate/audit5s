@@ -93,6 +93,12 @@ export class MembershipsService {
           `A ${user.role} may hold only one active Unit assignment. Revoke the existing one first.`,
         );
       }
+      if (isUniqueViolation(error, 'unit_membership_one_coordinator')) {
+        throw AppError.conflict(
+          'CONFLICT',
+          'This Unit already has a Coordinator. A Unit has one; revoke theirs first.',
+        );
+      }
       if (isUniqueViolation(error, 'unit_membership_active_pair_key')) {
         throw AppError.conflict('CONFLICT', 'This user is already assigned to this Unit');
       }

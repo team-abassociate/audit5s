@@ -578,84 +578,141 @@ describe('R-59 — importing a Unit’s Zone list', () => {
     expect((await importList(world.actors.CONSULTANT.accessToken, world.unitA, body)).status).toBe(403);
   });
 
-  describe('R-63 — the leaders it names get accounts', () => {
-    type Result = { leadersCreated: number; leadersLinked: number; notes: string[] };
-    const leaderOf = async (code: string) =>
-      (await activeZones(world.unitA)).find((zone) => zone.code === code)?.zoneLeaderId ?? null;
-    async function leaders(): Promise<Array<{ id: string; fullName: string; phoneE164: string; mustResetPassword: boolean }>> {
-      const response = await world.request('GET', `${base}/users?role=ZONE_LEADER&limit=200`, { token: asCoordinator() });
-      return (response.body as Page<never>).data;
-    }
+  it('R-64: keeps a Zone’s several leaders as its names, makes no subzone and no account', async () => {
+    const before = await world.request('GET', `${base}/users?role=ZONE_LEADER&limit=200`, { token: asCoordinator() });
+    const response = await importList(
+      asCoordinator(),
+      world.unitA,
+      await workbook([
+        ['Zone 01', 'Press', 'Mr. Ajay Singh Ms. Neha Rao', '7000000102\n7000000103'],
+        ['Zone 02', 'Boiler', 'Mr. Ravi Kumar', '7000000101'],
+      ]),
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect((response.body as { notes: string[] }).notes).toEqual([
+      expect.stringMatching(/^Mobile numbers are not read from the Zone list/),
+    ]);
+    const zones = await activeZones(world.unitA);
+    expect(zones.find((zone) => zone.code === 'Z-01')?.zoneLeaderName).toBe('Mr. Ajay Singh, Ms. Neha Rao');
+    expect(zones.some((zone) => zone.code === 'Z-1A')).toBe(false);
+    const after = await world.request('GET', `${base}/users?role=ZONE_LEADER&limit=200`, { token: asCoordinator() });
+    expect((after.body as Page<never>).data).toHaveLength((before.body as Page<never>).data.length);
+  });
+});
 
-    it('makes an account for each named leader with a number; two names make subzones', async () => {
-      const response = await importList(
-        asCoordinator(),
-        world.unitA,
-        await workbook([
-          ['Zone 01', 'Press', 'Mr. Ravi Kumar', '7000000101'],
-          ['Zone 02', 'Boiler', 'Mr. Ajay Singh Ms. Neha Rao', '7000000102\n+91 70000 00103'],
-          ['Zone 03', 'Stores', 'mr. ravi  kumar', ''],
-          ['Zone 04', 'Canteen', 'Zoe Leader', ''],
-        ]),
-      );
-      expect(response.status, JSON.stringify(response.body)).toBe(200);
-      expect(response.body).toMatchObject({ leadersCreated: 3, leadersLinked: 2, notes: [] });
+describe('R-64 — the Auditor list makes the Unit’s Zone Leader and auditor accounts', () => {
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  type Result = { created: number; existing: number; notes: string[] };
+  type Person = { id: string; fullName: string; phoneE164: string; role: string; mustResetPassword: boolean };
 
-      const people = await leaders();
-      const ravi = people.find((user) => user.fullName === 'Mr. Ravi Kumar')!;
-      expect(ravi).toMatchObject({ phoneE164: '7000000101', mustResetPassword: true });
-      expect(await leaderOf('Z-01')).toBe(ravi.id);
-      // The same person, by name, leads both of their Zones from one account.
-      expect(await leaderOf('Z-03')).toBe(ravi.id);
-      expect(await leaderOf('Z-2A')).toBe(people.find((user) => user.fullName === 'Mr. Ajay Singh')!.id);
-      expect(await leaderOf('Z-2B')).toBe(people.find((user) => user.fullName === 'Ms. Neha Rao')!.id);
-      expect(await leaderOf('Z-04')).toBe(world.actors.ZONE_LEADER.userId);
-      expect(await leaderOf('Z-02')).toBeNull();
+  async function auditorList(rows: Array<Array<string | number>>): Promise<Buffer> {
+    const book = new ExcelJS.Workbook();
+    const sheet = book.addWorksheet('Auditors');
+    sheet.addRow(['Name Of Your Unit']);
+    sheet.addRow(['Zone No.', 'ZL', 'Name', 'Mobile No.']);
+    for (const row of rows) sheet.addRow(row);
+    return Buffer.from(await book.xlsx.writeBuffer());
+  }
+  async function importAuditors(token: string, unitId: string, body: Buffer) {
+    return world.upload(
+      `${base}/units/${unitId}/auditors/import`,
+      { filename: 'auditors.xlsx', contentType: XLSX, body },
+      { token },
+    );
+  }
+  async function people(): Promise<Person[]> {
+    const response = await world.request('GET', `${base}/users?limit=200`, { token: asCoordinator() });
+    return (response.body as Page<Person>).data;
+  }
+
+  it('makes an account, with no Zone, for each person the Unit has none for', async () => {
+    const response = await importAuditors(
+      asCoordinator(),
+      world.unitA,
+      await auditorList([
+        ['Zone 01', 'ZL1', 'Mr. Om Prakash', '7000000201'],
+        ['Zone 01', 'ZL2', 'Ms. Lata Joshi', '+91 70000 00202'],
+        ['Zone 01', 'ZL3', '', ''],
+        // Already the Unit's Zone Leader, by name.
+        ['Zone 02', 'ZL1', 'zoe  leader', '7000000299'],
+        ['', 'Auditor', 'Dr. Senior Visitor', '7000000203'],
+        ['Zone 03', 'ZL1', 'Mr. No Number', ''],
+      ]),
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toEqual({
+      created: 3,
+      existing: 1,
+      notes: ['Zone 3 ZL1: no mobile number, so Mr. No Number has no account'],
     });
+    const om = (await people()).find((user) => user.fullName === 'Mr. Om Prakash')!;
+    expect(om).toMatchObject({ role: 'ZONE_LEADER', phoneE164: '7000000201', mustResetPassword: true });
+    // An account is not tied to a Zone: the Zone's leaders stay the names the Zone list gave.
+    const zones = await world.request('GET', `${base}/units/${world.unitA}/zones?limit=200`, { token: asSuperAdmin() });
+    expect((zones.body as Page<Zone>).data.some((zone) => zone.zoneLeaderId === om.id)).toBe(false);
+  });
 
-    it('a changed number is not a new person; a changed name is', async () => {
-      const response = await importList(
-        asCoordinator(),
-        world.unitA,
-        await workbook([
-          ['Zone 01', 'Press', 'Mr. Ravi Kumar', '7000000999'],
-          ['Zone 02', 'Boiler', 'Mr. Ajay Singh Ms. Neha Rao', '7000000102\n7000000103'],
-          ['Zone 03', 'Stores', 'Mr. Vikram Shah', '7000000104'],
-          ['Zone 04', 'Canteen', 'Zoe Leader', ''],
-        ]),
-      );
-      expect(response.body).toMatchObject({ leadersCreated: 1, leadersLinked: 0, notes: [] });
-      const people = await leaders();
-      expect(people.find((user) => user.fullName === 'Mr. Ravi Kumar')!.phoneE164).toBe('7000000101');
-      expect(people.filter((user) => user.fullName === 'Mr. Ravi Kumar')).toHaveLength(1);
-      expect(await leaderOf('Z-03')).toBe(people.find((user) => user.fullName === 'Mr. Vikram Shah')!.id);
+  it('again makes nobody twice, and names a number another Unit’s account holds', async () => {
+    const elsewhere = await world.request('POST', `${base}/users`, {
+      token: asSuperAdmin(),
+      body: { fullName: 'Bina Other', phone: '7000000205', role: 'ZONE_LEADER', unitId: world.unitB },
     });
+    expect(elsewhere.status, JSON.stringify(elsewhere.body)).toBe(201);
+    const response = await importAuditors(
+      asCoordinator(),
+      world.unitA,
+      await auditorList([
+        ['Zone 01', 'ZL1', 'Mr. Om Prakash', '7000000201'],
+        ['Zone 04', 'ZL1', 'Mr. Tarun Mehta', '7000000205'],
+      ]),
+    );
+    expect(response.status).toBe(200);
+    const result = response.body as Result;
+    expect(result).toMatchObject({ created: 0, existing: 1 });
+    expect(result.notes[0]).toMatch(/^No account for Mr\. Tarun Mehta\. This phone number already belongs/);
+  });
 
-    it('names a leader whose number belongs to someone else, and imports the rest', async () => {
-      const elsewhere = await world.request('POST', `${base}/users`, {
-        token: asSuperAdmin(),
-        body: { fullName: 'Bina Other', phone: '7000000105', role: 'ZONE_LEADER', unitId: world.unitB },
-      });
-      expect(elsewhere.status, JSON.stringify(elsewhere.body)).toBe(201);
+  it('is not a Coordinator’s for another Unit, nor a Consultant’s', async () => {
+    const body = await auditorList([['', 'Auditor', 'Mr. Trespass', '7000000206']]);
+    expect((await importAuditors(asCoordinator(), world.unitB, body)).status).toBe(404);
+    expect((await importAuditors(world.actors.CONSULTANT.accessToken, world.unitA, body)).status).toBe(403);
+  });
 
-      const response = await importList(
-        asCoordinator(),
-        world.unitA,
-        await workbook([
-          ['Zone 01', 'Press', 'Mr. Ravi Kumar', ''],
-          ['Zone 02', 'Boiler', 'Mr. Ajay Singh Ms. Neha Rao', ''],
-          ['Zone 03', 'Stores', 'Mr. Vikram Shah', ''],
-          ['Zone 04', 'Canteen', 'Mr. Tarun Mehta', '7000000105'],
-        ]),
-      );
-      expect(response.status).toBe(200);
-      const { notes } = response.body as Result;
-      expect(notes).toHaveLength(1);
-      expect(notes[0]).toMatch(/^Zone 4: no account for Mr\. Tarun Mehta\. This phone number already belongs/);
-      expect((await activeZones(world.unitA)).find((zone) => zone.code === 'Z-04')).toMatchObject({
-        zoneLeaderId: null,
-        zoneLeaderName: 'Mr. Tarun Mehta',
-      });
+  it('lets a Coordinator add a Zone Leader with no Zone by hand', async () => {
+    const response = await world.request('POST', `${base}/users`, {
+      token: asCoordinator(),
+      body: { fullName: 'Ad Hoc Auditor', phone: '7000000207', role: 'ZONE_LEADER' },
     });
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+  });
+
+  it('shows a Coordinator their Zone Leaders and themselves — no Consultant, no other Coordinator', async () => {
+    const roles = new Set((await people()).map((user) => user.role));
+    expect([...roles].sort()).toEqual(['COORDINATOR', 'ZONE_LEADER']);
+    const consultants = await world.request('GET', `${base}/users?role=CONSULTANT&limit=200`, { token: asCoordinator() });
+    expect((consultants.body as Page<never>).data).toEqual([]);
+    const consultant = await world.request('GET', `${base}/users/${world.actors.CONSULTANT.userId}`, {
+      token: asCoordinator(),
+    });
+    expect(consultant.status).toBe(404);
+    const memberships = await world.request('GET', `${base}/memberships?unitId=${world.unitA}&status=ACTIVE&limit=200`, {
+      token: asCoordinator(),
+    });
+    const listed = (memberships.body as Page<{ role: string; userId: string }>).data;
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.every((m) => m.role === 'ZONE_LEADER' || m.userId === world.actors.COORDINATOR.userId)).toBe(true);
+  });
+
+  it('gives a Unit one Coordinator', async () => {
+    const second = await world.request('POST', `${base}/users`, {
+      token: asSuperAdmin(),
+      body: { fullName: 'Second Coord', phone: '7000000208', role: 'COORDINATOR', unitId: world.unitA },
+    });
+    expect(second.status, JSON.stringify(second.body)).toBe(422);
+    const other = await world.request('POST', `${base}/users`, {
+      token: asSuperAdmin(),
+      body: { fullName: 'Unit B Coord', phone: '7000000209', role: 'COORDINATOR', unitId: world.unitB },
+    });
+    expect(other.status, JSON.stringify(other.body)).toBe(201);
   });
 });

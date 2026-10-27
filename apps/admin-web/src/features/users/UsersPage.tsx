@@ -101,10 +101,12 @@ export function UsersPage() {
     unitsOf.set(userId, (unitsOf.get(userId) ?? new Set<string>()).add(unitName));
   }
 
+  const isCoordinator = scope?.role === 'COORDINATOR';
   const query = search.trim().toLocaleLowerCase();
   const list = (users.data?.data ?? []).filter(
     (user) =>
-      (!role || user.role === role) &&
+      // R-64: a Coordinator's people are their Zone Leaders and auditors, never themselves.
+      (isCoordinator ? user.role === 'ZONE_LEADER' : !role || user.role === role) &&
       [user.fullName, user.loginId, user.email, user.phoneE164].some((value) =>
         value?.toLocaleLowerCase().includes(query),
       ),
@@ -116,10 +118,10 @@ export function UsersPage() {
 
       <Card>
         <CardHeader
-          title="Users"
+          title={isCoordinator ? 'Zone leaders / Auditors' : 'Users'}
           description={
-            scope?.role === 'COORDINATOR'
-              ? 'Users in your Unit. You may create and manage Zone Leaders.'
+            isCoordinator
+              ? 'The Zone Leaders and auditors of your Unit. Anyone you add may audit any Zone, with or without a Zone of their own.'
               : 'Every user in the organization.'
           }
           action={
@@ -149,6 +151,7 @@ export function UsersPage() {
               placeholder="Name, login ID, phone or email…"
             />
           </Field>
+          {!isCoordinator && (
           <Field label="Role">
             <Select value={role} onChange={(event) => setRole(event.target.value as Role | '')}>
               <option value="">All roles</option>
@@ -159,6 +162,7 @@ export function UsersPage() {
               ))}
             </Select>
           </Field>
+          )}
         </div>
 
         {users.isLoading && (
@@ -862,8 +866,8 @@ export function CreateUserForm({
   });
   const selectedRole = fixedRole ?? watch('role');
   const requiresUnit = selectedRole === 'COORDINATOR' || selectedRole === 'ZONE_LEADER';
-  // R-39: a Zone Leader is created with the Zone they lead — required of a Coordinator,
-  // optional for a Super Admin, whose Units may not have Zones yet (R-19).
+  // R-39: a Zone Leader may be created with the Zone they lead. Optional since R-64: a
+  // senior person or an external auditor audits with no Zone of their own.
   const leaderUnitId = fixedUnitId ?? (isCoordinator ? scope?.unitIds[0] : watch('unitId'));
   const picksZone = selectedRole === 'ZONE_LEADER' && !forNewZone && Boolean(leaderUnitId);
   const zones = useQuery({
@@ -990,18 +994,16 @@ export function CreateUserForm({
 
         {picksZone && (
           <Field
-            label={isCoordinator ? 'Leads Zone' : 'Leads Zone (optional)'}
+            label="Leads Zone (optional)"
             hint={
               zones.data && zones.data.data.length === 0
                 ? 'This Unit has no Zones yet. Create the Zone first, and make its leader there.'
-                : 'Their Zone. They may still audit, and fix the findings of, every Zone of the Unit.'
+                : 'Leave it empty for someone who only audits. Either way they may audit, and fix the findings of, every Zone of the Unit.'
             }
             error={errors.zoneId?.message}
           >
-            <Select
-              {...register('zoneId', { required: isCoordinator ? 'Choose the Zone they lead' : false })}
-            >
-              <option value="">{isCoordinator ? 'Choose a Zone' : 'No Zone yet'}</option>
+            <Select {...register('zoneId')}>
+              <option value="">No Zone</option>
               {(zones.data?.data ?? []).map((zone) => (
                 <option key={zone.id} value={zone.id}>
                   {zoneDisplayLabel(zone.code, zone.name)}

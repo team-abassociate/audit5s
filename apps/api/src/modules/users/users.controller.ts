@@ -24,7 +24,7 @@ import {
   type ResetUserPasswordResponse,
   type UpdateUserRequest,
   type User,
-  type ZoneListImportResult,
+  type AuditorListImportResult,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
 import { RequirePermission, Scope } from '../../common/auth/decorators';
@@ -113,28 +113,27 @@ export class UsersController {
 }
 
 /**
- * R-59: the Unit's Zone list from an Excel or PDF file, as a multipart field `file`.
- * Replaces the list — Super Admin and Coordinator only, as creating a Zone is — and makes
- * the accounts of the leaders it names (R-63). Here, not in the Zones module, because the
- * accounts are this module's and it already depends on that one.
+ * R-64: the Unit's Auditor list from an Excel file, as a multipart field `file` — the
+ * accounts of its Zone Leaders and ad hoc auditors. Whoever may create a Zone Leader may
+ * import it: a Super Admin, or a Coordinator for their own Unit.
  */
 @Controller()
-export class ZoneListImportController {
+export class AuditorListImportController {
   constructor(private readonly users: UsersService) {}
 
-  @RequirePermission('zone', 'create')
+  @RequirePermission('user', 'create')
   @Scope({ intent: 'write' })
-  @Post('units/:id/zones/import')
+  @Post('units/:id/auditors/import')
   @HttpCode(HttpStatus.OK)
   async importList(
     @CurrentScope() scope: ScopeContext,
     @Param('id', ParseUUIDPipe) unitId: string,
     @Req() request: FastifyRequest,
-  ): Promise<ZoneListImportResult> {
+  ): Promise<AuditorListImportResult> {
     const file = await request.file();
     if (!file) {
-      throw AppError.validation('Send the Zone list as a multipart file field named `file`');
+      throw AppError.validation('Send the Auditor list as a multipart file field named `file`');
     }
-    return this.users.importZoneList(scope, unitId, await file.toBuffer());
+    return this.users.importAuditorList(scope, unitId, await file.toBuffer());
   }
 }
