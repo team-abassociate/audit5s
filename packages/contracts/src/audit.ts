@@ -238,6 +238,11 @@ export const auditSchema = z.object({
    * filtered and grouped by Zone (R-43). Set on `GET /audits`; optional elsewhere.
    */
   zoneIds: z.array(uuidSchema).optional(),
+  /**
+   * The same Zones' codes as audited (the snapshot, so a later renumbering does not rewrite
+   * history), for a list that names them: "Zones 1, 4, 7". Set on `GET /audits`.
+   */
+  zoneCodes: z.array(z.string()).optional(),
   clientCreatedAt: isoDateTimeSchema,
   clientUpdatedAt: isoDateTimeSchema,
   serverReceivedAt: isoDateTimeSchema,

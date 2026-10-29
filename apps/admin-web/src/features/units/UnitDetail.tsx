@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import {
   UNIT_COORDINATOR_EDITABLE_FIELDS,
+  type Audit,
   type Industry,
   type MembershipDetail,
   type Page,
@@ -10,14 +11,14 @@ import {
   type UpdateUnitRequest,
   type User,
 } from '@audit5s/contracts';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, fetchAll } from '@/lib/api';
 import { devGet } from '@/features/units/worst-case';
 import { Link, useParams } from '@tanstack/react-router';
 import { Button, Card, CardHeader, EmptyState, ErrorNotice, Field, Input, RowActions, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { useDocumentTitle } from '@/components/AppShell';
 import { roleLabel } from '@/lib/labels';
-import { formatDate } from '@audit5s/domain';
+import { auditDays, formatDate, zonesLine } from '@audit5s/domain';
 
 /**
  * Unit master data, plus the Consultant and Coordinator assignments for this Unit.
@@ -75,6 +76,8 @@ export function UnitDetail() {
         </Link>
         <h1 className="gb-h1">{unit.data.name}</h1>
       </div>
+
+      {can('audit', 'read') && <UnitAuditDays unitId={unitId} />}
 
       <Card>
         <CardHeader
@@ -167,6 +170,64 @@ export function UnitDetail() {
 
       {can('unit_membership', 'read') && <UnitMemberships unitId={unitId} />}
     </div>
+  );
+}
+
+/** Which Zones were audited on which day: newest day first, Zones ascending within it. */
+function UnitAuditDays({ unitId }: { unitId: string }) {
+  const audits = useQuery({
+    queryKey: ['audits', 'register', unitId],
+    queryFn: () => fetchAll<Audit>(`/audits?limit=200&unitId=${unitId}`),
+  });
+  const days = auditDays(audits.data ?? []);
+
+  return (
+    <Card>
+      <CardHeader
+        title="Audits by date"
+        description="By the day each audit finished, newest first. Each auditor is listed with the Zones they covered; open an audit from its auditor."
+      />
+      {audits.isPending && (
+        <div className="p-4">
+          <Spinner label="Loading audits…" />
+        </div>
+      )}
+      {audits.error && (
+        <div className="p-4">
+          <ErrorNotice error={audits.error} />
+        </div>
+      )}
+      {audits.data && days.length === 0 && <EmptyState title="No finished audits of this Unit yet." />}
+      {days.length > 0 && (
+        <Table label="Audits by date">
+          <thead>
+            <tr>
+              <Th width="22%">Date</Th>
+              <Th>Zones</Th>
+              <Th width="30%">Audits</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map(({ day, zones, audits: dayAudits }) => (
+              <tr key={day}>
+                <Td>
+                  <span className="gb-data">{day}</span>
+                </Td>
+                <Td className="font-medium">{zones.length > 0 ? zones.join(', ') : '—'}</Td>
+                <Td>
+                  {dayAudits.map((audit) => (
+                    <Link key={audit.id} to="/audits" search={{ audit: audit.id } as never} className="block underline">
+                      {audit.auditorName}
+                      {audit.zoneCodes?.length ? ` — ${zonesLine(audit.zoneCodes)}` : ''}
+                    </Link>
+                  ))}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
   );
 }
 

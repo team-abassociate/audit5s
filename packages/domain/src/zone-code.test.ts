@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  auditDays,
   mayAddZoneWhileAuditing,
   reportZoneLabel,
   zoneCodeChoices,
@@ -10,6 +11,8 @@ import {
   zoneLabelParts,
   zoneLeaderSnapshot,
   zoneNumberFromCode,
+  zoneLabelsAscending,
+  zonesLine,
 } from './zone-code';
 
 describe('zone codes', () => {
@@ -157,5 +160,35 @@ describe('mayAddZoneWhileAuditing (R-59)', () => {
     expect(mayAddZoneWhileAuditing('COORDINATOR', true)).toBe(true);
     expect(mayAddZoneWhileAuditing('SUPER_ADMIN', true)).toBe(true);
     expect(mayAddZoneWhileAuditing('ZONE_LEADER', false)).toBe(false);
+  });
+});
+
+describe('Zones on an audit row, and a Unit audit history by day', () => {
+  it('names the Zones once each, ascending, numbers before a Unit’s own codes', () => {
+    expect(zoneLabelsAscending(['Z-07', 'BOILER', 'Z-10', 'Z-01', 'Z-1A', 'Z-07'])).toEqual([
+      '1',
+      '1A',
+      '7',
+      '10',
+      'BOILER',
+    ]);
+    expect(zonesLine(['Z-04'])).toBe('Zone 4');
+    expect(zonesLine(['Z-07', 'Z-01', 'Z-04'])).toBe('Zones 1, 4, 7');
+    expect(zonesLine([])).toBe('');
+  });
+
+  it('lists days newest first, each day’s Zones merged and ascending, unfinished audits left out', () => {
+    const days = auditDays([
+      { completedAt: '2026-10-20T04:00:00Z', zoneCodes: ['Z-07', 'Z-01'] },
+      { completedAt: null, zoneCodes: ['Z-09'] },
+      { completedAt: '2026-10-27T05:00:00Z', zoneCodes: ['Z-04'] },
+      { completedAt: '2026-10-20T09:00:00Z', zoneCodes: ['Z-04', 'Z-01'] },
+      // 20:00 UTC on the 26th is the 27th in India.
+      { completedAt: '2026-10-26T20:00:00Z', zoneCodes: ['Z-02'] },
+    ]);
+    expect(days.map(({ day, zones, audits }) => [day, zones, audits.length])).toEqual([
+      ['27 Oct 2026', ['2', '4'], 2],
+      ['20 Oct 2026', ['1', '4', '7'], 2],
+    ]);
   });
 });

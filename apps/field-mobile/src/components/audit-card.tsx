@@ -1,6 +1,7 @@
 import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { Audit } from '@audit5s/contracts';
+import { zonesLine } from '@audit5s/domain';
 import { formatDate, formatPct } from '../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, isFinished } from '../lib/labels';
 import { bandOf, createThemedStyles } from '../lib/theme';
@@ -28,6 +29,7 @@ export function AuditCard({ audit, oneUnit }: { audit: Audit; oneUnit: boolean }
       <View style={styles.row}>
         <View style={styles.text}>
           <Text style={styles.title}>{oneUnit ? audit.auditorName : audit.unitName}</Text>
+          {audit.zoneCodes?.length ? <Text style={styles.zones}>{zonesLine(audit.zoneCodes)}</Text> : null}
           <Muted>
             {oneUnit ? AUDIT_TYPE_LABELS[audit.auditType] : `${AUDIT_TYPE_LABELS[audit.auditType]} by ${audit.auditorName}`}
           </Muted>
@@ -63,4 +65,5 @@ const useStyles = createThemedStyles((theme) => ({
     textTransform: 'uppercase',
     marginBottom: 2,
   },
+  zones: { fontFamily: theme.family.bold, fontSize: theme.font.base, color: theme.color.ink },
 }));

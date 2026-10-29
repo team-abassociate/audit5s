@@ -3,7 +3,7 @@ import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { AuditDetail, Page, ReportDownloadUrl, ReportKind, ReportSnapshot } from '@audit5s/contracts';
-import { bandFor, zoneDisplayLabel } from '@audit5s/domain';
+import { bandFor, zoneDisplayLabel, zonesLine } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -128,6 +128,12 @@ export default function ManageAuditScreen() {
             title={AUDIT_TYPE_LABELS[audit.auditType]}
             description={`By ${audit.auditorName}`}
             action={<Chip tone={AUDIT_STATUS_TONE[audit.status]}>{AUDIT_STATUS_LABELS[audit.status]}</Chip>}
+          />
+          <LedgerRow
+            label="Zones"
+            value={
+              zonesLine(audit.zones.filter((zone) => zone.status !== 'WITHDRAWN').map((zone) => zone.zoneCodeSnapshot)) || '—'
+            }
           />
           <LedgerRow label="Started" value={audit.startedAt ? formatDateTime(audit.startedAt) : '—'} />
           <LedgerRow label="Completed" value={audit.completedAt ? formatDateTime(audit.completedAt) : '—'} last />
