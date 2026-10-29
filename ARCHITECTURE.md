@@ -3627,8 +3627,9 @@ database, API, field app and portal as 5S. The 5S parts above are unchanged.*
 | `kaizen` | One Kaizen Sheet: Unit, Zone, author, the sheet's fields (machine, line/area, implemented on, team, theme, target, problem [5W1H], root cause [4M], analysis [7 QC tools], countermeasure, wastes[], parameters[], horizontal deployment, benefits, `annual_saving numeric(14,2)`, idea by, implemented by), `status`, `submitted_at` (first submission), `kaizen_no` | The id is device-minted (UUIDv7). `kaizen_no` is `KZ-{zone code}-{NNN}`, assigned by trigger on insert under a per-Unit advisory lock, unique per Unit. Unit, Zone, author and number never change. Not DRAFT ⇒ every required field filled. No DELETE. `discarded_at` (0045, R-49): the author's own DRAFT only; the row then never changes and leaves every list |
 | `kaizen_review` | A Coordinator's decision: reviewer, role and name snapshotted, decision, comment | Append-only. A reason is required for SENT_BACK and REJECTED |
 | `kaizen_photo` | The BEFORE and AFTER photographs: content-addressed object key, checksum, size, `is_live_capture`, `uploaded_at` | One live photo per kind (partial unique index). Editable only while its Kaizen is. No DELETE (a removed photo is soft-deleted) |
+| `kaizen_sustain_check` (0059, R-69) | A Coordinator's 30/60/90-day check of an APPROVED Kaizen: `day_mark`, `in_place`, note, checker's name snapshotted | Append-only. One per Kaizen and mark. A note is required when not in place. Inserted only on an APPROVED Kaizen, by its Unit's Coordinator or a Super Admin |
 
-RLS on all three, defence-in-depth behind the guards: a Zone Leader sees their own Kaizens, a
+RLS on all four, defence-in-depth behind the guards: a Zone Leader sees their own Kaizens, a
 Coordinator their Unit's, a Consultant their assigned Units', a Super Admin all.
 
 ## 17.2 State machine (`KAIZEN_TRANSITIONS`, `packages/domain/src/state-machine.ts`)
@@ -3662,14 +3663,16 @@ on the phone and the server (R-50).
 
 | Method and path | Permission | Notes |
 | --- | --- | --- |
-| `GET /kaizens` | read | Scoped; `unitId`, `zoneId`, `status`, `mine`, `submittedFrom`, `sort=recent\|saving`; cursor paging. A Coordinator or Consultant also sees their Units' DRAFTs (R-48(b), RLS `kaizen_select`); the dashboard never counts one |
+| `GET /kaizens` | read | Scoped; `unitId`, `zoneId`, `status`, `mine`, `submittedFrom`, `sustainDue` (R-69), `sort=recent\|saving`; cursor paging. A Coordinator or Consultant also sees their Units' DRAFTs (R-48(b), RLS `kaizen_select`); the dashboard never counts one |
 | `GET /kaizens/{id}` | read | With every review and short-TTL photo view URLs |
-| `GET /kaizens/dashboard?period=overall\|year\|month` | read | KPI card, funnel, six-month trend, top-5 departments, counted in `packages/domain` |
+| `GET /kaizens/dashboard?period=overall\|year\|month` | read | KPI card, funnel, six-month trend, top-5 departments, people and sustain checks (R-69), counted in `packages/domain` |
 | `GET /kaizens/analysis?by=department\|zone&period=` | read | The table under the charts |
 | `POST /kaizens` | create | Idempotent on the device's id; the first copy creates the DRAFT and its number |
 | `PATCH /kaizens/{id}` | create | DRAFT or SENT_BACK, author only |
 | `POST /kaizens/{id}/submit` | create | `{ submissionId }`: a replay is a duplicate, a resubmission a new id |
-| `POST /kaizens/{id}/review` | review | `{ decision, comment }`, online only |
+| `POST /kaizens/{id}/review` | review | `{ decision, comment }`, online only. Notifies the author (`KAIZEN_REVIEWED`); a submit notifies the Coordinator (`KAIZEN_SUBMITTED`) (R-69) |
+| `POST /kaizens/{id}/sustain-checks` | review | `{ dayMark, inPlace, note }`: only the mark `nextSustainCheck` says is due, once; online only; not in place notifies the author (R-69) |
+| `GET /kaizens/register` | read | The list's filters, without drafts, as one .xlsx, streamed (R-69) |
 | `POST /kaizens/{id}/discard` | create | The author's own DRAFT (R-49); 204, and 204 again when already discarded. Idempotency-Key required |
 | `POST /kaizens/{id}/photos/upload-intent` · `…/{photoId}/commit` · `DELETE …/{photoId}` | create | The evidence pipeline's two-phase upload (§9.4) |
 | `POST /kaizens/{id}/export` · `GET /kaizens/{id}/export/{exportId}` | read | 202 + poll; READY carries a presigned GET of the one-page PDF |

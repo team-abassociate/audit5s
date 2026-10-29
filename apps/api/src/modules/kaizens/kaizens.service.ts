@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import ExcelJS from 'exceljs';
 import type {
   CommitKaizenPhotoRequest,
   CreateKaizenRequest,
@@ -14,10 +15,13 @@ import type {
   KaizenPhoto,
   KaizenPhotoUploadIntentRequest,
   KaizenPhotoUploadIntentResponse,
+  KaizenRegisterQuery,
   KaizenReview,
+  KaizenSustainCheck,
   ListKaizensQuery,
   Page,
   PatchKaizenRequest,
+  RecordKaizenSustainCheckRequest,
   ReviewKaizenRequest,
   SubmitKaizenRequest,
 } from '@audit5s/contracts';
@@ -25,10 +29,13 @@ import { kaizenFieldsSchema } from '@audit5s/contracts';
 import {
   ALLOWED_IMAGE_TYPES,
   assertTransition,
+  formatDate,
   kaizenAnalysis,
   kaizenDashboard,
   missingKaizenFields,
+  nextSustainCheck,
   sniffImageType,
+  zoneDisplayLabel,
   type ScopeContext,
 } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
@@ -37,6 +44,7 @@ import { scopeFor } from '../../common/auth/scope-for';
 import { auditLogRow } from '../../common/audit-log/audit-log.service';
 import { insertAuditLog } from '../../common/audit-log/audit-log.repository';
 import { CONFIG, type AppConfig } from '../../config/env';
+import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
 import { asAppError } from '../audit-assignments/assignments.service';
@@ -49,6 +57,7 @@ import {
   type KaizenPhotoRow,
   type KaizenReviewRow,
   type KaizenRow,
+  type KaizenSustainCheckRow,
 } from './kaizens.repository';
 
 const EDITABLE = new Set(['DRAFT', 'SENT_BACK']);
@@ -91,6 +100,7 @@ export class KaizensService {
     private readonly repository: KaizensRepository,
     private readonly storage: ObjectStorage,
     private readonly queue: QueueService,
+    private readonly events: DomainEvents,
     private readonly renderer: ReportRenderer,
     @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
@@ -129,8 +139,77 @@ export class KaizensService {
   }
 
   async dashboard(scope: ScopeContext, query: KaizenDashboardQuery): Promise<KaizenDashboard> {
-    const facts = await this.repository.facts(scopeFor(scope, 'kaizen:read'), query.unitId);
-    return kaizenDashboard(facts, query.period, new Date());
+    const read = scopeFor(scope, 'kaizen:read');
+    const [facts, leaderIds] = await Promise.all([
+      this.repository.facts(read, query.unitId),
+      this.repository.kaizenLeaderIds(read, query.unitId),
+    ]);
+    return kaizenDashboard(facts, query.period, new Date(), leaderIds);
+  }
+
+  /**
+   * `GET /kaizens/register` (R-69): the list as one worksheet for a review meeting. Streamed
+   * like the checklist error report: small, and scope-checked on the request that makes it.
+   */
+  async register(scope: ScopeContext, query: KaizenRegisterQuery): Promise<Buffer> {
+    const read = scopeFor(scope, 'kaizen:read');
+    const kaizens = await this.withChildren(read, await this.repository.register(read, query), false);
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Leanstack';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Kaizen register', { views: [{ state: 'frozen', ySplit: 1 }] });
+    sheet.columns = [
+      { header: 'Kaizen no.', key: 'no', width: 14 },
+      { header: 'Unit', key: 'unit', width: 20 },
+      { header: 'Zone', key: 'zone', width: 24 },
+      { header: 'Department', key: 'department', width: 18 },
+      { header: 'Theme', key: 'theme', width: 40 },
+      { header: 'Machine / line', key: 'machine', width: 22 },
+      { header: 'Submitted by', key: 'author', width: 20 },
+      { header: 'Idea by', key: 'ideaBy', width: 18 },
+      { header: 'Implemented by', key: 'implementedBy', width: 18 },
+      { header: 'Implemented on', key: 'implementedOn', width: 14 },
+      { header: 'Submitted on', key: 'submittedOn', width: 14 },
+      { header: 'Status', key: 'status', width: 12 },
+      { header: 'Decided on', key: 'decidedOn', width: 14 },
+      { header: 'Coordinator remark', key: 'remark', width: 36 },
+      { header: 'Parameters', key: 'parameters', width: 26 },
+      { header: 'Wastes', key: 'wastes', width: 30 },
+      { header: 'Annual saving (₹)', key: 'saving', width: 16 },
+      { header: 'Cost to implement (₹)', key: 'cost', width: 18 },
+      { header: 'Horizontal deployment', key: 'horizontal', width: 12 },
+      { header: 'Latest sustain check', key: 'sustain', width: 26 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+    const words = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ');
+    for (const kaizen of kaizens) {
+      const check = kaizen.sustainChecks.at(-1);
+      sheet.addRow({
+        no: kaizen.kaizenNo,
+        unit: kaizen.unitName,
+        zone: zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName),
+        department: kaizen.department ?? '',
+        theme: kaizen.theme ?? '',
+        machine: [kaizen.machine, kaizen.lineArea].filter(Boolean).join(' · '),
+        author: kaizen.authorName,
+        ideaBy: kaizen.ideaBy ?? '',
+        implementedBy: kaizen.implementedBy ?? '',
+        implementedOn: kaizen.implementedOn ? formatDate(kaizen.implementedOn) : '',
+        submittedOn: kaizen.submittedAt ? formatDate(kaizen.submittedAt) : '',
+        status: words(kaizen.status),
+        decidedOn: kaizen.latestReview ? formatDate(kaizen.latestReview.createdAt) : '',
+        remark: kaizen.latestReview?.comment ?? '',
+        parameters: kaizen.parameters.map(words).join(', '),
+        wastes: kaizen.wastes.map(words).join(', '),
+        saving: kaizen.annualSaving,
+        cost: kaizen.implementationCost,
+        horizontal: kaizen.horizontalDeployment === null ? '' : kaizen.horizontalDeployment ? 'Yes' : 'No',
+        sustain: check ? `${check.dayMark} days: ${check.inPlace ? 'in place' : 'not in place'}` : '',
+      });
+    }
+    sheet.getColumn('saving').numFmt = '#,##0';
+    sheet.getColumn('cost').numFmt = '#,##0';
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   async analysis(scope: ScopeContext, query: KaizenAnalysisQuery): Promise<KaizenAnalysis> {
@@ -257,6 +336,15 @@ export class KaizensService {
           after: { status: 'SUBMITTED', submissionId: request.submissionId },
         }),
       );
+      // R-69: the Unit's Coordinator hears it is waiting (0059 skips anyone without Kaizen).
+      await this.events.emit(tx, {
+        type: 'KAIZEN_SUBMITTED',
+        actorUserId: scope.actor.userId,
+        unitId: current.unitId,
+        resourceType: 'kaizen',
+        resourceId: kaizenId,
+        data: { kaizenNo: current.kaizenNo, theme: current.theme, authorName: current.authorName, resubmitted: current.status === 'SENT_BACK' },
+      });
     });
     return this.get(scope, kaizenId);
   }
@@ -321,6 +409,79 @@ export class KaizensService {
           after: { status: request.decision, reviewId: written.id, ...(comment ? { comment } : {}) },
         }),
       );
+      // R-69: the author hears the decision, and the reason with it.
+      await this.events.emit(tx, {
+        type: 'KAIZEN_REVIEWED',
+        actorUserId: scope.actor.userId,
+        unitId: current.unitId,
+        resourceType: 'kaizen',
+        resourceId: kaizenId,
+        userIds: [current.authorUserId],
+        data: { kaizenNo: current.kaizenNo, theme: current.theme, decision: request.decision, comment },
+      });
+    });
+    return this.get(scope, kaizenId);
+  }
+
+  /**
+   * `POST /kaizens/{id}/sustain-checks` (R-69): the Coordinator records the check that is
+   * due — that mark and no other, once. Not in place tells the author.
+   */
+  async recordSustainCheck(
+    scope: ScopeContext,
+    kaizenId: string,
+    request: RecordKaizenSustainCheckRequest,
+  ): Promise<KaizenDetail> {
+    const review = scopeFor(scope, 'kaizen:review');
+    await this.repository.inTransaction(review, async (tx) => {
+      const current = await this.repository.findById(review, kaizenId, tx);
+      if (!current) throw AppError.notFound('No such Kaizen');
+      const reviews = await this.repository.reviewsFor(review, [kaizenId], tx);
+      const checks = await this.repository.sustainChecksFor(review, [kaizenId], tx);
+      const next = nextSustainCheck(
+        approvedAtOf(reviews),
+        checks.map((check) => check.dayMark),
+        new Date(),
+      );
+      if (checks.some((check) => check.dayMark === request.dayMark)) {
+        throw AppError.conflict('CONFLICT', `The ${request.dayMark}-day check of ${current.kaizenNo} is already recorded`);
+      }
+      if (!next?.due || next.dayMark !== request.dayMark) {
+        throw AppError.conflict(
+          'INVALID_STATE_TRANSITION',
+          next?.due
+            ? `The ${next.dayMark}-day check of ${current.kaizenNo} is the one due`
+            : `No check of ${current.kaizenNo} is due now`,
+        );
+      }
+      const note = request.note ?? null;
+      const check = await this.repository.insertSustainCheck(tx, review, {
+        kaizenId,
+        dayMark: request.dayMark,
+        inPlace: request.inPlace,
+        note,
+      });
+      await insertAuditLog(
+        tx,
+        auditLogRow({
+          action: 'kaizen.sustain_checked',
+          resourceType: 'kaizen',
+          resourceId: kaizenId,
+          unitId: current.unitId,
+          after: { checkId: check.id, dayMark: request.dayMark, inPlace: request.inPlace, ...(note ? { note } : {}) },
+        }),
+      );
+      if (!request.inPlace) {
+        await this.events.emit(tx, {
+          type: 'KAIZEN_NOT_SUSTAINED',
+          actorUserId: scope.actor.userId,
+          unitId: current.unitId,
+          resourceType: 'kaizen',
+          resourceId: kaizenId,
+          userIds: [current.authorUserId],
+          data: { kaizenNo: current.kaizenNo, theme: current.theme, dayMark: request.dayMark, note },
+        });
+      }
     });
     return this.get(scope, kaizenId);
   }
@@ -497,12 +658,14 @@ export class KaizensService {
     knownReviews?: KaizenReviewRow[],
   ): Promise<Kaizen[]> {
     const ids = rows.map((row) => row.id);
-    const [reviews, photos] = await Promise.all([
+    const [reviews, photos, checks] = await Promise.all([
       knownReviews ?? this.repository.reviewsFor(read, ids),
       this.repository.photosFor(read, ids),
+      this.repository.sustainChecksFor(read, ids),
     ]);
     const latest = new Map<string, KaizenReviewRow>();
     for (const review of reviews) latest.set(review.kaizenId, review);
+    const now = new Date();
 
     const viewUrl = async (photo: KaizenPhotoRow | undefined) => {
       if (!photo) return null;
@@ -516,12 +679,23 @@ export class KaizensService {
     return Promise.all(
       rows.map(async (row) => {
         const mine = photos.filter((photo) => photo.kaizenId === row.id);
-        return toKaizen(
-          row,
-          latest.get(row.id) ?? null,
-          await viewUrl(mine.find((photo) => photo.kind === 'BEFORE')),
-          await viewUrl(mine.find((photo) => photo.kind === 'AFTER')),
-        );
+        const sustainChecks = checks.filter((check) => check.kaizenId === row.id);
+        const approvedAt = approvedAtOf(reviews.filter((review) => review.kaizenId === row.id));
+        return {
+          ...toKaizen(
+            row,
+            latest.get(row.id) ?? null,
+            await viewUrl(mine.find((photo) => photo.kind === 'BEFORE')),
+            await viewUrl(mine.find((photo) => photo.kind === 'AFTER')),
+          ),
+          approvedAt,
+          sustainChecks: sustainChecks.map(toSustainCheck),
+          nextSustainCheck: nextSustainCheck(
+            approvedAt,
+            sustainChecks.map((check) => check.dayMark),
+            now,
+          ),
+        };
       }),
     );
   }
@@ -604,6 +778,23 @@ function sameSheet(row: KaizenRow, fields: KaizenFields): boolean {
   );
 }
 
+/** The APPROVED review's time; null unless approved. */
+function approvedAtOf(reviews: readonly KaizenReviewRow[]): string | null {
+  return reviews.find((review) => review.decision === 'APPROVED')?.createdAt.toISOString() ?? null;
+}
+
+function toSustainCheck(row: KaizenSustainCheckRow): KaizenSustainCheck {
+  return {
+    id: row.id,
+    kaizenId: row.kaizenId,
+    dayMark: row.dayMark as KaizenSustainCheck['dayMark'],
+    inPlace: row.inPlace,
+    note: row.note,
+    checkedByName: row.checkedByName,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
@@ -643,7 +834,7 @@ function toKaizen(
   latestReview: KaizenReviewRow | null,
   beforePhoto: KaizenPhoto | null,
   afterPhoto: KaizenPhoto | null,
-): Kaizen {
+): Omit<Kaizen, 'approvedAt' | 'sustainChecks' | 'nextSustainCheck'> {
   return {
     id: row.id,
     kaizenNo: row.kaizenNo,

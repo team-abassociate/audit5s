@@ -1535,6 +1535,17 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'GET',
+    path: '/api/v1/kaizens/register',
+    description: 'kaizen:read — the list as one .xlsx (R-69), over exactly what the list would show',
+    expected: {
+      SUPER_ADMIN: { inScope: OK },
+      CONSULTANT: { inScope: OK },
+      COORDINATOR: { inScope: OK },
+      ZONE_LEADER: { inScope: OK },
+    },
+  },
+  {
+    method: 'GET',
     path: '/api/v1/kaizens/:kaizenId',
     description: 'kaizen:read — one Kaizen with its review history',
     expected: {
@@ -1590,6 +1601,18 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     description:
       'kaizen:review — approve, send back or reject (a reason for the last two); Idempotency-Key ' +
       'required; kaizen_review + audit_log in one transaction',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/kaizens/:kaizenId/sustain-checks',
+    description:
+      'kaizen:review — the 30/60/90-day check that is due (R-69); Idempotency-Key required; ' +
+      'once per mark',
     expected: {
       SUPER_ADMIN: { inScope: OK, outOfScope: OK },
       COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },

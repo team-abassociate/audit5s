@@ -2819,9 +2819,15 @@ li:has(> .gb-menu-item--danger) {
 .gb-kz-grid > .gb-kz-wide {
   grid-column: 1 / -1;
 }
+.gb-kz-grid > .gb-kz-two {
+  grid-column: span 2;
+}
 @media (max-width: 1180px) {
   .gb-kz-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .gb-kz-grid > .gb-kz-two {
+    grid-column: auto;
   }
 }
 .gb-kz-legend {

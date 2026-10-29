@@ -64,6 +64,15 @@ export const kaizenPhotoKindSchema = z.enum(KAIZEN_PHOTO_KINDS);
 export type KaizenPhotoKind = z.infer<typeof kaizenPhotoKindSchema>;
 
 /**
+ * Days after approval at which the Coordinator checks the improvement is still in place
+ * (owner, 2026-10-29, R-69). A check covers the latest mark that has passed: one first made
+ * on day 65 is the 60-day check, and the 30-day one is missed, not owed.
+ */
+export const KAIZEN_SUSTAIN_DAYS = [30, 60, 90] as const;
+export type KaizenSustainDay = (typeof KAIZEN_SUSTAIN_DAYS)[number];
+export const kaizenSustainDaySchema = z.union([z.literal(30), z.literal(60), z.literal(90)]);
+
+/**
  * What must be filled before a Kaizen can be submitted — the prototype's required steps.
  * The database refuses a non-DRAFT row missing any of them (0044), and the form marks
  * the same steps REQUIRED, so the two cannot disagree.
@@ -131,6 +140,30 @@ export const kaizenReviewSchema = z.object({
 });
 export type KaizenReview = z.infer<typeof kaizenReviewSchema>;
 
+/** One 30/60/90-day check (R-69). Append-only; one per Kaizen and mark. */
+export const kaizenSustainCheckSchema = z.object({
+  id: uuidSchema,
+  kaizenId: uuidSchema,
+  dayMark: kaizenSustainDaySchema,
+  inPlace: z.boolean(),
+  /** Required when not in place: what the Coordinator found. */
+  note: z.string().nullable(),
+  /** Snapshotted, like a reviewer's name. */
+  checkedByName: z.string(),
+  createdAt: isoDateTimeSchema,
+});
+export type KaizenSustainCheck = z.infer<typeof kaizenSustainCheckSchema>;
+
+/** The check an approved Kaizen is waiting for, or will wait for next. */
+export const kaizenNextSustainCheckSchema = z.object({
+  dayMark: kaizenSustainDaySchema,
+  /** The day the mark falls on, in IST. */
+  dueOn: isoDateSchema,
+  /** The mark has passed and the check is not recorded: it may be recorded now. */
+  due: z.boolean(),
+});
+export type KaizenNextSustainCheck = z.infer<typeof kaizenNextSustainCheckSchema>;
+
 export const kaizenSchema = z.object({
   id: uuidSchema,
   /** `KZ-Z07-001`: the Zone's code and the Unit's running count. Server-assigned. */
@@ -171,6 +204,12 @@ export const kaizenSchema = z.object({
   status: kaizenStatusSchema,
   /** First submission. A resubmission after SENT_BACK does not move it. */
   submittedAt: isoDateTimeSchema.nullable(),
+  /** When the Coordinator approved it; null unless APPROVED. Sustain checks count from it. */
+  approvedAt: isoDateTimeSchema.nullable(),
+  /** The 30/60/90-day checks recorded so far, oldest first. Empty unless APPROVED. */
+  sustainChecks: z.array(kaizenSustainCheckSchema),
+  /** Null when not APPROVED or when every mark is recorded or passed by a later one. */
+  nextSustainCheck: kaizenNextSustainCheckSchema.nullable(),
   /** The latest review, so a card can show the Coordinator's reason without a second call. */
   latestReview: kaizenReviewSchema.nullable(),
   beforePhoto: kaizenPhotoSchema.nullable(),
@@ -274,10 +313,37 @@ export const listKaizensQuerySchema = paginationQuerySchema.extend({
   mine: booleanQuery(false),
   /** First submitted on or after this instant ("last 30 days"). */
   submittedFrom: isoDateTimeSchema.optional(),
+  /** Approved Kaizens whose 30/60/90-day check is due now: the Coordinator's "Checks due". */
+  sustainDue: booleanQuery(false),
   /** `recent`: newest first. `saving`: largest `annualSaving` first (Top 3 approved). */
   sort: z.enum(KAIZEN_SORTS).default('recent'),
 });
 export type ListKaizensQuery = z.infer<typeof listKaizensQuerySchema>;
+
+/**
+ * `GET /kaizens/register`: every Kaizen the list would show under these filters, as one
+ * .xlsx for a review meeting. Not paged; DRAFTs are left out, as the dashboard leaves them.
+ */
+export const kaizenRegisterQuerySchema = listKaizensQuerySchema.pick({
+  unitId: true,
+  zoneId: true,
+  status: true,
+  submittedFrom: true,
+});
+export type KaizenRegisterQuery = z.infer<typeof kaizenRegisterQuerySchema>;
+
+/** `POST /kaizens/{id}/sustain-checks`: the Coordinator records the check that is due. */
+export const recordKaizenSustainCheckRequestSchema = z
+  .object({
+    dayMark: kaizenSustainDaySchema,
+    inPlace: z.boolean(),
+    note: clearable(z.string().trim().max(2000)),
+  })
+  .refine((check) => check.inPlace || !!check.note, {
+    message: 'Say what was found when the improvement is not in place',
+    path: ['note'],
+  });
+export type RecordKaizenSustainCheckRequest = z.infer<typeof recordKaizenSustainCheckRequestSchema>;
 
 // ------------------------------------------------------------------------ photos
 
@@ -403,6 +469,43 @@ export const kaizenDepartmentSeriesSchema = z.object({
 });
 export type KaizenDepartmentSeries = z.infer<typeof kaizenDepartmentSeriesSchema>;
 
+/** One person on "Top contributors", ranked by approved Kaizens, then approved saving. */
+export const kaizenContributorSchema = z.object({
+  userId: uuidSchema,
+  name: z.string(),
+  submitted: z.number().int().nonnegative(),
+  approved: z.number().int().nonnegative(),
+  approvedSaving: rupeesSchema,
+});
+export type KaizenContributor = z.infer<typeof kaizenContributorSchema>;
+
+/**
+ * E. Who takes part and how fast they hear back (R-69). Counted over Kaizens first submitted
+ * in the period, except `oldestWaitingDays`, which is now.
+ */
+export const kaizenPeopleSchema = z.object({
+  /** Zone Leaders holding Kaizen in the Units in scope, today. */
+  leaders: z.number().int().nonnegative(),
+  /** Of those leaders, how many submitted at least one Kaizen in the period. */
+  contributors: z.number().int().nonnegative(),
+  /** contributors ÷ leaders × 100; null with no leaders. */
+  participationPct: z.number().min(0).max(100).nullable(),
+  /** Mean days from first submission to first decision, of those decided; null when none. */
+  avgDaysToDecision: z.number().nonnegative().nullable(),
+  /** Whole days the longest-waiting SUBMITTED Kaizen has waited; null when none waits. */
+  oldestWaitingDays: z.number().int().nonnegative().nullable(),
+  topContributors: z.array(kaizenContributorSchema).max(5),
+});
+export type KaizenPeople = z.infer<typeof kaizenPeopleSchema>;
+
+/** F. Sustain checks, now, whatever the period: due, and each approved Kaizen's latest answer. */
+export const kaizenSustainSummarySchema = z.object({
+  due: z.number().int().nonnegative(),
+  inPlace: z.number().int().nonnegative(),
+  notInPlace: z.number().int().nonnegative(),
+});
+export type KaizenSustainSummary = z.infer<typeof kaizenSustainSummarySchema>;
+
 export const kaizenDashboardSchema = z.object({
   period: kaizenDashboardPeriodSchema,
   serverTime: isoDateTimeSchema,
@@ -414,6 +517,8 @@ export const kaizenDashboardSchema = z.object({
     submitted: z.array(kaizenDepartmentSeriesSchema).max(5),
     approved: z.array(kaizenDepartmentSeriesSchema).max(5),
   }),
+  people: kaizenPeopleSchema,
+  sustain: kaizenSustainSummarySchema,
 });
 export type KaizenDashboard = z.infer<typeof kaizenDashboardSchema>;
 

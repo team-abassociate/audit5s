@@ -3,13 +3,16 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from 'dri
 import {
   kaizenPhotos,
   kaizenReviews,
+  kaizenSustainChecks,
   kaizens,
+  unitMemberships,
   units,
+  users,
   zones,
   type Database,
   type Transaction,
 } from '@audit5s/db';
-import type { KaizenFields, KaizenReviewDecision, ListKaizensQuery } from '@audit5s/contracts';
+import type { KaizenFields, KaizenRegisterQuery, KaizenReviewDecision, ListKaizensQuery } from '@audit5s/contracts';
 import type { KaizenFact, ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
@@ -41,6 +44,14 @@ export type KaizenRow = typeof kaizens.$inferSelect & {
 };
 export type KaizenReviewRow = typeof kaizenReviews.$inferSelect;
 export type KaizenPhotoRow = typeof kaizenPhotos.$inferSelect;
+export type KaizenSustainCheckRow = typeof kaizenSustainChecks.$inferSelect;
+
+/** When it was approved: the APPROVED review's time (there is at most one: APPROVED is final). */
+const approvedAtSql = sql<Date | string | null>`(SELECT max(r.created_at) FROM kaizen_review r
+  WHERE r.kaizen_id = ${kaizens.id} AND r.decision = 'APPROVED')`;
+/** The latest sustain mark recorded, 0 for none (R-69). */
+const lastMarkSql = sql`(SELECT coalesce(max(c.day_mark), 0) FROM kaizen_sustain_check c
+  WHERE c.kaizen_id = ${kaizens.id})`;
 
 /** What a writer sends, as columns. `undefined` leaves a column as it is. */
 export type KaizenColumns = Partial<typeof kaizens.$inferInsert>;
@@ -85,13 +96,18 @@ export class KaizensRepository extends BaseRepository {
     return this.inTransaction(scope, async (tx) => {
       const bySaving = query.sort === 'saving';
       const filters: Array<SQL | undefined> = [
-        query.unitId ? eq(kaizens.unitId, query.unitId) : undefined,
-        query.zoneId ? eq(kaizens.zoneId, query.zoneId) : undefined,
-        query.status ? eq(kaizens.status, query.status) : undefined,
-        // A discarded draft is not there (R-49), for its author or anyone else.
-        isNull(kaizens.discardedAt),
+        ...listFilters(query),
         query.mine ? eq(kaizens.authorUserId, scope.actor.userId) : undefined,
-        query.submittedFrom ? gte(kaizens.submittedAt, new Date(query.submittedFrom)) : undefined,
+        // R-69's "Checks due": approved, and the mark after the last one recorded has passed
+        // (IST days, as `nextSustainCheck` counts them). Marks are 30 apart, so that is the rule.
+        query.sustainDue
+          ? and(
+              eq(kaizens.status, 'APPROVED'),
+              sql`${lastMarkSql} < 90`,
+              sql`((now() AT TIME ZONE 'Asia/Kolkata')::date - (${approvedAtSql} AT TIME ZONE 'Asia/Kolkata')::date)
+                  >= ${lastMarkSql} + 30`,
+            )
+          : undefined,
         // Ids are UUIDv7, so id order is creation order and the cursor is the last id.
         !bySaving && query.cursor ? lt(kaizens.id, query.cursor) : undefined,
       ];
@@ -105,6 +121,55 @@ export class KaizensRepository extends BaseRepository {
         )
         .limit(query.limit + 1);
       return rows.map(flatten);
+    });
+  }
+
+  /** The register (R-69): every submitted Kaizen under these filters, by number. Not paged. */
+  async register(scope: ScopeContext, query: KaizenRegisterQuery): Promise<KaizenRow[]> {
+    return this.inTransaction(scope, async (tx) => {
+      const rows = await this.select(tx)
+        .where(this.scoped(scope, scopeColumns, ...listFilters(query), sql`${kaizens.status} <> 'DRAFT'`))
+        .orderBy(asc(units.name), asc(kaizens.kaizenSeq));
+      return rows.map(flatten);
+    });
+  }
+
+  /** Sustain checks of these Kaizens, oldest first. Visible exactly when the Kaizen is (0059). */
+  async sustainChecksFor(scope: ScopeContext, kaizenIds: string[], tx?: Transaction): Promise<KaizenSustainCheckRow[]> {
+    if (kaizenIds.length === 0) return [];
+    const run = (t: Transaction) =>
+      t
+        .select()
+        .from(kaizenSustainChecks)
+        .innerJoin(kaizens, eq(kaizens.id, kaizenSustainChecks.kaizenId))
+        .where(this.scoped(scope, scopeColumns, inArray(kaizenSustainChecks.kaizenId, kaizenIds)))
+        .orderBy(asc(kaizenSustainChecks.dayMark))
+        .then((rows) => rows.map((row) => row.kaizen_sustain_check));
+    return tx ? run(tx) : this.inTransaction(scope, run);
+  }
+
+  /**
+   * Zone Leaders holding Kaizen with an active membership in the Units this scope reaches:
+   * participation's denominator (R-69). A Zone Leader's own scope is themselves.
+   */
+  async kaizenLeaderIds(scope: ScopeContext, unitId: string | undefined): Promise<string[]> {
+    return this.inTransaction(scope, async (tx) => {
+      const rows = await tx
+        .selectDistinct({ id: users.id })
+        .from(unitMemberships)
+        .innerJoin(users, eq(users.id, unitMemberships.userId))
+        .where(
+          this.scoped(
+            scope,
+            { unitId: unitMemberships.unitId, recordUserId: users.id },
+            eq(unitMemberships.status, 'ACTIVE'),
+            eq(users.role, 'ZONE_LEADER'),
+            eq(users.kaizenAccess, true),
+            isNull(users.archivedAt),
+            unitId ? eq(unitMemberships.unitId, unitId) : undefined,
+          ),
+        );
+      return rows.map((row) => row.id);
     });
   }
 
@@ -164,9 +229,17 @@ export class KaizensRepository extends BaseRepository {
         .select({
           status: kaizens.status,
           submittedAt: kaizens.submittedAt,
-          approvedAt: sql<Date | string | null>`(SELECT max(r.created_at) FROM kaizen_review r
-            WHERE r.kaizen_id = ${kaizens.id} AND r.decision = 'APPROVED')`,
+          approvedAt: approvedAtSql,
+          firstDecidedAt: sql<Date | string | null>`(SELECT min(r.created_at) FROM kaizen_review r
+            WHERE r.kaizen_id = ${kaizens.id})`,
           reviewed: sql<boolean>`EXISTS (SELECT 1 FROM kaizen_review r WHERE r.kaizen_id = ${kaizens.id})`,
+          updatedAt: kaizens.updatedAt,
+          authorUserId: kaizens.authorUserId,
+          authorName: kaizens.authorName,
+          sustainMarks: sql<number[]>`ARRAY(SELECT c.day_mark::int FROM kaizen_sustain_check c
+            WHERE c.kaizen_id = ${kaizens.id} ORDER BY c.day_mark)`,
+          lastInPlace: sql<boolean | null>`(SELECT c.in_place FROM kaizen_sustain_check c
+            WHERE c.kaizen_id = ${kaizens.id} ORDER BY c.day_mark DESC LIMIT 1)`,
           annualSaving: kaizens.annualSaving,
           department: zones.departmentHint,
           zoneId: kaizens.zoneId,
@@ -189,6 +262,8 @@ export class KaizensRepository extends BaseRepository {
         ...row,
         submittedAt: row.submittedAt?.toISOString() ?? null,
         approvedAt: row.approvedAt ? new Date(row.approvedAt).toISOString() : null,
+        firstDecidedAt: row.firstDecidedAt ? new Date(row.firstDecidedAt).toISOString() : null,
+        updatedAt: row.updatedAt.toISOString(),
         annualSaving: row.annualSaving === null ? null : Number(row.annualSaving),
       }));
     });
@@ -290,6 +365,26 @@ export class KaizensRepository extends BaseRepository {
     return review!;
   }
 
+  /**
+   * A 30/60/90-day check (R-69). 0059 holds that the Kaizen is APPROVED and the actor its
+   * Unit's Coordinator; the unique (Kaizen, mark) makes a second copy a conflict.
+   */
+  async insertSustainCheck(
+    tx: Transaction,
+    scope: ScopeContext,
+    values: { kaizenId: string; dayMark: number; inPlace: boolean; note: string | null },
+  ): Promise<KaizenSustainCheckRow> {
+    const [check] = await tx
+      .insert(kaizenSustainChecks)
+      .values({
+        ...values,
+        checkedByUserId: scope.actor.userId,
+        checkedByName: sql`(SELECT full_name FROM "user" WHERE id = ${scope.actor.userId})`,
+      })
+      .returning();
+    return check!;
+  }
+
   // --------------------------------------------------------------------- photos
 
   async findPhotoById(tx: Transaction, photoId: string): Promise<KaizenPhotoRow | null> {
@@ -338,6 +433,17 @@ export class KaizensRepository extends BaseRepository {
       .innerJoin(units, eq(units.id, kaizens.unitId))
       .innerJoin(zones, eq(zones.id, kaizens.zoneId));
   }
+}
+
+/** The filters the list and the register share. A discarded draft is never there (R-49). */
+function listFilters(query: KaizenRegisterQuery): Array<SQL | undefined> {
+  return [
+    query.unitId ? eq(kaizens.unitId, query.unitId) : undefined,
+    query.zoneId ? eq(kaizens.zoneId, query.zoneId) : undefined,
+    query.status ? eq(kaizens.status, query.status) : undefined,
+    isNull(kaizens.discardedAt),
+    query.submittedFrom ? gte(kaizens.submittedAt, new Date(query.submittedFrom)) : undefined,
+  ];
 }
 
 function flatten(row: {

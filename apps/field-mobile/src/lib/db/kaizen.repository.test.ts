@@ -369,6 +369,9 @@ function server(
     implementedBy: null,
     status: input.status,
     submittedAt: input.status === 'DRAFT' ? null : at,
+    approvedAt: null,
+    sustainChecks: [],
+    nextSustainCheck: null,
     latestReview: input.comment
       ? {
           id: 'bbbbbbbb-0000-4000-8000-000000000001',

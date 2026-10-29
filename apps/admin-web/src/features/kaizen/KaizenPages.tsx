@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import {
   KAIZEN_STATUSES,
@@ -10,7 +10,7 @@ import {
   type KaizenStatus,
   type Page,
 } from '@audit5s/contracts';
-import { formatDate, formatRupees, groupLeaderKaizens, zoneDisplayLabel } from '@audit5s/domain';
+import { formatAge, formatDate, formatRupees, groupLeaderKaizens, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -33,7 +33,7 @@ import { KAIZEN_STATUS_LABEL } from '@/lib/labels';
 import { useUnitScope } from '@/lib/scope';
 import { useSession } from '@/lib/session';
 import { KaizenPanel } from './KaizenPanel';
-import { FunnelCard, KpiCard, TopDepartmentsCard, TrendCard } from './visuals';
+import { FunnelCard, KpiCard, PeopleCard, SustainCard, TopDepartmentsCard, TrendCard } from './visuals';
 
 /**
  * Kaizen in the portal (plans/kaizen-module.md §4.4): Overview, the list with its detail
@@ -85,6 +85,19 @@ export function KaizensPage() {
     placeholderData: keepPreviousData,
   });
   const rows = list.data?.pages.flatMap((page) => page.data) ?? [];
+  // R-69: the list as it is filtered, as one .xlsx for a review meeting.
+  const register = useMutation({
+    mutationFn: async () => {
+      const filters = `${unit.param}${status ? `&status=${status}` : ''}`.replace(/^&/, '?');
+      const blob = await api.getBlob(`/kaizens/register${filters}`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `Kaizen register ${new Date().toISOString().slice(0, 10)}.xlsx`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    },
+  });
 
   return (
     <div className="gb-withpanel">
@@ -126,7 +139,11 @@ export function KaizensPage() {
               ))}
             </Select>
           </Field>
+          <Button variant="secondary" className="self-end" disabled={register.isPending} onClick={() => register.mutate()}>
+            {register.isPending ? 'Preparing…' : 'Download Excel'}
+          </Button>
         </div>
+        <ErrorNotice error={register.error} />
         <KaizenRows query={list} rows={rows} openId={panel.id} onOpen={panel.open} empty={status ? 'No Kaizens with this status.' : author ? 'No Kaizens yet. Record your first from New Kaizen.' : 'No Kaizens submitted yet.'} />
         {list.hasNextPage && (
           <div className="p-4">
@@ -199,12 +216,27 @@ function KaizenRows({
               <div className="text-xs text-ink-3">{zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName)}</div>
             </Td>
             <Td className="gb-data text-right">{kaizen.annualSaving === null ? '—' : formatRupees(kaizen.annualSaving)}</Td>
-            <Td className="gb-data">{kaizen.submittedAt ? formatDate(kaizen.submittedAt) : '—'}</Td>
+            <Td className="gb-data">
+              {kaizen.submittedAt ? formatDate(kaizen.submittedAt) : '—'}
+              {/* R-69: how long it has waited, and an approved one whose check is due. */}
+              {kaizen.status === 'SUBMITTED' && (
+                <div className="text-xs text-ink-3">{waitedFor(kaizen.updatedAt)}</div>
+              )}
+              {kaizen.nextSustainCheck?.due && (
+                <div className="text-xs text-ink-3">{kaizen.nextSustainCheck.dayMark}-day check due</div>
+              )}
+            </Td>
           </tr>
         ))}
       </tbody>
     </Table>
   );
+}
+
+/** "Waiting 9 days", "Waiting since today": since it was (re)submitted (R-69). */
+function waitedFor(since: string): string {
+  const age = formatAge(since);
+  return age === 'today' ? 'Waiting since today' : `Waiting ${age}`;
 }
 
 // --------------------------------------------------------------------------- overview
@@ -345,15 +377,26 @@ function ReviewerOverview() {
       api.get<Page<Kaizen>>(`/kaizens?limit=3&status=APPROVED&sort=saving&submittedFrom=${encodeURIComponent(since)}${unit.param}`),
     enabled: unit.ready,
   });
+  const checks = useQuery({
+    queryKey: ['kaizens', 'sustain-due', unit.param],
+    queryFn: () => api.get<Page<Kaizen>>(`/kaizens?limit=50&sustainDue=true${unit.param}`),
+    enabled: unit.ready,
+  });
   const open = (id: string) => void navigate({ to: '/kaizen/list', search: { kaizen: id } as never });
   const waiting = queue.data?.data.length ?? 0;
+  // The queue is newest first, so its last row has waited longest.
+  const oldest = queue.data?.data.at(-1);
 
   return (
     <div className="space-y-4">
       {dashboard.error ? <ErrorNotice error={dashboard.error} /> : null}
       {dashboard.data ? <KpiCard kpi={dashboard.data.kpi} period={period} onPeriod={setPeriod} /> : <Skeleton variant="tiles" count={6} label="Loading the Kaizen figures" />}
       {can('kaizen', 'review') && waiting > 0 ? (
-        <Slip title={`${waiting} ${waiting === 1 ? 'Kaizen waits' : 'Kaizens wait'} for your review`}>
+        <Slip
+          title={`${waiting} ${waiting === 1 ? 'Kaizen waits' : 'Kaizens wait'} for your review${
+            oldest && formatAge(oldest.updatedAt) !== 'today' ? `, the oldest ${formatAge(oldest.updatedAt)}` : ''
+          }`}
+        >
           <Link to="/kaizen/list" search={{ status: 'SUBMITTED' } as never} className="underline">
             Review them
           </Link>
@@ -363,6 +406,15 @@ function ReviewerOverview() {
         <CardHeader title="Awaiting review" />
         <KaizenRows query={queue} rows={queue.data?.data ?? []} openId={null} onOpen={open} empty="Nothing waiting for review." />
       </Card>
+      {can('kaizen', 'review') || (checks.data?.data.length ?? 0) > 0 ? (
+        <Card>
+          <CardHeader
+            title="Checks due"
+            description="Approved Kaizens at 30, 60 or 90 days. Look at the Zone and record whether the improvement is still in place."
+          />
+          <KaizenRows query={checks} rows={checks.data?.data ?? []} openId={null} onOpen={open} empty="No checks due." />
+        </Card>
+      ) : null}
       <Card>
         <CardHeader title="Top 3 approved by saving" description="Approved Kaizens first submitted in the last 30 days, by annual saving." />
         <KaizenRows query={top} rows={top.data?.data ?? []} openId={null} onOpen={open} empty="No approved Kaizens in the last 30 days." />
@@ -408,6 +460,10 @@ export function KaizenAnalysisPage() {
           <div className="gb-kz-wide">
             <TopDepartmentsCard months={data.trend.map((month) => month.month)} series={data.topDepartments} />
           </div>
+          <div className="gb-kz-two">
+            <PeopleCard people={data.people} period={period} onPeriod={setPeriod} />
+          </div>
+          <SustainCard sustain={data.sustain} />
         </div>
       ) : (
         <Skeleton variant="tiles" count={3} label="Loading the Kaizen dashboard" />

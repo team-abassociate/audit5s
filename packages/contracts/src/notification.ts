@@ -36,6 +36,12 @@ export const NOTIFICATION_EVENT_TYPES = [
   'CHECKLIST_PUBLISHED',
   'REPORT_GENERATED',
   'DATA_INTEGRITY_ALERT',
+  /** A Kaizen is waiting for its Coordinator's review. */
+  'KAIZEN_SUBMITTED',
+  /** The Coordinator approved, sent back or rejected it; `data.decision` says which. */
+  'KAIZEN_REVIEWED',
+  /** A 30/60/90-day check found an approved Kaizen's improvement no longer in place. */
+  'KAIZEN_NOT_SUSTAINED',
 ] as const;
 export const notificationEventTypeSchema = z.enum(NOTIFICATION_EVENT_TYPES);
 export type NotificationEventType = z.infer<typeof notificationEventTypeSchema>;

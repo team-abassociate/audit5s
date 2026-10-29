@@ -5,10 +5,12 @@ import type {
   KaizenDepartmentSeries,
   KaizenFunnel,
   KaizenKpi,
+  KaizenPeople,
+  KaizenSustainSummary,
   KaizenTrendMonth,
 } from '@audit5s/contracts';
-import { formatKaizenRatio, formatYearMonth, textOn } from '@audit5s/domain';
-import { Card, CardHeader, EmptyState, Segmented } from '@/components/ui';
+import { formatKaizenRatio, formatRupees, formatScore, formatYearMonth, textOn } from '@audit5s/domain';
+import { Card, CardHeader, EmptyState, Segmented, Table, Td, Th } from '@/components/ui';
 import { useToken } from '@/lib/tokens';
 
 /**
@@ -238,6 +240,85 @@ export function TopDepartmentsCard({
           </ul>
         </div>
       )}
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------- E. people (R-69)
+
+/** Who takes part, how fast they hear back, and the top five. Counted by the API. */
+export function PeopleCard({ people, period, onPeriod }: { people: KaizenPeople; period: KaizenDashboardPeriod; onPeriod: (p: KaizenDashboardPeriod) => void }) {
+  const days = (value: number | null) => (value === null ? '—' : `${formatScore(value)} d`);
+  const cells: [string, string][] = [
+    ['Participation', formatKaizenRatio(people.participationPct)],
+    ['Zone Leaders taking part', `${people.contributors} of ${people.leaders}`],
+    ['Avg. days to a decision', days(people.avgDaysToDecision)],
+    ['Longest wait now', days(people.oldestWaitingDays)],
+  ];
+  return (
+    <Card>
+      <CardHeader
+        title="People"
+        description="Zone Leaders holding Kaizen who submitted one in the period, and how fast the Coordinator answered."
+        action={<PeriodControl value={period} onChange={onPeriod} />}
+      />
+      <div className="gb-kz-kpi">
+        {cells.map(([label, value]) => (
+          <div key={label}>
+            <b className="gb-figure">{value}</b>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+      <p className="gb-label px-3 pt-4">Top contributors</p>
+      {people.topContributors.length === 0 ? (
+        <EmptyState title="No Kaizens submitted in this period." />
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Name</Th>
+              <Th className="text-right">Submitted</Th>
+              <Th className="text-right">Approved</Th>
+              <Th className="text-right">Approved saving</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {people.topContributors.map((person) => (
+              <tr key={person.userId}>
+                <Td>{person.name}</Td>
+                <Td className="gb-data text-right">{person.submitted}</Td>
+                <Td className="gb-data text-right">{person.approved}</Td>
+                <Td className="gb-data text-right">{formatRupees(person.approvedSaving)}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------ F. sustain (R-69)
+
+/** The 30/60/90-day checks, now: due, and each approved Kaizen's latest answer. */
+export function SustainCard({ sustain }: { sustain: KaizenSustainSummary }) {
+  const cells: [string, number][] = [
+    ['Checks due', sustain.due],
+    ['Still in place', sustain.inPlace],
+    ['Not in place', sustain.notInPlace],
+  ];
+  return (
+    <Card>
+      <CardHeader title="Still in place?" description="Approved Kaizens checked at 30, 60 and 90 days. By the latest check." />
+      <div className="gb-kz-kpi">
+        {cells.map(([label, value]) => (
+          <div key={label}>
+            <b className="gb-figure">{value}</b>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

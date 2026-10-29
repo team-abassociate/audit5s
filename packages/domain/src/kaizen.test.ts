@@ -7,11 +7,14 @@ import {
   kaizenDashboard,
   kaizenFunnel,
   kaizenKpi,
+  kaizenPeople,
   kaizenRatioPct,
+  kaizenSustainSummary,
   kaizenTopDepartments,
   kaizenTrend,
   lastSixMonths,
   missingKaizenFields,
+  nextSustainCheck,
   topApprovedBySaving,
   type KaizenFact,
 } from './kaizen';
@@ -33,6 +36,12 @@ function fact(overrides: Partial<KaizenFact> = {}): KaizenFact {
     zoneId: 'z1',
     zoneName: 'Press',
     zoneCode: 'Z-01',
+    authorUserId: 'u1',
+    authorName: 'Asha',
+    firstDecidedAt: null,
+    updatedAt: '2026-10-02T05:00:00Z',
+    sustainMarks: [],
+    lastInPlace: null,
     ...overrides,
   };
 }
@@ -246,7 +255,7 @@ describe('D. top 5 departments', () => {
 
 describe('the dashboard', () => {
   it('assembles the four visuals from one set of facts', () => {
-    const dashboard = kaizenDashboard([approved({ annualSaving: 500 })], 'year', NOW);
+    const dashboard = kaizenDashboard([approved({ annualSaving: 500 })], 'year', NOW, ['u1']);
     expect(dashboard.period).toBe('year');
     expect(dashboard.serverTime).toBe(NOW.toISOString());
     expect(dashboard.kpi.acceptanceRatioPct).toBe(100);
@@ -305,5 +314,93 @@ describe('formatRupees', () => {
     expect(formatRupees(12_40_000.49)).toBe('₹12,40,000');
     expect(formatRupees(1_23_45_67_890)).toBe('₹1,23,45,67,890');
     expect(formatRupees(null)).toBe('—');
+  });
+});
+
+describe('people (R-69)', () => {
+  it('counts participation over leaders holding Kaizen, and never passes 100 %', () => {
+    const people = kaizenPeople(
+      [fact(), fact(), fact({ authorUserId: 'gone', authorName: 'Ravi' })],
+      ['u1', 'u2'],
+      'overall',
+      NOW,
+    );
+    expect(people.leaders).toBe(2);
+    expect(people.contributors).toBe(1);
+    expect(people.participationPct).toBe(50);
+    expect(kaizenPeople([fact()], [], 'overall', NOW).participationPct).toBeNull();
+  });
+
+  it('averages IST days from first submission to first decision, and finds the longest wait', () => {
+    const people = kaizenPeople(
+      [
+        approved({ firstDecidedAt: '2026-10-04T05:00:00Z' }), // 2 days
+        approved({ firstDecidedAt: '2026-10-06T05:00:00Z' }), // 4 days
+        fact({ updatedAt: '2026-09-30T05:00:00Z' }), // waiting 7 days
+        fact({ updatedAt: '2026-10-06T05:00:00Z' }),
+      ],
+      ['u1'],
+      'overall',
+      NOW,
+    );
+    expect(people.avgDaysToDecision).toBe(3);
+    expect(people.oldestWaitingDays).toBe(7);
+    expect(kaizenPeople([approved()], ['u1'], 'overall', NOW).oldestWaitingDays).toBeNull();
+  });
+
+  it('ranks contributors by approved, then approved saving', () => {
+    const { topContributors } = kaizenPeople(
+      [
+        fact({ authorUserId: 'a', authorName: 'A' }),
+        fact({ authorUserId: 'a', authorName: 'A' }),
+        approved({ authorUserId: 'b', authorName: 'B', annualSaving: 100 }),
+        approved({ authorUserId: 'c', authorName: 'C', annualSaving: 900 }),
+      ],
+      [],
+      'overall',
+      NOW,
+    );
+    expect(topContributors.map((person) => person.name)).toEqual(['C', 'B', 'A']);
+    expect(topContributors[0]).toMatchObject({ submitted: 1, approved: 1, approvedSaving: 900 });
+  });
+});
+
+describe('sustain checks (R-69)', () => {
+  const approvedOn = '2026-07-01T05:00:00Z';
+
+  it('is nothing until approved', () => {
+    expect(nextSustainCheck(null, [], NOW)).toBeNull();
+  });
+
+  it('waits for the 30-day mark, then is due on it', () => {
+    expect(nextSustainCheck(approvedOn, [], new Date('2026-07-20T05:00:00Z'))).toEqual({
+      dayMark: 30,
+      dueOn: '2026-07-31',
+      due: false,
+    });
+    expect(nextSustainCheck(approvedOn, [], new Date('2026-07-31T05:00:00Z'))?.due).toBe(true);
+  });
+
+  it('covers the latest mark passed: on day 65 the 60-day check is due, the 30-day one missed', () => {
+    expect(nextSustainCheck(approvedOn, [], new Date('2026-09-04T05:00:00Z'))).toMatchObject({ dayMark: 60, due: true });
+  });
+
+  it('moves on after a check, and ends after the 90-day one', () => {
+    expect(nextSustainCheck(approvedOn, [30], new Date('2026-08-05T05:00:00Z'))).toMatchObject({ dayMark: 60, due: false });
+    expect(nextSustainCheck(approvedOn, [30, 60, 90], NOW)).toBeNull();
+    expect(nextSustainCheck(approvedOn, [90], NOW)).toBeNull();
+  });
+
+  it("summarises what is due and each Kaizen's latest answer", () => {
+    const summary = kaizenSustainSummary(
+      [
+        approved({ approvedAt: approvedOn }),
+        approved({ approvedAt: approvedOn, sustainMarks: [90], lastInPlace: true }),
+        approved({ approvedAt: approvedOn, sustainMarks: [30], lastInPlace: false }),
+        fact(),
+      ],
+      NOW,
+    );
+    expect(summary).toEqual({ due: 2, inPlace: 1, notInPlace: 1 });
   });
 });

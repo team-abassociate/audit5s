@@ -189,6 +189,9 @@ export const NOTIFICATION_CATEGORY_LABEL: Record<NotificationEventType, string> 
   CHECKLIST_PUBLISHED: 'Checklist',
   REPORT_GENERATED: 'Report',
   DATA_INTEGRITY_ALERT: 'Data check',
+  KAIZEN_SUBMITTED: 'Kaizen',
+  KAIZEN_REVIEWED: 'Kaizen',
+  KAIZEN_NOT_SUSTAINED: 'Kaizen',
 };
 
 /** Each notification event in a sentence fragment, for the preferences table. */
@@ -210,6 +213,9 @@ export const NOTIFICATION_EVENT_LABEL: Record<NotificationEventType, string> = {
   CHECKLIST_PUBLISHED: 'Checklist published',
   REPORT_GENERATED: 'Report ready',
   DATA_INTEGRITY_ALERT: 'Nightly data check',
+  KAIZEN_SUBMITTED: 'Kaizen submitted for review',
+  KAIZEN_REVIEWED: 'Kaizen approved, sent back or rejected',
+  KAIZEN_NOT_SUSTAINED: 'Kaizen found not in place',
 };
 
 /** What a held sync item was, in the words the field app uses for it. */

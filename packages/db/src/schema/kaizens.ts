@@ -7,6 +7,7 @@ import {
   integer,
   numeric,
   pgTable,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -117,6 +118,27 @@ export const kaizenReviews = pgTable(
     index('kaizen_review_kaizen_idx').on(table.kaizenId, table.createdAt),
     index('kaizen_review_decision_created_idx').on(table.decision, table.createdAt),
   ],
+);
+
+/** A Coordinator's 30/60/90-day check of an approved Kaizen (R-69, 0059). Append-only. */
+export const kaizenSustainChecks = pgTable(
+  'kaizen_sustain_check',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    kaizenId: uuid('kaizen_id')
+      .notNull()
+      .references(() => kaizens.id, { onDelete: 'restrict' }),
+    dayMark: smallint('day_mark').notNull(),
+    inPlace: boolean('in_place').notNull(),
+    /** Required when not in place (a CHECK). */
+    note: text('note'),
+    checkedByUserId: uuid('checked_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    checkedByName: text('checked_by_name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('kaizen_sustain_check_once').on(table.kaizenId, table.dayMark)],
 );
 
 /** The sheet's before and after photographs. Kaizen's own list; the evidence pipeline's upload. */

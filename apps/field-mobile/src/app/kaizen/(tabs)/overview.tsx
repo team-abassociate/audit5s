@@ -3,6 +3,7 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import type { Kaizen, KaizenDashboard, KaizenDashboardPeriod, KaizenReviewDecision, Page } from '@audit5s/contracts';
+import { daysBetween } from '@audit5s/domain';
 import { KaizenCard, cardFromServer, kaizenHref } from '../../../components/kaizen-card';
 import { KpiCard } from '../../../components/kaizen-charts';
 import {
@@ -76,8 +77,15 @@ function CoordinatorOverview() {
     queryFn: () =>
       api.get<Page<Kaizen>>(`/kaizens?limit=3&status=APPROVED&sort=saving&submittedFrom=${encodeURIComponent(since)}`),
   });
-  const queries = [dashboard, queue, top];
+  // R-69: approved Kaizens at 30, 60 or 90 days, for the Coordinator to look at again.
+  const checks = useQuery({
+    queryKey: ['kaizens', 'sustain-due'],
+    queryFn: () => api.get<Page<Kaizen>>('/kaizens?limit=50&sustainDue=true'),
+  });
+  const queries = [dashboard, queue, top, checks];
   const waiting = queue.data?.data ?? [];
+  // Newest first, so the last has waited longest.
+  const oldest = waiting.at(-1);
   const open = (kaizen: Kaizen) => router.push({ pathname: '/kaizen/[kaizenId]', params: { kaizenId: kaizen.id } });
   const cards = (items: readonly Kaizen[]) =>
     items.map((kaizen) => (
@@ -106,11 +114,20 @@ function CoordinatorOverview() {
             <SlipText>{t.moreWaiting(waiting.length)}</SlipText>
           </Slip>
         ) : can('kaizen', 'review') && waiting.length > 0 ? (
-          <Slip accessibilityRole="button" title={t.reviewWaiting(waiting.length)} onPress={() => open(waiting[0]!)} />
+          <Slip accessibilityRole="button" title={t.reviewWaiting(waiting.length)} onPress={() => open(waiting[0]!)}>
+            {oldest ? <SlipText>{t.oldestWaiting(daysBetween(oldest.updatedAt) ?? 0)}</SlipText> : null}
+          </Slip>
         ) : null}
 
         <SectionHead title={t.awaitingSection} />
         {queue.data ? (waiting.length ? cards(waiting) : <EmptyState title={t.queueEmpty} />) : null}
+
+        {can('kaizen', 'review') ? (
+          <>
+            <SectionHead title={t.checksSection} />
+            {checks.data ? (checks.data.data.length ? cards(checks.data.data) : <EmptyState title={t.checksEmpty} />) : null}
+          </>
+        ) : null}
 
         <SectionHead title={t.top3Section} />
         {top.data ? (top.data.data.length ? cards(top.data.data) : <EmptyState title={t.top3Empty} />) : null}

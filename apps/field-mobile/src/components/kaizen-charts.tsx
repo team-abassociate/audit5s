@@ -6,9 +6,11 @@ import type {
   KaizenDepartmentSeries,
   KaizenFunnel,
   KaizenKpi,
+  KaizenPeople,
+  KaizenSustainSummary,
   KaizenTrendMonth,
 } from '@audit5s/contracts';
-import { formatKaizenRatio as ratio, formatRupees, formatYearMonth as monthLabel, textOn, zoneLabelFromCode } from '@audit5s/domain';
+import { formatKaizenRatio as ratio, formatRupees, formatScore, formatYearMonth as monthLabel, textOn, zoneLabelFromCode } from '@audit5s/domain';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
 import { createThemedStyles, useTheme, type Band } from '../lib/theme';
@@ -341,6 +343,85 @@ export function AnalysisTable({
   );
 }
 
+// ------------------------------------------------------------------- E. people (R-69)
+
+/** Participation, time to a decision, the longest wait, and the top five. The API counts. */
+export function PeopleCard({ people, period, onPeriod }: { people: KaizenPeople; period: KaizenDashboardPeriod; onPeriod: (p: KaizenDashboardPeriod) => void }) {
+  const styles = useStyles();
+  const { language } = useLanguage();
+  const t = KAIZEN_STRINGS[language];
+  const days = (value: number | null) => (value === null ? '—' : t.days(formatScore(value)));
+  return (
+    <Card>
+      <CardHeader title={t.peopleTitle} />
+      <PeriodControl value={period} onChange={onPeriod} />
+      <Figures
+        cells={[
+          [t.participation, ratio(people.participationPct)],
+          [t.leadersTakingPart, `${people.contributors}/${people.leaders}`],
+          [t.avgDaysToDecision, days(people.avgDaysToDecision)],
+          [t.longestWait, days(people.oldestWaitingDays)],
+        ]}
+      />
+      <Text style={[styles.th, styles.tableHead]}>{t.topContributors}</Text>
+      {people.topContributors.length === 0 ? (
+        <View style={styles.empty}>
+          <Muted>{t.noData}</Muted>
+        </View>
+      ) : (
+        people.topContributors.map((person) => (
+          <View key={person.userId} style={styles.tableRow}>
+            <Text style={[styles.td, styles.flexCol]} numberOfLines={1}>
+              {person.name}
+            </Text>
+            <Text style={[styles.tdNum, styles.numCol]}>{`${person.approved}/${person.submitted}`}</Text>
+            <Text style={[styles.tdNum, styles.numCol]}>{formatRupees(person.approvedSaving)}</Text>
+          </View>
+        ))
+      )}
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------ F. sustain (R-69)
+
+export function SustainCard({ sustain }: { sustain: KaizenSustainSummary }) {
+  const { language } = useLanguage();
+  const t = KAIZEN_STRINGS[language];
+  return (
+    <Card>
+      <CardHeader title={t.sustainCardTitle} />
+      <Figures
+        cells={[
+          [t.checksSection, String(sustain.due)],
+          [t.inPlace, String(sustain.inPlace)],
+          [t.notInPlace, String(sustain.notInPlace)],
+        ]}
+      />
+    </Card>
+  );
+}
+
+/** Figures two to a row, split by hairlines, as on the KPI card. */
+function Figures({ cells }: { cells: [string, string][] }) {
+  const styles = useStyles();
+  return (
+    <View style={styles.grid}>
+      {cells.map(([label, value], index) => (
+        <View
+          key={label}
+          style={[styles.cell, index % 2 === 1 && styles.cellRight, index >= 2 && styles.cellBelow]}
+          accessible
+          accessibilityLabel={`${label}: ${value}`}
+        >
+          <Figure size={27}>{value}</Figure>
+          <Text style={styles.cellLabel}>{label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------- shared
 
 /**
@@ -455,4 +536,5 @@ const useStyles = createThemedStyles((theme) => ({
   tdNum: { fontFamily: theme.family.mono, fontSize: theme.font.sm, color: theme.color.ink, textAlign: 'right', fontVariant: ['tabular-nums'] },
   firstCol: { width: 150, paddingRight: theme.space.sm },
   numCol: { width: 78, textAlign: 'right' },
+  flexCol: { flex: 1, paddingRight: theme.space.sm },
 }));
