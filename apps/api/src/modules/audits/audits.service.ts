@@ -170,7 +170,7 @@ export class AuditsService {
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;
     return {
-      data: page.map((row) => ({ ...toAudit(row), zoneIds: row.zoneIds })),
+      data: page.map((row) => ({ ...toAudit(row), zoneIds: row.zoneIds, zoneCodes: row.zoneCodes })),
       nextCursor: hasMore ? (page.at(-1)?.id ?? null) : null,
     };
   }

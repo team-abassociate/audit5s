@@ -13,7 +13,7 @@ import type {
   User,
   Zone,
 } from '@audit5s/contracts';
-import { formatDate, formatDateTime, zoneDisplayLabel, formatScore } from '@audit5s/domain';
+import { formatDate, formatDateTime, zoneDisplayLabel, zonesLine, formatScore } from '@audit5s/domain';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { ApiError, api } from '@/lib/api';
@@ -178,7 +178,7 @@ export function AuditsPage() {
     const needle = text.trim().toLocaleLowerCase();
     if (!needle) return auditRows;
     return auditRows.filter((audit) =>
-      [audit.unitName, audit.auditorName, AUDIT_TYPE_LABEL[audit.auditType]].some((value) =>
+      [audit.unitName, audit.auditorName, AUDIT_TYPE_LABEL[audit.auditType], zonesLine(audit.zoneCodes ?? [])].some((value) =>
         value.toLocaleLowerCase().includes(needle),
       ),
     );
@@ -262,7 +262,7 @@ export function AuditsPage() {
                   type="search"
                   value={text}
                   onChange={(event) => setText(event.target.value)}
-                  placeholder="Unit, auditor or type…"
+                  placeholder="Unit, Zone, auditor or type…"
                 />
               </Field>
             </div>
@@ -360,6 +360,9 @@ export function AuditsPage() {
                         >
                           {audit.unitName}
                         </button>
+                        {audit.zoneCodes?.length ? (
+                          <span className="block text-sm font-medium">{zonesLine(audit.zoneCodes)}</span>
+                        ) : null}
                         <span className="block text-xs text-ink-3">
                           {AUDIT_TYPE_LABEL[audit.auditType]}
                           <span className={SHOW_AUDITOR}> · {audit.auditorName}</span>

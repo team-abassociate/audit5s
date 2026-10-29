@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { File } from 'expo-file-system';
 import {
   ZONE_LIST_IMPORT_MAX_BYTES,
+  type Audit,
   type MembershipDetail,
   type Page,
   type Unit,
@@ -13,7 +14,7 @@ import {
   type AuditorListImportResult,
   type ZoneListImportResult,
 } from '@audit5s/contracts';
-import { formatDate, zoneDisplayLabel } from '@audit5s/domain';
+import { auditDays, formatDate, zoneDisplayLabel, zonesLine } from '@audit5s/domain';
 import { UnitForm } from './unit-form';
 import { ZoneForm } from './zone-form';
 import {
@@ -171,6 +172,8 @@ export function UnitDetail({ unitId, addZone }: { unitId: string; addZone?: bool
         />
       }
     >
+      {can('audit', 'read') ? <UnitAuditDays unitId={unitId} /> : null}
+
       {editing ? (
         <UnitForm
           unit={u}
@@ -461,6 +464,48 @@ function ImportList({ kind, unitId, importedAt }: { kind: keyof typeof LISTS; un
         }
       />
     </View>
+  );
+}
+
+/** Which Zones were audited on which day: newest day first, Zones ascending; tap an auditor to open. */
+function UnitAuditDays({ unitId }: { unitId: string }) {
+  const styles = useStyles();
+  const router = useRouter();
+  // ponytail: the newest 200 audits; page through `nextCursor` once a Unit has more.
+  const audits = useQuery({
+    queryKey: ['audits', 'unit', unitId],
+    queryFn: () => api.get<Page<Audit>>(`/audits?limit=200&unitId=${unitId}`),
+  });
+  const days = auditDays(audits.data?.data ?? []);
+
+  return (
+    <Card>
+      <CardHeader title="Audits by date" description={audits.data && days.length === 0 ? 'No finished audits yet.' : 'By the day each audit finished, newest first.'} />
+      {audits.isPending ? <ActivityIndicator /> : null}
+      {days.map(({ day, zones, audits: dayAudits }, index) => (
+        <View key={day} style={[styles.item, index === days.length - 1 && styles.itemLast]}>
+          <Data>{day}</Data>
+          <Text style={styles.itemTitle}>{zones.length === 0 ? 'No Zones recorded' : `${zones.length === 1 ? 'Zone' : 'Zones'} ${zones.join(', ')}`}</Text>
+          {dayAudits.map((audit) => (
+            <Pressable
+              key={audit.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Open the audit by ${audit.auditorName} on ${day}`}
+              onPress={() => router.push({ pathname: '/manage/audit/[auditId]', params: { auditId: audit.id } })}
+              hitSlop={6}
+              style={({ pressed }) => [styles.rowHead, pressed && styles.itemPressed]}
+            >
+              <Muted>
+                {audit.auditorName}
+                {audit.zoneCodes?.length ? ` — ${zonesLine(audit.zoneCodes)}` : ''}
+              </Muted>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          ))}
+        </View>
+      ))}
+      <ErrorBanner message={audits.error ? problemMessage(audits.error) : null} />
+    </Card>
   );
 }
 

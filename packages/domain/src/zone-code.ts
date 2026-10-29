@@ -1,4 +1,5 @@
 import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN, type Role } from '@audit5s/contracts';
+import { formatDate } from './datetime';
 
 /**
  * Zone codes.
@@ -138,4 +139,47 @@ export function zoneLeaderSnapshot(
  */
 export function mayAddZoneWhileAuditing(role: Role | undefined, unitHasZoneList: boolean): boolean {
   return role === 'SUPER_ADMIN' || role === 'COORDINATOR' || (role === 'CONSULTANT' && !unitHasZoneList);
+}
+
+/**
+ * Zone codes as a reader scans them: labels, each once, in ascending order — `Z-07`, `Z-01`,
+ * `Z-1A` → `1`, `1A`, `7`. A code a Unit chose for itself (`BOILER`) keeps its own spelling
+ * and sorts after the numbers.
+ */
+export function zoneLabelsAscending(codes: readonly string[]): string[] {
+  const labels = new Set(codes.map((code) => zoneLabelFromCode(code) ?? code));
+  return [...labels].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+/** `Zone 7`, `Zones 1, 4, 7`, or `''` for none — the one line an audit row names its Zones by. */
+export function zonesLine(codes: readonly string[]): string {
+  const labels = zoneLabelsAscending(codes);
+  if (labels.length === 0) return '';
+  return `${labels.length === 1 ? 'Zone' : 'Zones'} ${labels.join(', ')}`;
+}
+
+/**
+ * A Unit's audit history by day: newest day first, and under each day every Zone audited
+ * that day in ascending order, whoever audited it. The day is the one the audit finished on
+ * (IST); an audit not finished yet is not history and is left out.
+ */
+export function auditDays<T extends { completedAt: string | null; zoneCodes?: readonly string[] }>(
+  audits: readonly T[],
+): Array<{ day: string; zones: string[]; audits: T[] }> {
+  const finished = audits
+    .filter((audit) => audit.completedAt !== null)
+    .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!));
+  const days: Array<{ day: string; codes: string[]; audits: T[] }> = [];
+  for (const audit of finished) {
+    const day = formatDate(audit.completedAt);
+    let last = days.at(-1);
+    if (last?.day !== day) days.push((last = { day, codes: [], audits: [] }));
+    last.codes.push(...(audit.zoneCodes ?? []));
+    last.audits.push(audit);
+  }
+  return days.map(({ day, codes, audits: dayAudits }) => ({
+    day,
+    zones: zoneLabelsAscending(codes),
+    audits: dayAudits,
+  }));
 }

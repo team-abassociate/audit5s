@@ -260,6 +260,9 @@ export class AuditsRepository extends BaseRepository {
           zoneIds: sql<string[]>`COALESCE((
             SELECT json_agg(z.zone_id ORDER BY z.sequence_no) FROM audit_zone z
             WHERE z.audit_id = ${audits.id} AND z.status <> 'WITHDRAWN'), '[]'::json)`,
+          zoneCodes: sql<string[]>`COALESCE((
+            SELECT json_agg(z.zone_code_snapshot ORDER BY z.sequence_no) FROM audit_zone z
+            WHERE z.audit_id = ${audits.id} AND z.status <> 'WITHDRAWN'), '[]'::json)`,
         })
         .from(audits)
         .innerJoin(units, eq(units.id, audits.unitId))

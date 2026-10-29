@@ -401,6 +401,15 @@ describe('assignments', () => {
     // …and the History list it was reached from.
     const list = await world.request('GET', `${base}/audits?limit=100`, { token });
     expect((list.body as Page<Audit>).data.map((audit) => audit.id)).toContain(auditId);
+    // …naming the Zones it covered, as audited.
+    const { rows: snapshots } = await world.owner.query(
+      `SELECT zone_code_snapshot FROM audit_zone WHERE audit_id = $1 ORDER BY sequence_no`,
+      [auditId],
+    );
+    expect((list.body as Page<Audit>).data.find((audit) => audit.id === auditId)?.zoneCodes).toEqual(
+      snapshots.map((row) => row.zone_code_snapshot),
+    );
+    expect(snapshots.length).toBeGreaterThan(0);
 
     // What did *not* widen: the Unit master is still only the Units they currently hold,
     // and a closed assignment still cannot start another audit there.
