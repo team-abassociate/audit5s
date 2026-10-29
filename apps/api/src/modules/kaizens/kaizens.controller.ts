@@ -11,7 +11,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import {
   HEADER_IDEMPOTENCY_KEY,
   commitKaizenPhotoRequestSchema,
@@ -19,8 +21,10 @@ import {
   kaizenAnalysisQuerySchema,
   kaizenDashboardQuerySchema,
   kaizenPhotoUploadIntentRequestSchema,
+  kaizenRegisterQuerySchema,
   listKaizensQuerySchema,
   patchKaizenRequestSchema,
+  recordKaizenSustainCheckRequestSchema,
   reviewKaizenRequestSchema,
   submitKaizenRequestSchema,
   type CommitKaizenPhotoRequest,
@@ -35,9 +39,11 @@ import {
   type KaizenPhoto,
   type KaizenPhotoUploadIntentRequest,
   type KaizenPhotoUploadIntentResponse,
+  type KaizenRegisterQuery,
   type ListKaizensQuery,
   type Page,
   type PatchKaizenRequest,
+  type RecordKaizenSustainCheckRequest,
   type ReviewKaizenRequest,
   type SubmitKaizenRequest,
 } from '@audit5s/contracts';
@@ -50,7 +56,7 @@ import { KaizensService } from './kaizens.service';
 
 /**
  * Kaizens (R-48, plans/kaizen-module.md §4.5). `:kaizenId` is the one name for this
- * position. The static routes (`dashboard`, `analysis`) are declared before it.
+ * position. The static routes (`dashboard`, `analysis`, `register`) are declared before it.
  */
 @Controller('kaizens')
 export class KaizensController {
@@ -85,6 +91,22 @@ export class KaizensController {
     @Query(new ZodValidationPipe(kaizenAnalysisQuerySchema)) query: KaizenAnalysisQuery,
   ): Promise<KaizenAnalysis> {
     return this.kaizens.analysis(scope, query);
+  }
+
+  /** R-69: the list as one .xlsx, streamed like the checklist error report. */
+  @RequirePermission('kaizen', 'read')
+  @Scope({ intent: 'read' })
+  @Get('register')
+  async register(
+    @CurrentScope() scope: ScopeContext,
+    @Query(new ZodValidationPipe(kaizenRegisterQuerySchema)) query: KaizenRegisterQuery,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const bytes = await this.kaizens.register(scope, query);
+    void reply
+      .header('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('content-disposition', `attachment; filename="kaizen-register-${new Date().toISOString().slice(0, 10)}.xlsx"`)
+      .send(bytes);
   }
 
   @RequirePermission('kaizen', 'read')
@@ -174,6 +196,28 @@ export class KaizensController {
       ]);
     }
     return this.kaizens.review(scope, kaizenId, body);
+  }
+
+  /**
+   * R-69: the Coordinator records the 30/60/90-day check that is due. Idempotency-Key
+   * required, as for a review; a second copy of the same mark is a conflict anyway.
+   */
+  @RequirePermission('kaizen', 'review')
+  @Scope({ param: 'kaizenId', intent: 'write' })
+  @Post(':kaizenId/sustain-checks')
+  @HttpCode(HttpStatus.OK)
+  recordSustainCheck(
+    @CurrentScope() scope: ScopeContext,
+    @Param('kaizenId', ParseUUIDPipe) kaizenId: string,
+    @Headers(HEADER_IDEMPOTENCY_KEY) idempotencyKey: string | undefined,
+    @Body(new ZodValidationPipe(recordKaizenSustainCheckRequestSchema)) body: RecordKaizenSustainCheckRequest,
+  ): Promise<KaizenDetail> {
+    if (!idempotencyKey) {
+      throw AppError.validation('This request needs an Idempotency-Key header', [
+        { field: HEADER_IDEMPOTENCY_KEY, message: 'Required' },
+      ]);
+    }
+    return this.kaizens.recordSustainCheck(scope, kaizenId, body);
   }
 
   /** §4.6: queues the Kaizen Sheet and answers 202; poll the export for its download. */

@@ -52,6 +52,11 @@ export const RECIPIENT_ROLES: Record<NotificationEventType, Role[]> = {
   // "surfaced to Super Admin", and to nobody else — a Coordinator cannot act on any of
   // them and a nightly alert they cannot act on is a nightly alert they stop reading.
   DATA_INTEGRITY_ALERT: ['SUPER_ADMIN'],
+  // R-69. The Unit's Coordinator decides it; 0059 drops anyone not holding Kaizen.
+  KAIZEN_SUBMITTED: ['COORDINATOR'],
+  // The author is named by the event: theirs to fix, or theirs to be glad about.
+  KAIZEN_REVIEWED: [],
+  KAIZEN_NOT_SUSTAINED: [],
 };
 
 /**
@@ -363,6 +368,29 @@ export function renderNotification(event: DomainEventJob): { title: string; body
         body:
           `${String(data.kindLabel ?? 'A report')}${item ? ` for ${item}` : ''} ` +
           `version ${version} is ready to download.`,
+      };
+    }
+    case 'KAIZEN_SUBMITTED': {
+      const theme = data.theme ? `: ${String(data.theme)}` : '';
+      return {
+        title: data.resubmitted ? 'Kaizen resubmitted' : 'Kaizen to review',
+        body: `${String(data.authorName ?? 'A Zone Leader')} submitted ${String(data.kaizenNo ?? 'a Kaizen')}${theme}.`,
+      };
+    }
+    case 'KAIZEN_REVIEWED': {
+      const no = String(data.kaizenNo ?? 'Your Kaizen');
+      const reason = data.comment ? ` Reason: ${String(data.comment)}` : '';
+      if (data.decision === 'APPROVED') return { title: 'Kaizen approved', body: `${no} was approved.` };
+      if (data.decision === 'SENT_BACK') {
+        return { title: 'Kaizen sent back', body: `${no} needs changes before it can be approved.${reason}` };
+      }
+      return { title: 'Kaizen rejected', body: `${no} was rejected.${reason}` };
+    }
+    case 'KAIZEN_NOT_SUSTAINED': {
+      const note = data.note ? ` ${String(data.note)}` : '';
+      return {
+        title: 'Kaizen not in place',
+        body: `At the ${String(data.dayMark ?? '')}-day check, ${String(data.kaizenNo ?? 'your Kaizen')} was found not in place.${note}`,
       };
     }
   }

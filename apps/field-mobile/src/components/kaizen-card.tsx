@@ -1,5 +1,5 @@
 import { Image, Text, View } from 'react-native';
-import { formatDayMonth, formatRupees } from '@audit5s/domain';
+import { daysBetween, formatDayMonth, formatRupees } from '@audit5s/domain';
 import type { Kaizen } from '@audit5s/contracts';
 import type { LocalKaizen } from '../lib/db/kaizen.repository';
 import { KAIZEN_STATUS_ICON, KAIZEN_STATUS_TONE, KAIZEN_STRINGS } from '../lib/kaizen-strings';
@@ -15,6 +15,9 @@ import { Card, Chip, Data, Figure, Hatch } from './ui';
 export interface KaizenCardData extends Pick<LocalKaizen, 'id' | 'status' | 'kaizenNo' | 'sheet' | 'reviewComment'> {
   before: { localFileUri: string | null } | null;
   after: { localFileUri: string | null } | null;
+  /** R-69, server cards only: when a SUBMITTED one was (re)submitted, and a check that is due. */
+  waitingSince?: string | null;
+  checkDue?: number | null;
 }
 
 export function cardFromServer(kaizen: Kaizen): KaizenCardData {
@@ -26,6 +29,9 @@ export function cardFromServer(kaizen: Kaizen): KaizenCardData {
     reviewComment: kaizen.latestReview?.comment ?? null,
     before: kaizen.beforePhoto ? { localFileUri: null } : null,
     after: kaizen.afterPhoto ? { localFileUri: null } : null,
+    // While SUBMITTED nothing but the status may change, so `updatedAt` is the submission.
+    waitingSince: kaizen.status === 'SUBMITTED' ? kaizen.updatedAt : null,
+    checkDue: kaizen.nextSustainCheck?.due ? kaizen.nextSustainCheck.dayMark : null,
   };
 }
 
@@ -100,6 +106,8 @@ export function KaizenCard({
           </View>
           {saving ? <Figure size={20}>{formatRupees(saving)}</Figure> : null}
         </View>
+        {kaizen.waitingSince ? <Data>{t.waitingDays(daysBetween(kaizen.waitingSince) ?? 0)}</Data> : null}
+        {kaizen.checkDue ? <Data>{t.checkDue(kaizen.checkDue)}</Data> : null}
       </View>
       {returned && kaizen.reviewComment ? (
         <View style={[styles.slip, kaizen.status === 'REJECTED' && styles.slipRejected]}>

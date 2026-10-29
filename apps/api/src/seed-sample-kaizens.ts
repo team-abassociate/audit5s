@@ -109,6 +109,7 @@ export async function seedSampleKaizens(
       unitId: existing.id,
       limit: 200,
       mine: false,
+      sustainDue: false,
       sort: 'recent',
     });
     // A count, not the statuses: people review the samples once they are there.

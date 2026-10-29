@@ -2706,3 +2706,36 @@ required a Coordinator to give a new Zone Leader a Zone. Narrows `user:read` and
   one scan. The Caddy basic-auth and `APK_DOWNLOAD_PASSWORD_HASH` are gone.
 - It gives away the installer only: the app still needs a login ID and password, and every
   request is authorised on the server as before.
+
+## R-69 — A Kaizen is followed through: alerts, waiting time, people, 30/60/90-day checks, a register
+
+**Settled 2026-10-29 by the product owner**, who compared the Kaizen module with three "good
+kaizen system" feature lists and chose four gaps to close (plan:
+`plans/kaizen-follow-through.md`). Adds migration 0059.
+
+- **(a) Alerts.** A submission (or resubmission) notifies the Unit's Coordinator
+  (`KAIZEN_SUBMITTED`); a decision notifies the author with the reason (`KAIZEN_REVIEWED`).
+  In-app and push, like every event; no WhatsApp template. `app_notification_targets` skips
+  anyone without Kaizen for any `KAIZEN_*` event (R-57).
+- **(b) Waiting time.** A SUBMITTED Kaizen's `updatedAt` is when it was (re)submitted: 0044's
+  trigger lets nothing but the status change on such a row. Cards say "Waiting 9 days" in IST
+  calendar days; the Coordinator's slip names the oldest.
+- **(c) People** on Analysis: participation (Zone Leaders holding Kaizen in scope who
+  submitted in the period ÷ all of them, so never over 100 %), mean IST days from first
+  submission to first decision, the longest wait now, and the top five contributors by
+  approved count, then approved saving. Counted in `packages/domain`.
+- **(d) 30/60/90-day sustain checks — the Coordinator alone** (owner's choice over "leader
+  answers, Coordinator confirms"). At 30, 60 and 90 days after approval the Kaizen is on the
+  Coordinator's "Checks due"; they record *still in place* or *not in place* (a note
+  required for the second), online, on the phone or the web. **A check covers the latest
+  mark passed**: first looked at on day 65, it is the 60-day check and the 30-day one is
+  missed, not owed. Only the due mark may be recorded, once (`kaizen_sustain_check`,
+  append-only, unique per Kaizen and mark, `kaizen:review`). *Not in place* notifies the
+  author (`KAIZEN_NOT_SUSTAINED`). APPROVED stays terminal: the state machine and the phone's
+  outbox are unchanged. In keeping with R-48(h), "still in place" is never green.
+- **(e) The Kaizen register.** `GET /kaizens/register` streams the list, under its filters
+  and without drafts, as one .xlsx (the web's *Download Excel*), as the checklist error
+  report is streamed. The per-Kaizen A4 PDF (R-48(g)) is unchanged.
+- **Not done:** points and badges, QR codes, duplicate detection, Yokoten tracking,
+  multi-level approval, kaizen events, and a nightly "check due" reminder (the Overview's
+  list is the reminder until it measurably is not enough).

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import type { KaizenAnalysis, KaizenDashboard, KaizenDashboardPeriod } from '@audit5s/contracts';
-import { AnalysisTable, FunnelCard, KpiCard, TopDepartmentsCard, TrendCard } from '../../../components/kaizen-charts';
+import { AnalysisTable, FunnelCard, KpiCard, PeopleCard, SustainCard, TopDepartmentsCard, TrendCard } from '../../../components/kaizen-charts';
 import { ErrorBanner, Screen } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { KAIZEN_STRINGS } from '../../../lib/kaizen-strings';
@@ -54,6 +54,8 @@ export default function KaizenAnalysisScreen() {
             <FunnelCard funnel={data.funnel} period={period} onPeriod={setPeriod} />
             <TrendCard trend={data.trend} />
             <TopDepartmentsCard months={data.trend.map((month) => month.month)} series={data.topDepartments} />
+            <PeopleCard people={data.people} period={period} onPeriod={setPeriod} />
+            <SustainCard sustain={data.sustain} />
           </>
         ) : null}
         {analysis.data ? <AnalysisTable rows={analysis.data.rows} by={by} onBy={setBy} /> : null}

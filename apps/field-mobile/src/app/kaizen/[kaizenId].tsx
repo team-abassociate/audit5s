@@ -206,6 +206,10 @@ export default function KaizenDetailScreen() {
           {row('implementedBy', sheet.implementedBy)}
         </Card>
 
+        {online.data?.status === 'APPROVED' ? (
+          <SustainCard kaizen={online.data} canRecord={can('kaizen', 'review')} />
+        ) : null}
+
         {reviewing ? (
           <Card>
             <CardHeader title={t.reviewTitle} />
@@ -270,6 +274,92 @@ export default function KaizenDetailScreen() {
         onClose={() => setViewing(null)}
       />
     </Screen>
+  );
+}
+
+/**
+ * R-69: an approved Kaizen's 30/60/90-day checks, read by anyone online, and the
+ * Coordinator's record of the one that is due. Green is Approved's alone, so "still in place"
+ * is the plain button and "not in place" the red one.
+ */
+function SustainCard({ kaizen, canRecord }: { kaizen: KaizenDetail; canRecord: boolean }) {
+  const styles = useStyles();
+  const queryClient = useQueryClient();
+  const { language } = useLanguage();
+  const t = KAIZEN_STRINGS[language];
+  const [inPlace, setInPlace] = useState<boolean | null>(null);
+  const [note, setNote] = useState('');
+  const [noteMissing, setNoteMissing] = useState(false);
+  const next = kaizen.nextSustainCheck;
+  const record = useMutation({
+    mutationFn: () =>
+      api.post(`/kaizens/${encodeURIComponent(kaizen.id)}/sustain-checks`, {
+        dayMark: next!.dayMark,
+        inPlace,
+        note: note.trim() || null,
+      }),
+    onSuccess: () => {
+      haptic.reviewed();
+      setInPlace(null);
+      setNote('');
+      void queryClient.invalidateQueries({ queryKey: ['kaizen', kaizen.id] });
+      void queryClient.invalidateQueries({ queryKey: ['kaizens'] });
+      void queryClient.invalidateQueries({ queryKey: ['kaizen-dashboard'] });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader title={t.sustainTitle} />
+      {kaizen.sustainChecks.map((check) => (
+        <View key={check.id} style={styles.row}>
+          <Label>{`${t.sustainResult(check.dayMark, check.inPlace)} · ${check.checkedByName} · ${formatDate(check.createdAt)}`}</Label>
+          {check.note ? <Text style={styles.value}>{check.note}</Text> : null}
+        </View>
+      ))}
+      {next && !next.due ? <Muted>{t.sustainNext(next.dayMark, formatDate(next.dueOn))}</Muted> : null}
+      {!next && kaizen.sustainChecks.length ? <Muted>{t.sustainAllDone}</Muted> : null}
+      {next?.due && !canRecord ? <Muted>{t.sustainDueSince(next.dayMark, formatDate(next.dueOn))}</Muted> : null}
+      {next?.due && canRecord ? (
+        <>
+          <Text style={styles.value}>{t.sustainAsk(next.dayMark)}</Text>
+          <ChoiceList<'yes' | 'no'>
+            options={[
+              { value: 'yes', label: t.inPlace },
+              { value: 'no', label: t.notInPlace, tone: 'crit' },
+            ]}
+            value={inPlace === null ? null : inPlace ? 'yes' : 'no'}
+            onChange={(choice) => {
+              setInPlace(choice === 'yes');
+              setNoteMissing(false);
+            }}
+          />
+          {inPlace !== null ? (
+            <>
+              <Field
+                testID="kaizen-sustain-note"
+                label={inPlace ? t.sustainNote : t.sustainFound}
+                value={note}
+                onChangeText={setNote}
+                multiline
+                {...(noteMissing ? { error: t.sustainFoundRequired } : {})}
+              />
+              <ErrorBanner message={problemMessage(record.error)} />
+              <Button
+                testID="kaizen-sustain-confirm"
+                title={t.recordCheck(next.dayMark)}
+                {...(inPlace ? {} : { tone: 'crit' as const })}
+                busy={record.isPending}
+                onPress={() => {
+                  if (!inPlace && !note.trim()) setNoteMissing(true);
+                  else record.mutate();
+                }}
+              />
+            </>
+          ) : null}
+        </>
+      ) : null}
+    </Card>
   );
 }
 

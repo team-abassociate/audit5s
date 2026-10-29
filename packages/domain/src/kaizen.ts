@@ -1,17 +1,23 @@
 import {
   KAIZEN_REQUIRED_FIELDS,
+  KAIZEN_SUSTAIN_DAYS,
   type KaizenAnalysisRow,
+  type KaizenContributor,
   type KaizenDashboard,
   type KaizenDashboardPeriod,
   type KaizenDepartmentSeries,
   type KaizenFields,
   type KaizenFunnel,
   type KaizenKpi,
+  type KaizenNextSustainCheck,
+  type KaizenPeople,
   type KaizenRequiredField,
   type KaizenStatus,
+  type KaizenSustainDay,
+  type KaizenSustainSummary,
   type KaizenTrendMonth,
 } from '@audit5s/contracts';
-import { istDateKey } from './datetime';
+import { daysBetween, istDateKey } from './datetime';
 
 /**
  * Kaizen's pure rules (R-48, plans/kaizen-module.md §4.2 and §4.7): what makes a sheet
@@ -66,6 +72,16 @@ export interface KaizenFact {
   zoneId: string;
   zoneName: string;
   zoneCode: string;
+  authorUserId: string;
+  authorName: string;
+  /** The first review decision's time, whatever it was; null until reviewed. */
+  firstDecidedAt: string | null;
+  /** The row's `updated_at`. While SUBMITTED, nothing but the status may change, so it is the (re)submission. */
+  updatedAt: string;
+  /** Day marks of the sustain checks recorded (R-69). */
+  sustainMarks: readonly number[];
+  /** The latest sustain check's answer; null before the first. */
+  lastInPlace: boolean | null;
 }
 
 /** Submitted at least once: any status but DRAFT, with a first-submission time. */
@@ -275,13 +291,126 @@ function compareLabels(a: string | null, b: string | null): number {
   return a.localeCompare(b);
 }
 
+// ------------------------------------------------------- E. people (R-69)
+
+/** Whole IST days a SUBMITTED Kaizen has waited for its review; null for any other status. */
+export function kaizenWaitingDays(
+  kaizen: { status: KaizenStatus; updatedAt: string },
+  now: Date,
+): number | null {
+  return kaizen.status === 'SUBMITTED' ? daysBetween(kaizen.updatedAt, now) : null;
+}
+
+/**
+ * Participation, time to a decision, who waits longest and the top five contributors.
+ * `leaderIds` are the Zone Leaders holding Kaizen in scope: only they count towards
+ * participation, so it never passes 100 % when someone's access was taken away.
+ */
+export function kaizenPeople(
+  facts: readonly KaizenFact[],
+  leaderIds: readonly string[],
+  period: KaizenDashboardPeriod,
+  now: Date,
+): KaizenPeople {
+  const inPeriod = periodFacts(facts, period, now);
+  const leaders = new Set(leaderIds);
+  const contributors = new Set(inPeriod.map((fact) => fact.authorUserId).filter((id) => leaders.has(id)));
+
+  const decisionDays = inPeriod.flatMap((fact) =>
+    fact.firstDecidedAt ? [daysBetween(fact.submittedAt, fact.firstDecidedAt)!] : [],
+  );
+  const waits = facts.flatMap((fact) => {
+    const days = kaizenWaitingDays(fact, now);
+    return days === null ? [] : [days];
+  });
+
+  const byAuthor = new Map<string, KaizenContributor & { savings: (number | null)[] }>();
+  for (const fact of inPeriod) {
+    const entry = byAuthor.get(fact.authorUserId) ?? {
+      userId: fact.authorUserId,
+      name: fact.authorName,
+      submitted: 0,
+      approved: 0,
+      approvedSaving: 0,
+      savings: [],
+    };
+    entry.submitted += 1;
+    if (fact.status === 'APPROVED') {
+      entry.approved += 1;
+      entry.savings.push(fact.annualSaving);
+    }
+    byAuthor.set(fact.authorUserId, entry);
+  }
+  const topContributors = [...byAuthor.values()]
+    .map(({ savings, ...person }) => ({ ...person, approvedSaving: sumRupees(savings) }))
+    .sort(
+      (a, b) =>
+        b.approved - a.approved ||
+        b.approvedSaving - a.approvedSaving ||
+        b.submitted - a.submitted ||
+        a.name.localeCompare(b.name),
+    )
+    .slice(0, 5);
+
+  return {
+    leaders: leaders.size,
+    contributors: contributors.size,
+    participationPct: kaizenRatioPct(contributors.size, leaders.size),
+    avgDaysToDecision: decisionDays.length
+      ? decisionDays.reduce((a, b) => a + b, 0) / decisionDays.length
+      : null,
+    oldestWaitingDays: waits.length ? Math.max(...waits) : null,
+    topContributors,
+  };
+}
+
+// ------------------------------------------------------ F. sustain (R-69)
+
+/**
+ * The 30/60/90-day check an approved Kaizen waits for, or will wait for next (R-69). A
+ * check covers the latest mark that has passed: on day 65 with nothing recorded the
+ * 60-day check is due and the 30-day one is missed. Null when not approved, or when the
+ * 90-day mark is recorded.
+ */
+export function nextSustainCheck(
+  approvedAt: string | null,
+  recordedMarks: readonly number[],
+  now: Date,
+): KaizenNextSustainCheck | null {
+  if (!approvedAt) return null;
+  const last = Math.max(0, ...recordedMarks);
+  const elapsed = daysBetween(approvedAt, now) ?? 0;
+  const open = KAIZEN_SUSTAIN_DAYS.filter((mark) => mark > last);
+  const passed = open.filter((mark) => mark <= elapsed);
+  const dayMark: KaizenSustainDay | undefined = passed.at(-1) ?? open[0];
+  if (dayMark === undefined) return null;
+  return { dayMark, dueOn: addDays(istDateKey(approvedAt)!, dayMark), due: dayMark <= elapsed };
+}
+
+/** `YYYY-MM-DD` plus whole days, as a calendar date. */
+function addDays(day: string, days: number): string {
+  const [y, m, d] = day.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Checks due now, and each approved Kaizen's latest answer. Any period: it is about now. */
+export function kaizenSustainSummary(facts: readonly KaizenFact[], now: Date): KaizenSustainSummary {
+  const approved = facts.filter((fact) => fact.status === 'APPROVED');
+  return {
+    due: approved.filter((fact) => nextSustainCheck(fact.approvedAt, fact.sustainMarks, now)?.due).length,
+    inPlace: approved.filter((fact) => fact.lastInPlace === true).length,
+    notInPlace: approved.filter((fact) => fact.lastInPlace === false).length,
+  };
+}
+
 // ---------------------------------------------------------------- the dashboard
 
-/** `GET /kaizens/dashboard`: every number on the four visuals, from one set of facts. */
+/** `GET /kaizens/dashboard`: every number on the visuals, from one set of facts. */
 export function kaizenDashboard(
   facts: readonly KaizenFact[],
   period: KaizenDashboardPeriod,
   now: Date,
+  leaderIds: readonly string[],
 ): KaizenDashboard {
   return {
     period,
@@ -290,6 +419,8 @@ export function kaizenDashboard(
     funnel: kaizenFunnel(facts, period, now),
     trend: kaizenTrend(facts, now),
     topDepartments: kaizenTopDepartments(facts, now),
+    people: kaizenPeople(facts, leaderIds, period, now),
+    sustain: kaizenSustainSummary(facts, now),
   };
 }
 

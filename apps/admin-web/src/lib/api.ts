@@ -101,6 +101,8 @@ interface RequestOptions {
   idempotencyKey?: string;
   /** `X-Device-Id`: this browser as the device running an audit (R-51). Audit capture only. */
   deviceId?: string;
+  /** The answer is a file (the Kaizen register): a Blob on success, a problem otherwise. */
+  blob?: boolean;
 }
 
 async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -121,6 +123,9 @@ async function send<T>(path: string, options: RequestOptions = {}): Promise<T> {
 
   if (response.status === 204) {
     return undefined as T;
+  }
+  if (response.ok && options.blob) {
+    return (await response.blob()) as T;
   }
 
   const payload: unknown = await response.json().catch(() => null);
@@ -276,6 +281,7 @@ interface Paged<T> {
 
 export const api = {
   get: <T>(path: string) => send<T>(path),
+  getBlob: (path: string) => send<Blob>(path, { blob: true }),
   postText: (path: string, body: unknown) => sendText(path, body),
   post: <T>(path: string, body?: unknown, idempotencyKey?: string) =>
     send<T>(path, { method: 'POST', body, idempotencyKey }),

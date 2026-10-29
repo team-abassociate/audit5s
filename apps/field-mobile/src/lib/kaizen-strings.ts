@@ -205,6 +205,35 @@ export interface KaizenStrings {
   exporting: string;
   exportFailed: string;
   by: (name: string) => string;
+
+  // follow-through (R-69)
+  /** On a card waiting for review: "Waiting 9 days" (0 is "since today"). */
+  waitingDays: (days: number) => string;
+  /** The slip's second line: how long the oldest has waited. */
+  oldestWaiting: (days: number) => string;
+  checkDue: (dayMark: number) => string;
+  checksSection: string;
+  checksEmpty: string;
+  sustainTitle: string;
+  sustainResult: (dayMark: number, inPlace: boolean) => string;
+  sustainNext: (dayMark: number, date: string) => string;
+  sustainAllDone: string;
+  sustainDueSince: (dayMark: number, date: string) => string;
+  sustainAsk: (dayMark: number) => string;
+  inPlace: string;
+  notInPlace: string;
+  sustainNote: string;
+  sustainFound: string;
+  sustainFoundRequired: string;
+  recordCheck: (dayMark: number) => string;
+  peopleTitle: string;
+  participation: string;
+  leadersTakingPart: string;
+  avgDaysToDecision: string;
+  longestWait: string;
+  days: (value: string) => string;
+  topContributors: string;
+  sustainCardTitle: string;
 }
 
 const EN: KaizenStrings = {
@@ -407,6 +436,32 @@ const EN: KaizenStrings = {
   exporting: 'Preparing the PDF…',
   exportFailed: 'The PDF could not be made. Try again.',
   by: (name) => `By ${name}`,
+
+  waitingDays: (d) => (d === 0 ? 'Waiting since today' : `Waiting ${d} ${d === 1 ? 'day' : 'days'}`),
+  oldestWaiting: (d) => (d === 0 ? 'The oldest came in today.' : `The oldest has waited ${d} ${d === 1 ? 'day' : 'days'}.`),
+  checkDue: (m) => `${m}-day check due`,
+  checksSection: 'Checks due · still in place?',
+  checksEmpty: 'No checks due. Approved Kaizens come back here at 30, 60 and 90 days.',
+  sustainTitle: 'Still in place? · 30, 60, 90 days',
+  sustainResult: (m, ok) => `${m}-day check: ${ok ? 'still in place' : 'not in place'}`,
+  sustainNext: (m, date) => `Next: the ${m}-day check, on ${date}.`,
+  sustainAllDone: 'Every check is done.',
+  sustainDueSince: (m, date) => `The ${m}-day check has been due since ${date}.`,
+  sustainAsk: (m) => `The ${m}-day check is due. Look at the Zone: is the improvement still in place?`,
+  inPlace: 'Still in place',
+  notInPlace: 'Not in place',
+  sustainNote: 'Note (optional)',
+  sustainFound: 'What did you find? (required)',
+  sustainFoundRequired: 'Say what you found when it is not in place.',
+  recordCheck: (m) => `Record the ${m}-day check`,
+  peopleTitle: 'People',
+  participation: 'Participation',
+  leadersTakingPart: 'Zone Leaders taking part',
+  avgDaysToDecision: 'Avg. days to a decision',
+  longestWait: 'Longest wait now',
+  days: (v) => `${v} d`,
+  topContributors: 'Top contributors',
+  sustainCardTitle: 'Still in place?',
 };
 
 const HI: KaizenStrings = {
@@ -609,6 +664,32 @@ const HI: KaizenStrings = {
   exporting: 'PDF तैयार हो रहा है…',
   exportFailed: 'PDF नहीं बन सका। फिर से कोशिश करें।',
   by: (name) => `${name} द्वारा`,
+
+  waitingDays: (d) => (d === 0 ? 'आज से प्रतीक्षा में' : `${d} दिन से प्रतीक्षा में`),
+  oldestWaiting: (d) => (d === 0 ? 'सबसे पुराना आज आया है।' : `सबसे पुराना ${d} दिन से प्रतीक्षा में है।`),
+  checkDue: (m) => `${m} दिन की जाँच बाकी`,
+  checksSection: 'बाकी जाँच · क्या सुधार अब भी लागू है?',
+  checksEmpty: 'कोई जाँच बाकी नहीं। स्वीकृत काइज़ेन 30, 60 और 90 दिन पर यहाँ फिर आते हैं।',
+  sustainTitle: 'क्या अब भी लागू है? · 30, 60, 90 दिन',
+  sustainResult: (m, ok) => `${m} दिन की जाँच: ${ok ? 'अब भी लागू' : 'लागू नहीं'}`,
+  sustainNext: (m, date) => `अगली: ${m} दिन की जाँच, ${date} को।`,
+  sustainAllDone: 'सभी जाँच पूरी हो गईं।',
+  sustainDueSince: (m, date) => `${m} दिन की जाँच ${date} से बाकी है।`,
+  sustainAsk: (m) => `${m} दिन की जाँच बाकी है। ज़ोन देखें: क्या सुधार अब भी लागू है?`,
+  inPlace: 'अब भी लागू',
+  notInPlace: 'लागू नहीं',
+  sustainNote: 'टिप्पणी (वैकल्पिक)',
+  sustainFound: 'आपने क्या देखा? (आवश्यक)',
+  sustainFoundRequired: 'लागू नहीं है तो बताएँ कि क्या देखा।',
+  recordCheck: (m) => `${m} दिन की जाँच दर्ज करें`,
+  peopleTitle: 'लोग',
+  participation: 'भागीदारी',
+  leadersTakingPart: 'भाग लेने वाले ज़ोन लीडर',
+  avgDaysToDecision: 'निर्णय तक औसत दिन',
+  longestWait: 'अभी सबसे लंबी प्रतीक्षा',
+  days: (v) => `${v} दिन`,
+  topContributors: 'टॉप योगदानकर्ता',
+  sustainCardTitle: 'क्या अब भी लागू है?',
 };
 
 const MR: KaizenStrings = {
@@ -811,6 +892,32 @@ const MR: KaizenStrings = {
   exporting: 'PDF तयार होत आहे…',
   exportFailed: 'PDF तयार झाले नाही. पुन्हा प्रयत्न करा.',
   by: (name) => `${name} यांनी`,
+
+  waitingDays: (d) => (d === 0 ? 'आजपासून प्रतीक्षेत' : `${d} दिवसांपासून प्रतीक्षेत`),
+  oldestWaiting: (d) => (d === 0 ? 'सर्वात जुने आज आले आहे.' : `सर्वात जुने ${d} दिवसांपासून प्रतीक्षेत आहे.`),
+  checkDue: (m) => `${m} दिवसांची तपासणी बाकी`,
+  checksSection: 'बाकी तपासण्या · सुधारणा अजून टिकून आहे का?',
+  checksEmpty: 'कोणतीही तपासणी बाकी नाही. मंजूर कायझेन 30, 60 आणि 90 दिवसांनी इथे परत येतात.',
+  sustainTitle: 'अजून टिकून आहे का? · 30, 60, 90 दिवस',
+  sustainResult: (m, ok) => `${m} दिवसांची तपासणी: ${ok ? 'अजून टिकून आहे' : 'टिकून नाही'}`,
+  sustainNext: (m, date) => `पुढील: ${m} दिवसांची तपासणी, ${date} रोजी.`,
+  sustainAllDone: 'सर्व तपासण्या पूर्ण झाल्या.',
+  sustainDueSince: (m, date) => `${m} दिवसांची तपासणी ${date} पासून बाकी आहे.`,
+  sustainAsk: (m) => `${m} दिवसांची तपासणी बाकी आहे. झोन पाहा: सुधारणा अजून टिकून आहे का?`,
+  inPlace: 'अजून टिकून आहे',
+  notInPlace: 'टिकून नाही',
+  sustainNote: 'टिप्पणी (ऐच्छिक)',
+  sustainFound: 'तुम्हाला काय दिसले? (आवश्यक)',
+  sustainFoundRequired: 'टिकून नसेल तर काय दिसले ते लिहा.',
+  recordCheck: (m) => `${m} दिवसांची तपासणी नोंदवा`,
+  peopleTitle: 'लोक',
+  participation: 'सहभाग',
+  leadersTakingPart: 'सहभागी झोन लीडर',
+  avgDaysToDecision: 'निर्णयापर्यंत सरासरी दिवस',
+  longestWait: 'सध्याची सर्वात मोठी प्रतीक्षा',
+  days: (v) => `${v} दिवस`,
+  topContributors: 'टॉप योगदानकर्ते',
+  sustainCardTitle: 'अजून टिकून आहे का?',
 };
 
 export const KAIZEN_STRINGS: Record<AppLanguage, KaizenStrings> = { en: EN, hi: HI, mr: MR };

@@ -100,6 +100,7 @@ function KaizenSheet({ kaizen }: { kaizen: KaizenDetail }) {
         ))}
       </div>
 
+      <Sustain kaizen={kaizen} />
       <AuthorActions kaizen={kaizen} />
       <Review kaizen={kaizen} />
       {kaizen.status !== 'DRAFT' && <ExportButton kaizen={kaizen} />}
@@ -213,6 +214,106 @@ function Review({ kaizen }: { kaizen: KaizenDetail }) {
             })()}
           </Button>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * R-69: an approved Kaizen's 30/60/90-day checks, and the Coordinator's record of the one
+ * that is due. Green is Approved's alone (R-48(h)), so "still in place" stays in ink.
+ */
+function Sustain({ kaizen }: { kaizen: KaizenDetail }) {
+  const { can } = useSession();
+  const queryClient = useQueryClient();
+  const [inPlace, setInPlace] = useState<boolean | null>(null);
+  const [note, setNote] = useState('');
+  const [missing, setMissing] = useState(false);
+  const attempt = useRef<{ body: string; key: string } | null>(null);
+  const next = kaizen.nextSustainCheck;
+  const record = useMutation({
+    mutationFn: () => {
+      const body = { dayMark: next!.dayMark, inPlace, note: note.trim() || null };
+      const json = JSON.stringify(body);
+      if (attempt.current?.body !== json) attempt.current = { body: json, key: crypto.randomUUID() };
+      return api.post(`/kaizens/${kaizen.id}/sustain-checks`, body, attempt.current.key);
+    },
+    onSuccess: async () => {
+      attempt.current = null;
+      setInPlace(null);
+      setNote('');
+      await queryClient.invalidateQueries({ queryKey: ['kaizen', kaizen.id] });
+      await queryClient.invalidateQueries({ queryKey: ['kaizens'] });
+      await queryClient.invalidateQueries({ queryKey: ['kaizen-dashboard'] });
+    },
+  });
+
+  if (kaizen.status !== 'APPROVED') return null;
+
+  return (
+    <div className="space-y-2">
+      <p className="gb-label">Still in place? · 30, 60 and 90 days after approval</p>
+      {kaizen.sustainChecks.map((check) => (
+        <div key={check.id} className="border border-edge-soft p-3 text-sm">
+          <p className="text-ink">
+            <b className={check.inPlace ? undefined : 'gb-tone--crit'}>
+              {check.dayMark}-day check: {check.inPlace ? 'still in place' : 'not in place'}
+            </b>{' '}
+            by {check.checkedByName} · <span className="gb-data">{formatDateTime(check.createdAt)}</span>
+          </p>
+          {check.note && <p className="mt-1 whitespace-pre-wrap text-ink-2">{check.note}</p>}
+        </div>
+      ))}
+      {next && !next.due && (
+        <p className="text-sm text-ink-2">
+          Next: the {next.dayMark}-day check, on <span className="gb-data">{formatDate(next.dueOn)}</span>.
+        </p>
+      )}
+      {!next && kaizen.sustainChecks.length > 0 && <p className="text-sm text-ink-2">Every check is done.</p>}
+      {next?.due && !can('kaizen', 'review') && (
+        <p className="text-sm text-ink-2">
+          The {next.dayMark}-day check has been due since <span className="gb-data">{formatDate(next.dueOn)}</span>.
+        </p>
+      )}
+      {next?.due && can('kaizen', 'review') && (
+        <div className="space-y-3 border border-edge-soft p-3">
+          <p className="text-sm text-ink">
+            The <b>{next.dayMark}-day check</b> is due. Look at the Zone: is the improvement still in place?
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" className="inline-flex items-center gap-1.5" aria-pressed={inPlace === true} onClick={() => { setInPlace(true); setMissing(false); }}>
+              <Check {...ICON} />
+              Still in place
+            </Button>
+            <Button variant="secondary" className="inline-flex items-center gap-1.5 gb-tone--crit" aria-pressed={inPlace === false} onClick={() => setInPlace(false)}>
+              <X {...ICON} />
+              Not in place
+            </Button>
+          </div>
+          {inPlace !== null && (
+            <>
+              <Field
+                label={inPlace ? 'Note' : 'What did you find?'}
+                hint={inPlace ? 'Optional.' : 'The Zone Leader is told, with this.'}
+                {...(missing ? { error: 'Say what you found when it is not in place.' } : {})}
+              >
+                <textarea className="gb-input" rows={3} maxLength={2000} value={note} onChange={(event) => setNote(event.target.value)} />
+              </Field>
+              <ErrorNotice error={record.error} />
+              <Button
+                variant="secondary"
+                className={inPlace ? 'inline-flex items-center gap-1.5' : 'inline-flex items-center gap-1.5 gb-tone--crit'}
+                disabled={record.isPending}
+                onClick={() => {
+                  if (!inPlace && !note.trim()) setMissing(true);
+                  else record.mutate();
+                }}
+              >
+                {record.isPending ? 'Saving…' : `Record the ${next.dayMark}-day check`}
+              </Button>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

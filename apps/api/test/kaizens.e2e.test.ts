@@ -5,6 +5,8 @@ import type { KaizenDashboard, KaizenDetail, KaizenExport, Page, Kaizen, SyncBat
 import { ObjectStorage } from '../src/infrastructure/storage/object-storage';
 import { KaizenExportWorker } from '../src/modules/kaizens/kaizen-export.worker';
 import { KaizenPhotoWorker } from '../src/modules/kaizens/kaizen-photo.worker';
+import { NotificationWorker } from '../src/modules/notifications/notification.worker';
+import { drainNotifications, forgetQueuedNotifications } from './corrective-fixtures';
 import {
   TINY_JPEG,
   loginFromDevice,
@@ -711,3 +713,158 @@ function commit(actor: TestActor, kaizenId: string, photoId: string, checksum = 
     body: { checksumSha256: checksum },
   });
 }
+
+describe('follow-through (R-69): alerts, waiting, people, sustain checks, the register', () => {
+  const seen = new Set<string>();
+
+  async function told(userId: string, kaizenId: string) {
+    await drainNotifications(world, world.app.get(NotificationWorker), seen);
+    const { rows } = await world.owner.query(
+      `SELECT event_type, title, body FROM notification
+        WHERE recipient_user_id = $1 AND resource_id = $2 ORDER BY created_at`,
+      [userId, kaizenId],
+    );
+    return rows as Array<{ event_type: string; title: string; body: string }>;
+  }
+
+  /** Moves the approval back in time; the review row is append-only, so as its owner. */
+  async function approvedDaysAgo(kaizenId: string, days: number) {
+    await world.owner.query('ALTER TABLE kaizen_review DISABLE TRIGGER kaizen_review_append_only');
+    try {
+      await world.owner.query(
+        `UPDATE kaizen_review SET created_at = now() - make_interval(days => $2) WHERE kaizen_id = $1`,
+        [kaizenId, days],
+      );
+    } finally {
+      await world.owner.query('ALTER TABLE kaizen_review ENABLE TRIGGER kaizen_review_append_only');
+    }
+  }
+
+  async function check(actor: TestActor, kaizenId: string, body: Record<string, unknown>) {
+    return world.request('POST', `${base}/${kaizenId}/sustain-checks`, {
+      token: as(actor),
+      headers: { 'idempotency-key': randomUUID() },
+      body,
+    });
+  }
+
+  beforeAll(async () => {
+    await forgetQueuedNotifications(world);
+  });
+
+  it('a submission tells the Coordinator; a decision tells the author, with the reason', async () => {
+    const kaizen = await submitted(world.actors.ZONE_LEADER);
+    const toCoordinator = await told(world.actors.COORDINATOR.userId, kaizen.id);
+    expect(toCoordinator.map((n) => n.event_type)).toEqual(['KAIZEN_SUBMITTED']);
+    expect(toCoordinator[0]!.body).toContain(kaizen.kaizenNo);
+    // Nobody is told of their own act, and a colleague is not told of someone else's Kaizen.
+    expect(await told(world.actors.ZONE_LEADER.userId, kaizen.id)).toEqual([]);
+    expect(await told(otherLeader.userId, kaizen.id)).toEqual([]);
+
+    await review(world.actors.COORDINATOR, kaizen.id, { decision: 'SENT_BACK', comment: 'Add the cost' });
+    const toAuthor = await told(world.actors.ZONE_LEADER.userId, kaizen.id);
+    expect(toAuthor).toMatchObject([{ event_type: 'KAIZEN_REVIEWED', title: 'Kaizen sent back' }]);
+    expect(toAuthor[0]!.body).toContain('Add the cost');
+  });
+
+  it('a Coordinator without Kaizen is not told (R-57)', async () => {
+    await world.owner.query('UPDATE "user" SET kaizen_access = false WHERE id = $1', [world.actors.COORDINATOR.userId]);
+    try {
+      const kaizen = await submitted(world.actors.ZONE_LEADER);
+      expect(await told(world.actors.COORDINATOR.userId, kaizen.id)).toEqual([]);
+    } finally {
+      await world.owner.query('UPDATE "user" SET kaizen_access = true WHERE id = $1', [world.actors.COORDINATOR.userId]);
+    }
+  });
+
+  it('the dashboard counts participation, time to a decision and the longest wait', async () => {
+    const response = await world.request('GET', `${base}/dashboard?unitId=${world.unitA}`, {
+      token: as(world.actors.COORDINATOR),
+    });
+    expect(response.status).toBe(200);
+    const { people, sustain } = response.body as KaizenDashboard;
+    // Every Zone Leader holding Kaizen in Unit A, of whom only Zoe has submitted.
+    const { rows } = await world.owner.query(
+      `SELECT count(DISTINCT u.id)::int AS n FROM "user" u JOIN unit_membership m ON m.user_id = u.id
+        WHERE m.unit_id = $1 AND m.status = 'ACTIVE' AND u.role = 'ZONE_LEADER' AND u.kaizen_access`,
+      [world.unitA],
+    );
+    expect(people.leaders).toBe(rows[0].n);
+    expect(people.leaders).toBeGreaterThan(1);
+    expect(people.contributors).toBe(1);
+    expect(people.participationPct).toBe(100 / people.leaders);
+    expect(people.oldestWaitingDays).toBe(0);
+    expect(people.avgDaysToDecision).toBe(0);
+    expect(people.topContributors[0]).toMatchObject({ name: 'Zoe Leader' });
+    expect(sustain).toMatchObject({ due: expect.any(Number) });
+  });
+
+  it('an approved Kaizen is checked at the mark that is due, once; not in place tells the author', async () => {
+    const kaizen = await submitted(world.actors.ZONE_LEADER);
+    await review(world.actors.COORDINATOR, kaizen.id, { decision: 'APPROVED' });
+
+    // Not yet due.
+    const fresh = (await world.request('GET', `${base}/${kaizen.id}`, { token: as(world.actors.COORDINATOR) })).body as KaizenDetail;
+    expect(fresh.approvedAt).not.toBeNull();
+    expect(fresh.nextSustainCheck).toMatchObject({ dayMark: 30, due: false });
+    expect((await check(world.actors.COORDINATOR, kaizen.id, { dayMark: 30, inPlace: true })).status).toBe(409);
+
+    // Day 65: the 60-day check is the one due, and it is on the Checks due list.
+    await approvedDaysAgo(kaizen.id, 65);
+    const due = (await world.request('GET', `${base}?sustainDue=true&limit=100`, { token: as(world.actors.COORDINATOR) }))
+      .body as Page<Kaizen>;
+    expect(due.data.map((k) => k.id)).toContain(kaizen.id);
+    expect(due.data.find((k) => k.id === kaizen.id)!.nextSustainCheck).toMatchObject({ dayMark: 60, due: true });
+    expect((await check(world.actors.COORDINATOR, kaizen.id, { dayMark: 30, inPlace: true })).status).toBe(409);
+
+    // A reason is required when it is not in place; only the Coordinator records it.
+    expect((await check(world.actors.COORDINATOR, kaizen.id, { dayMark: 60, inPlace: false })).status).toBe(422);
+    expect((await check(world.actors.ZONE_LEADER, kaizen.id, { dayMark: 60, inPlace: true })).status).toBe(403);
+    expect((await check(world.actors.CONSULTANT, kaizen.id, { dayMark: 60, inPlace: true })).status).toBe(403);
+    const inB = await draft(world.outOfScopeActor, world.zoneB);
+    expect((await check(world.actors.COORDINATOR, inB.id, { dayMark: 30, inPlace: true })).status).toBe(404);
+
+    const recorded = await check(world.actors.COORDINATOR, kaizen.id, { dayMark: 60, inPlace: false, note: 'Clamps removed' });
+    expect(recorded.status, JSON.stringify(recorded.body)).toBe(200);
+    const after = recorded.body as KaizenDetail;
+    expect(after.sustainChecks).toMatchObject([{ dayMark: 60, inPlace: false, note: 'Clamps removed', checkedByName: 'Cole Coord' }]);
+    expect(after.nextSustainCheck).toMatchObject({ dayMark: 90, due: false });
+    expect((await check(world.actors.COORDINATOR, kaizen.id, { dayMark: 60, inPlace: true })).status).toBe(409);
+
+    const due2 = (await world.request('GET', `${base}?sustainDue=true&limit=100`, { token: as(world.actors.COORDINATOR) }))
+      .body as Page<Kaizen>;
+    expect(due2.data.map((k) => k.id)).not.toContain(kaizen.id);
+
+    const toAuthor = await told(world.actors.ZONE_LEADER.userId, kaizen.id);
+    expect(toAuthor.map((n) => n.event_type)).toEqual(['KAIZEN_REVIEWED', 'KAIZEN_NOT_SUSTAINED']);
+    expect(toAuthor[1]!.body).toContain('60-day');
+
+    // The author reads the check on their own Kaizen; the row cannot be changed.
+    const mine = (await world.request('GET', `${base}/${kaizen.id}`, { token: as(world.actors.ZONE_LEADER) })).body as KaizenDetail;
+    expect(mine.sustainChecks).toHaveLength(1);
+    await expect(world.owner.query('UPDATE kaizen_sustain_check SET in_place = true WHERE kaizen_id = $1', [kaizen.id])).rejects.toThrow();
+  });
+
+  it('the register is an .xlsx of what the reader may see, without drafts', async () => {
+    await draft(world.actors.ZONE_LEADER);
+    // Bytes, so past the harness's JSON `request`.
+    const response = await world.app.getHttpAdapter().getInstance().inject({
+      method: 'GET',
+      url: `${base}/register?unitId=${world.unitA}`,
+      headers: { authorization: `Bearer ${as(world.actors.COORDINATOR)}` },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(String(response.headers['content-type'])).toContain('spreadsheetml');
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(response.rawPayload as never);
+    const sheet = workbook.getWorksheet('Kaizen register')!;
+    const statuses = sheet.getColumn(12).values.slice(2);
+    expect(statuses.length).toBeGreaterThan(0);
+    expect(statuses).not.toContain('Draft');
+    const units = new Set(sheet.getColumn(2).values.slice(2));
+    expect([...units]).toEqual([expect.any(String)]);
+
+    expect((await world.request('GET', `${base}/register`, { token: as(world.actors.ZONE_LEADER) })).status).toBe(200);
+  });
+});
