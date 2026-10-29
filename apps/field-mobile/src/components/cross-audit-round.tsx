@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, Text, View, useWindowDimensions } 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { DateTimePickerAndroid } from '../lib/date-dialog';
 import type { CrossAuditRound, CrossAuditZoneState } from '@audit5s/contracts';
 import { formatDayMonth, istDateKey, zoneDisplayLabel } from '@audit5s/domain';
 import { api, problemMessage } from '../lib/api';

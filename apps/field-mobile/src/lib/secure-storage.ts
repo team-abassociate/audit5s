@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { isAppLanguage, type AppLanguage } from './language';
 import { isThemePreference, type ThemePreference } from './theme-choice';
@@ -31,8 +32,17 @@ export interface StoredSession {
   pendingRefreshToken?: string;
 }
 
+/**
+ * A browser has no keystore, and expo-secure-store has no web build: there the values sit in
+ * the origin's `localStorage`, which is what any web sign-in keeps its tokens in. Prefixed
+ * `field.`: the admin web shares the origin and keeps its own `audit5s.session` there.
+ */
+const web = Platform.OS === 'web';
+const webKey = (key: string): string => `field.${key}`;
+
 async function readString(key: string): Promise<string | null> {
   try {
+    if (web) return localStorage.getItem(webKey(key));
     return await SecureStore.getItemAsync(key);
   } catch {
     // A keystore read can fail on a device whose secure hardware was reset. Treat it as
@@ -42,9 +52,15 @@ async function readString(key: string): Promise<string | null> {
 }
 
 async function writeString(key: string, value: string): Promise<void> {
+  if (web) return localStorage.setItem(webKey(key), value);
   await SecureStore.setItemAsync(key, value, {
     keychainAccessible: SecureStore.WHEN_UNLOCKED,
   });
+}
+
+async function deleteString(key: string): Promise<void> {
+  if (web) return localStorage.removeItem(webKey(key));
+  await SecureStore.deleteItemAsync(key);
 }
 
 export async function loadSession(): Promise<StoredSession | null> {
@@ -63,7 +79,7 @@ export async function saveSession(session: StoredSession): Promise<void> {
 
 export async function clearSession(): Promise<void> {
   try {
-    await SecureStore.deleteItemAsync(KEYS.session);
+    await deleteString(KEYS.session);
   } catch {
     // Nothing to clear.
   }
@@ -85,7 +101,7 @@ export async function loadServerAddress(): Promise<string | null> {
 export async function saveServerAddress(value: string | null): Promise<void> {
   if (value === null) {
     try {
-      await SecureStore.deleteItemAsync(KEYS.serverAddress);
+      await deleteString(KEYS.serverAddress);
     } catch {
       // Nothing to clear.
     }

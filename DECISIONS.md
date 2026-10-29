@@ -2739,3 +2739,25 @@ kaizen system" feature lists and chose four gaps to close (plan:
 - **Not done:** points and badges, QR codes, duplicate detection, Yokoten tracking,
   multi-level approval, kaizen events, and a nightly "check due" reminder (the Overview's
   list is the reminder until it measurably is not enough).
+
+## R-70 — The field app runs in a phone's browser, at `/field`
+
+**Settled 2026-10-29 by the product owner.** The app is not on the App Store, so iOS users have
+no way in. In the owner's words:
+
+> deploy it on the web so that anyone using a web browser on a mobile phone will be able to
+> access it just the way an Android app can be accessed
+
+- **The same app, not a copy.** `apps/field-mobile` is exported for the web (Expo, react-native-web)
+  and served by the web image at `https://<app-host>/field`, same origin as the API. Every
+  screen, role and rule is the Android app's; the admin web (R-51) is unchanged.
+- **Offline-first still holds.** The local database is expo-sqlite in WebAssembly (OPFS), so the
+  outbox works as on the phone. That needs the page cross-origin isolated: `/field` alone sends
+  COOP/COEP and its own CSP, and the object store sends `Cross-Origin-Resource-Policy`.
+- **Where the browser differs**, a `.web.ts` file or a `Platform.OS` branch stands in, and the
+  APK is untouched (its native fingerprint is the same, so the change ships by OTA):
+  credentials and settings are in `localStorage` under `field.` (the admin web shares the
+  origin); a photo is kept as a `data:` URL until it uploads; dates use the browser's date
+  input; `Alert.alert` uses the browser's dialogs; R-62's gallery backup does not exist.
+- **One tab at a time.** The database file is held by one page; a second tab shows an error
+  until the first is closed.

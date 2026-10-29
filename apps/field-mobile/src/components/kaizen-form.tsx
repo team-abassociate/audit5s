@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useNavigation } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { DateTimePickerAndroid } from '../lib/date-dialog';
 import Animated, { useReducedMotion } from 'react-native-reanimated';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {

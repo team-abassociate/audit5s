@@ -83,10 +83,10 @@ export default tseslint.config(
     rules: { 'no-restricted-syntax': 'off', 'no-console': 'off' },
   },
   {
-    // Expo config plugins. Expo's own resolver `require()`s these at prebuild time, before
+    // Expo config plugins and the Metro config. Expo's own resolver `require()`s these before
     // any bundler or TypeScript pipeline exists, so they are CommonJS by obligation rather
     // than by choice. The rule stays on for every other file in the workspace.
-    files: ['apps/field-mobile/plugins/**/*.js'],
+    files: ['apps/field-mobile/plugins/**/*.js', 'apps/field-mobile/metro.config.js'],
     languageOptions: { sourceType: 'commonjs' },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },

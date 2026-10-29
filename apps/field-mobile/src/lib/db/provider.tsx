@@ -52,7 +52,8 @@ export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
         if (wanted !== NOBODY) await adoptSharedDatabase(wanted);
         opened = await openExpoExecutor(databaseNameFor(wanted));
         await migrateLocalDatabase(opened);
-        if (cancelled) return;
+        // Superseded while it opened: the cleanup below ran before `opened` was set.
+        if (cancelled) return void opened.close().catch(() => undefined);
         // Nothing read for the previous person — from their file or the server — may be
         // shown to this one. Their screens are not mounted while this spinner is up.
         queryClient.clear();

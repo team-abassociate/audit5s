@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { MeResponse } from '@audit5s/contracts';
 
@@ -14,10 +15,12 @@ import type { MeResponse } from '@audit5s/contracts';
  * be. The server still decides every request; this only paints the screens.
  */
 const PATH = `${FileSystem.documentDirectory ?? ''}last-me.json`;
+/** A browser has no documents folder: there it is a `localStorage` entry of the same name. */
+const web = Platform.OS === 'web';
 
 export async function loadLastMe(): Promise<MeResponse | null> {
   try {
-    return JSON.parse(await FileSystem.readAsStringAsync(PATH)) as MeResponse;
+    return JSON.parse(web ? (localStorage.getItem('field.last-me.json') ?? '') : await FileSystem.readAsStringAsync(PATH)) as MeResponse;
   } catch {
     return null;
   }
@@ -25,7 +28,8 @@ export async function loadLastMe(): Promise<MeResponse | null> {
 
 export async function saveLastMe(me: MeResponse): Promise<void> {
   try {
-    await FileSystem.writeAsStringAsync(PATH, JSON.stringify(me));
+    if (web) localStorage.setItem('field.last-me.json', JSON.stringify(me));
+    else await FileSystem.writeAsStringAsync(PATH, JSON.stringify(me));
   } catch {
     // Without it the next offline launch asks for a sign-in, which is how it always was.
   }
@@ -33,7 +37,8 @@ export async function saveLastMe(me: MeResponse): Promise<void> {
 
 export async function clearLastMe(): Promise<void> {
   try {
-    await FileSystem.deleteAsync(PATH, { idempotent: true });
+    if (web) localStorage.removeItem('field.last-me.json');
+    else await FileSystem.deleteAsync(PATH, { idempotent: true });
   } catch {
     // Nothing to clear.
   }

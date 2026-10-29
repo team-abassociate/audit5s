@@ -26,6 +26,21 @@
     file_server
   }
 
+  # The field app in a browser, for phones without the APK (iOS). Its local database is
+  # SQLite in WebAssembly on a SharedArrayBuffer, which needs the page cross-origin isolated
+  # (COOP + COEP), wasm compilation, a blob: worker, and fetch of the data: URLs photos are
+  # kept as until they upload.
+  handle /field* {
+    header {
+      Cross-Origin-Opener-Policy "same-origin"
+      Cross-Origin-Embedder-Policy "require-corp"
+      Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://{$OBJECTS_HOST}; connect-src 'self' data: blob: https://{$OBJECTS_HOST}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+    }
+    root * /srv
+    try_files {path} /field/index.html
+    file_server
+  }
+
   handle {
     root * /srv
     try_files {path} /index.html
@@ -39,5 +54,7 @@
 
 {$OBJECTS_HOST} {
   # SigV4 includes the Host, path and query. Do not rewrite any of them.
+  # CORP lets the cross-origin-isolated field web (/field) show these photos.
+  header Cross-Origin-Resource-Policy "cross-origin"
   reverse_proxy object-storage:9000
 }
