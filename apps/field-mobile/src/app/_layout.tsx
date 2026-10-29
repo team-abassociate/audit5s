@@ -1,6 +1,7 @@
 // Must stay the first import: Hermes defines no global `crypto`, and the device id minted
 // on every API request needs one.
 import '../lib/crypto-polyfill';
+import '../lib/web-alert';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Alert, AppState, LogBox, View } from 'react-native';
 import { useFonts } from 'expo-font';

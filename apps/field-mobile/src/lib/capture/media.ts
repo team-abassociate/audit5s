@@ -1,5 +1,6 @@
 // ponytail: the legacy API, which SDK 57 still ships; move to the `File` class when the
 // legacy entry point is removed. The root import throws on these methods since SDK 54.
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { File } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -87,6 +88,9 @@ export async function processCapturedPhoto(
  * for it forever.
  */
 async function keepDurably(cacheUri: string): Promise<string> {
+  // A browser's `blob:` URL dies with the tab. The photo becomes a `data:` URL instead: a
+  // string the local database keeps, that `<Image>` shows and `fetch` reads after a reload.
+  if (Platform.OS === 'web') return blobToDataUrl(await (await fetch(cacheUri)).blob());
   const directory = `${FileSystem.documentDirectory}evidence/`;
   await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
   const target = `${directory}${cacheUri.split('/').pop()}`;
@@ -115,6 +119,16 @@ async function sha256OfBytes(bytes: Uint8Array): Promise<string> {
  * photo, during which even the shutter's spinner stuttered.
  */
 export async function readFileBytes(uri: string): Promise<Uint8Array> {
+  if (Platform.OS === 'web') return new Uint8Array(await (await fetch(uri)).arrayBuffer());
   return new Uint8Array(await new File(uri).arrayBuffer());
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 

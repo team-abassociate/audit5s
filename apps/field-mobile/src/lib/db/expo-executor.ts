@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SQLite from 'expo-sqlite';
 import type { SqliteExecutor } from './local-database';
@@ -13,7 +14,7 @@ import type { SqliteExecutor } from './local-database';
 export async function openExpoExecutor(
   name = 'audit5s.db',
 ): Promise<SqliteExecutor & { close(): Promise<void> }> {
-  const database = await SQLite.openDatabaseAsync(name);
+  const database = await openWithRetry(name);
 
   return {
     async exec(sql) {
@@ -45,6 +46,22 @@ export async function openExpoExecutor(
 }
 
 /**
+ * In a browser the file is an OPFS handle that one page holds at a time, and a reloaded page
+ * starts before the old one's worker has let go. A few retries ride that out; a second tab
+ * still holding it outlasts them, and this tab shows the error until that one is closed.
+ */
+async function openWithRetry(name: string): Promise<SQLite.SQLiteDatabase> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await SQLite.openDatabaseAsync(name);
+    } catch (caught) {
+      if (Platform.OS !== 'web' || attempt >= 10) throw caught;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+}
+
+/**
  * The file that holds one person's work on this phone (0025: a phone is shared).
  *
  * Separate files rather than an owner column: nothing written while A is signed in can be
@@ -67,6 +84,8 @@ const SHARED_DATABASE = 'audit5s.db';
  * renamed, never copied or deleted: the data exists in exactly one place throughout.
  */
 export async function adoptSharedDatabase(userId: string): Promise<void> {
+  // A browser never ran a pre-0025 build.
+  if (Platform.OS === 'web') return;
   const directory = `${FileSystem.documentDirectory}SQLite/`;
   const shared = await FileSystem.getInfoAsync(`${directory}${SHARED_DATABASE}`);
   if (!shared.exists) return;
