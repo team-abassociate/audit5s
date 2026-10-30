@@ -2759,5 +2759,10 @@ no way in. In the owner's words:
   credentials and settings are in `localStorage` under `field.` (the admin web shares the
   origin); a photo is kept as a `data:` URL until it uploads; dates use the browser's date
   input; `Alert.alert` uses the browser's dialogs; R-62's gallery backup does not exist.
+- **Web packages live in the web image, not `package.json`.** In #164 they were app
+  dependencies: pnpm then re-resolved the native packages' peers, the deploy's native check
+  saw a changed native layer, and the OTA was not published. `web.Dockerfile` now adds
+  `react-dom`, `react-native-web` and `@expo/metro-runtime` before the export, and the APK's
+  fingerprint matches `native-baseline.txt` again. `expo start --web` needs them added locally.
 - **One tab at a time.** The database file is held by one page; a second tab shows an error
   until the first is closed.
