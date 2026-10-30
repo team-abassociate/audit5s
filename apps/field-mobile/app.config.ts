@@ -152,9 +152,10 @@ const config: ExpoConfig = {
   runtimeVersion: { policy: 'appVersion' },
 
   extra: { apiBaseUrl: process.env.API_BASE_URL ?? 'http://10.0.2.2:3000/api/v1', eas: { projectId: '71411439-1202-4ffe-bf53-55ef490216e7', }, },
-  // The web build (iOS users, in a browser) is served under `/field` beside the admin web; only
-  // `infra/docker/web.Dockerfile` sets WEB_BASE_URL, so the APK and Metro are unchanged.
-  experiments: { typedRoutes: true, baseUrl: process.env.WEB_BASE_URL },
+  // The web build (iOS users, in a browser) is served under `/field` beside the admin web. Only
+  // `infra/docker/web.Dockerfile` sets WEB_BASE_URL; without it the key is absent, not
+  // undefined, so the APK's native fingerprint (`expoConfig`) is the one the phones run.
+  experiments: { typedRoutes: true, ...(process.env.WEB_BASE_URL ? { baseUrl: process.env.WEB_BASE_URL } : {}) },
 };
 
 if (process.env.APP_DEPLOYMENT === 'production') {
