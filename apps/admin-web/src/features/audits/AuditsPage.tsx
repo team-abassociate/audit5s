@@ -514,7 +514,7 @@ export function rowToggleProps(onToggle: () => void) {
  * no percentage, and showing zero would report a failure that did not happen. A cancelled
  * audit has no score at all (AU8): what it recorded is kept, but it was never finished.
  */
-function ScoreCell({ audit }: { audit: Audit }) {
+export function ScoreCell({ audit }: { audit: Audit }) {
   if (!audit.scored) {
     return <span className="text-ink-3">Not scored</span>;
   }
