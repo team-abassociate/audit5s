@@ -1,10 +1,10 @@
 # Motion plans — UX audit 2026-10-03 (report §10.2, M1–M5)
 
-> **Kaizen branch rule (changed by the owner, 2026-10-10):** open Kaizen PRs from your device
-> branch (`kaizen/krxna` on Device A, `kaizen/geetahuja` on Device B) **straight into `main`**.
-> `feat/kaizen` is retired. `main` still deploys to the production VPS that clients use for 5S,
-> so merging into `main` is a release: green CI first, and only with the owner's go. Plan:
-> [`plans/kaizen-module.md`](kaizen-module.md) (BRANCH RULE).
+> **Branch rule (owner, 2026-10-31):** one team, one flow. Cut a short branch from
+> `origin/main` for each change and open its PR straight into `main`. There is no device split:
+> no per-person branches, no folder ownership, anyone works on any part of the repo. `main`
+> deploys to the production VPS that clients use, so merging into `main` is a release: green
+> CI first, and only with the owner's go.
 
 Written by session S1 with `improve-animations` in plan mode (the report had already vetted
 the findings, so there was no audit pass). Commit stamp `ffae30c`. Effect names follow

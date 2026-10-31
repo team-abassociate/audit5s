@@ -1,10 +1,8 @@
 # Kaizen field app — UX plan (2026-10-10)
 
-> **Branch rule (owner, 2026-10-10):** PRs go from `kaizen/krxna` straight into `main`.
-> Merging into `main` is a release (it deploys), so it happens only with the owner's go
-> ([`kaizen-module.md`](kaizen-module.md), BRANCH RULE).
+> **Branch rule:** see the top of [`CLAUDE.md`](../CLAUDE.md).
 
-The prompt that runs this plan is [`kaizen-ux-prompt.md`](kaizen-ux-prompt.md). This file is
+This file is
 the plan: what is wrong, why, the exact change, and how to prove each one.
 
 Two audits feed it:
@@ -24,7 +22,7 @@ findings that need a device before anything is fixed.
 
 | Rule | Where it comes from |
 |---|---|
-| **All of this plan runs on Device A** (`kaizen/krxna`), field app included: the owner's call, 2026-10-10, overriding the §11 lanes for this work only. Keep the server PRs (A1, A2) and the phone PRs (B1, B2) separate anyway: they ship at different times. | Owner, 2026-10-10; `kaizen-module.md` §11 |
+| Keep the server PRs (A1, A2) and the phone PRs (B1, B2) separate: they ship at different times. | Owner, 2026-10-10 |
 | GEMBA-BOARD is binding: no radius, no blurred shadow, tokens only, **one yellow slip per view**, status = shape + colour, **48dp targets**, confirmations are a slip in the words of what happened, destructive actions use `ConfirmAction` (never `Alert`). | `docs/design/GEMBA-BOARD.md` §2, §6; `apps/field-mobile/AGENTS.md` |
 | **Motion token: 143 ms, ease-out only. Press = 3 px sink + shadow collapse**, not `scale(0.97)`. Emil's scale-on-press is overruled by the house press; his *principles* (gate by frequency, ease-out, interruptible, reduced motion = gentler not none, feedback on press-in) apply in full. | `gemba-tokens.css` `--motion`, `--press`; `plans/003-press-token.md` |
 | Green = Approved only; ink (not green) for a done step. | Owner, 2026-10-07 (comment in `kaizen-form.tsx`) |

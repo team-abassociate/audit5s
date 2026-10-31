@@ -1,28 +1,21 @@
 # Plan — Add the Kaizen module to Leanstack (audit5s monorepo)
 
-> The single plan for Kaizen work, read by both devices. Start Claude Code in a checkout of
-> the `feat/kaizen` branch and say which device you are (§11).
+> The plan the Kaizen module was built from (released to `main` 2026-10-09).
 
 ---
 
 ## BRANCH RULE: read before anything else
 
-**Changed by the owner, 2026-10-10:** "we can now open PRs into main directly instead of
-feat/kaizen." `feat/kaizen` is retired as the integration branch.
+**Branch rule (owner, 2026-10-31):** one team, one flow. Cut a short branch from
+`origin/main` for each change and open its PR straight into `main`. There is no device split:
+no per-person branches, no folder ownership, anyone works on any part of the repo. `main`
+deploys to the production VPS that clients use, so merging into `main` is a release: green
+CI first, and only with the owner's go.
 
-- **Each device works on its own branch:** **Device A (krxna): `kaizen/krxna`**, **Device B
-  (geetahuja): `kaizen/geetahuja`**. Commit only on your own branch, never on the other
-  device's, never directly on `main`.
-- **PRs go from your device branch straight into `main`:** `--head kaizen/<you> --base main`.
-  Merge with a **merge commit**, never squash or rebase-merge.
-- **`main` is production.** Every green commit on it deploys to the VPS that client plants use
-  for 5S, migrations included. So merging a PR into `main` is a release: CI green first, and
-  only with the owner's go. An agent never merges into `main` on its own initiative.
-- **Keep your branch current by merging `origin/main`, never rebasing** (the branch is shared on
-  GitHub, so a rebase would need a force-push, which is forbidden).
+- Merge with a **merge commit**, never squash or rebase-merge. Keep a branch current by merging
+  `origin/main`, never rebasing; never force-push, never `--no-verify`.
 - A change the phones must not get yet (a native change before its APK, or the server half of
   a rule old phones would trip over) waits as an open PR until its release day.
-- Agents never change repo settings, and never use `--no-verify` or force-push.
 
 The sections below were written for the old `feat/kaizen` flow. Where they say `feat/kaizen`,
 read `main`, and where they say "release day", read "the day the owner merges the PR".
@@ -119,7 +112,7 @@ Symbols), which conflicts with GEMBA-BOARD, and the app is Android-only.
 - After a successful login (online or offline unlock), the user picks **5S** or
   **Kaizen** on a module picker screen. The choice is remembered on the device. A
   switcher in the profile tab or app header lets them change it without logging out.
-- The Kaizen prototype (copied into `docs/requirements/kaizen/` by the first PR, see §11) is **reference only**. Do not
+- The Kaizen prototype (in `docs/requirements/kaizen/`) is **reference only**. Do not
   port its code wholesale. It is a single-file AsyncStorage prototype with plaintext
   passwords. Take only its **field list, workflow, screens and Excel template filling**
   (details in §4). Once the module ships, delete the prototype (§9).
@@ -141,11 +134,6 @@ In a checkout of `feat/kaizen`:
 6. The prototype, for behaviour only:
    `docs/requirements/kaizen/App.js.txt` (screens and workflow), `xlsx.js.txt` (template filling),
    `store.js.txt`, `check-xlsx.mjs.txt`, and `docs/requirements/kaizen/kaizen-sheet-format.xlsx`.
-
-**Where to work.** On Device A, Kaizen work happens in the worktree
-`/Users/krxna/main/kaizen` (branch `kaizen/krxna`), never in `/Users/krxna/main/audit5s`.
-That checkout is on `main` and holds someone else's uncommitted 5S work. Do not stage, revert
-or edit it. **Never open a Kaizen PR against `main`.**
 
 ---
 
@@ -412,15 +400,15 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
   the release changed `apps/field-mobile`, `packages/contracts`, `packages/domain` or
   `pnpm-lock.yaml`, **and** `scripts/native-changed.mjs` finds the native layer unchanged since
   `apps/field-mobile/native-baseline.txt` (Leanstack 0.1.0, versionCode 15). So:
-  - **Never run `eas update --channel production` or `eas build --profile vps` by hand.** Neither
-    device does, ever. Releases go through the pipeline only.
+  - **Never run `eas update --channel production` or `eas build --profile vps` by hand.** Nobody
+    does, ever. Releases go through the pipeline only.
   - **The Kaizen module must add no native module** (camera, image-picker, sqlite and
     secure-store already exist). Then the release reaches phones over the air, with no reinstall.
   - **If a native change ever looks necessary, stop and ask the owner before writing it.** It
     turns the release into a new APK that every client phone must install (`version` bump,
     `eas build --profile vps`, a new `native-baseline.txt`). That is a client-facing event, and
     it is the owner's call.
-  - Before every Device B PR, run `node apps/field-mobile/scripts/native-changed.mjs` the way
+  - Before every PR that touches the field app, run `node apps/field-mobile/scripts/native-changed.mjs` the way
     `deploy.yml` does, or at minimum confirm that `apps/field-mobile/package.json`,
     `app.config.ts`, `plugins/` and `pnpm-lock.yaml` gained no native package or plugin.
 - Backend: no new container and no new service. The Kaizen module ships inside the existing
@@ -432,7 +420,7 @@ dark, English and Hindi, and the GEMBA acceptance checklist.
 
 ---
 
-## 6. Build order (one PR per step, device branch → `feat/kaizen`; merge `origin/feat/kaizen` into your branch before each)
+## 6. Build order (one PR per step)
 
 1. `contracts/kaizen.ts` + migration + Drizzle schema + RLS + triggers + schema test.
    (Contracts is the contention point, so land this alone and first.)
@@ -496,108 +484,6 @@ owner for confirmation**, then:
 
 ---
 
-## 11. Two devices, two Claude accounts: who owns what
-
-The work is split across two machines. **Git is the only shared state.** Neither session
-sees the other's conversation, memory or local files. Everything the other side needs must
-be in a merged PR, a PR description, or this file (committed at `plans/kaizen-module.md`).
-
-**Setup already done (commit that added this file):** the `feat/kaizen` branch was created
-from `main` (after PR #90, `4147924`), with the worktree at `/Users/krxna/main/kaizen` on Device A.
-It has **no upstream**, so a bare `git push` can't reach `main`. The prototype and the client's
-Kaizen Sheet are in `docs/requirements/kaizen/`, and the branch rule is at the top of `CLAUDE.md`,
-`AGENTS.md` and `plans/README.md`.
-
-**Still to do, by the owner:** publish both shared branches, from the worktree:
-`git push origin feat/kaizen kaizen/krxna` (each to its own name; never `main`).
-Device A's branch `kaizen/krxna` already exists locally, cut from `feat/kaizen`.
-
-**Device B, first time:** `git fetch origin && git switch -c kaizen/geetahuja origin/feat/kaizen
-&& git push -u origin kaizen/geetahuja`, then read this file. After that, `git push` from
-`kaizen/geetahuja` goes only to `kaizen/geetahuja`.
-
-From then on, `plans/kaizen-module.md` on `feat/kaizen` is the copy both devices read. A change
-to the plan is a PR to that file, never an edit on one machine only.
-
-**Start every session by saying which device you are:** "I am Device A (backend)" or
-"I am Device B (mobile)". Stay in your lane.
-
-| | Device A: backend + web | Device B: field app |
-|---|---|---|
-| Owns exclusively | `packages/contracts`, `packages/db` (all migrations), `packages/domain`, `apps/api`, `apps/admin-web`, `seed.ts`, `DECISIONS.md`, `ARCHITECTURE.md` | `apps/field-mobile` (incl. `app.config.ts` version, `eas.json`), `.maestro/` flows |
-| Build steps | 1, 2, 3, 7, 8, and docs in 9 | 4, 5, 6, and Maestro in 9 |
-| Merges PRs into `feat/kaizen` | Yes: reviews and merges **every** PR into `feat/kaizen`, both devices' | Never merges anything. Opens PRs and asks Device A to review them |
-| Releases | Merges `feat/kaizen` → `main` on release day only (§12). That merge deploys the server and then, automatically, the phone update | Never publishes a phone update or builds an APK (§5) |
-
-**Order:**
-
-1. **Phase 0 (Device A alone): steps 1 + 2.** Contracts, migration and domain merged to `feat/kaizen`.
-   Device B meanwhile: setup (below), then the `prototype` skill on the module picker and the
-   Kaizen card (two or three GEMBA variants), and pick one. No code merged yet.
-2. **Phase 1 (parallel).** Device A: step 3 (API) **first**, then 7 (export), then 8 (admin
-   web). Device B: step 4 (module picker, SQLite tables, outbox entries), then 5 and 6, built
-   against the merged contracts. Wire real sync once A's step-3 PR is on `feat/kaizen`.
-3. **Phase 2.** B runs the Maestro end-to-end flow against a local stack on `feat/kaizen`. A writes
-   R-48 and the ARCHITECTURE section. **Ship order: backend deployed and healthy first, then
-   B publishes the OTA update/APK.** An app calling endpoints the VPS doesn't have yet is
-   the failure this prevents.
-
-**Rules for the split:**
-- Device B needs a contract change? Do not edit `packages/contracts`. Open a GitHub issue or
-  draft PR describing it; Device A makes it. Same for migrations. Two people writing
-  migrations means two `0044_…` files.
-- Device A commits only on `kaizen/krxna`, and Device B only on `kaizen/geetahuja`. PRs go from
-  the device branch into `feat/kaizen`, never `main`. Merge `origin/feat/kaizen` into your branch
-  at the start of every session and before opening a PR (no rebase, no force-push).
-- Need something from the other device before their PR is merged? Wait for the merge into
-  `feat/kaizen`. Never merge or cherry-pick from the other device's branch.
-- Each PR description ends with a **"For the other device"** line: what changed that they
-  depend on (new endpoint, renamed field, new enum value), or "nothing".
-- Both devices run the full stack locally (`pnpm dev:up && pnpm db:migrate && pnpm seed`).
-  Nobody develops against the production VPS.
-
-**Per-device setup (both machines):**
-- **Optional, owner's choice: a pre-push guard.** Agents do not install it. From inside
-  the cloned repo:
-  ```bash
-  hook="$(git rev-parse --git-common-dir)/hooks/pre-push"
-  cat > "$hook" <<'HOOK'
-  #!/bin/sh
-  # Kaizen rule: nothing is ever pushed to main from this machine. main deploys to clients.
-  while read local_ref local_sha remote_ref remote_sha; do
-    if [ "$remote_ref" = "refs/heads/main" ]; then
-      echo "BLOCKED: pushing to main is not allowed. Kaizen work goes to feat/kaizen." >&2
-      exit 1
-    fi
-  done
-  HOOK
-  chmod +x "$hook"
-  ```
-  Test it: `git push origin HEAD:main --dry-run` must print `BLOCKED`. The hook covers all
-  worktrees of the clone. Release day uses the GitHub PR button, which the hook does not
-  affect.
-- Both machines already run audit5s: GitHub push access, Node 22, pnpm 10, Docker, a local
-  `.env`, and (Device B) Android testing. **No `.env` is sent between machines.** Each machine
-  uses its own development `.env`. Never use the server's production `.env`
-  (`/opt/audit5s/.env` on the VPS) on a laptop.
-- Each machine works in a **separate Kaizen folder** (a git worktree) next to its existing
-  `audit5s` folder: `kaizen`. A worktree shares the repo but **not** its untracked
-  files, so the Kaizen folder needs its own `pnpm install` and a copy of `.env` from the
-  `audit5s` folder (see the device prompts in `plans/kaizen-device-a.md` / `plans/kaizen-device-b.md`).
-- Same plugins: in Claude Code run `/plugin marketplace add DietrichGebert/ponytail`,
-  `/plugin marketplace add rampstackco/claude-skills`, then `/plugin install ponytail@ponytail`
-  and `/plugin install rampstack-skills@rampstack`. The project skills in `.claude/skills/`
-  come with the clone.
-- Same skills installed:
-  `npx skills add emilkowalski/skills -g -y -a claude-code`,
-  `npx skills add mattpocock/skills -s domain-modeling -s codebase-design -s improve-codebase-architecture -g -y -a claude-code`,
-  `npx skills add supabase/agent-skills -s supabase-postgres-best-practices -g -y -a claude-code`,
-  `npx skills add expo/skills -s expo-design-system -s expo-animation -s expo-router -s eas-update -g -y -a claude-code`,
-  `npx skills add pbakaus/impeccable -g -y -a claude-code`,
-  `npx skills add vercel-labs/agent-skills -g -y -a claude-code`.
-
----
-
 ## 12. Production safety: the 5S module is live with clients
 
 The 5S module is in daily use in client plants. **Nothing in this work may change how 5S
@@ -609,7 +495,7 @@ including running migrations on the live database. So:
 
 - All Kaizen work merges into `feat/kaizen`. CI runs there (it runs on every branch), and
   nothing deploys.
-- 5S fixes keep going to `main` as usual. Device A merges `main` into `feat/kaizen` at least
+- 5S fixes keep going to `main` as usual. Merge `main` into `feat/kaizen` at least
   weekly, and immediately after any 5S hotfix, so the final merge is small.
 - `feat/kaizen` merges into `main` **once**, on release day, by the owner.
 
@@ -636,8 +522,8 @@ including running migrations on the live database. So:
    `infra/restore-drill.sh` does (never the production volume). Run the Kaizen migrations
    against it. They must apply cleanly, and the 5S smoke checks (`apps/admin-web/smoke*.mjs`)
    must pass against an API pointed at it. Do not copy client data to laptops.
-2. Device B runs the field app from `feat/kaizen` against a local stack, on the emulator **and**
-   on a real Android phone (the way Device B already tests 5S on a phone), for at least two
+2. Run the field app from `feat/kaizen` against a local stack, on the emulator **and**
+   on a real Android phone, for at least two
    working days. That means 5S audits end to end and Kaizen end to end, including offline, and
    the upgrade test from §12 (queued 5S items survive). No production server is involved:
    Kaizen endpoints don't exist there until release.
