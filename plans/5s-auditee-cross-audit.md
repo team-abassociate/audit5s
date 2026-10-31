@@ -1,34 +1,27 @@
 # 5S: photo after score, auto checklist, cross-audit assignment, auditee, locked Zone fields
 
-Owner request, 2026-10-31. Two devices work at once:
-
-- **Device A, krxna (macOS):** `packages/contracts`, `packages/db` (every migration),
-  `packages/domain`, `apps/api`, `apps/admin-web`, `DECISIONS.md`, this plan.
-- **Device B, geetahuja (Windows):** `apps/field-mobile/**` only.
-
-Same ownership as the Kaizen work (`kaizen-device-a.md` §2). A device never edits the other's
-folders. If B needs a contract change, B asks A; A ships it.
+Owner request, 2026-10-31.
 
 ## 0. Branches and folders
 
-These are 5S changes, so they do **not** go on `kaizen/krxna` / `kaizen/geetahuja`. One short
+One short
 branch per PR, cut from `origin/main`, each in its own worktree:
 
-| PR | Branch | Device | Depends on |
+| PR | Branch | What | Depends on |
 |---|---|---|---|
-| P1 | `feat/photo-after-score` | B | nothing |
-| P2 | `feat/zone-fields-server` | A | nothing |
-| P3 | `feat/zone-fields-field` | B | P2 merged |
+| P1 | `feat/photo-after-score` | phone | nothing |
+| P2 | `feat/zone-fields-server` | server + web | nothing |
+| P3 | `feat/zone-fields-field` | phone | P2 merged |
 
 ```bash
 git fetch origin
 git worktree add ../<branch-name-without-feat/> -b <branch> origin/main
 ```
 
-Rules carried over from `kaizen-module.md` BRANCH RULE: PRs go straight into `main`, merge
+Rules (`CLAUDE.md` branch rule): PRs go straight into `main`, merge
 commit only; `main` is production (merge = deploy + OTA), so CI green and the owner's go
 first; stay current by merging `origin/main`, never rebase or force-push; never
-`--no-verify`; commit as the device's own GitHub account.
+`--no-verify`.
 
 **Merge order matters:** P2 (server) must be live before P3 (phone). An updated phone that
 sends an auditee or a new photo kind to an old server is refused, and that audit sticks in the
@@ -36,7 +29,7 @@ outbox. P1 can ship any time.
 
 No new APK: everything here is JavaScript and reaches phones by OTA.
 
-## 1. Photo only after a score (P1, Device B, plus web in P2)
+## 1. Photo only after a score (P1, plus web in P2)
 
 Today a question's camera and gallery buttons work with no answer chosen; the photo is
 filed `NEUTRAL` (`classifyEvidence` with `scoreAtCapture: null`) and the report puts it in
@@ -49,11 +42,11 @@ neither section.
 - Once a question has a photo, its answer can be **changed** (the photo is re-filed, as
   today via `reclassifyLocalEvidence`) but not **cleared** back to no answer.
 - Walk-by photos (`walk-by/`) are not question photos and are untouched.
-- **Web (Device A, in P2):** the same rule in `apps/admin-web/src/features/conduct/ZoneRun.tsx`.
+- **Web (in P2):** the same rule in `apps/admin-web/src/features/conduct/ZoneRun.tsx`.
 - Server: no change. Rejecting a scoreless photo server-side would strand photos already
   sitting in older phones' outboxes. Add it once every phone is on the new bundle, if wanted.
 
-## 2. Checklists reach phones without a button (P1, Device B)
+## 2. Checklists reach phones without a button (P1)
 
 Checklist changes are data, not app code, so OTA is the wrong pipe for them. They already
 travel on their own: `lib/sync/provider.tsx` pulls the catalogue on every sync cycle (app
@@ -77,7 +70,7 @@ Coordinator picks one person from the Unit's **Zone Leaders / Auditors**. Under 
 every Auditor-list account, external auditors included. Consultants are not on the list (R-64
 hides them from the Coordinator). A Zone Leader may be given their own Zone (D9).
 
-**Device A (P2), done in `feat/zone-fields-server`:**
+**Server + web (P2), done in `feat/zone-fields-server`:**
 - Migration `0060`: append-only `cross_audit_assignment` (call, auditor, who assigned, when);
   the latest row for a call is in force. A call with none went to every Zone Leader.
 - `POST /units/:id/cross-audit` takes `assignments: [{ zoneId, auditorUserId }]` (old
@@ -92,7 +85,7 @@ hides them from the Coordinator). A Zone Leader may be given their own Zone (D9)
 - Web `CrossAudits.tsx`: each ticked Zone gets a person dropdown; the round card shows who it
   is given to and lets the Coordinator change it.
 
-**Device B (P3):**
+**Phone (P3):**
 - `app/cross-audits.tsx` (Coordinator's call screen): per ticked Zone, a person dropdown from
   `/units/:id/cross-auditors`; every ticked Zone needs a person. Send `assignments`.
 - `components/cross-audit-calls.tsx` and `cross-audit-round.tsx`: show "Assigned to you" or
@@ -103,7 +96,7 @@ hides them from the Coordinator). A Zone Leader may be given their own Zone (D9)
 When the Zone Leader is away, someone else faces the audit. The auditor records who did, with
 a photo, as proof for management. If the Zone Leader is there, they are the auditee.
 
-**Device A (P2):**
+**Server + web (P2):**
 - Done in P2: migration `0060` adds `audit_zone.auditee_name` and the `AUDITEE_PHOTO` photo
   kind; `auditeeName` on the audit-zone upsert and on `AuditZone`; the report shows both.
 - `packages/domain/src/evidence.ts`: `AUDITEE_PHOTO` → `NEUTRAL` like `AUDITOR_SELFIE`, with
@@ -116,7 +109,7 @@ a photo, as proof for management. If the Zone Leader is there, they are the audi
   `AuditDetailPanel.tsx` shows both.
 - Web conduct (`ConductStart.tsx` / `ZoneRun.tsx`): the same Auditee field and photo.
 
-**Device B (P3):**
+**Phone (P3):**
 - `app/audit/zones/[auditId].tsx`, the form where the Zone is picked: new **Auditee name**
   field, prefilled with the Zone Leader's name (editable), and **Photo of auditee**: live
   camera only, no gallery, reusing `CameraCapture` the way `selfie-check.tsx` does. Both
@@ -131,7 +124,7 @@ a photo, as proof for management. If the Zone Leader is there, they are the audi
 Today every auditor types the Zone description and the Zone Leader's name on the Zone form,
 and the typed leader name is written back to the Zone (`app_set_zone_leader_name`, 0015).
 
-**Device A (P2), done in `feat/zone-fields-server`:**
+**Server + web (P2), done in `feat/zone-fields-server`:**
 - The server drops `zoneDescription`, `zoneLeaderName` and `zoneLeaderUserId` from anyone but
   a Super Admin or Coordinator (one place, which the sync push also goes through); the snapshot
   takes the Zone's own. Dropped, not refused, so older phones still sync.
@@ -139,7 +132,7 @@ and the typed leader name is written back to the Zone (`app_set_zone_leader_name
 - Web Run an audit: the two fields are read-only for anyone else.
 - R-67 conflict: the Coordinator fills in descriptions after a Zone list import.
 
-**Device B (P3):**
+**Phone (P3):**
 - `app/audit/zones/[auditId].tsx`: for a Zone Leader or Consultant, description and Zone
   Leader show as read-only text, and the leader name is no longer a required field. Super
   Admin and Coordinator keep the editable fields. The new Auditee field (§4) is the place
@@ -147,17 +140,8 @@ and the typed leader name is written back to the Zone (`app_set_zone_leader_name
 
 ## 6. Order of work
 
-```
-Day 1   A: P2 — 0060, contracts, domain, API, web, DECISIONS R-72…R-76   ┐ in parallel
-        B: P1 — photo after score, no catalogue button                   ┘
-        B: P1 PR → owner merges (OTA)
-Day 2   A: P2 PR → CI green → owner merges (server deploys)
-        B: merge origin/main into feat/zone-fields-field, build P3 against the real contracts
-Day 3   B: P3 PR → CI green → owner merges (OTA)
-```
-
-B can lay out the P3 screens on day 1 against the contract shapes written in this plan, and
-wire them up once P2 lands. A pushes P2's contracts commit first so B can read it on GitHub.
+P1 and P2 in parallel; P3 after P2 is live on production (it needs P2's contracts and
+server). Each PR: CI green, then the owner merges.
 
 ## 7. Done means, per PR
 
