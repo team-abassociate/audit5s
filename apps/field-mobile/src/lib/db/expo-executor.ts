@@ -46,11 +46,14 @@ export async function openExpoExecutor(
 }
 
 /**
- * In a browser the file is an OPFS handle that one page holds at a time, and a reloaded page
- * starts before the old one's worker has let go. A few retries ride that out; a second tab
- * still holding it outlasts them, and this tab shows the error until that one is closed.
+ * In a browser the files live in OPFS, and expo-sqlite's worker locks the whole store for as
+ * long as the page lives — closing the database does not let go. So one tab at a time: the
+ * tab opening it asks any older tab to give it up, and that tab reloads (the only thing that
+ * frees the lock) into "open in another tab" — see `yieldedToAnotherTab`. The retries ride
+ * out the moment before the old page is gone.
  */
 async function openWithRetry(name: string): Promise<SQLite.SQLiteDatabase> {
+  if (Platform.OS === 'web') claimFromOtherTabs();
   for (let attempt = 0; ; attempt++) {
     try {
       return await SQLite.openDatabaseAsync(name);
@@ -59,6 +62,50 @@ async function openWithRetry(name: string): Promise<SQLite.SQLiteDatabase> {
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
   }
+}
+
+const TABS = 'audit5s-local-db';
+const YIELDED = 'audit5s-local-db-yielded';
+interface TabChannel {
+  postMessage(message: string): void;
+  onmessage: (() => void) | null;
+}
+// Browser globals, typed here: the app compiles without the DOM lib.
+const browser = globalThis as unknown as {
+  BroadcastChannel?: new (name: string) => TabChannel;
+  location: { reload(): void };
+};
+let channel: TabChannel | null = null;
+
+/** Web: this tab gave the database to a newer one, and must not take it back unasked. */
+export function yieldedToAnotherTab(): boolean {
+  try {
+    return Platform.OS === 'web' && sessionStorage.getItem(YIELDED) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function claimFromOtherTabs(): void {
+  try {
+    sessionStorage.removeItem(YIELDED);
+  } catch {
+    // Storage blocked: this tab just won't remember it yielded.
+  }
+  if (!browser.BroadcastChannel) return;
+  if (!channel) {
+    channel = new browser.BroadcastChannel(TABS);
+    channel.onmessage = () => {
+      try {
+        sessionStorage.setItem(YIELDED, '1');
+      } catch {
+        // Without the flag the reload would take the database straight back; stay put instead.
+        return;
+      }
+      browser.location.reload();
+    };
+  }
+  channel.postMessage('take');
 }
 
 /**
