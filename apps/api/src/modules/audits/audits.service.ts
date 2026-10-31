@@ -215,8 +215,11 @@ export class AuditsService {
     return {
       scored: isScoredAuditType(audit.auditType),
       audit: toScoreSummary(audit.id, null, auditBreakdown),
-      zones: zones.map((zone) => {
-        const breakdown = zoneBreakdowns.get(zone.id)!;
+      // A withdrawn Zone has no breakdown: it was abandoned, not audited, and is no part of
+      // the score. It is left out here too, rather than read as a breakdown it does not have.
+      zones: zones.flatMap((zone) => {
+        const breakdown = zoneBreakdowns.get(zone.id);
+        if (!breakdown) return [];
         return {
           ...toScoreSummary(audit.id, zone.id, breakdown),
           zoneCode: zone.zoneCodeSnapshot,

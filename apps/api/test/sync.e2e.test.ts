@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   API_BASE_PATH,
   type Audit,
+  type AuditScoreSummary,
   type Device,
   type Page,
   type SyncBatchRequest,
@@ -1159,6 +1160,11 @@ describe('withdrawing an unfinished Zone', () => {
     expect(zone.withdrawReason).toBe('Wrong Zone');
     // A-1: nothing is deleted.
     expect(zone.responses).toHaveLength(5);
+
+    // The Scores screen still opens, without the Zone that left the audit.
+    const summary = await world.request('GET', `${base}/audits/${auditId}/summary`, { token: consultantToken });
+    expect(summary.status, JSON.stringify(summary.body)).toBe(200);
+    expect((summary.body as AuditScoreSummary).zones.map((one) => one.auditZoneId)).not.toContain(auditZoneId);
 
     // R-29's lock is released on the same write.
     const { rows } = await world.owner.query('SELECT audit_open FROM audit_zone WHERE id = $1', [
