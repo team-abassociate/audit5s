@@ -1128,6 +1128,7 @@ export function toAuditZone(
     zoneDescriptionSnapshot: row.zoneDescriptionSnapshot,
     zoneLeaderUserIdSnapshot: row.zoneLeaderUserIdSnapshot,
     zoneLeaderNameSnapshot: row.zoneLeaderNameSnapshot,
+    auditeeName: row.auditeeName,
     checklistVersionId: row.checklistVersionId,
     checklistTemplateNameSnapshot: row.checklistTemplateNameSnapshot,
     zoneRemark: row.zoneRemark,

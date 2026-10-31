@@ -3,6 +3,7 @@ import {
   UNIT_COORDINATOR_EDITABLE_FIELDS,
   type CreateUnitRequest,
   type CrossAuditCall,
+  type CrossAuditor,
   type CrossAuditRound,
   type ListUnitsQuery,
   type Page,
@@ -15,7 +16,12 @@ import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { AuthRepository } from '../auth/auth.repository';
-import { UnitsRepository, type UnitPatch } from './units.repository';
+import {
+  UnitsRepository,
+  type CrossAuditNotice,
+  type CrossAuditRequest,
+  type UnitPatch,
+} from './units.repository';
 
 @Injectable()
 export class UnitsService {
@@ -29,25 +35,70 @@ export class UnitsService {
   /**
    * Every Zone Leader of the Unit is told to audit the named Zones by `dueOn`, their own
    * included (D9). One call of many Zones is one cross audit (0051); it stands until each
-   * Zone is audited or the Coordinator completes it.
+   * Zone is audited or the Coordinator completes it. R-73: a Zone given to one of the Unit's
+   * Zone Leaders is told to them alone, and only they see it.
    */
-  async callCrossAudit(scope: ScopeContext, unitId: string, zoneIds: readonly string[], dueOn?: string): Promise<void> {
-    const called = await this.repository.callCrossAudit(scope, unitId, zoneIds, dueOn, (tx, data) =>
-      this.events.emit(tx, {
-        type: 'CROSS_AUDIT_CALLED',
-        actorUserId: scope.actor.userId,
-        unitId,
-        resourceType: 'unit',
-        resourceId: unitId,
-        data,
-      }),
-    );
+  async callCrossAudit(
+    scope: ScopeContext,
+    unitId: string,
+    requested: readonly CrossAuditRequest[],
+    dueOn?: string,
+  ): Promise<void> {
+    const called = await this.repository.callCrossAudit(scope, unitId, requested, dueOn, this.notice(scope, unitId));
     if (called === 'NOT_FOUND') {
       throw AppError.notFound('No such Zone in this Unit');
     }
     if (called === 'PAST_DUE') {
       throw AppError.validation('The date it is due by cannot be in the past');
     }
+    if (called === 'NOT_A_ZONE_LEADER') {
+      throw AppError.validation('A Zone can be given only to a Zone Leader / Auditor of this Unit');
+    }
+  }
+
+  /** R-73: gives one Zone of an open cross audit to another of the Unit's Zone Leaders. */
+  async reassignCrossAudit(
+    scope: ScopeContext,
+    unitId: string,
+    roundId: string,
+    zoneId: string,
+    auditorUserId: string,
+  ): Promise<void> {
+    const result = await this.repository.reassignCrossAudit(
+      scope,
+      unitId,
+      roundId,
+      zoneId,
+      auditorUserId,
+      this.notice(scope, unitId),
+    );
+    if (result === 'NOT_FOUND') throw AppError.notFound('No such Zone in this cross audit');
+    if (result === 'COMPLETED') throw AppError.conflict('INVALID_STATE_TRANSITION', 'This cross audit is already completed');
+    if (result === 'NOT_A_ZONE_LEADER') {
+      throw AppError.validation('A Zone can be given only to a Zone Leader / Auditor of this Unit');
+    }
+  }
+
+  async listCrossAuditors(scope: ScopeContext, unitId: string): Promise<CrossAuditor[]> {
+    const people = await this.repository.listCrossAuditors(scope, unitId);
+    if (!people) {
+      throw AppError.notFound('No such Unit');
+    }
+    return people;
+  }
+
+  /** A call to everyone goes to the Unit's Zone Leaders; one given to people, to them (R-73). */
+  private notice(scope: ScopeContext, unitId: string): CrossAuditNotice {
+    return (tx, data, userIds) =>
+      this.events.emit(tx, {
+        type: userIds ? 'CROSS_AUDIT_ASSIGNED' : 'CROSS_AUDIT_CALLED',
+        actorUserId: scope.actor.userId,
+        unitId,
+        resourceType: 'unit',
+        resourceId: unitId,
+        ...(userIds ? { userIds } : {}),
+        data,
+      });
   }
 
   async listCrossAuditCalls(scope: ScopeContext, unitId: string): Promise<CrossAuditCall[]> {

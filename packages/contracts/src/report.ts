@@ -163,6 +163,12 @@ export const reportZoneSchema = z.object({
   zoneName: z.string(),
   zoneDescription: z.string().nullable(),
   zoneLeaderName: z.string().nullable(),
+  /**
+   * R-72: who faced the audit, and their photo. Defaulted so a payload frozen before R-72
+   * still parses and renders as it was issued (§10.5).
+   */
+  auditeeName: z.string().nullable().default(null),
+  auditeePhotoObjectKey: z.string().nullable().default(null),
   departmentName: z.string().nullable(),
   checklistVersionNo: z.number().int().nullable(),
   auditDate: isoDateTimeSchema.nullable(),

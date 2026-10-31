@@ -174,6 +174,8 @@ export const auditZones = pgTable(
       onDelete: 'restrict',
     }),
     zoneLeaderNameSnapshot: text('zone_leader_name_snapshot'),
+    /** R-72 (0060): who faced the audit of this Zone, as the auditor typed it. */
+    auditeeName: text('auditee_name'),
 
     /** The binding version for this Zone's questions (QR-2). */
     checklistVersionId: uuid('checklist_version_id').references(() => checklistVersions.id, {

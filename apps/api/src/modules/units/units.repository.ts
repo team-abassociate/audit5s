@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gt, ilike, inArray, isNull, sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import {
   auditLogs,
+  crossAuditAssignments,
   crossAuditCalls,
   crossAuditRounds,
   unitMemberships,
@@ -12,7 +13,7 @@ import {
   type Transaction,
 } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
-import type { CreateUnitRequest, CrossAuditCall, CrossAuditRound, ListUnitsQuery } from '@audit5s/contracts';
+import type { CreateUnitRequest, CrossAuditCall, CrossAuditor, CrossAuditRound, ListUnitsQuery } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
@@ -51,6 +52,15 @@ export type CrossAuditCallData = {
   /** `YYYY-MM-DD`, the day it is due (0050). */
   dueOn: string;
 };
+
+/**
+ * Who a cross-audit notice goes to (R-73): without `userIds`, every Zone Leader of the Unit
+ * (`CROSS_AUDIT_CALLED`); with them, only those people (`CROSS_AUDIT_ASSIGNED`).
+ */
+export type CrossAuditNotice = (tx: Transaction, data: CrossAuditCallData, userIds?: string[]) => Promise<void>;
+
+/** A Zone of a cross audit being called, and who it is given to (R-73), if anyone. */
+export type CrossAuditRequest = { zoneId: string; auditorUserId?: string };
 
 @Injectable()
 export class UnitsRepository extends BaseRepository {
@@ -188,11 +198,12 @@ export class UnitsRepository extends BaseRepository {
   async callCrossAudit(
     scope: ScopeContext,
     unitId: string,
-    zoneIds: readonly string[],
+    requested: readonly CrossAuditRequest[],
     dueOn: string | undefined,
-    emit: (tx: Transaction, data: CrossAuditCallData) => Promise<void>,
-  ): Promise<'CALLED' | 'NOT_FOUND' | 'PAST_DUE'> {
-    const wanted = [...new Set(zoneIds)];
+    emit: CrossAuditNotice,
+  ): Promise<'CALLED' | 'NOT_FOUND' | 'PAST_DUE' | 'NOT_A_ZONE_LEADER'> {
+    const wanted = [...new Set(requested.map((item) => item.zoneId))];
+    const auditorOf = new Map(requested.flatMap((item) => (item.auditorUserId ? [[item.zoneId, item.auditorUserId]] : [])));
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [unit] = await tx
@@ -214,10 +225,22 @@ export class UnitsRepository extends BaseRepository {
       if (found.length !== wanted.length) return 'NOT_FOUND';
       const due = dueOn ?? unit.weekOut;
       if (due < unit.today) return 'PAST_DUE';
+      const assignees = new Set(auditorOf.values());
+      if ((await this.zoneLeadersOf(tx, unitId, [...assignees])).length !== assignees.size) return 'NOT_A_ZONE_LEADER';
       const calledBy = getRequestContext()?.actorLabel ?? null;
       const by = { unitId, calledByUserId: scope.actor.userId, calledByLabel: calledBy ?? 'system', dueOn: due };
       const [round] = await tx.insert(crossAuditRounds).values(by).returning({ id: crossAuditRounds.id });
-      await tx.insert(crossAuditCalls).values(found.map((zone) => ({ ...by, zoneId: zone.zoneId, roundId: round!.id })));
+      const calls = await tx
+        .insert(crossAuditCalls)
+        .values(found.map((zone) => ({ ...by, zoneId: zone.zoneId, roundId: round!.id })))
+        .returning({ id: crossAuditCalls.id, zoneId: crossAuditCalls.zoneId });
+      const assigned = calls.flatMap((call) => {
+        const auditorUserId = auditorOf.get(call.zoneId);
+        return auditorUserId
+          ? [{ callId: call.id, unitId, auditorUserId, assignedByUserId: scope.actor.userId }]
+          : [];
+      });
+      if (assigned.length > 0) await tx.insert(crossAuditAssignments).values(assigned);
       await tx.insert(auditLogs).values(
         found.map((zone) =>
           auditLogRow({
@@ -225,20 +248,33 @@ export class UnitsRepository extends BaseRepository {
             resourceType: 'unit',
             resourceId: unitId,
             unitId,
-            after: { ...zone, dueOn: due, roundId: round!.id },
+            after: { ...zone, dueOn: due, roundId: round!.id, auditorUserId: auditorOf.get(zone.zoneId) ?? null },
           }),
         ),
       );
       // One notice per call, however many Zones: a single Zone is named, several are counted.
-      const one = found.length === 1 ? found[0]! : null;
-      await emit(tx, {
-        unitName: unit.unitName,
-        roundId: round!.id,
-        zoneCount: found.length,
-        ...(one ?? {}),
-        calledBy,
-        dueOn: due,
-      });
+      // R-73: a Zone given to someone is told to them alone, one notice per person.
+      const notice = (zonesOf: typeof found, userIds?: string[]) =>
+        emit(
+          tx,
+          {
+            unitName: unit.unitName,
+            roundId: round!.id,
+            zoneCount: zonesOf.length,
+            ...(zonesOf.length === 1 ? zonesOf[0]! : {}),
+            calledBy,
+            dueOn: due,
+          },
+          userIds,
+        );
+      const open = found.filter((zone) => !auditorOf.has(zone.zoneId));
+      if (open.length > 0) await notice(open);
+      for (const userId of assignees) {
+        await notice(
+          found.filter((zone) => auditorOf.get(zone.zoneId) === userId),
+          [userId],
+        );
+      }
       return 'CALLED';
     });
   }
@@ -255,6 +291,7 @@ export class UnitsRepository extends BaseRepository {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       if (!(await this.unitInScope(tx, scope, unitId))) return null;
+      const assignee = latestAssignee(crossAuditCalls.id);
       const rows = await tx
         .select({
           id: crossAuditCalls.id,
@@ -266,6 +303,9 @@ export class UnitsRepository extends BaseRepository {
           calledBy: crossAuditCalls.calledByLabel,
           dueOn: crossAuditRounds.dueOn,
           createdAt: crossAuditCalls.createdAt,
+          assigneeUserId: sql<string | null>`${assignee}`,
+          // Null for a Zone Leader reading someone else's name; they only see their own (R-73).
+          assigneeName: sql<string | null>`(SELECT u.full_name FROM "user" u WHERE u.id = ${assignee})`,
         })
         .from(crossAuditCalls)
         .innerJoin(crossAuditRounds, eq(crossAuditRounds.id, crossAuditCalls.roundId))
@@ -277,6 +317,10 @@ export class UnitsRepository extends BaseRepository {
             isNull(zones.archivedAt),
             isNull(crossAuditRounds.completedAt),
             sql`NOT EXISTS (SELECT 1 ${answeringAudits(crossAuditCalls.unitId, crossAuditCalls.zoneId, crossAuditCalls.createdAt)})`,
+            // R-73: a Zone Leader is shown the Zones given to them, and the calls given to nobody.
+            scope.actor.role === 'ZONE_LEADER'
+              ? sql`(${assignee} IS NULL OR ${assignee} = ${scope.actor.userId})`
+              : undefined,
           ),
         )
         .orderBy(asc(crossAuditRounds.dueOn), asc(crossAuditCalls.createdAt));
@@ -303,7 +347,8 @@ export class UnitsRepository extends BaseRepository {
         SELECT r.id, r.unit_id, r.called_by_label, to_char(r.due_on, 'YYYY-MM-DD') AS due_on, r.created_at,
                r.completed_at, r.completed_by_label, r.completion_remark,
                c.zone_id, z.code AS zone_code, z.name AS zone_name,
-               answer.id AS audit_id, answer.status AS audit_status, answer.auditor_name
+               answer.id AS audit_id, answer.status AS audit_status, answer.auditor_name,
+               given.auditor_user_id AS assignee_user_id, given.full_name AS assignee_name
         FROM (SELECT * FROM cross_audit_round WHERE unit_id = ${unitId} ORDER BY created_at DESC LIMIT 100) r
         JOIN cross_audit_call c ON c.round_id = r.id
         JOIN zone z ON z.id = c.zone_id AND z.archived_at IS NULL
@@ -313,6 +358,11 @@ export class UnitsRepository extends BaseRepository {
           ORDER BY a.status IN (${sql.join(FINISHED.map((status) => sql`${status}`), sql`, `)}) DESC, a.started_at
           LIMIT 1
         ) answer ON true
+        LEFT JOIN LATERAL (
+          SELECT x.auditor_user_id, gu.full_name
+          FROM cross_audit_assignment x LEFT JOIN "user" gu ON gu.id = x.auditor_user_id
+          WHERE x.call_id = c.id ORDER BY x.created_at DESC LIMIT 1
+        ) given ON true
         ORDER BY r.created_at DESC, z.code
       `);
       const rounds = new Map<string, CrossAuditRound>();
@@ -339,6 +389,8 @@ export class UnitsRepository extends BaseRepository {
           state: !row.audit_id ? 'NOT_STARTED' : FINISHED.includes(row.audit_status!) ? 'COMPLETED' : 'IN_PROGRESS',
           auditId: row.audit_id,
           auditorName: row.auditor_name,
+          assigneeUserId: row.assignee_user_id,
+          assigneeName: row.assignee_name,
         });
       }
       return [...rounds.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -421,6 +473,93 @@ export class UnitsRepository extends BaseRepository {
     });
   }
 
+  /**
+   * R-73: gives one Zone of an open cross audit to another of the Unit's Zone Leaders. A new
+   * row; the one it replaces stays, so who held it before is on record. The new person is
+   * told.
+   */
+  async reassignCrossAudit(
+    scope: ScopeContext,
+    unitId: string,
+    roundId: string,
+    zoneId: string,
+    auditorUserId: string,
+    emit: CrossAuditNotice,
+  ): Promise<'ASSIGNED' | 'NOT_FOUND' | 'COMPLETED' | 'NOT_A_ZONE_LEADER'> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const round = await this.findRound(tx, scope, unitId, roundId);
+      if (!round) return 'NOT_FOUND';
+      if (round.completedAt) return 'COMPLETED';
+      const [call] = await tx
+        .select({ id: crossAuditCalls.id, zoneCode: zones.code, zoneName: zones.name, unitName: units.name })
+        .from(crossAuditCalls)
+        .innerJoin(zones, eq(zones.id, crossAuditCalls.zoneId))
+        .innerJoin(units, eq(units.id, crossAuditCalls.unitId))
+        .where(and(eq(crossAuditCalls.roundId, roundId), eq(crossAuditCalls.zoneId, zoneId)))
+        .limit(1);
+      if (!call) return 'NOT_FOUND';
+      if ((await this.zoneLeadersOf(tx, unitId, [auditorUserId])).length === 0) return 'NOT_A_ZONE_LEADER';
+      await tx
+        .insert(crossAuditAssignments)
+        .values({ callId: call.id, unitId, auditorUserId, assignedByUserId: scope.actor.userId });
+      await tx.insert(auditLogs).values(
+        auditLogRow({
+          action: 'cross_audit.reassigned',
+          resourceType: 'cross_audit_round',
+          resourceId: roundId,
+          unitId,
+          after: { zoneId, zoneCode: call.zoneCode, auditorUserId },
+        }),
+      );
+      await emit(
+        tx,
+        {
+          unitName: call.unitName,
+          roundId,
+          zoneCount: 1,
+          zoneId,
+          zoneCode: call.zoneCode,
+          zoneName: call.zoneName,
+          calledBy: getRequestContext()?.actorLabel ?? null,
+          dueOn: round.dueOn,
+        },
+        [auditorUserId],
+      );
+      return 'ASSIGNED';
+    });
+  }
+
+  /** R-73: who a Zone of a cross audit may be given to. `null` when the Unit is not in scope. */
+  async listCrossAuditors(scope: ScopeContext, unitId: string): Promise<CrossAuditor[] | null> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      if (!(await this.unitInScope(tx, scope, unitId))) return null;
+      return this.zoneLeadersOf(tx, unitId);
+    });
+  }
+
+  /**
+   * The Unit's active Zone Leaders — every Auditor-list account, external auditors included
+   * (R-64) — by name; only those of `userIds` when given.
+   */
+  private async zoneLeadersOf(tx: Transaction, unitId: string, userIds?: string[]): Promise<CrossAuditor[]> {
+    if (userIds?.length === 0) return [];
+    return tx
+      .selectDistinct({ userId: users.id, fullName: users.fullName, loginId: users.loginId })
+      .from(unitMemberships)
+      .innerJoin(users, eq(users.id, unitMemberships.userId))
+      .where(
+        and(
+          eq(unitMemberships.unitId, unitId),
+          eq(unitMemberships.role, 'ZONE_LEADER'),
+          eq(unitMemberships.status, 'ACTIVE'),
+          userIds ? inArray(unitMemberships.userId, userIds) : undefined,
+        ),
+      )
+      .orderBy(asc(users.fullName));
+  }
+
   private async unitInScope(tx: Transaction, scope: ScopeContext, unitId: string): Promise<boolean> {
     const [unit] = await tx
       .select({ id: units.id })
@@ -450,6 +589,11 @@ export class UnitsRepository extends BaseRepository {
       .limit(1);
     return round;
   }
+}
+
+/** R-73: who a call is given to now — its latest assignment — or null when it went to everyone. */
+function latestAssignee(callId: AnyColumn): SQL {
+  return sql`(SELECT x.auditor_user_id FROM cross_audit_assignment x WHERE x.call_id = ${callId} ORDER BY x.created_at DESC LIMIT 1)`;
 }
 
 /** An audit is finished — whatever happens to its findings after — in these states. */
@@ -486,6 +630,8 @@ type RoundRow = {
   zone_id: string;
   zone_code: string;
   zone_name: string;
+  assignee_user_id: string | null;
+  assignee_name: string | null;
   audit_id: string | null;
   audit_status: string | null;
   auditor_name: string | null;

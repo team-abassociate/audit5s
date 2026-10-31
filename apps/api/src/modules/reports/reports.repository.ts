@@ -55,6 +55,7 @@ export interface FrozenZoneSource {
   zoneName: string;
   zoneDescription: string | null;
   zoneLeaderName: string | null;
+  auditeeName: string | null;
   departmentName: string | null;
   checklistVersionNo: number | null;
   zoneRemark: string | null;
@@ -266,6 +267,7 @@ export class ReportsRepository extends BaseRepository {
         zoneName: auditZones.zoneNameSnapshot,
         zoneDescription: auditZones.zoneDescriptionSnapshot,
         zoneLeaderName: auditZones.zoneLeaderNameSnapshot,
+        auditeeName: auditZones.auditeeName,
         departmentName: auditZones.checklistTemplateNameSnapshot,
         checklistVersionNo: checklistVersions.versionNumber,
         zoneRemark: auditZones.zoneRemark,
@@ -371,6 +373,27 @@ export class ReportsRepository extends BaseRepository {
       .where(eq(audits.id, auditId))
       .limit(1);
     return row?.status ?? null;
+  }
+
+  /**
+   * R-72: each Zone's auditee photo, the latest one kept, beside the auditor's selfie. A
+   * redacted one is left out, as the selfie is.
+   */
+  async readAuditeePhotoKeys(tx: Transaction, auditZoneIds: readonly string[]): Promise<Map<string, string>> {
+    if (auditZoneIds.length === 0) return new Map();
+    const rows = await tx
+      .select({ auditZoneId: evidence.auditZoneId, objectKey: evidence.objectKey })
+      .from(evidence)
+      .where(
+        and(
+          inArray(evidence.auditZoneId, [...auditZoneIds]),
+          eq(evidence.kind, 'AUDITEE_PHOTO'),
+          isNull(evidence.deletedAt),
+          isNull(evidence.redactedAt),
+        ),
+      )
+      .orderBy(asc(evidence.capturedAt));
+    return new Map(rows.flatMap((row) => (row.auditZoneId && row.objectKey ? [[row.auditZoneId, row.objectKey] as const] : [])));
   }
 
   /** The auditor's selfie for the AUDITOR VERIFICATION box (§4.1 item 4). */

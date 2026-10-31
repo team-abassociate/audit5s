@@ -85,6 +85,8 @@ export const EVIDENCE_KINDS = [
   'QUESTION_EVIDENCE',
   'WALK_BY_PHOTO',
   'CORRECTIVE_AFTER',
+  /** R-72: whoever faced the audit of a Zone, photographed by the auditor. Always NEUTRAL. */
+  'AUDITEE_PHOTO',
 ] as const;
 export const evidenceKindSchema = z.enum(EVIDENCE_KINDS);
 export type EvidenceKind = z.infer<typeof evidenceKindSchema>;

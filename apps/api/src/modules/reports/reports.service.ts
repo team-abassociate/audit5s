@@ -366,13 +366,14 @@ export class ReportsService {
     const unit = await this.repository.readUnit(tx, target.unitId);
     if (!unit) throw AppError.notFound('No such Unit');
 
-    const [zones, sectionScores, responses, photos, actions, generatedByName] = await Promise.all([
+    const [zones, sectionScores, responses, photos, actions, generatedByName, auditeePhotoKeys] = await Promise.all([
       this.repository.readZones(tx, target.auditZoneIds),
       this.repository.readSectionScores(tx, target.auditZoneIds),
       this.repository.readResponses(tx, target.auditZoneIds),
       this.repository.readPhotos(tx, target.auditZoneIds),
       this.repository.readCorrectiveActions(tx, target.auditZoneIds),
       this.repository.readUserName(tx, scope.actor.userId),
+      this.repository.readAuditeePhotoKeys(tx, target.auditZoneIds),
     ]);
 
     const selfieObjectKey =
@@ -412,6 +413,7 @@ export class ReportsService {
       photos,
       actions,
       selfieObjectKey,
+      auditeePhotoKeys,
       actionUrls: tokens?.urls ?? new Map<string, string>(),
     });
 

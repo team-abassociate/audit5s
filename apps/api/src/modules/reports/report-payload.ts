@@ -62,6 +62,8 @@ export interface FreezeInput {
   actions: Rows<'readCorrectiveActions'>;
   /** Null on a summary — §4.3 item 9: no auditor selfie in the summary. */
   selfieObjectKey: string | null;
+  /** R-72: `auditZoneId → object key` of each Zone's auditee photo. */
+  auditeePhotoKeys: ReadonlyMap<string, string>;
   /** `correctiveActionId → /ca/{token}`. Minted before the render, frozen here (R-14). */
   actionUrls: ReadonlyMap<string, string>;
 }
@@ -183,6 +185,8 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
     zoneName: zone.zoneName,
     zoneDescription: zone.zoneDescription,
     zoneLeaderName: zone.zoneLeaderName,
+    auditeeName: zone.auditeeName,
+    auditeePhotoObjectKey: input.auditeePhotoKeys.get(zone.auditZoneId) ?? null,
     departmentName: zone.departmentName,
     checklistVersionNo: zone.checklistVersionNo,
     auditDate: (zone.auditCompletedAt ?? zone.completedAt ?? zone.auditStartedAt)?.toISOString() ?? null,

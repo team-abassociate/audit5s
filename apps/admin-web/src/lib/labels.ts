@@ -157,6 +157,7 @@ export const EVIDENCE_KIND_LABEL: Record<EvidenceKind, string> = {
   QUESTION_EVIDENCE: 'Question photo',
   WALK_BY_PHOTO: 'Walk-by photo',
   CORRECTIVE_AFTER: 'After photo',
+  AUDITEE_PHOTO: 'Auditee photo',
 };
 
 /**
@@ -179,6 +180,7 @@ export const NOTIFICATION_CATEGORY_LABEL: Record<NotificationEventType, string> 
   AUDIT_PAUSED: 'Audit',
   AUDIT_COMPLETED: 'Audit',
   CROSS_AUDIT_CALLED: 'Audit',
+  CROSS_AUDIT_ASSIGNED: 'Audit',
   CORRECTIVE_ACTION_SUBMITTED: 'Corrective action',
   CORRECTIVE_ACTION_VERIFIED: 'Corrective action',
   CORRECTIVE_ACTION_REOPENED: 'Corrective action',
@@ -203,6 +205,7 @@ export const NOTIFICATION_EVENT_LABEL: Record<NotificationEventType, string> = {
   AUDIT_PAUSED: 'Audit paused',
   AUDIT_COMPLETED: 'Audit completed',
   CROSS_AUDIT_CALLED: 'Cross audit called',
+  CROSS_AUDIT_ASSIGNED: 'Cross audit Zone given to you',
   CORRECTIVE_ACTION_SUBMITTED: 'Corrective action answered',
   CORRECTIVE_ACTION_VERIFIED: 'Corrective action approved',
   CORRECTIVE_ACTION_REOPENED: 'Corrective action reopened',

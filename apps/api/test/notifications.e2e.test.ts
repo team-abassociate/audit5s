@@ -434,6 +434,24 @@ describe('a cross audit called by the Coordinator (§2.6)', () => {
     expect(await notificationsFor(world.actors.SUPER_ADMIN.userId, called.eventId)).toHaveLength(0);
   });
 
+  it('tells a Zone given to one Zone Leader to them alone (R-73)', async () => {
+    await drainNotifications(world, worker, seen);
+    const response = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
+      token: world.actors.COORDINATOR.accessToken,
+      body: { assignments: [{ zoneId: world.zoneA, auditorUserId: world.actors.ZONE_LEADER.userId }] },
+    });
+    expect(response.status).toBe(204);
+
+    const events = await drainNotifications(world, worker, seen);
+    expect(events.map((event) => event.type)).not.toContain('CROSS_AUDIT_CALLED');
+    const given = events.find((event) => event.type === 'CROSS_AUDIT_ASSIGNED')!;
+    expect(given.userIds).toEqual([world.actors.ZONE_LEADER.userId]);
+    const [leader] = await notificationsFor(world.actors.ZONE_LEADER.userId, given.eventId);
+    expect(leader?.title).toMatch(/^Cross audit: Zone .+ is yours$/);
+    expect(await notificationsFor(world.actors.CONSULTANT.userId, given.eventId)).toHaveLength(0);
+    expect(await notificationsFor(world.actors.SUPER_ADMIN.userId, given.eventId)).toHaveLength(0);
+  });
+
   it('is the Coordinator’s to call: a Zone Leader is refused, another Unit is not found', async () => {
     const leader = await world.request('POST', `${base}/units/${world.unitA}/cross-audit`, {
       token: world.actors.ZONE_LEADER.accessToken,

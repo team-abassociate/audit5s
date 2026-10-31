@@ -329,6 +329,25 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     },
     coveredBy: 'audits.e2e.test.ts',
   },
+  {
+    method: 'GET',
+    path: '/api/v1/units/:id/cross-auditors',
+    description: 'unit:call_cross_audit — who a Zone of a cross audit may be given to (R-73)',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+  },
+  {
+    method: 'PUT',
+    path: '/api/v1/units/:id/cross-audits/:roundId/zones/:zoneId/assignee',
+    description: 'unit:call_cross_audit — give a Zone of a called cross audit to someone else (R-73)',
+    expected: {
+      SUPER_ADMIN: { inScope: NO_CONTENT, outOfScope: NO_CONTENT },
+      COORDINATOR: { inScope: NO_CONTENT, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
 
   // ------------------------------------------------------------------- zones
   {

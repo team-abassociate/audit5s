@@ -191,6 +191,8 @@ const ZONE: ReportZone = {
   zoneName: 'Press',
   zoneDescription: 'Press shop, bays 1–4',
   zoneLeaderName: 'R. Deshmukh',
+  auditeeName: 'S. Patil',
+  auditeePhotoObjectKey: null,
   departmentName: 'Shop Floor',
   checklistVersionNo: 3,
   auditDate: '2026-03-04T06:00:00.000Z',

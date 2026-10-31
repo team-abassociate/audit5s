@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Put,
   Post,
   Query,
 } from '@nestjs/common';
@@ -14,14 +15,17 @@ import {
   callCrossAuditRequestSchema,
   changeCrossAuditDeadlineRequestSchema,
   completeCrossAuditRequestSchema,
+  reassignCrossAuditRequestSchema,
   createUnitRequestSchema,
   listUnitsQuerySchema,
   updateUnitRequestSchema,
   type CallCrossAuditRequest,
   type ChangeCrossAuditDeadlineRequest,
   type CompleteCrossAuditRequest,
+  type ReassignCrossAuditRequest,
   type CreateUnitRequest,
   type CrossAuditCall,
+  type CrossAuditor,
   type CrossAuditRound,
   type Page,
   type Unit,
@@ -100,7 +104,31 @@ export class UnitsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(callCrossAuditRequestSchema)) body: CallCrossAuditRequest,
   ): Promise<void> {
-    return this.units.callCrossAudit(scope, id, body.zoneIds ?? [body.zoneId!], body.dueOn);
+    const requested = body.assignments ?? (body.zoneIds ?? [body.zoneId!]).map((zoneId) => ({ zoneId }));
+    return this.units.callCrossAudit(scope, id, requested, body.dueOn);
+  }
+
+  /** R-73: who the Coordinator may give a Zone of a cross audit to — the Unit's Zone Leaders. */
+  @RequirePermission('unit', 'call_cross_audit')
+  @Scope({ param: 'id', intent: 'read' })
+  @Get(':id/cross-auditors')
+  listCrossAuditors(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<CrossAuditor[]> {
+    return this.units.listCrossAuditors(scope, id);
+  }
+
+  /** R-73: gives one Zone of a called cross audit to someone else. */
+  @RequirePermission('unit', 'call_cross_audit')
+  @Scope({ param: 'id', intent: 'write' })
+  @Put(':id/cross-audits/:roundId/zones/:zoneId/assignee')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  reassignCrossAudit(
+    @CurrentScope() scope: ScopeContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('roundId', ParseUUIDPipe) roundId: string,
+    @Param('zoneId', ParseUUIDPipe) zoneId: string,
+    @Body(new ZodValidationPipe(reassignCrossAuditRequestSchema)) body: ReassignCrossAuditRequest,
+  ): Promise<void> {
+    return this.units.reassignCrossAudit(scope, id, roundId, zoneId, body.auditorUserId);
   }
 
   /** The Unit's cross-audit calls still standing (0050): the Zone Leaders' blue list. */

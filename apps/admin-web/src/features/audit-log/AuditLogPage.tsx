@@ -84,6 +84,7 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'unit.archived': 'Archived a Unit',
   'unit.cross_audit_called': 'Called a cross audit',
   'cross_audit.deadline_changed': 'Moved a cross audit’s deadline',
+  'cross_audit.reassigned': 'Gave a cross-audit Zone to someone else',
   'cross_audit.completed': 'Completed a cross audit',
   'device.revoked': 'Revoked a phone',
   'device.restored': 'Restored a phone',

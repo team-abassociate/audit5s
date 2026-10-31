@@ -173,9 +173,19 @@ export const callCrossAuditRequestSchema = z
     zoneId: uuidSchema.optional(),
     /** Several Zones, one cross audit (owner, 2026-10-14). */
     zoneIds: z.array(uuidSchema).min(1).max(500).optional(),
+    /**
+     * R-73: who audits which Zone — one of the Unit's Zone Leaders / Auditors (R-64), who
+     * may be given their own Zone (D9). Sent instead of `zoneIds`; a call without it is told
+     * to every Zone Leader, as before.
+     */
+    assignments: z
+      .array(z.object({ zoneId: uuidSchema, auditorUserId: uuidSchema }))
+      .min(1)
+      .max(500)
+      .optional(),
     dueOn: z.iso.date().optional(),
   })
-  .refine((body) => body.zoneId !== undefined || body.zoneIds !== undefined, {
+  .refine((body) => body.zoneId !== undefined || body.zoneIds !== undefined || body.assignments !== undefined, {
     message: 'Name at least one Zone',
     path: ['zoneIds'],
   });
@@ -208,10 +218,29 @@ export const crossAuditRoundSchema = z.object({
       state: crossAuditZoneStateSchema,
       auditId: uuidSchema.nullable(),
       auditorName: z.string().nullable(),
+      /** R-73: who the Coordinator assigned; null when the call went to every Zone Leader. */
+      assigneeUserId: uuidSchema.nullable().optional(),
+      assigneeName: z.string().nullable().optional(),
     }),
   ),
 });
 export type CrossAuditRound = z.infer<typeof crossAuditRoundSchema>;
+
+/** R-73: the Coordinator gives one Zone of a called cross audit to someone else. */
+export const reassignCrossAuditRequestSchema = z.object({ auditorUserId: uuidSchema });
+export type ReassignCrossAuditRequest = z.infer<typeof reassignCrossAuditRequestSchema>;
+
+/**
+ * R-73: someone the Coordinator may give a Zone of a cross audit to — an active Zone Leader
+ * of the Unit, which is what every Auditor-list account is, external auditors included
+ * (R-64). Consultants are not listed: R-64 hides them from the Coordinator.
+ */
+export const crossAuditorSchema = z.object({
+  userId: uuidSchema,
+  fullName: z.string(),
+  loginId: z.string().nullable(),
+});
+export type CrossAuditor = z.infer<typeof crossAuditorSchema>;
 
 /** Moving a called cross audit's deadline — later, or sooner, but not into the past. */
 export const changeCrossAuditDeadlineRequestSchema = z.object({ dueOn: z.iso.date() });
@@ -233,6 +262,9 @@ export const crossAuditCallSchema = z.object({
   /** `YYYY-MM-DD`; past it the call is overdue, and still stands. */
   dueOn: z.iso.date(),
   createdAt: isoDateTimeSchema,
+  /** R-73: who it is assigned to; null when it went to every Zone Leader. */
+  assigneeUserId: uuidSchema.nullable().optional(),
+  assigneeName: z.string().nullable().optional(),
 });
 export type CrossAuditCall = z.infer<typeof crossAuditCallSchema>;
 

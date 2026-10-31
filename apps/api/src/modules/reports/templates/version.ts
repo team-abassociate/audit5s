@@ -32,7 +32,9 @@
 // shapes (▲ ● ◆ ▼), where it was filled, rounded capsules. Issued PDFs keep their bytes (R-35).
 // 1.9.0 — D15: scores print truncated to one decimal (59.994 → "59.9"), never rounded up past
 // a band line. Issued PDFs keep their bytes (R-35).
-export const TEMPLATE_VERSION = '1.9.0';
+// 1.10.0 — R-72: the Zone report's Auditor verification box also shows the auditee — who
+// faced the audit — with their photo. Issued PDFs keep their bytes (R-35).
+export const TEMPLATE_VERSION = '1.10.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

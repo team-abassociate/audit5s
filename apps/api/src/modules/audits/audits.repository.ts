@@ -97,6 +97,7 @@ const auditZoneColumns = {
   zoneDescriptionSnapshot: auditZones.zoneDescriptionSnapshot,
   zoneLeaderUserIdSnapshot: auditZones.zoneLeaderUserIdSnapshot,
   zoneLeaderNameSnapshot: auditZones.zoneLeaderNameSnapshot,
+  auditeeName: auditZones.auditeeName,
   checklistVersionId: auditZones.checklistVersionId,
   checklistTemplateNameSnapshot: auditZones.checklistTemplateNameSnapshot,
   zoneRemark: auditZones.zoneRemark,
@@ -368,6 +369,8 @@ export class AuditsRepository extends BaseRepository {
       /** R-38: the whole list, replacing the stored one. Undefined leaves it as it is. */
       overallActionSuggestions: string[] | undefined;
       resumeQuestionId: string | null | undefined;
+      /** R-72: who faced the audit. Undefined leaves it as it is. */
+      auditeeName?: string | null;
       clientUpdatedAt: Date;
       snapshot: ZoneSnapshot;
       /**
@@ -393,6 +396,7 @@ export class AuditsRepository extends BaseRepository {
           zoneRemark: input.zoneRemark ?? null,
           overallActionSuggestions: input.overallActionSuggestions ?? [],
           resumeQuestionId: input.resumeQuestionId ?? null,
+          auditeeName: input.auditeeName || null,
           clientUpdatedAt: input.clientUpdatedAt,
           ...input.snapshot,
         })
@@ -408,6 +412,7 @@ export class AuditsRepository extends BaseRepository {
               input.resumeQuestionId === undefined
                 ? sql`${auditZones.resumeQuestionId}`
                 : (input.resumeQuestionId ?? null),
+            auditeeName: input.auditeeName === undefined ? sql`${auditZones.auditeeName}` : input.auditeeName || null,
             sequenceNo: input.sequenceNo,
             clientUpdatedAt: input.clientUpdatedAt,
             version: sql`${auditZones.version} + 1`,
