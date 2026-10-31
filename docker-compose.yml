@@ -34,6 +34,8 @@ x-api-env: &api-env
   EMAIL_API_KEY: ${EMAIL_API_KEY:-}
   EMAIL_FROM: ${EMAIL_FROM:-}
   PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-60}
+  # Kaizen's off-switch (R-71): `false` turns Kaizen off and leaves 5S running.
+  KAIZEN_ENABLED: ${KAIZEN_ENABLED:-true}
 
 services:
   postgres:

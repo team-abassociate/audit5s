@@ -251,6 +251,12 @@ export class SyncBatchService {
   ): Promise<SyncBatchResult> {
     const base = { outboxId: item.outboxId, entityId: item.entityId };
 
+    // R-71: Kaizen switched off. Held, not refused, so the phone keeps the item and sends
+    // it again next cycle without spending an attempt; 5S items in the batch go on as usual.
+    if (!this.config.KAIZEN_ENABLED && item.entityType.startsWith('kaizen')) {
+      return { ...base, status: 'RETRY_AFTER_PARENT', missingParent: 'kaizen:switched-off' };
+    }
+
     try {
       // Parents first: a missing one is a retry, not a failure, and must not consume an
       // attempt or quarantine work that will apply perfectly well next cycle.

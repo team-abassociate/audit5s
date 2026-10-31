@@ -2766,3 +2766,23 @@ no way in. In the owner's words:
   fingerprint matches `native-baseline.txt` again. `expo start --web` needs them added locally.
 - **One tab at a time.** The database file is held by one page; a second tab shows an error
   until the first is closed.
+
+## R-71 — Kaizen has an off-switch that leaves 5S running
+
+**Settled 2026-10-30 by the product owner.** 5S and Kaizen share one API, database, phone app
+and server (R-48). So that a Kaizen fault in production can be stopped without rolling back
+5S, one server setting, `KAIZEN_ENABLED` (default `true`), turns Kaizen off:
+
+- **Routes:** every `/kaizens` route answers 403 "Kaizen is switched off for now."
+- **Phones:** a Kaizen item in a sync batch is answered `RETRY_AFTER_PARENT`
+  (`kaizen:switched-off`). The phone keeps it and sends it again on each sync without using
+  up an attempt, so nothing is lost or dead-lettered. 5S items in the same batch apply as
+  usual, and the phone already sends the two modules in separate batches.
+- **Clients:** `/auth/me` reports `kaizenAccess: false` for everyone, Super Admin included,
+  so the phone and the web stay in 5S and the switch says "You need access to this feature".
+- **Workers:** the Kaizen photo and Kaizen Sheet workers are not started; their jobs wait in
+  the queue until Kaizen is back on.
+
+Nothing is deleted, and each person's Kaizen grant (R-57) is kept. To switch Kaizen off, set
+`KAIZEN_ENABLED=false` in `/opt/audit5s/.env` and recreate the `api`, `worker-general` and
+`worker-report` containers. Set it back to `true` and recreate them again to switch it on.

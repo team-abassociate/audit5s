@@ -101,3 +101,12 @@ describe('WEB_APP_URL reachability', () => {
     }
   });
 });
+
+describe('Kaizen off-switch (R-71)', () => {
+  const s3 = { S3_ENDPOINT: 'https://objects.example.test', S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's' };
+  it('is on unless set to "false"', () => {
+    expect(loadConfig({ ...base, ...s3 }).KAIZEN_ENABLED).toBe(true);
+    expect(loadConfig({ ...base, ...s3, KAIZEN_ENABLED: 'false' }).KAIZEN_ENABLED).toBe(false);
+    expect(() => loadConfig({ ...base, ...s3, KAIZEN_ENABLED: 'no' })).toThrow('KAIZEN_ENABLED');
+  });
+});

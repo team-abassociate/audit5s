@@ -1,17 +1,21 @@
 import {
   Body,
+  type CanActivate,
   Controller,
   Delete,
   Get,
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
+  Injectable,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import {
@@ -52,13 +56,26 @@ import { AppError } from '../../common/errors';
 import { RequirePermission, Scope } from '../../common/auth/decorators';
 import { CurrentScope } from '../../common/auth/current-scope.decorator';
 import { ZodValidationPipe } from '../auth/zod.pipe';
+import { CONFIG, type AppConfig } from '../../config/env';
 import { KaizensService } from './kaizens.service';
 
 /**
  * Kaizens (R-48, plans/kaizen-module.md §4.5). `:kaizenId` is the one name for this
  * position. The static routes (`dashboard`, `analysis`, `register`) are declared before it.
  */
+/** R-71: every Kaizen route is closed while Kaizen is switched off; 5S's are not touched. */
+@Injectable()
+export class KaizenSwitchGuard implements CanActivate {
+  constructor(@Inject(CONFIG) private readonly config: AppConfig) {}
+
+  canActivate(): boolean {
+    if (!this.config.KAIZEN_ENABLED) throw AppError.forbidden('FORBIDDEN', 'Kaizen is switched off for now.');
+    return true;
+  }
+}
+
 @Controller('kaizens')
+@UseGuards(KaizenSwitchGuard)
 export class KaizensController {
   constructor(private readonly kaizens: KaizensService) {}
 

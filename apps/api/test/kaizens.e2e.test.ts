@@ -210,6 +210,40 @@ describe('authorization: who reaches what (PART 6, owner 2026-10-07)', () => {
   });
 });
 
+describe('Kaizen switched off (R-71)', () => {
+  it('closes Kaizen, holds its sync items, and leaves 5S alone', async () => {
+    const { CONFIG } = await import('../src/config/env');
+    const config = world.app.get(CONFIG) as { KAIZEN_ENABLED: boolean };
+    const deviceId = randomUUID();
+    const token = await loginFromDevice(world, world.actors.ZONE_LEADER, deviceId);
+    config.KAIZEN_ENABLED = false;
+    try {
+      const refused = await world.request('GET', base, { token: as(world.actors.SUPER_ADMIN) });
+      expect(refused.status).toBe(403);
+      expect(JSON.stringify(refused.body)).toContain('Kaizen is switched off');
+      const me = await world.request('GET', '/api/v1/auth/me', { token: as(world.actors.SUPER_ADMIN) });
+      expect((me.body as { user: { kaizenAccess: boolean } }).user.kaizenAccess).toBe(false);
+      expect((await world.request('GET', '/api/v1/zones', { token: as(world.actors.SUPER_ADMIN) })).status).toBe(200);
+
+      const kaizenId = uuidv7();
+      const item = { outboxId: randomUUID(), entityType: 'kaizen', entityId: kaizenId, operation: 'upsert', payload: { zoneId: world.zoneA } };
+      const held = await world.request('POST', '/api/v1/sync/batch', {
+        token,
+        headers: { 'x-device-id': deviceId },
+        body: { batchId: randomUUID(), deviceId, items: [item] },
+      });
+      expect(held.status).toBe(200);
+      expect((held.body as SyncBatchResponse).results).toMatchObject([
+        { status: 'RETRY_AFTER_PARENT', missingParent: 'kaizen:switched-off' },
+      ]);
+      expect((await world.owner.query('SELECT 1 FROM kaizen WHERE id = $1', [kaizenId])).rowCount).toBe(0);
+    } finally {
+      config.KAIZEN_ENABLED = true;
+    }
+    expect((await world.request('GET', base, { token: as(world.actors.SUPER_ADMIN) })).status).toBe(200);
+  });
+});
+
 describe('Kaizen access is the Super Admin’s to grant (0052)', () => {
   it('without it a role that holds Kaizen is refused; only a Super Admin grants or revokes it', async () => {
     const leader = await makeActor(world.owner, world.request, 'ZONE_LEADER', 'Nia Noaccess', '+919000000107', world.unitA);

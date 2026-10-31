@@ -155,6 +155,13 @@ const envSchema = z.object({
   SEED_SUPER_ADMIN_EMAIL: z.string().optional(),
 
   SENTRY_DSN: z.string().optional(),
+
+  /**
+   * Kaizen's off-switch (R-71). `false` closes Kaizen's routes, holds its sync items on the
+   * phones (RETRY_AFTER_PARENT, so nothing is lost or dead-lettered), stops its workers and
+   * tells clients nobody has Kaizen. 5S is untouched. Set it and restart; nothing is deleted.
+   */
+  KAIZEN_ENABLED: z.enum(['true', 'false']).default('true').transform((value) => value === 'true'),
 });
 
 export type Env = z.infer<typeof envSchema>;
