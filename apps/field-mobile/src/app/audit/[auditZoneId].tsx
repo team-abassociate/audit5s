@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, FlatList, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, FlatList, Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
@@ -324,7 +324,9 @@ export default function QuestionnaireScreen() {
   // The owner, 2026-10-13: a question's photograph may also come from the gallery.
   const gallery = useMutation({
     mutationFn: async (row: Row) => {
-      // Refused before the picker opens, not after a photo was chosen.
+      // Refused before the picker opens, not after a photo was chosen. A photo with no answer
+      // would be filed neutral and land in neither section of the report.
+      if ((picked[row.questionId] ?? row.value) === null) throw new Error(t.chooseAnswerFirst);
       await assertZonePhotoCapacity(database, auditZoneId);
       const image = await pickFromGallery();
       if (image) await capture.mutateAsync({ row, image, live: false });
@@ -886,10 +888,13 @@ function QuestionCard({
           </Text>
         </Pressable>
         {canPhoto ? (
+          // Only after a score: unanswered, the photo would be filed neutral.
           <Button icon="photo-camera"
             title={t.takePhoto}
             variant="secondary"
             accessibilityLabel={t.takePhotoFor(row.globalOrder)}
+            disabled={value === null}
+            onDisabledPress={() => Alert.alert(t.chooseAnswerFirst)}
             onPress={onPhoto}
           />
         ) : null}
@@ -899,6 +904,8 @@ function QuestionCard({
             title=""
             variant="secondary"
             accessibilityLabel={t.fromGalleryFor(row.globalOrder)}
+            disabled={value === null}
+            onDisabledPress={() => Alert.alert(t.chooseAnswerFirst)}
             onPress={onGallery}
           />
         ) : null}

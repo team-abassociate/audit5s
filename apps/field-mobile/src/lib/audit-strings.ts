@@ -32,6 +32,7 @@ export interface AuditStrings {
   takePhoto: string;
   takePhotoFor: (question: number) => string;
   fromGalleryFor: (question: number) => string;
+  chooseAnswerFirst: string;
   cameraPrompt: (question: number) => string;
   remark: string;
   remarkPlaceholder: string;
@@ -111,6 +112,7 @@ const EN: AuditStrings = {
   takePhoto: 'Take photo',
   takePhotoFor: (question) => `Take a photograph for question ${question}`,
   fromGalleryFor: (question) => `Choose a photograph from the gallery for question ${question}`,
+  chooseAnswerFirst: 'Choose an answer first',
   cameraPrompt: (question) => `Photograph for question ${question}`,
   remark: 'Remark',
   remarkPlaceholder: 'What you saw, in your words',
@@ -200,6 +202,7 @@ const HI: AuditStrings = {
   takePhoto: 'फ़ोटो लें',
   takePhotoFor: (question) => `प्रश्न ${question} के लिए फ़ोटो लें`,
   fromGalleryFor: (question) => `प्रश्न ${question} के लिए गैलरी से फ़ोटो चुनें`,
+  chooseAnswerFirst: 'पहले उत्तर चुनें',
   cameraPrompt: (question) => `प्रश्न ${question} के लिए फ़ोटो`,
   remark: 'टिप्पणी',
   remarkPlaceholder: 'आपने क्या देखा, अपने शब्दों में',
@@ -291,6 +294,7 @@ const MR: AuditStrings = {
   takePhoto: 'फोटो घ्या',
   takePhotoFor: (question) => `प्रश्न ${question} साठी फोटो घ्या`,
   fromGalleryFor: (question) => `प्रश्न ${question} साठी गॅलरीतून फोटो निवडा`,
+  chooseAnswerFirst: 'आधी उत्तर निवडा',
   cameraPrompt: (question) => `प्रश्न ${question} साठी फोटो`,
   remark: 'शेरा',
   remarkPlaceholder: 'तुम्ही काय पाहिले, तुमच्या शब्दांत',

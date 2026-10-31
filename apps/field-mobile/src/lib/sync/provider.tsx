@@ -153,6 +153,24 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     };
   }, [sync, allowed]);
 
+  // A Coordinator has no cycle, so the catalogue comes on app open and on return to the app;
+  // there is no button for it.
+  useEffect(() => {
+    if (allowed || status !== 'ready' || !database) return;
+    const pull = () =>
+      void syncCatalogue(database).then(
+        (catalogue) => {
+          if (catalogue.changed) void queryClient.invalidateQueries({ queryKey: ['local'] });
+        },
+        () => undefined,
+      );
+    pull();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') pull();
+    });
+    return () => subscription.remove();
+  }, [allowed, status, database, queryClient]);
+
   const value = useMemo(
     () => ({ sync, syncing, online, lastResult }),
     [sync, syncing, online, lastResult],

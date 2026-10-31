@@ -205,7 +205,7 @@ export function AuditStart({
         {units.isPending ? (
           <ActivityIndicator color={theme.color.ink} />
         ) : none ? (
-          <EmptyState title="No Unit" detail="No Unit is on this phone yet. Sync the catalogue from Profile." />
+          <EmptyState title="No Unit" detail="No Unit is on this phone yet. Connect to the internet once to load your Unit." />
         ) : (
           <View style={styles.content}>
             <SelectField
