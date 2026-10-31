@@ -27,7 +27,7 @@ export default function AuditTabScreen() {
       ) : (
         <EmptyState
           title="No Unit"
-          detail="Your account is not linked to a Unit yet. Sync the catalogue from Profile once it is."
+          detail="Your account is not linked to a Unit yet. Connect to the internet once to load your Unit."
         />
       )}
     </Screen>

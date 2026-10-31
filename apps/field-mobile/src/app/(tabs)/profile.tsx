@@ -1,6 +1,6 @@
 import { Alert, ScrollView, Text, View } from 'react-native';
 import Constants from 'expo-constants';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'expo-router';
 import type { ConsultantActivity, Unit } from '@audit5s/contracts';
 import {
@@ -11,7 +11,6 @@ import {
   Chip,
   ChoiceList,
   Data,
-  ErrorBanner,
   LedgerRow,
   Muted,
   Screen,
@@ -20,7 +19,6 @@ import {
 import { LanguageSwitcher } from '../../components/language-switcher';
 import { ModuleSwitch } from '../../components/module-switch';
 import { api } from '../../lib/api';
-import { lastCatalogueSyncAt, syncCatalogue } from '../../lib/catalogue';
 import { useLocalDatabase } from '../../lib/db/provider';
 import { formatDateTime } from '../../lib/format';
 import { ROLE_LABELS } from '../../lib/labels';
@@ -40,9 +38,6 @@ export default function ProfileScreen() {
   const { user, scope, signOut } = useSession();
   const theme = useThemeChoice();
   const database = useLocalDatabase();
-  const queryClient = useQueryClient();
-  // Named `pushWork` rather than `sync`: this screen already has a `sync` mutation for the
-  // *catalogue* pull, and the two are opposite directions.
   const { sync: pushWork } = useSync();
 
   /**
@@ -91,16 +86,6 @@ export default function ProfileScreen() {
       },
     ]);
   };
-
-  const lastSync = useQuery({
-    queryKey: ['local', 'last-catalogue-sync'],
-    queryFn: () => lastCatalogueSyncAt(database),
-  });
-
-  const sync = useMutation({
-    mutationFn: () => syncCatalogue(database),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
-  });
 
   const activity = useQuery({
     queryKey: ['analytics', 'activity', 'me'],
@@ -183,30 +168,6 @@ export default function ProfileScreen() {
         <Card>
           <CardHeader title="Language · भाषा" description="Kaizen, and the 5S checklist questions." />
           <LanguageSwitcher />
-        </Card>
-
-        <Card>
-          <CardHeader
-            title="Catalogue"
-            description="Units, Zones and checklists are stored on this device and read without a network."
-          />
-          <View style={styles.rows} />
-          <LedgerRow
-            label="Last synced"
-            value={lastSync.data ? formatDateTime(lastSync.data) : 'Never'}
-            last
-          />
-          <View style={styles.cardAction}>
-            <ErrorBanner
-              message={sync.error ? 'Could not reach the server. The stored catalogue is unchanged.' : null}
-            />
-            <Button icon="sync"
-              title="Sync catalogue"
-              variant="secondary"
-              busy={sync.isPending}
-              onPress={() => sync.mutate()}
-            />
-          </View>
         </Card>
 
         {user.role === 'CONSULTANT' ? (

@@ -37,8 +37,3 @@ export async function syncCatalogue(database: LocalDatabase): Promise<CatalogueS
     syncedAt: new Date().toISOString(),
   };
 }
-
-/** What the Profile tab shows: when the cache was last refreshed, if ever. */
-export async function lastCatalogueSyncAt(database: LocalDatabase): Promise<string | null> {
-  return getSyncMeta(database, SYNC_META_KEYS.lastCatalogueSyncAt);
-}

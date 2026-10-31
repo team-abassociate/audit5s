@@ -716,6 +716,7 @@ export function Field({
 export function Button({
   title,
   onPress,
+  onDisabledPress,
   busy,
   disabled,
   variant = 'primary',
@@ -727,6 +728,8 @@ export function Button({
 }: {
   title: string;
   onPress: () => void;
+  /** A tap on the disabled button, to say why it is disabled. It still looks and reads disabled. */
+  onDisabledPress?: () => void;
   busy?: boolean;
   disabled?: boolean;
   /** The symbol software puts on this action (delete, download, camera…), before the word. */
@@ -760,8 +763,8 @@ export function Button({
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? title}
         accessibilityState={{ disabled: Boolean(inert), busy: Boolean(busy) }}
-        disabled={inert}
-        onPress={onPress}
+        disabled={busy || (disabled && !onDisabledPress)}
+        onPress={disabled && onDisabledPress ? onDisabledPress : onPress}
         hitSlop={compact ? 11 : undefined}
         {...press.handlers}
         style={[
