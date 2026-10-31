@@ -679,7 +679,7 @@ export default function AuditZonesScreen() {
             }))}
             value={draft.versionId}
             onChange={(value) => editDraft({ versionId: value })}
-            empty="No department checklists on this device yet. Pull down on Units to refresh."
+            empty="No department checklists on this phone yet. They load by themselves once the phone is online."
           />
           {showErrors && errors.department ? (
             <Text style={styles.error}>{errors.department}</Text>

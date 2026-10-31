@@ -140,7 +140,7 @@ export default function EditAuditScreen() {
                     <View style={styles.questionHead}>
                       <Text style={styles.questionNumber}>Q{response.globalOrder}</Text>
                       <Text style={styles.question}>
-                        {question?.text ?? 'The wording is not on this phone yet. Sync the catalogue to see it.'}
+                        {question?.text ?? 'The wording is not on this phone yet. It loads by itself once the phone is online.'}
                       </Text>
                     </View>
                     <ResponseChips

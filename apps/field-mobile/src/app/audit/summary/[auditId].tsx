@@ -91,10 +91,21 @@ export default function AuditSummaryScreen() {
   if (!data.scored) {
     return (
       <Screen>
-        <EmptyState
-          title="This is a walk-by"
-          detail="A walk-by records observations and photographs; it is not scored, and it is excluded from every score metric."
-        />
+        <ScrollView contentContainerStyle={styles.content}>
+          <EmptyState
+            title="This is a walk-by"
+            detail="A walk-by records observations and photographs; it is not scored, and it is excluded from every score metric."
+          />
+          {/* R-72: who faced it, all the same. */}
+          {data.zones.map((zone) =>
+            zone.auditeeName || zone.auditeePhotoEvidenceId ? (
+              <Card key={zone.auditZoneId ?? zone.auditId}>
+                <CardHeader title={zoneDisplayLabel(zone.zoneCode, zone.zoneName)} />
+                <ZoneAuditee name={zone.auditeeName ?? null} photoEvidenceId={zone.auditeePhotoEvidenceId ?? null} />
+              </Card>
+            ) : null,
+          )}
+        </ScrollView>
       </Screen>
     );
   }
@@ -173,13 +184,23 @@ function ScoreBlock({
           max: section.max,
         }))}
       />
-      {auditeeName ? (
+      <ZoneAuditee name={auditeeName ?? null} photoEvidenceId={auditeePhotoEvidenceId ?? null} />
+    </Card>
+  );
+}
+
+/** R-72: who faced the audit of a Zone, and their photo. Nothing for a Zone without either. */
+function ZoneAuditee({ name, photoEvidenceId }: { name: string | null; photoEvidenceId: string | null }) {
+  const styles = useStyles();
+  return (
+    <>
+      {name ? (
         <View style={styles.auditee}>
-          <LedgerRow label="Auditee" value={auditeeName} last />
+          <LedgerRow label="Auditee" value={name} last />
         </View>
       ) : null}
-      {auditeePhotoEvidenceId ? <AuditeePhoto evidenceId={auditeePhotoEvidenceId} label={auditeeName ?? 'Auditee'} /> : null}
-    </Card>
+      {photoEvidenceId ? <AuditeePhoto evidenceId={photoEvidenceId} label={name ?? 'Auditee'} /> : null}
+    </>
   );
 }
 
