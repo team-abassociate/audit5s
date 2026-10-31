@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteLocalEvidence,
+  getLocalAuditeePhoto,
   setLocalEvidenceRemark,
   setLocalSummaryFlag,
   type listLocalEvidenceForZone,
@@ -122,6 +123,25 @@ export function SummaryPhotosCard({
       ) : (
         <Muted>No photographs yet. Take one from any question.</Muted>
       )}
+    </Card>
+  );
+}
+
+/** R-72: who faced the audit of this Zone, and their photo — the proof management asked for. */
+export function AuditeeCard({ auditZoneId, name, title }: { auditZoneId: string; name: string | null; title: string }) {
+  const styles = useStyles();
+  const database = useLocalDatabase();
+  const photo = useQuery({
+    queryKey: ['local', 'auditee-photo', auditZoneId],
+    queryFn: () => getLocalAuditeePhoto(database, auditZoneId),
+  });
+  const uri = photo.data?.localFileUri;
+  // A Zone started before R-72 has neither, and nothing to show.
+  if (!name && !photo.data) return null;
+  return (
+    <Card>
+      <CardHeader title={title} description={name} />
+      {uri ? <Image source={{ uri }} style={styles.auditeePhoto} resizeMode="cover" accessibilityLabel={name ?? title} /> : null}
     </Card>
   );
 }
@@ -266,6 +286,7 @@ export function PhotoPreview({
 }
 
 const useStyles = createThemedStyles((theme) => ({
+  auditeePhoto: { width: 120, aspectRatio: 1, borderWidth: 1.5, borderColor: theme.color.edge, backgroundColor: theme.color.tile2 },
   thumbs: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm, marginTop: theme.space.sm },
   thumb: { width: 88, borderWidth: 1.5, borderColor: theme.color.edge, backgroundColor: theme.color.tile },
   thumbImage: { width: '100%', aspectRatio: 1, backgroundColor: theme.color.tile2 },

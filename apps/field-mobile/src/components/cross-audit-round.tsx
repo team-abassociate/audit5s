@@ -4,12 +4,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { DateTimePickerAndroid } from '../lib/date-dialog';
-import type { CrossAuditRound, CrossAuditZoneState } from '@audit5s/contracts';
+import type { CrossAuditor, CrossAuditRound, CrossAuditZoneState } from '@audit5s/contracts';
 import { formatDayMonth, istDateKey, zoneDisplayLabel } from '@audit5s/domain';
 import { api, problemMessage } from '../lib/api';
 import { isOverdue } from '../lib/cross-audit-call';
 import { createThemedStyles, useTheme } from '../lib/theme';
-import { Button, Card, CardHeader, CheckRow, Chip, Data, Icon } from './ui';
+import { Button, Card, CardHeader, CheckRow, Chip, Data, Icon, SelectField } from './ui';
 import { useUnitZones } from './zone-filter';
 
 /**
@@ -36,6 +36,20 @@ export function useCrossAuditRounds(unitId: string | undefined) {
     enabled: unitId !== undefined,
     refetchInterval: 30_000,
   });
+}
+
+/** R-73: who a Zone may be given to — the Unit's Zone Leaders / Auditors, never a Consultant. */
+export function useCrossAuditors(unitId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['cross-auditors', unitId],
+    queryFn: () => api.get<CrossAuditor[]>(`/units/${unitId}/cross-auditors`),
+    enabled: enabled && unitId !== undefined,
+  });
+}
+
+/** The person dropdown's options. */
+export function auditorOptions(auditors: readonly CrossAuditor[] | undefined) {
+  return (auditors ?? []).map((auditor) => ({ value: auditor.userId, label: auditor.fullName, detail: auditor.loginId }));
 }
 
 /** Completed by the Coordinator, or every Zone audited: nothing is left to wait for. */
@@ -100,8 +114,8 @@ export function pickDueDate(from: string | null, onPicked: (dueOn: string) => vo
 }
 
 /**
- * Calling a cross audit: tick the Zones — or "Select all" — then the day it is due, then one
- * confirm naming both. Every Zone Leader of the Unit is notified once.
+ * Calling a cross audit: tick the Zones — or "Select all" — give each one its auditor (R-73),
+ * then the day it is due, then one confirm naming both. Only each Zone's auditor is told.
  */
 export function CallCrossAuditSheet({ unitId, visible, onClose }: { unitId: string | undefined; visible: boolean; onClose: () => void }) {
   const styles = useStyles();
@@ -110,11 +124,19 @@ export function CallCrossAuditSheet({ unitId, visible, onClose }: { unitId: stri
   const { height } = useWindowDimensions();
   const queryClient = useQueryClient();
   const zones = useUnitZones(unitId);
+  const auditors = useCrossAuditors(unitId, visible);
+  const options = auditorOptions(auditors.data);
   const [selected, setSelected] = useState<string[]>([]);
+  // Zone id → the auditor it is given to.
+  const [assignees, setAssignees] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (visible) setSelected([]);
+    if (visible) {
+      setSelected([]);
+      setAssignees({});
+    }
   }, [visible]);
+  const ready = selected.length > 0 && selected.every((zoneId) => assignees[zoneId]);
 
   const all = zones.length > 0 && selected.length === zones.length;
   const toggle = (zoneId: string, on: boolean) =>
@@ -125,18 +147,19 @@ export function CallCrossAuditSheet({ unitId, visible, onClose }: { unitId: stri
   const call = () =>
     pickDueDate(null, (dueOn) => {
       const day = formatDayMonth(`${dueOn}T12:00:00+05:30`);
-      Alert.alert(`Call a cross audit of ${what}?`, `Every Zone Leader of the Unit is asked to audit ${what} by ${day}.`, [
+      Alert.alert(`Call a cross audit of ${what}?`, `Each Zone's auditor is asked to audit it by ${day}.`, [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Notify Zone Leaders',
+          text: 'Notify auditors',
           onPress: () => {
             setBusy(true);
-            api.post(`/units/${unitId}/cross-audit`, { zoneIds: selected, dueOn }).then(
+            const assignments = selected.map((zoneId) => ({ zoneId, auditorUserId: assignees[zoneId]! }));
+            api.post(`/units/${unitId}/cross-audit`, { assignments, dueOn }).then(
               () => {
                 setBusy(false);
                 onClose();
                 void queryClient.invalidateQueries({ queryKey: ['cross-audits', unitId] });
-                Alert.alert('Zone Leaders notified', `The cross audit of ${what} is due by ${day}. It is on every board of the Audits tab.`);
+                Alert.alert('Auditors notified', `The cross audit of ${what} is due by ${day}. It is on every board of the Audits tab.`);
               },
               (error: unknown) => {
                 setBusy(false);
@@ -171,8 +194,23 @@ export function CallCrossAuditSheet({ unitId, visible, onClose }: { unitId: stri
         </View>
         <ScrollView contentContainerStyle={styles.list}>
           {zones.length === 0 ? <Text style={styles.empty}>This Unit has no Zones yet.</Text> : null}
+          {auditors.isSuccess && options.length === 0 ? (
+            <Text style={styles.empty}>This Unit has no Zone Leaders to give a Zone to.</Text>
+          ) : null}
           {zones.map((zone) => (
-            <CheckRow key={zone.id} label={label(zone)} checked={selected.includes(zone.id)} onChange={(on) => toggle(zone.id, on)} />
+            <View key={zone.id} style={styles.zone}>
+              <CheckRow label={label(zone)} checked={selected.includes(zone.id)} onChange={(on) => toggle(zone.id, on)} />
+              {selected.includes(zone.id) ? (
+                <SelectField
+                  label={`Auditor for ${label(zone)}`}
+                  placeholder="Choose who audits it"
+                  options={options}
+                  value={assignees[zone.id] ?? null}
+                  onChange={(userId) => setAssignees((current) => ({ ...current, [zone.id]: userId }))}
+                  searchable={options.length > 8}
+                />
+              ) : null}
+            </View>
           ))}
         </ScrollView>
         <View style={styles.actions}>
@@ -182,8 +220,8 @@ export function CallCrossAuditSheet({ unitId, visible, onClose }: { unitId: stri
           <View style={styles.action}>
             <Button
               icon="event"
-              title={selected.length === 0 ? 'Pick Zones' : `Due date · ${selected.length}`}
-              disabled={selected.length === 0}
+              title={selected.length === 0 ? 'Pick Zones' : ready ? `Due date · ${selected.length}` : 'Pick auditors'}
+              disabled={!ready}
               busy={busy}
               onPress={call}
             />
@@ -219,6 +257,7 @@ const useStyles = createThemedStyles((theme) => ({
   selectAll: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 48 },
   selectAllText: { fontFamily: theme.family.bold, fontSize: theme.font.sm, color: theme.color.ink },
   list: { gap: theme.space.sm },
+  zone: { gap: theme.space.xs },
   empty: { fontFamily: theme.family.regular, fontSize: theme.font.sm, color: theme.color.ink2 },
   actions: { flexDirection: 'row', gap: theme.space.sm },
   action: { flex: 1 },

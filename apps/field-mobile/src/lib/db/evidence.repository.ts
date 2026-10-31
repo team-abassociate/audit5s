@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { EvidenceClassification, EvidenceKind, ResponseValue } from '@audit5s/contracts';
 import { classifyEvidence } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
@@ -116,7 +116,8 @@ export async function captureLocalEvidence(
 
   // §7.2: a walk-by Zone moves off DRAFT on the first photograph, the way a scored Zone
   // moves off it on the first answer. Without this the Zone could never be finished.
-  if (input.auditZoneId) {
+  // The auditee's photo is taken before the Zone starts, so it moves nothing (R-72).
+  if (input.auditZoneId && input.kind !== 'AUDITEE_PHOTO') {
     await database
       .update(localAuditZones)
       .set({
@@ -480,12 +481,36 @@ export async function reclassifyLocalEvidence(
 
 // ------------------------------------------------------------------------------ reads
 
+/** The Zone's audit photos. Not the auditee's (R-72): it is no finding, and no walk-by photo. */
 export function listLocalEvidenceForZone(database: LocalDatabase, auditZoneId: string) {
   return database
     .select()
     .from(localEvidence)
-    .where(and(eq(localEvidence.auditZoneId, auditZoneId), isNull(localEvidence.deletedAt)))
+    .where(
+      and(
+        eq(localEvidence.auditZoneId, auditZoneId),
+        ne(localEvidence.kind, 'AUDITEE_PHOTO'),
+        isNull(localEvidence.deletedAt),
+      ),
+    )
     .orderBy(asc(localEvidence.capturedAt));
+}
+
+/** R-72: the photo of whoever faced the audit of this Zone, if this phone took one. */
+export async function getLocalAuditeePhoto(database: LocalDatabase, auditZoneId: string) {
+  const [row] = await database
+    .select()
+    .from(localEvidence)
+    .where(
+      and(
+        eq(localEvidence.auditZoneId, auditZoneId),
+        eq(localEvidence.kind, 'AUDITEE_PHOTO'),
+        isNull(localEvidence.deletedAt),
+      ),
+    )
+    .orderBy(asc(localEvidence.capturedAt))
+    .limit(1);
+  return row ?? null;
 }
 
 export function listLocalEvidenceForAudit(database: LocalDatabase, auditId: string) {

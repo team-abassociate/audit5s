@@ -29,6 +29,7 @@ import {
 } from '../../components/ui';
 import { useAbortMenu } from '../../components/abort-menu';
 import { useSelfieCheck } from '../../components/selfie-check';
+import { AuditeeCard } from '../../components/evidence-photos';
 import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { pickFromGallery } from '../../lib/capture/gallery';
@@ -200,6 +201,7 @@ export default function WalkByScreen() {
               : 'No Zone Leader recorded'}
           </Muted>
         </Card>
+        <AuditeeCard auditZoneId={auditZoneId} name={zone.data.auditeeName} title="Auditee" />
 
         {editable ? (
           <View ref={required.anchor('photo')} collapsable={false}>
