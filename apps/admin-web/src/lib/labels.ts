@@ -169,6 +169,7 @@ export const REPORT_EDITION_LABEL: Record<ReportKind, string> = {
   INITIAL_ZONE: 'Initial',
   AFTER_EVIDENCE_ZONE: 'After-evidence',
   MULTI_ZONE_SUMMARY: 'Unit summary',
+  TREND_SUMMARY: 'Summary of summaries',
 };
 
 /** What a notification is about, for its category column. */

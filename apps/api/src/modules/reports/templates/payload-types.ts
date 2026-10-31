@@ -13,6 +13,7 @@ export type {
   ReportQuestion,
   ReportReview,
   ReportSummaryExtras,
+  ReportTrend,
   ReportZone,
   SectionScorePayload,
   Role,

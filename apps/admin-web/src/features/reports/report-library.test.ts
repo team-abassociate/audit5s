@@ -15,6 +15,7 @@ function snapshot(overrides: Partial<ReportSnapshot> & Pick<ReportSnapshot, 'kin
     auditZoneId: 'az-1',
     selectedZoneIds: null,
     selectedAuditZoneIds: null,
+    selectedSnapshotIds: null,
     assignmentGroupId: null,
     payloadSchemaVersion: 1,
     templateVersion: '1',
@@ -153,5 +154,27 @@ describe('labels', () => {
       },
     });
     expect(documentTitle(summary)).toMatch(/^5 Zones · audited 30 Sept? 2026$/);
+  });
+});
+
+describe('the summary of summaries in the history (R-75)', () => {
+  it('files it with the Unit’s summaries and names its Zone and span', () => {
+    const trend = snapshot({
+      kind: 'TREND_SUMMARY',
+      auditId: null,
+      auditZoneId: null,
+      selectedAuditZoneIds: ['az-2', 'az-1'],
+      subject: {
+        unitName: 'Pune Works',
+        zoneLabel: 'Zone 1 — Press',
+        zoneCount: 0,
+        auditorNames: [],
+        auditedFrom: '2026-01-05T06:00:00.000Z',
+        auditedTo: '2026-03-05T06:00:00.000Z',
+      },
+    });
+    const [group] = buildLibrary([trend]);
+    expect(group!.kind).toBe('SUMMARIES');
+    expect(documentTitle(trend)).toBe('Summary of summaries · Zone 1 — Press · 05 Jan 2026 – 05 Mar 2026');
   });
 });

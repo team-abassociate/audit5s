@@ -209,6 +209,11 @@ const ZONE: ReportZone = {
   ],
   nonconformities: NONCONFORMITIES,
   overallActions: OVERALL_ACTIONS,
+  history: [
+    { auditZoneId: 'az-0a', auditDate: '2026-01-10T06:00:00.000Z', rawScore: 44, maxScore: 80, scorePercentage: 55 },
+    { auditZoneId: 'az-0b', auditDate: '2026-02-07T06:00:00.000Z', rawScore: 60, maxScore: 80, scorePercentage: 75 },
+    { auditZoneId: 'az-1', auditDate: '2026-03-04T06:00:00.000Z', rawScore: 66, maxScore: 80, scorePercentage: 82.5 },
+  ],
 };
 
 /** The initial Zone report (§4.1). Its nonconformities have no outcome rendered. */
@@ -347,3 +352,41 @@ export const FIXTURE_IMAGE_DATA_URI =
   'AAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
 
 export const FIXTURE_IMAGE_KEYS = [PHOTO_KEY, BEFORE_KEY, AFTER_KEY, SELFIE_KEY] as const;
+
+/**
+ * R-75: a zone-wise summary of summaries over `count` audits a month apart, the scores
+ * climbing and the fifth S NA throughout. Literal dates, as every fixture here.
+ */
+export function fixtureTrendPayload(count = 4, scope: 'ZONE' | 'UNIT' = 'ZONE'): ReportPayload {
+  const points = Array.from({ length: count }, (_, index) => {
+    const raw = Math.min(40 + index * 2, 80);
+    const date = new Date(Date.UTC(2025, index, 5, 6)).toISOString();
+    return {
+      id: `00000000-0000-7000-8000-${String(index).padStart(12, '0')}`,
+      from: date,
+      to: date,
+      zoneCount: scope === 'ZONE' ? 1 : 6,
+      totals: { applicableQuestions: 40, naQuestions: 10, rawScore: raw, maxScore: 80, scorePercentage: (raw / 80) * 100 },
+      sections: S_SECTION_ORDER.map((section, s) =>
+        s === 4
+          ? { section, applicable: 0, na: 10, raw: 0, max: 0, pct: null }
+          : { section, applicable: 10, na: 0, raw: raw / 4, max: 20, pct: (raw / 80) * 100 },
+      ),
+    };
+  });
+  const raw = points.reduce((sum, point) => sum + point.totals.rawScore, 0);
+  const max = points.length * 80;
+  return fixtureZonePayload({
+    kind: 'TREND_SUMMARY',
+    audit: null,
+    zones: [],
+    totals: { applicableQuestions: 40 * count, naQuestions: 10 * count, rawScore: raw, maxScore: max, scorePercentage: (raw / max) * 100 },
+    sections: S_SECTION_ORDER.map((section, s) =>
+      s === 4
+        ? { section, applicable: 0, na: 10 * count, raw: 0, max: 0, pct: null }
+        : { section, applicable: 10 * count, na: 0, raw: raw / 4, max: 20 * count, pct: (raw / max) * 100 },
+    ),
+    auditDateRange: { from: points[0]!.from, to: points[count - 1]!.to },
+    trend: { scope, zoneLabel: scope === 'ZONE' ? 'Zone 1 — Press' : null, points },
+  });
+}

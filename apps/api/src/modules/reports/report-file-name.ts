@@ -19,7 +19,14 @@ import { formatDate } from './templates/components';
 export function reportFileName(payload: ReportPayload): string {
   const parts = [payload.unit.name];
 
-  if (payload.kind === 'MULTI_ZONE_SUMMARY') {
+  if (payload.kind === 'TREND_SUMMARY') {
+    const count = payload.trend?.points.length ?? 0;
+    parts.push(
+      'Summary of summaries',
+      payload.trend?.zoneLabel ?? 'Unit-wide',
+      `${count} ${payload.trend?.scope === 'ZONE' ? 'audits' : 'summaries'}`,
+    );
+  } else if (payload.kind === 'MULTI_ZONE_SUMMARY') {
     parts.push('Unit summary', `${payload.zones.length} ${payload.zones.length === 1 ? 'Zone' : 'Zones'}`);
   } else {
     const zone = payload.zones[0];

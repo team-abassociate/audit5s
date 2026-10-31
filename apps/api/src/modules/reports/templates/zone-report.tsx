@@ -18,6 +18,7 @@ import {
   RadarWeb,
   RatingPills,
   SectionTable,
+  TrendBars,
   bandOf,
   formatDate,
   formatMarks,
@@ -114,8 +115,13 @@ export function ZoneReport({
         </div>
       </div>
 
-      {/* The checklist opens its own page, so its first rows never trail page 1. */}
-      <h2 className="section-title page-break">Checklist — responses and marks</h2>
+      <ZoneTrend zone={zone} payload={payload} />
+
+      {/* The checklist opens its own page, so its first rows never trail page 1 — or follows
+          the trend, which opens page 2 itself. */}
+      <h2 className={`section-title ${zone.history?.length ? '' : 'page-break'}`}>
+        Checklist — responses and marks
+      </h2>
       <ChecklistTable zone={zone} payload={payload} />
 
       {zone.good.length > 0 ? (
@@ -176,6 +182,123 @@ export function ZoneReport({
         NA is excluded from the applicable maximum. After-improvement evidence is managed
         separately and does not change these marks.
       </div>
+
+      {/* Pages for the Zone's display board, printed on their own. */}
+      {after ? <BeforeAfterBoard zone={zone} resolve={resolve} /> : null}
+      <ScoreBoard zone={zone} payload={payload} />
+    </>
+  );
+}
+
+/** "This audit and the five before it": a short table of the scores, and their chart. */
+function ZoneTrend({ zone, payload }: { zone: ReportZone; payload: ReportPayload }) {
+  const history = zone.history ?? [];
+  if (history.length === 0) return null;
+  return (
+    <div className="avoid-break page-break">
+      <h2 className="section-title">Score trend — last {history.length} audits of this zone</h2>
+      <div className="trend-row">
+        <table className="trend-table">
+          <thead>
+            <tr>
+              <th>Audit date</th>
+              <th className="centre">Marks</th>
+              <th className="centre">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((point) => {
+              const band = bandOf(payload.bands, point.scorePercentage);
+              return (
+                <tr key={point.auditZoneId}>
+                  <td>
+                    {formatDate(point.auditDate)}
+                    {point.auditZoneId === zone.auditZoneId ? ' (this audit)' : ''}
+                  </td>
+                  <td className="centre">{formatMarks(point.rawScore, point.maxScore)}</td>
+                  <td className={`centre ${band ? `tint-${band.token}` : 'na'}`}>
+                    {formatPercentage(point.scorePercentage)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <TrendBars
+          points={history.map((point) => ({ label: formatDate(point.auditDate), pct: point.scorePercentage }))}
+          bands={payload.bands}
+          brand={payload.brand}
+          width={300}
+          height={140}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The display-board page of before and after photographs: each closed finding that has an
+ * after photo, side by side, and nothing else — no question numbers, no links. It is
+ * printed and pinned up at the Zone, where a check point number means nothing.
+ */
+function BeforeAfterBoard({ zone, resolve }: { zone: ReportZone; resolve: ImageResolver }) {
+  const pairs = zone.nonconformities.flatMap((item) => {
+    const afterPhoto = item.outcome?.verified ? item.outcome.afterPhoto : null;
+    return afterPhoto && item.objectKey && afterPhoto.objectKey ? [{ before: item, after: afterPhoto }] : [];
+  });
+  if (pairs.length === 0) return null;
+  return (
+    <>
+      <div className="page-break" />
+      <Header title="LEAN 5S — BEFORE & AFTER" subtitle={reportZoneLabel(zone)} />
+      {pairs.map(({ before, after }) => (
+        <div className="board-pair" key={before.evidenceId}>
+          <div className="photo-card">
+            <div className="board-label">BEFORE</div>
+            <Photo photo={before} resolve={resolve} />
+            <div className="photo-remark">{formatDate(before.capturedAt)}</div>
+          </div>
+          <div className="photo-card">
+            <div className="board-label">AFTER</div>
+            <Photo photo={after} resolve={resolve} />
+            <div className="photo-remark">{formatDate(after.capturedAt)}</div>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** The display-board page of the Zone's score: its trend, large, and this audit's web. */
+function ScoreBoard({ zone, payload }: { zone: ReportZone; payload: ReportPayload }) {
+  if (!zone.scored) return null;
+  const history = zone.history ?? [];
+  return (
+    <>
+      <div className="page-break" />
+      <Header title="LEAN 5S — ZONE SCORE BOARD" subtitle={reportZoneLabel(zone)} />
+      <div className="meta-grid">
+        <MetaCell label="Zone" value={reportZoneLabel(zone)} />
+        <MetaCell label="Audit date" value={formatDate(zone.auditDate)} />
+        <MetaCell label="Score" value={`${formatPercentage(zone.totals.scorePercentage)} · ${ratingLabel(payload, zone.totals.scorePercentage)}`} />
+      </div>
+      {history.length > 0 ? (
+        <>
+          <h2 className="section-title">Score trend — last {history.length} audits</h2>
+          <TrendBars
+            points={history.map((point) => ({ label: formatDate(point.auditDate), pct: point.scorePercentage }))}
+            bands={payload.bands}
+            brand={payload.brand}
+            width={640}
+            height={280}
+          />
+        </>
+      ) : null}
+      <h2 className="section-title">5S performance web</h2>
+      <div className="radar-box">
+        <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} size={300} />
+      </div>
+      <RatingPills bands={payload.bands} />
     </>
   );
 }

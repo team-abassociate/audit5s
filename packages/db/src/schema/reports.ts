@@ -43,6 +43,8 @@ export const reportSnapshots = pgTable(
     selectedZoneIds: uuid('selected_zone_ids').array(),
     /** A summary of hand-picked audited Zones, possibly from several audits (0033). */
     selectedAuditZoneIds: uuid('selected_audit_zone_ids').array(),
+    /** A unit-wise summary of summaries: the summary snapshots it compares (0062). */
+    selectedSnapshotIds: uuid('selected_snapshot_ids').array(),
     /** A summary of one multi-auditor audit: the assignment group it combines (0029). */
     assignmentGroupId: uuid('assignment_group_id'),
     /** THE frozen data. A report renders from this and never from live tables (§10.1). */
