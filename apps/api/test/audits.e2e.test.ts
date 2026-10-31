@@ -1588,6 +1588,15 @@ describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)
     expect((fixed.body as AuditZone).zoneDescriptionSnapshot).toBe('Typed in a hurry');
     expect((fixed.body as AuditZone).zoneLeaderNameSnapshot).not.toBe('R. Iyer');
     expect((fixed.body as AuditZone).auditeeName).toBe('S. Patil');
+    const { evidenceId: auditeePhotoId } = await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId: randomUUID(),
+      auditId,
+      kind: 'AUDITEE_PHOTO',
+      auditZoneId,
+      isLiveCapture: true,
+      deviceId: CONSULTANT_DEVICE,
+    });
 
     // And once it is finished, the same correction is refused — the snapshot is history.
     await answer(consultantToken, auditZoneId, fiftyAnswers());
@@ -1618,6 +1627,13 @@ describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)
     expect(frozen.zoneDescriptionSnapshot).toBe('Typed in a hurry');
     expect(frozen.auditeeName).toBe('S. Patil');
     expect([200, 409]).toContain(late.status);
+
+    // The Scores screen names the auditee and points at their photo (R-72).
+    const summary = await world.request('GET', `${base}/audits/${auditId}/summary`, { token: consultantToken });
+    expect((summary.body as AuditScoreSummary).zones.find((zone) => zone.auditZoneId === auditZoneId)).toMatchObject({
+      auditeeName: 'S. Patil',
+      auditeePhotoEvidenceId: auditeePhotoId,
+    });
   }, 180_000);
 
   it('refuses the same Zone twice in one audit', async () => {

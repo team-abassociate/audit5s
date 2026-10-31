@@ -168,6 +168,10 @@ export const auditScoreSummarySchema = z.object({
       zoneName: z.string(),
       /** What the auditor typed about the Zone (R-19), so a picker can name it as the report does. */
       zoneDescription: z.string().nullable().optional(),
+      /** R-72: who faced the audit of this Zone. Optional so a server before it still parses. */
+      auditeeName: z.string().nullable().optional(),
+      /** R-72: their photo once it has reached the bucket; shown through `/evidence/{id}/view-url`. */
+      auditeePhotoEvidenceId: uuidSchema.nullable().optional(),
       checklistTemplateName: z.string().nullable(),
       status: auditZoneStatusSchema,
     }),
