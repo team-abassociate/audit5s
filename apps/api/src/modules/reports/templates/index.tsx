@@ -4,6 +4,7 @@ import { reportZoneLabel } from '@audit5s/domain';
 import type { ImageResolver } from './components';
 import { reportStyles } from './styles';
 import { SummaryReport } from './summary-report';
+import { TrendReport } from './trend-report';
 import { SUPPORTED_PAYLOAD_SCHEMA_VERSIONS, TEMPLATE_VERSION } from './version';
 import { ZoneReport } from './zone-report';
 
@@ -30,7 +31,9 @@ export function renderReportHtml(payload: ReportPayload, resolve: ImageResolver)
   }
 
   const body = renderToStaticMarkup(
-    payload.kind === 'MULTI_ZONE_SUMMARY' ? (
+    payload.kind === 'TREND_SUMMARY' ? (
+      <TrendReport payload={payload} />
+    ) : payload.kind === 'MULTI_ZONE_SUMMARY' ? (
       <SummaryReport payload={payload} resolve={resolve} />
     ) : (
       <ZoneReport payload={payload} resolve={resolve} />
@@ -41,7 +44,9 @@ export function renderReportHtml(payload: ReportPayload, resolve: ImageResolver)
   // the page does, not by the stored code.
   const zone = payload.zones[0];
   const title =
-    payload.kind === 'MULTI_ZONE_SUMMARY'
+    payload.kind === 'TREND_SUMMARY'
+      ? `Lean 5S Summary of Summaries — ${payload.trend?.zoneLabel ?? payload.unit.name}`
+      : payload.kind === 'MULTI_ZONE_SUMMARY'
       ? `Lean 5S Summary Report — ${payload.unit.name}`
       : `Lean 5S Zone Report — ${zone ? reportZoneLabel(zone) : ''}`;
 

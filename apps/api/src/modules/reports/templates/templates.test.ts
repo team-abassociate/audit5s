@@ -7,6 +7,7 @@ import {
   FIXTURE_IMAGE_DATA_URI,
   fixtureAfterEvidencePayload,
   fixtureSummaryPayload,
+  fixtureTrendPayload,
   fixtureZonePayload,
 } from './fixture';
 
@@ -460,6 +461,81 @@ describe('R-38 — the overall remark and the overall corrective actions', () =>
     const html = renderReportHtml(payload, resolve);
     expect(html).not.toContain(TITLE);
     expect(html).toContain('>Nonconformities</h2>');
+  });
+});
+
+describe('the Zone trend and the display-board pages', () => {
+  const initial = renderReportHtml(fixtureZonePayload(), resolve);
+  const after = renderReportHtml(fixtureAfterEvidencePayload(), resolve);
+
+  it('lists the Zone’s recent scores, oldest first, marking this audit', () => {
+    expect(initial).toContain('Score trend — last 3 audits of this zone');
+    const table = initial.slice(initial.indexOf('trend-table'));
+    expect(table.indexOf('10 Jan 2026')).toBeLessThan(table.indexOf('7 Feb 2026'));
+    expect(table).toContain('4 Mar 2026 (this audit)');
+  });
+
+  it('ends every scored Zone report with the score board page', () => {
+    expect(initial).toContain('LEAN 5S — ZONE SCORE BOARD');
+    expect(after).toContain('LEAN 5S — ZONE SCORE BOARD');
+  });
+
+  it('adds Before & After only to the after-evidence report, closed findings with an after photo only', () => {
+    expect(initial).not.toContain('LEAN 5S — BEFORE &amp; AFTER');
+    const board = after.slice(after.indexOf('LEAN 5S — BEFORE &amp; AFTER'));
+    expect(after).toContain('LEAN 5S — BEFORE &amp; AFTER');
+    expect(board.match(/class="board-pair"/g)).toHaveLength(1);
+  });
+
+  it('prints no question number on the Before & After page', () => {
+    const board = after.slice(after.indexOf('LEAN 5S — BEFORE &amp; AFTER'), after.indexOf('LEAN 5S — ZONE SCORE BOARD'));
+    // Text nodes only: the embedded logo's base64 contains "Q" and digits.
+    expect(board).not.toMatch(/>[^<]*\bQ\d/);
+  });
+
+  it('still renders a Zone frozen before history existed', () => {
+    const payload = fixtureZonePayload();
+    const { history: _history, ...zone } = payload.zones[0]!;
+    const html = renderReportHtml({ ...payload, zones: [zone] }, resolve);
+    expect(html).not.toContain('Score trend');
+    expect(html).toContain('LEAN 5S — ZONE SCORE BOARD');
+  });
+});
+
+describe('R-75 — the summary of summaries', () => {
+  it('names the Zone, the period and how many audits it compares', () => {
+    const html = renderReportHtml(fixtureTrendPayload(4), resolve);
+    expect(html).toContain('LEAN 5S — SUMMARY OF SUMMARIES');
+    expect(html).toContain('Zone-wise trend · Zone 1 — Press');
+    expect(html).toContain('Audits compared');
+    expect(html).toContain('05 Jan 2025 – 05 Apr 2025');
+  });
+
+  it('draws the overall trend, one trend per S, one table row and one web per point', () => {
+    const html = renderReportHtml(fixtureTrendPayload(4), resolve);
+    expect(html).toContain('Overall score trend');
+    expect(html).toContain('S-wise trend');
+    expect(html.match(/class="web-cell"/g)).toHaveLength(4 + 1);
+    // The fifth S is NA in every audit: N/A, never 0% (D4).
+    expect(html).not.toContain('>0.0%<');
+  });
+
+  it('prints no photograph and no link', () => {
+    const html = renderReportHtml(fixtureTrendPayload(4), resolve);
+    expect(html).not.toContain(FIXTURE_IMAGE_DATA_URI);
+    expect(html).not.toContain('/ca/');
+  });
+
+  it('takes as many points as are chosen', () => {
+    const html = renderReportHtml(fixtureTrendPayload(60), resolve);
+    expect(html.match(/class="web-cell"/g)).toHaveLength(60 + 1);
+  });
+
+  it('reads unit-wise as summary reports of the whole Unit', () => {
+    const html = renderReportHtml(fixtureTrendPayload(3, 'UNIT'), resolve);
+    expect(html).toContain('Unit-wise trend');
+    expect(html).toContain('Summary reports compared');
+    expect(html).toContain('Whole Unit');
   });
 });
 

@@ -20,7 +20,7 @@ import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
 import { reportFileName } from './report-file-name';
 import { reportSubject } from './report-subject';
-import { freezePayload } from './report-payload';
+import { freezePayload, freezeTrendPayload, unitTrend, zoneTrend } from './report-payload';
 import { ReportTokensService, type MintedTokens } from './report-tokens.service';
 import { ReportsRepository, type ReportSnapshotRow } from './reports.repository';
 import { TEMPLATE_VERSION } from './templates/version';
@@ -35,6 +35,7 @@ const KIND_LABEL: Record<ReportKind, string> = {
   INITIAL_ZONE: 'Initial Zone Report',
   AFTER_EVIDENCE_ZONE: 'After-Evidence Report',
   MULTI_ZONE_SUMMARY: 'Summary Report',
+  TREND_SUMMARY: 'Summary of Summaries',
 };
 
 /**
@@ -51,6 +52,9 @@ const KIND_LABEL: Record<ReportKind, string> = {
  * if both of those were wrong. Regeneration inserts a version; it never rewrites this one.
  */
 const RETRYABLE = ['QUEUED', 'RENDERING', 'FAILED'] as const;
+
+/** How many audits a Zone report's trend chart shows, this one included. */
+const ZONE_HISTORY_LENGTH = 6;
 
 /** What a Super Admin can still cancel: anything not yet rendered. */
 const IN_FLIGHT = ['QUEUED', 'RENDERING'] as const;
@@ -124,7 +128,15 @@ export class ReportsService {
   async regenerate(scope: ScopeContext, snapshotId: string): Promise<ReportSnapshot> {
     const previous = await this.mustFind(scope, snapshotId);
     const request: GenerateReportRequest =
-      previous.kind === 'MULTI_ZONE_SUMMARY'
+      previous.kind === 'TREND_SUMMARY'
+        ? {
+            kind: 'TREND_SUMMARY',
+            unitId: previous.unitId,
+            ...(previous.selectedSnapshotIds
+              ? { selectedSnapshotIds: previous.selectedSnapshotIds }
+              : { selectedAuditZoneIds: previous.selectedAuditZoneIds ?? [] }),
+          }
+        : previous.kind === 'MULTI_ZONE_SUMMARY'
         ? {
             kind: 'MULTI_ZONE_SUMMARY',
             unitId: previous.unitId,
@@ -181,7 +193,7 @@ export class ReportsService {
       return await this.repository.inTransaction(scope, async (tx) => {
         await this.repository.lockTarget(
           tx,
-          request.kind === 'MULTI_ZONE_SUMMARY' ? request.unitId : request.auditZoneId,
+          'auditZoneId' in request ? request.auditZoneId : request.unitId,
         );
         const target = await this.resolveTarget(tx, request);
         const inFlight = await this.repository.findInFlight(tx, scope, {
@@ -281,7 +293,16 @@ export class ReportsService {
   private async resolveTarget(
     tx: Transaction,
     request: GenerateReportRequest,
-  ): Promise<{ unitId: string; auditId: string | null; auditZoneId: string | null; auditZoneIds: string[] }> {
+  ): Promise<{
+    unitId: string;
+    auditId: string | null;
+    auditZoneId: string | null;
+    auditZoneIds: string[];
+    /** R-75: a unit-wise summary of summaries' Summary reports. */
+    snapshotIds?: string[];
+  }> {
+    if (request.kind === 'TREND_SUMMARY') return this.resolveTrend(tx, request);
+
     if (request.kind === 'MULTI_ZONE_SUMMARY' && request.selectedAuditZoneIds) {
       const auditZoneIds = await this.repository.resolveChosenAuditZones(
         tx,
@@ -348,6 +369,45 @@ export class ReportsService {
     };
   }
 
+  /**
+   * R-75: what a summary of summaries compares, every one of it, or a refusal naming what
+   * does not count — never a trend quietly missing a point the Super Admin chose.
+   */
+  private async resolveTrend(
+    tx: Transaction,
+    request: Extract<GenerateReportRequest, { kind: 'TREND_SUMMARY' }>,
+  ) {
+    const base = { unitId: request.unitId, auditId: null, auditZoneId: null };
+
+    if (request.selectedSnapshotIds) {
+      const chosen = [...new Set(request.selectedSnapshotIds)];
+      const found = await this.repository.readIssuedSummaries(tx, request.unitId, chosen);
+      if (found.length !== chosen.length) {
+        const missing = chosen.length - found.length;
+        throw AppError.validation(
+          `${missing} of the chosen reports ${missing === 1 ? 'is' : 'are'} not an issued Summary report of this Unit`,
+          [{ field: 'selectedSnapshotIds', message: 'Choose issued Summary reports of this Unit' }],
+        );
+      }
+      return { ...base, auditZoneIds: [], snapshotIds: chosen };
+    }
+
+    const chosen = [...new Set(request.selectedAuditZoneIds ?? [])];
+    const found = await this.repository.resolveTrendAuditZones(tx, request.unitId, chosen);
+    const refuse = (message: string) =>
+      AppError.validation(message, [{ field: 'selectedAuditZoneIds', message }]);
+    if (found.length !== chosen.length) {
+      throw refuse('Choose finished audits of a Zone in this Unit');
+    }
+    if (found.some((row) => row.auditType === 'WALK_BY')) {
+      throw refuse('A walk-by has no score to compare; leave it out');
+    }
+    if (new Set(found.map((row) => row.zoneId)).size > 1) {
+      throw refuse('Choose audits of one Zone');
+    }
+    return { ...base, auditZoneIds: chosen };
+  }
+
   /** Reads everything the document prints, at one instant, and mints its links. */
   private async freeze(
     tx: Transaction,
@@ -359,12 +419,42 @@ export class ReportsService {
       unitId: string;
       auditId: string | null;
       auditZoneIds: string[];
+      snapshotIds?: string[];
       /** False for a preview: a preview must not be a way to issue live links. */
       mintTokens?: boolean;
     },
   ): Promise<{ payload: ReportPayload; tokens: MintedTokens | null }> {
     const unit = await this.repository.readUnit(tx, target.unitId);
     if (!unit) throw AppError.notFound('No such Unit');
+
+    // R-75: scores only — no Zone page, no photograph, no link to mint.
+    if (target.kind === 'TREND_SUMMARY') {
+      const generatedByName = await this.repository.readUserName(tx, scope.actor.userId);
+      let trend;
+      let auditorNames: string[];
+      if (target.snapshotIds?.length) {
+        const summaries = await this.repository.readIssuedSummaries(tx, target.unitId, target.snapshotIds);
+        trend = unitTrend(summaries);
+        auditorNames = summaries.flatMap((summary) => summary.auditorNames ?? []);
+      } else {
+        const [zones, sectionScores] = await Promise.all([
+          this.repository.readZones(tx, target.auditZoneIds),
+          this.repository.readSectionScores(tx, target.auditZoneIds),
+        ]);
+        trend = zoneTrend(zones, sectionScores);
+        auditorNames = zones.map((zone) => zone.auditorName);
+      }
+      const payload = freezeTrendPayload({
+        snapshotId: target.snapshotId,
+        version: target.version,
+        generatedAt: new Date(),
+        generatedByName,
+        unit,
+        trend,
+        auditorNames,
+      });
+      return { payload, tokens: null };
+    }
 
     const [zones, sectionScores, responses, photos, actions, generatedByName, auditeePhotoKeys] = await Promise.all([
       this.repository.readZones(tx, target.auditZoneIds),
@@ -380,6 +470,12 @@ export class ReportsService {
       target.kind === 'MULTI_ZONE_SUMMARY' || !target.auditId
         ? null
         : await this.repository.readSelfieKey(tx, target.auditId);
+
+    // A Zone report's last six scores — this audit and five before it. A summary has none.
+    const history =
+      target.kind === 'MULTI_ZONE_SUMMARY' || !target.auditZoneIds[0]
+        ? []
+        : await this.repository.readZoneHistory(tx, target.auditZoneIds[0], ZONE_HISTORY_LENGTH);
 
     // A verified finding needs no button: the right half of its row already carries the
     // outcome. Minting a link for it would put a live door on a closed item.
@@ -414,6 +510,7 @@ export class ReportsService {
       actions,
       selfieObjectKey,
       auditeePhotoKeys,
+      history,
       actionUrls: tokens?.urls ?? new Map<string, string>(),
     });
 
@@ -677,13 +774,21 @@ export class ReportsService {
 function chosenSelection(request: GenerateReportRequest): {
   selectedZoneIds: string[] | null;
   selectedAuditZoneIds: string[] | null;
+  selectedSnapshotIds: string[] | null;
 } {
+  if (request.kind === 'TREND_SUMMARY') {
+    return {
+      selectedZoneIds: null,
+      selectedAuditZoneIds: request.selectedAuditZoneIds ?? null,
+      selectedSnapshotIds: request.selectedSnapshotIds ?? null,
+    };
+  }
   if (request.kind !== 'MULTI_ZONE_SUMMARY') {
-    return { selectedZoneIds: null, selectedAuditZoneIds: null };
+    return { selectedZoneIds: null, selectedAuditZoneIds: null, selectedSnapshotIds: null };
   }
   return request.selectedAuditZoneIds
-    ? { selectedZoneIds: null, selectedAuditZoneIds: request.selectedAuditZoneIds }
-    : { selectedZoneIds: request.selectedZoneIds, selectedAuditZoneIds: null };
+    ? { selectedZoneIds: null, selectedAuditZoneIds: request.selectedAuditZoneIds, selectedSnapshotIds: null }
+    : { selectedZoneIds: request.selectedZoneIds, selectedAuditZoneIds: null, selectedSnapshotIds: null };
 }
 
 /**
@@ -692,13 +797,15 @@ function chosenSelection(request: GenerateReportRequest): {
  */
 function sameSelection(row: ReportSnapshotRow, request: GenerateReportRequest): boolean {
   if (row.kind !== request.kind) return false;
-  if (request.kind !== 'MULTI_ZONE_SUMMARY') return row.auditZoneId === request.auditZoneId;
+  if ('auditZoneId' in request) return row.auditZoneId === request.auditZoneId;
   const chosen = chosenSelection(request);
+  const group = request.kind === 'MULTI_ZONE_SUMMARY' ? (request.assignmentGroupId ?? null) : null;
   return (
     row.unitId === request.unitId &&
-    (row.assignmentGroupId ?? null) === (request.assignmentGroupId ?? null) &&
+    (row.assignmentGroupId ?? null) === group &&
     sameSet(row.selectedAuditZoneIds, chosen.selectedAuditZoneIds) &&
-    sameSet(row.selectedZoneIds, chosen.selectedZoneIds)
+    sameSet(row.selectedZoneIds, chosen.selectedZoneIds) &&
+    sameSet(row.selectedSnapshotIds, chosen.selectedSnapshotIds)
   );
 }
 
@@ -725,6 +832,7 @@ export function toContract(row: ReportSnapshotRow): ReportSnapshot {
     auditZoneId: row.auditZoneId,
     selectedZoneIds: row.selectedZoneIds,
     selectedAuditZoneIds: row.selectedAuditZoneIds,
+    selectedSnapshotIds: row.selectedSnapshotIds,
     assignmentGroupId: row.assignmentGroupId,
     payloadSchemaVersion: row.payloadSchemaVersion,
     templateVersion: row.templateVersion,

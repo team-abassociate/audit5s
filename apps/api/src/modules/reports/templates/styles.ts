@@ -489,6 +489,22 @@ tbody tr.total-row, tbody tr.total-row td {
   break-inside: avoid;
 }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* ----------------------------------------------------------- trend and board pages */
+.trend-row { display: flex; gap: 12px; align-items: flex-end; margin-top: 6px; }
+.trend-table { width: auto; flex: 0 0 42%; }
+.board-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+  break-inside: avoid;
+}
+.board-pair img { max-height: 95mm; }
+.board-label { font-size: 12pt; font-weight: 800; letter-spacing: 0.04em; margin-bottom: 4px; }
+.s-trend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 6px; }
+.web-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 6px; }
+.web-cell { text-align: center; break-inside: avoid; }
+
 .avoid-break { break-inside: avoid; }
 .page-break { break-before: page; }
 

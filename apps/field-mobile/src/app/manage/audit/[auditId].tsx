@@ -30,6 +30,7 @@ const REPORT_KIND: Record<ReportKind, string> = {
   INITIAL_ZONE: 'Initial report',
   AFTER_EVIDENCE_ZONE: 'After-evidence report',
   MULTI_ZONE_SUMMARY: 'Unit summary report',
+  TREND_SUMMARY: 'Summary of summaries',
 };
 
 /**

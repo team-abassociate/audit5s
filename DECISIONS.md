@@ -2837,3 +2837,28 @@ both fields, and R-34's correction of them by anyone else.
   Zone's own, and a typed name is no longer written back to the Zone (0015).
 - R-67 clears descriptions when a Zone list is imported so that the current one is typed in.
   The Coordinator now types it on the Zones page; until then auditors see none.
+
+## R-75 — A Zone report shows its trend and ends with board pages; a summary of summaries
+
+**Requested 2026-10-31.** Three additions to reporting, for the display
+board at each Zone and for management reviewing months of audits at once.
+
+- **The Zone report's last six scores.** Every Zone report prints this audit of the Zone and
+  up to five finished, scored audits of it before, oldest first, as a table and a bar chart.
+  Frozen into the payload (`zones[].history`), so a later audit never changes a printed chart.
+  An earlier audit's report never shows what came after it. A walk-by has none.
+- **Board pages.** Every scored Zone report ends with a *Zone score board* page — the trend,
+  large, and the 5S web — for the Zone Leader to print and pin up. The after-evidence report
+  also gets a *Before & After* page: each closed finding with an after photo, side by side,
+  dated, with no question number, link or remark. A finding without an after photo, or with
+  a redacted photo on either side, is left off it.
+- **A summary of summaries** (`TREND_SUMMARY`, migrations 0061–0062). Zone-wise: any number of
+  finished, scored audits of one Zone. Unit-wise: any number of issued (READY) Summary reports
+  of the Unit, each point read from what that summary printed. It prints the overall score
+  trend, each S's trend, a table of every point, and a 5S web for every point and for all of
+  them together — scores only, no photograph or link. Its overall figure is Σachieved / Σmax
+  over the points, never the mean of their percentages. **No upper bound** on how many are
+  compared: that is the Super Admin's call; charts thin their labels as points grow and the
+  table carries every figure. The selection is stored on the snapshot
+  (`selected_audit_zone_ids` or the new `selected_snapshot_ids`), so a regeneration is the
+  same document. Super Admin only, as every report (N5).

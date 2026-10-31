@@ -394,6 +394,91 @@ export function ZoneComparisonBars({
   );
 }
 
+/**
+ * A score trend: one vertical bar per audit, oldest on the left, each tinted by its own
+ * band with its percentage above and its date below, and the 85% target dashed across.
+ * A null score draws no bar and prints N/A — never a zero-height bar (D4).
+ *
+ * Labels are printed only where they fit: a percentage over a bar wide enough to hold it,
+ * and every n-th date, n chosen from the chart's width. However many audits are chosen the
+ * chart stays legible, and the table printed beside it carries every exact figure.
+ */
+export function TrendBars({
+  points,
+  bands,
+  brand,
+  width = 480,
+  height = 150,
+}: {
+  points: readonly { label: string; pct: number | null }[];
+  bands: readonly ReportBand[];
+  brand: Record<string, string>;
+  width?: number;
+  height?: number;
+}) {
+  const top = 14;
+  const bottom = 18;
+  // Room for half a date label either side, so the first and last are not clipped.
+  const side = 22;
+  const plot = height - top - bottom;
+  const slot = (width - side * 2) / Math.max(points.length, 1);
+  const bar = Math.min(slot * 0.6, 56);
+  const big = height >= 240;
+  const valueSize = big ? 11 : 7;
+  const dateSize = big ? 9 : 6.5;
+  // "100.0%" and "05 Sept 2026" are about 3.4 and 6.2 characters' width of their font size.
+  const showValues = slot >= valueSize * 3.4;
+  const every = Math.max(1, Math.ceil((dateSize * 6.2) / slot));
+  const y = (pct: number) => round(top + plot * (1 - pct / 100));
+  const target = bands[bands.length - 1]?.color ?? brand.accent ?? '#B3261E';
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} xmlns="http://www.w3.org/2000/svg" role="img">
+      <line x1={0} y1={top + plot} x2={width} y2={top + plot} stroke={brand.ink ?? '#101112'} strokeWidth={0.75} />
+      <line x1={0} y1={y(85)} x2={width} y2={y(85)} stroke={target} strokeWidth={1} strokeDasharray="3 3" />
+      {points.map((point, index) => {
+        const band = bandOf(bands, point.pct);
+        const x = round(side + index * slot + (slot - bar) / 2);
+        const colour = band?.color ?? (brand.inkSoft ?? '#5B5B57');
+        return (
+          <g key={`trend-${index}`}>
+            {point.pct !== null ? (
+              <rect x={x} y={y(point.pct)} width={round(bar)} height={round(top + plot - y(point.pct))} fill={colour} />
+            ) : null}
+            {showValues ? (
+              <text
+                x={round(x + bar / 2)}
+                y={point.pct === null ? top + plot - 3 : y(point.pct) - 3}
+                textAnchor="middle"
+                fontSize={valueSize}
+                fontWeight={700}
+                fill={colour}
+                // A white halo, so a label sitting on the target line stays readable.
+                stroke="white"
+                strokeWidth={3}
+                paintOrder="stroke"
+              >
+                {formatPercentage(point.pct)}
+              </text>
+            ) : null}
+            {index % every === 0 ? (
+              <text
+                x={round(x + bar / 2)}
+                y={height - 5}
+                textAnchor="middle"
+                fontSize={dateSize}
+                fill={brand.ink ?? '#101112'}
+              >
+                {point.label}
+              </text>
+            ) : null}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 // --------------------------------------------------------------------------- evidence
 
 /** The caption §4.1 asks for: `Q{n} · {S label} · Score {n}`. */

@@ -153,6 +153,16 @@ export const reportQuestionSchema = z.object({
 });
 export type ReportQuestion = z.infer<typeof reportQuestionSchema>;
 
+/** One audit of a Zone on a trend chart: when, and what it scored. */
+export const reportScorePointSchema = z.object({
+  auditZoneId: uuidSchema,
+  auditDate: isoDateTimeSchema.nullable(),
+  rawScore: z.number(),
+  maxScore: z.number(),
+  scorePercentage: z.number().nullable(),
+});
+export type ReportScorePoint = z.infer<typeof reportScorePointSchema>;
+
 /** One Zone of the report. A zone report has exactly one; a summary has many. */
 export const reportZoneSchema = z.object({
   auditZoneId: uuidSchema,
@@ -187,8 +197,15 @@ export const reportZoneSchema = z.object({
    * still parses and renders exactly as it was issued (§10.5).
    */
   overallActions: z.array(reportOverallActionSchema).default([]),
+  /**
+   * A Zone report's trend: this audit of the Zone and up to five before it, oldest first.
+   * Frozen like everything else, so a later audit never changes a printed chart. Absent on a
+   * summary, on a walk-by, and on a payload frozen before it existed.
+   */
+  history: z.array(reportScorePointSchema).optional(),
 });
 export type ReportZone = z.infer<typeof reportZoneSchema>;
+
 
 /** §10.3-B's closure block. Present on an after-evidence report. */
 export const reportClosureSchema = z.object({
@@ -246,6 +263,30 @@ export const reportSummaryExtrasSchema = z.object({
 export type ReportSummaryExtras = z.infer<typeof reportSummaryExtrasSchema>;
 
 /**
+ * R-75: a summary of summaries. One point per chosen audit of a Zone (`ZONE`), or per chosen
+ * Summary report of a Unit (`UNIT`), oldest first — each with its overall score and its S-wise
+ * scores, which is everything the trend, the S trend and the 5S webs print.
+ */
+export const reportTrendSchema = z.object({
+  scope: z.enum(['ZONE', 'UNIT']),
+  /** The Zone, as the Zone report names it. Null for a unit-wise trend. */
+  zoneLabel: z.string().nullable(),
+  points: z.array(
+    z.object({
+      /** The audit Zone, or the summary snapshot, this point is. */
+      id: uuidSchema,
+      from: isoDateTimeSchema.nullable(),
+      to: isoDateTimeSchema.nullable(),
+      /** How many Zones the point covers: 1 zone-wise, the summary's Zone count unit-wise. */
+      zoneCount: z.number().int().nonnegative(),
+      totals: scoreTotalsSchema,
+      sections: z.array(sectionScoreSchema),
+    }),
+  ),
+});
+export type ReportTrend = z.infer<typeof reportTrendSchema>;
+
+/**
  * The frozen payload. Everything the PDF prints, and nothing it has to go and look up.
  *
  * Being self-contained is what makes §10.1's first principle true and what makes the
@@ -290,6 +331,8 @@ export const reportPayloadSchema = z.object({
   auditorNames: z.array(z.string()),
   closure: reportClosureSchema.nullable(),
   summaryExtras: reportSummaryExtrasSchema.nullable(),
+  /** R-75: present on a summary of summaries only; absent on every other payload. */
+  trend: reportTrendSchema.optional(),
   /** Frozen so a report reopened years later keeps the palette it was issued with. */
   bands: z.array(reportBandSchema),
   responseTokens: z.record(
@@ -335,6 +378,8 @@ export const reportSnapshotSchema = z.object({
   selectedAuditZoneIds: z.array(uuidSchema).nullable(),
   /** A summary of one multi-auditor audit: the assignment group whose Zones it combines. */
   assignmentGroupId: uuidSchema.nullable(),
+  /** R-75: a unit-wise summary of summaries — the Summary reports it compares. */
+  selectedSnapshotIds: z.array(uuidSchema).nullable(),
   payloadSchemaVersion: z.number().int().positive(),
   templateVersion: z.string(),
   status: reportStatusSchema,
@@ -387,6 +432,23 @@ export const generateReportRequestSchema = z.discriminatedUnion('kind', [
     .refine((request) => request.selectedZoneIds.length > 0 || request.selectedAuditZoneIds, {
       message: 'Select at least one Zone',
       path: ['selectedZoneIds'],
+    }),
+  /**
+   * R-75: a summary of summaries. Exactly one of the two lists: finished audits of one Zone
+   * (`selectedAuditZoneIds`, zone-wise), or Summary reports of the Unit
+   * (`selectedSnapshotIds`, unit-wise). No upper bound — how many to compare is the Super
+   * Admin's call.
+   */
+  z
+    .object({
+      kind: z.literal('TREND_SUMMARY'),
+      unitId: uuidSchema,
+      selectedAuditZoneIds: z.array(uuidSchema).min(1).optional(),
+      selectedSnapshotIds: z.array(uuidSchema).min(1).optional(),
+    })
+    .refine((request) => !request.selectedAuditZoneIds !== !request.selectedSnapshotIds, {
+      message: 'Choose audits of one Zone, or Summary reports of the Unit',
+      path: ['selectedAuditZoneIds'],
     }),
 ]);
 export type GenerateReportRequest = z.infer<typeof generateReportRequestSchema>;

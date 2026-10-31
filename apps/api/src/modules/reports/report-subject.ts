@@ -12,6 +12,8 @@ import { zoneDisplayLabel } from '@audit5s/domain';
 export function reportSubject(payload: ReportPayload): ReportSubject {
   const zones = payload.zones ?? [];
   const zone = payload.kind === 'MULTI_ZONE_SUMMARY' ? undefined : zones[0];
+  // R-75: a summary of summaries has no Zone page; a zone-wise one names its Zone here.
+  const trendZone = payload.trend?.zoneLabel ?? null;
 
   const auditorNames =
     payload.auditorNames && payload.auditorNames.length > 0
@@ -24,7 +26,7 @@ export function reportSubject(payload: ReportPayload): ReportSubject {
 
   return {
     unitName: payload.unit?.name ?? '',
-    zoneLabel: zone ? zoneDisplayLabel(zone.zoneCode, zone.zoneName) : null,
+    zoneLabel: zone ? zoneDisplayLabel(zone.zoneCode, zone.zoneName) : trendZone,
     zoneCount: zones.length,
     auditorNames,
     auditedFrom: range?.from ?? finished,

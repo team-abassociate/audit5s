@@ -5,13 +5,15 @@ import type { Audit, AuditDetail, Page, ReportSnapshot, Unit } from '@audit5s/co
 import { api, fetchAll } from '@/lib/api';
 import { Button, Combobox, Dialog, ErrorNotice, Field, Select, Spinner } from '@/components/ui';
 import { PreviewButton, SummaryZonePicker } from './SummaryZonePicker';
+import { TrendPicker } from './TrendPicker';
 import { zoneDocumentKey } from './report-library';
 import { REPORT_EDITION_LABEL } from '@/lib/labels';
 import { formatDate, formatDateTime } from '@audit5s/domain';
 
 export type NewReportPreset =
   | { mode: 'ZONE'; auditId?: string }
-  | { mode: 'SUMMARY'; unitId?: string };
+  | { mode: 'SUMMARY'; unitId?: string }
+  | { mode: 'TREND'; unitId?: string };
 
 /**
  * One way to issue a report (§8.9): say what kind, say what it covers, preview, generate.
@@ -60,7 +62,7 @@ function NewReportForm({
   onQueued: (snapshot: ReportSnapshot) => void;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<'ZONE' | 'SUMMARY'>(preset.mode);
+  const [mode, setMode] = useState<NewReportPreset['mode']>(preset.mode);
 
   return (
     <>
@@ -88,6 +90,16 @@ function NewReportForm({
               <b>Unit summary</b>
               <span>Several Zones of one Unit, chosen from its finished audits.</span>
             </label>
+            <label>
+              <input
+                type="radio"
+                name="report-kind"
+                checked={mode === 'TREND'}
+                onChange={() => setMode('TREND')}
+              />
+              <b>Summary of summaries</b>
+              <span>The trend over many audits of a Zone, or many summaries of a Unit.</span>
+            </label>
           </div>
         </fieldset>
       </div>
@@ -101,7 +113,9 @@ function NewReportForm({
         />
       ) : (
         <SummaryForm
-          initialUnitId={preset.mode === 'SUMMARY' ? (preset.unitId ?? '') : ''}
+          key={mode}
+          trend={mode === 'TREND'}
+          initialUnitId={preset.mode !== 'ZONE' ? (preset.unitId ?? '') : ''}
           onQueued={onQueued}
         />
       )}
@@ -161,7 +175,7 @@ function ZoneReportForm({
     const key = zoneDocumentKey(auditZoneId);
     return (
       snapshots
-        .filter((snapshot) => snapshot.kind !== 'MULTI_ZONE_SUMMARY' && zoneDocumentKey(snapshot.auditZoneId) === key)
+        .filter((snapshot) => snapshot.auditZoneId !== null && zoneDocumentKey(snapshot.auditZoneId) === key)
         .sort((a, b) => b.version - a.version)[0] ?? null
     );
   }, [snapshots, auditZoneId]);
@@ -265,9 +279,12 @@ function ZoneReportForm({
 }
 
 function SummaryForm({
+  trend,
   initialUnitId,
   onQueued,
 }: {
+  /** R-75: the summary of summaries, which picks audits or summaries rather than Zones. */
+  trend: boolean;
   initialUnitId: string;
   onQueued: (snapshot: ReportSnapshot) => void;
 }) {
@@ -280,7 +297,7 @@ function SummaryForm({
 
   return (
     <div className="gb-dialog-section grid gap-3">
-      <Field label="Unit" hint="The summary covers Zones of this Unit only.">
+      <Field label="Unit" hint={trend ? 'The comparison covers this Unit only.' : 'The summary covers Zones of this Unit only.'}>
         <Combobox
           value={unitId}
           onChange={setUnitId}
@@ -289,11 +306,15 @@ function SummaryForm({
         />
       </Field>
       {units.error ? <ErrorNotice error={units.error} /> : null}
-      {unitId ? (
+      {unitId && trend ? (
+        <TrendPicker key={unitId} unitId={unitId} onQueued={onQueued} />
+      ) : unitId ? (
         <SummaryZonePicker key={unitId} unitId={unitId} onQueued={onQueued} />
       ) : (
         <p className="m-0 text-[12.5px] text-ink-2">
-          Choose a Unit to see its finished audits and pick the Zones to summarise.
+          {trend
+            ? 'Choose a Unit to compare audits of one of its Zones, or its Summary reports.'
+            : 'Choose a Unit to see its finished audits and pick the Zones to summarise.'}
         </p>
       )}
     </div>

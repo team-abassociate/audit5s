@@ -396,6 +396,42 @@ export class ReportsRepository extends BaseRepository {
     return new Map(rows.flatMap((row) => (row.auditZoneId && row.objectKey ? [[row.auditZoneId, row.objectKey] as const] : [])));
   }
 
+  /**
+   * A Zone report's trend: this audited Zone and the scored, finished audits of the same
+   * Zone before it, newest first, `limit` in all. `zone_id` is the live pointer kept for
+   * exactly this (D6); the scores are the audit Zone's own stored totals. A walk-by has no
+   * score and is left out.
+   */
+  async readZoneHistory(tx: Transaction, auditZoneId: string, limit: number) {
+    const auditDate = sql<Date>`coalesce(${audits.completedAt}, ${auditZones.completedAt})`.mapWith(
+      audits.completedAt,
+    );
+    return tx
+      .select({
+        auditZoneId: auditZones.id,
+        auditDate,
+        rawScore: auditZones.rawScore,
+        maxScore: auditZones.maxScore,
+        scorePercentage: auditZones.scorePercentage,
+      })
+      .from(auditZones)
+      .innerJoin(audits, eq(audits.id, auditZones.auditId))
+      .where(
+        and(
+          sql`${auditZones.zoneId} = (SELECT zone_id FROM audit_zone WHERE id = ${auditZoneId})`,
+          sql`${audits.unitId} = (SELECT a.unit_id FROM audit_zone az JOIN audit a ON a.id = az.audit_id WHERE az.id = ${auditZoneId})`,
+          eq(auditZones.status, 'COMPLETED'),
+          inArray(audits.status, [...COMPLETED_AUDIT_STATUSES]),
+          sql`${audits.auditType} <> 'WALK_BY'`,
+          sql`${auditDate} <= (
+            SELECT coalesce(a.completed_at, az.completed_at) FROM audit_zone az
+            JOIN audit a ON a.id = az.audit_id WHERE az.id = ${auditZoneId})`,
+        ),
+      )
+      .orderBy(desc(auditDate), desc(auditZones.id))
+      .limit(limit);
+  }
+
   /** The auditor's selfie for the AUDITOR VERIFICATION box (§4.1 item 4). */
   async readSelfieKey(tx: Transaction, auditId: string): Promise<string | null> {
     const [row] = await tx
@@ -541,6 +577,57 @@ export class ReportsRepository extends BaseRepository {
   }
 
   /**
+   * R-75: the chosen audits of a zone-wise summary of summaries — finished Zones of finished
+   * audits in this Unit, as `resolveChosenAuditZones` admits them, with the live Zone each
+   * covered and whether it was scored, so the caller can insist on one Zone and on scores.
+   */
+  async resolveTrendAuditZones(tx: Transaction, unitId: string, auditZoneIds: readonly string[]) {
+    if (auditZoneIds.length === 0) return [];
+    return tx
+      .select({ id: auditZones.id, zoneId: auditZones.zoneId, auditType: audits.auditType })
+      .from(auditZones)
+      .innerJoin(audits, eq(audits.id, auditZones.auditId))
+      .where(
+        and(
+          eq(audits.unitId, unitId),
+          inArray(auditZones.id, [...auditZoneIds]),
+          eq(auditZones.status, 'COMPLETED'),
+          sql`${auditZones.completedAt} IS NOT NULL`,
+          inArray(audits.status, [...COMPLETED_AUDIT_STATUSES]),
+        ),
+      );
+  }
+
+  /**
+   * R-75: the Summary reports a unit-wise summary of summaries compares — issued (READY)
+   * summaries of this Unit only, with what each printed: its span, Zone count and scores.
+   */
+  async readIssuedSummaries(tx: Transaction, unitId: string, snapshotIds: readonly string[]) {
+    if (snapshotIds.length === 0) return [];
+    // Only what a trend point prints, read inside Postgres: a summary's payload carries every
+    // Zone's checklist and photographs, and there is no limit on how many are compared.
+    return tx
+      .select({
+        id: reportSnapshots.id,
+        from: sql<string | null>`${reportSnapshots.payload}->'auditDateRange'->>'from'`,
+        to: sql<string | null>`${reportSnapshots.payload}->'auditDateRange'->>'to'`,
+        zoneCount: sql<number>`jsonb_array_length(${reportSnapshots.payload}->'zones')`,
+        totals: sql<ReportPayload['totals']>`${reportSnapshots.payload}->'totals'`,
+        sections: sql<ReportPayload['sections']>`${reportSnapshots.payload}->'sections'`,
+        auditorNames: sql<string[]>`${reportSnapshots.payload}->'auditorNames'`,
+      })
+      .from(reportSnapshots)
+      .where(
+        and(
+          eq(reportSnapshots.unitId, unitId),
+          inArray(reportSnapshots.id, [...snapshotIds]),
+          eq(reportSnapshots.kind, 'MULTI_ZONE_SUMMARY'),
+          eq(reportSnapshots.status, 'READY'),
+        ),
+      );
+  }
+
+  /**
    * The same resolution for one audit conducted by several auditors together: each
    * selected Zone contributes its most recently completed audit-Zone **among the audits
    * of that assignment group**, so the summary is that combined audit and not whatever
@@ -592,6 +679,7 @@ export class ReportsRepository extends BaseRepository {
         auditZoneId: reportSnapshots.auditZoneId,
         selectedZoneIds: reportSnapshots.selectedZoneIds,
         selectedAuditZoneIds: reportSnapshots.selectedAuditZoneIds,
+        selectedSnapshotIds: reportSnapshots.selectedSnapshotIds,
         assignmentGroupId: reportSnapshots.assignmentGroupId,
         payload: reportSnapshots.payload,
         payloadSchemaVersion: reportSnapshots.payloadSchemaVersion,

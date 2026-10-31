@@ -141,7 +141,13 @@ export const IMPORT_JOB_STATUSES = [
 export const importJobStatusSchema = z.enum(IMPORT_JOB_STATUSES);
 export type ImportJobStatus = z.infer<typeof importJobStatusSchema>;
 
-export const REPORT_KINDS = ['INITIAL_ZONE', 'AFTER_EVIDENCE_ZONE', 'MULTI_ZONE_SUMMARY'] as const;
+export const REPORT_KINDS = [
+  'INITIAL_ZONE',
+  'AFTER_EVIDENCE_ZONE',
+  'MULTI_ZONE_SUMMARY',
+  /** R-75: a summary of summaries — chosen audits of one Zone, or chosen summaries of a Unit. */
+  'TREND_SUMMARY',
+] as const;
 export const reportKindSchema = z.enum(REPORT_KINDS);
 export type ReportKind = z.infer<typeof reportKindSchema>;
 

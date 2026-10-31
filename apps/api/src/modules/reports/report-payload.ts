@@ -10,6 +10,7 @@ import {
   type ReportQuestion,
   type ReportReview,
   type ReportSummaryExtras,
+  type ReportTrend,
   type ReportZone,
   type SectionScorePayload,
   type SSection,
@@ -22,6 +23,7 @@ import {
   awaitsResponse,
   bandFor,
   percentageOf,
+  reportZoneLabel,
 } from '@audit5s/domain';
 import type { ReportsRepository } from './reports.repository';
 
@@ -64,6 +66,8 @@ export interface FreezeInput {
   selfieObjectKey: string | null;
   /** R-72: `auditZoneId → object key` of each Zone's auditee photo. */
   auditeePhotoKeys: ReadonlyMap<string, string>;
+  /** A Zone report's trend, newest first; empty on a summary. */
+  history: Rows<'readZoneHistory'>;
   /** `correctiveActionId → /ca/{token}`. Minted before the render, frozen here (R-14). */
   actionUrls: ReadonlyMap<string, string>;
 }
@@ -144,12 +148,11 @@ export function freezePayload(input: FreezeInput): ReportPayload {
 
 // ------------------------------------------------------------------------------- zones
 
-function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): ReportZone {
-  const scored = zone.auditType !== 'WALK_BY';
-
-  const sections = S_SECTION_ORDER.map((section) => {
-    const row = input.sectionScores.find(
-      (score) => score.auditZoneId === zone.auditZoneId && score.section === section,
+/** One audit Zone's five S scores, in S order; an S with no row is all zeros. */
+function sectionsOf(auditZoneId: string, sectionScores: FreezeInput['sectionScores']): SectionScorePayload[] {
+  return S_SECTION_ORDER.map((section) => {
+    const row = sectionScores.find(
+      (score) => score.auditZoneId === auditZoneId && score.section === section,
     );
     return {
       section,
@@ -160,6 +163,17 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
       pct: row?.pct === null || row?.pct === undefined ? null : Number(row.pct),
     } satisfies SectionScorePayload;
   });
+}
+
+/** The date a report prints for an audit Zone: the audit's completion, else the Zone's. */
+function auditDateOf(zone: FreezeInput['zones'][number]): string | null {
+  return (zone.auditCompletedAt ?? zone.completedAt ?? zone.auditStartedAt)?.toISOString() ?? null;
+}
+
+function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): ReportZone {
+  const scored = zone.auditType !== 'WALK_BY';
+
+  const sections = sectionsOf(zone.auditZoneId, input.sectionScores);
 
   const questions: ReportQuestion[] = input.responses
     .filter((response) => response.auditZoneId === zone.auditZoneId)
@@ -189,7 +203,7 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
     auditeePhotoObjectKey: input.auditeePhotoKeys.get(zone.auditZoneId) ?? null,
     departmentName: zone.departmentName,
     checklistVersionNo: zone.checklistVersionNo,
-    auditDate: (zone.auditCompletedAt ?? zone.completedAt ?? zone.auditStartedAt)?.toISOString() ?? null,
+    auditDate: auditDateOf(zone),
     auditorName: zone.auditorName,
     auditorLoginId: zone.auditorLoginId,
     scored,
@@ -219,6 +233,18 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
       )
       .sort((a, b) => a.suggestionNo! - b.suggestionNo!)
       .map((action) => toOverallAction(action, input.actionUrls)),
+    ...(scored && input.kind !== 'MULTI_ZONE_SUMMARY' && input.history.length > 0
+      ? {
+          // Oldest first, as the chart reads left to right.
+          history: [...input.history].reverse().map((point) => ({
+            auditZoneId: point.auditZoneId,
+            auditDate: point.auditDate?.toISOString() ?? null,
+            rawScore: point.rawScore,
+            maxScore: point.maxScore,
+            scorePercentage: point.scorePercentage === null ? null : Number(point.scorePercentage),
+          })),
+        }
+      : {}),
   };
 }
 
@@ -367,10 +393,112 @@ function toNonconformity(
   };
 }
 
+// ------------------------------------------------------------- summary of summaries
+
+export interface TrendFreezeInput {
+  snapshotId: string;
+  version: number;
+  generatedAt: Date;
+  generatedByName: string;
+  unit: FreezeInput['unit'];
+  trend: ReportTrend;
+  auditorNames: readonly string[];
+}
+
+/**
+ * R-75: a summary of summaries. Its points are frozen as given (oldest first) and its own
+ * totals are Σachieved / Σmax over them — the same rule as every other summary, never the
+ * mean of their percentages. It prints no Zone, photograph or link, so it carries none.
+ */
+export function freezeTrendPayload(input: TrendFreezeInput): ReportPayload {
+  const points = [...input.trend.points].sort(
+    (a, b) => (a.to ?? a.from ?? '').localeCompare(b.to ?? b.from ?? '') || a.id.localeCompare(b.id),
+  );
+  const sections = sumSectionsAcross(points);
+  const rawScore = sections.reduce((sum, section) => sum + section.raw, 0);
+  const maxScore = sections.reduce((sum, section) => sum + section.max, 0);
+  const dates = points.flatMap((point) => [point.from, point.to]).filter((date): date is string => date !== null).sort();
+
+  return {
+    schemaVersion: REPORT_PAYLOAD_SCHEMA_VERSION,
+    kind: 'TREND_SUMMARY',
+    snapshotId: input.snapshotId,
+    version: input.version,
+    generatedAt: input.generatedAt.toISOString(),
+    generatedByName: input.generatedByName,
+    unit: { id: input.unit.id, name: input.unit.name, address: joinAddress(input.unit) },
+    audit: null,
+    zones: [],
+    totals: {
+      applicableQuestions: points.reduce((sum, point) => sum + point.totals.applicableQuestions, 0),
+      naQuestions: points.reduce((sum, point) => sum + point.totals.naQuestions, 0),
+      rawScore,
+      maxScore,
+      scorePercentage: percentageOf(rawScore, maxScore),
+    },
+    sections,
+    auditDateRange: dates.length > 0 ? { from: dates[0]!, to: dates[dates.length - 1]! } : null,
+    auditorNames: [...new Set(input.auditorNames)].sort(),
+    closure: null,
+    summaryExtras: null,
+    trend: { ...input.trend, points },
+    bands: RATING_BANDS.map((band) => ({ ...band })),
+    responseTokens: Object.fromEntries(
+      Object.entries(RESPONSE_TOKENS).map(([key, token]) => [key, { ...token }]),
+    ),
+    brand: { ...BRAND_TOKENS },
+  };
+}
+
+/** Zone-wise points: one per chosen audit of the Zone, read from its stored scores. */
+export function zoneTrend(
+  zones: FreezeInput['zones'],
+  sectionScores: FreezeInput['sectionScores'],
+): ReportTrend {
+  const points = zones.map((zone) => {
+    const date = auditDateOf(zone);
+    return {
+      id: zone.auditZoneId,
+      from: date,
+      to: date,
+      zoneCount: 1,
+      totals: {
+        applicableQuestions: zone.applicableQuestions,
+        naQuestions: zone.naQuestions,
+        rawScore: zone.rawScore,
+        maxScore: zone.maxScore,
+        scorePercentage: zone.scorePercentage === null ? null : Number(zone.scorePercentage),
+      },
+      sections: sectionsOf(zone.auditZoneId, sectionScores),
+    };
+  });
+  // Named as the latest audit named it: a Zone renamed since reads as it is now known.
+  const latest = [...zones].sort((a, b) => (auditDateOf(a) ?? '').localeCompare(auditDateOf(b) ?? '')).at(-1);
+  return { scope: 'ZONE', zoneLabel: latest ? reportZoneLabel(latest) : null, points };
+}
+
+/** Unit-wise points: one per chosen Summary report, exactly as that report printed it. */
+export function unitTrend(summaries: Rows<'readIssuedSummaries'>): ReportTrend {
+  return {
+    scope: 'UNIT',
+    zoneLabel: null,
+    points: summaries.map(({ id, from, to, zoneCount, totals, sections }) => ({
+      id,
+      from,
+      to,
+      zoneCount,
+      totals,
+      sections,
+    })),
+  };
+}
+
 // ------------------------------------------------------------------------ aggregations
 
 /** §10.3-C: summed achieved over summed applicable max, per S, across the selection. */
-function sumSectionsAcross(zones: readonly ReportZone[]): SectionScorePayload[] {
+function sumSectionsAcross(
+  zones: readonly { sections: readonly SectionScorePayload[] }[],
+): SectionScorePayload[] {
   return S_SECTION_ORDER.map((section) => {
     const parts = zones.map((zone) => zone.sections.find((s) => s.section === section));
     const applicable = parts.reduce((sum, part) => sum + (part?.applicable ?? 0), 0);

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import {
   API_BASE_PATH,
+  HEADER_IDEMPOTENCY_KEY,
   type Audit,
   type AuditAssignment,
   type AuditDetail,
@@ -12,6 +13,8 @@ import {
   type CrossAuditor,
   type CrossAuditRound,
   type Page,
+  type ReportPayload,
+  type ReportSnapshot,
   type ResponseValue,
   type ZoneLocksResponse,
 } from '@audit5s/contracts';
@@ -2364,3 +2367,123 @@ async function completedAuditForZone(zoneId: string) {
 
   return { auditId, auditZoneId, expectedPercentage: expected.totals.scorePercentage };
 }
+
+describe('a Zone’s trend in its report, and the summary of summaries (R-75)', () => {
+  async function generate(body: unknown) {
+    return world.request('POST', `${base}/reports/generate`, {
+      token: asSuperAdmin(),
+      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+      body,
+    });
+  }
+
+  async function payloadOf(snapshotId: string): Promise<ReportPayload> {
+    const response = await world.request('GET', `${base}/reports/${snapshotId}/payload`, {
+      token: asSuperAdmin(),
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    return response.body as ReportPayload;
+  }
+
+  let zoneId: string;
+  let audits: Awaited<ReturnType<typeof completedAuditForZone>>[];
+
+  beforeAll(async () => {
+    zoneId = await createZone('TR-1', 'Trend line');
+    audits = [];
+    for (let i = 0; i < 3; i += 1) audits.push(await completedAuditForZone(zoneId));
+  }, 300_000);
+
+  it('freezes this audit and the ones before it into a Zone report, oldest first', async () => {
+    const latest = await generate({ kind: 'INITIAL_ZONE', auditZoneId: audits[2]!.auditZoneId });
+    expect(latest.status, JSON.stringify(latest.body)).toBe(202);
+    const history = (await payloadOf((latest.body as ReportSnapshot).id)).zones[0]!.history!;
+    expect(history.map((point) => point.auditZoneId)).toEqual(audits.map((audit) => audit.auditZoneId));
+    expect(history[2]!.scorePercentage).toBeCloseTo(audits[2]!.expectedPercentage!, 3);
+
+    // An earlier audit's report never shows what came after it.
+    const earlier = await generate({ kind: 'INITIAL_ZONE', auditZoneId: audits[1]!.auditZoneId });
+    const earlierHistory = (await payloadOf((earlier.body as ReportSnapshot).id)).zones[0]!.history!;
+    expect(earlierHistory.map((point) => point.auditZoneId)).toEqual(
+      audits.slice(0, 2).map((audit) => audit.auditZoneId),
+    );
+  });
+
+  it('compares any chosen audits of one Zone, zone-wise', async () => {
+    const response = await generate({
+      kind: 'TREND_SUMMARY',
+      unitId: world.unitA,
+      selectedAuditZoneIds: audits.map((audit) => audit.auditZoneId),
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(202);
+    const snapshot = response.body as ReportSnapshot;
+    expect(snapshot.kind).toBe('TREND_SUMMARY');
+    expect(snapshot.subject.zoneLabel).toContain('Trend line');
+
+    const payload = await payloadOf(snapshot.id);
+    expect(payload.trend!.scope).toBe('ZONE');
+    expect(payload.trend!.points).toHaveLength(3);
+    expect(payload.zones).toEqual([]);
+
+    // Regenerating compares the same audits again.
+    const again = await world.request('POST', `${base}/reports/${snapshot.id}/regenerate`, {
+      token: asSuperAdmin(),
+      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+    });
+    expect(again.status, JSON.stringify(again.body)).toBe(202);
+    expect((again.body as ReportSnapshot).selectedAuditZoneIds).toEqual(snapshot.selectedAuditZoneIds);
+  });
+
+  it('refuses audits of two different Zones in one zone-wise trend', async () => {
+    const other = await completedAudit('TR-2', 'Other line');
+    const response = await generate({
+      kind: 'TREND_SUMMARY',
+      unitId: world.unitA,
+      selectedAuditZoneIds: [audits[0]!.auditZoneId, other.auditZoneId],
+    });
+    expect(response.status).toBe(422);
+    expect(JSON.stringify(response.body)).toContain('one Zone');
+  });
+
+  it('compares issued Summary reports of the Unit, unit-wise, and refuses one not issued', async () => {
+    const summaries: string[] = [];
+    for (const audit of audits.slice(0, 2)) {
+      const summary = await generate({
+        kind: 'MULTI_ZONE_SUMMARY',
+        unitId: world.unitA,
+        selectedAuditZoneIds: [audit.auditZoneId],
+      });
+      expect(summary.status, JSON.stringify(summary.body)).toBe(202);
+      summaries.push((summary.body as ReportSnapshot).id);
+    }
+
+    // Still QUEUED — nothing was issued yet, so there is nothing to compare.
+    const early = await generate({ kind: 'TREND_SUMMARY', unitId: world.unitA, selectedSnapshotIds: summaries });
+    expect(early.status).toBe(422);
+
+    // What the worker does on a render, without a browser.
+    await world.owner.query(
+      `UPDATE report_snapshot SET status = 'READY', pdf_object_key = 'test/' || id, pdf_checksum_sha256 = 'x'
+        WHERE id = ANY($1::uuid[])`,
+      [summaries],
+    );
+    const response = await generate({ kind: 'TREND_SUMMARY', unitId: world.unitA, selectedSnapshotIds: summaries });
+    expect(response.status, JSON.stringify(response.body)).toBe(202);
+    const snapshot = response.body as ReportSnapshot;
+    expect(snapshot.selectedSnapshotIds).toEqual(summaries);
+
+    const payload = await payloadOf(snapshot.id);
+    expect(payload.trend!.scope).toBe('UNIT');
+    expect(payload.trend!.points.map((point) => point.zoneCount)).toEqual([1, 1]);
+  });
+
+  it('refuses a request naming both kinds of selection', async () => {
+    const response = await generate({
+      kind: 'TREND_SUMMARY',
+      unitId: world.unitA,
+      selectedAuditZoneIds: [audits[0]!.auditZoneId],
+      selectedSnapshotIds: [randomUUID()],
+    });
+    expect(response.status).toBe(422);
+  });
+});

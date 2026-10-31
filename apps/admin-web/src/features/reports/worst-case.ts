@@ -24,6 +24,7 @@ export function worstReports(): ReportSnapshot[] {
       auditZoneId: summary ? null : uuid(3_000 + zone),
       selectedZoneIds: null,
       selectedAuditZoneIds: summary ? [uuid(3_000 + zone)] : null,
+      selectedSnapshotIds: null,
       assignmentGroupId: null,
       payloadSchemaVersion: 1,
       templateVersion: '1.8.0',

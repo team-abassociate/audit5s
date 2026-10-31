@@ -71,15 +71,24 @@ export function zoneDocumentKey(auditZoneId: string | null): string {
   return `zone:${auditZoneId}`;
 }
 
+/** A report of the Unit rather than of one audited Zone: a summary, or a summary of summaries. */
+function isUnitLevel(snapshot: ReportSnapshot): boolean {
+  return snapshot.kind === 'MULTI_ZONE_SUMMARY' || snapshot.kind === 'TREND_SUMMARY';
+}
+
 /** The key of the document a snapshot belongs to. */
 export function documentKey(snapshot: ReportSnapshot): string {
+  if (snapshot.kind === 'TREND_SUMMARY') {
+    const compared = [...(snapshot.selectedAuditZoneIds ?? snapshot.selectedSnapshotIds ?? [])].sort();
+    return `trend:${snapshot.unitId}:${compared.join(',')}`;
+  }
   if (snapshot.kind !== 'MULTI_ZONE_SUMMARY') return zoneDocumentKey(snapshot.auditZoneId);
   const selection = [...(snapshot.selectedAuditZoneIds ?? snapshot.selectedZoneIds ?? [])].sort();
   return `summary:${snapshot.unitId}:${snapshot.assignmentGroupId ?? ''}:${selection.join(',')}`;
 }
 
 function groupKey(snapshot: ReportSnapshot): string {
-  return snapshot.kind === 'MULTI_ZONE_SUMMARY'
+  return isUnitLevel(snapshot)
     ? `summaries:${snapshot.unitId}`
     : `audit:${snapshot.auditId ?? snapshot.auditZoneId}`;
 }
@@ -112,7 +121,7 @@ export function buildLibrary(snapshots: readonly ReportSnapshot[]): ReportGroup[
       }
       continue;
     }
-    const summaries = latest.kind === 'MULTI_ZONE_SUMMARY';
+    const summaries = isUnitLevel(latest);
     groups.set(gKey, {
       key: gKey,
       kind: summaries ? 'SUMMARIES' : 'AUDIT',
@@ -168,6 +177,10 @@ export function filterLibrary(groups: readonly ReportGroup[], filters: LibraryFi
 /** What a document is called in its row: its Zone, or the Zones a summary covers. */
 export function documentTitle(snapshot: ReportSnapshot): string {
   const { subject } = snapshot;
+  if (snapshot.kind === 'TREND_SUMMARY') {
+    const scope = subject.zoneLabel ?? 'Unit-wide';
+    return `Summary of summaries · ${scope}${subject.auditedFrom ? ` · ${auditedSpan(subject)}` : ''}`;
+  }
   if (snapshot.kind !== 'MULTI_ZONE_SUMMARY') return subject.zoneLabel ?? 'Zone report';
   const zones = `${subject.zoneCount} Zone${subject.zoneCount === 1 ? '' : 's'}`;
   return subject.auditedFrom ? `${zones} · audited ${auditedSpan(subject)}` : zones;
@@ -175,6 +188,7 @@ export function documentTitle(snapshot: ReportSnapshot): string {
 
 /** A report's full name, for a slip or a dialog: `ABC · Zone 2 — Press · After evidence`. */
 export function reportName(snapshot: ReportSnapshot): string {
+  if (snapshot.kind === 'TREND_SUMMARY') return `${snapshot.subject.unitName} · ${documentTitle(snapshot)}`;
   return snapshot.kind === 'MULTI_ZONE_SUMMARY'
     ? `${snapshot.subject.unitName} · Unit summary of ${documentTitle(snapshot)}`
     : `${snapshot.subject.unitName} · ${documentTitle(snapshot)} · ${REPORT_EDITION_LABEL[snapshot.kind]}`;

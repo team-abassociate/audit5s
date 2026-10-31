@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { freezePayload, type FreezeInput } from './report-payload';
+import { freezePayload, freezeTrendPayload, unitTrend, type FreezeInput } from './report-payload';
 
 /**
  * Field report, 2026-09-30: an after-evidence report printed each finding's own photograph
@@ -92,6 +92,7 @@ function input(): FreezeInput {
     ],
     selfieObjectKey: null,
     auditeePhotoKeys: new Map([['zone-1', 'auditee-key']]),
+    history: [],
     actionUrls: new Map(),
   } as unknown as FreezeInput;
 }
@@ -100,6 +101,21 @@ describe('freezePayload', () => {
   it('carries the auditee and their photo onto the Zone (R-72)', () => {
     const [zone] = freezePayload(input()).zones;
     expect(zone).toMatchObject({ auditeeName: 'S. Patil', auditeePhotoObjectKey: 'auditee-key' });
+  });
+
+  it('prints a Zone report’s history oldest first, and none on a summary', () => {
+    const history = [
+      { auditZoneId: 'zone-1', auditDate: new Date('2026-09-23T06:00:00Z'), rawScore: 70, maxScore: 80, scorePercentage: '87.500' },
+      { auditZoneId: 'zone-0', auditDate: new Date('2026-08-20T06:00:00Z'), rawScore: 50, maxScore: 80, scorePercentage: '62.500' },
+    ];
+    const [zone] = freezePayload({ ...input(), history }).zones;
+    expect(zone!.history).toEqual([
+      { auditZoneId: 'zone-0', auditDate: '2026-08-20T06:00:00.000Z', rawScore: 50, maxScore: 80, scorePercentage: 62.5 },
+      { auditZoneId: 'zone-1', auditDate: '2026-09-23T06:00:00.000Z', rawScore: 70, maxScore: 80, scorePercentage: 87.5 },
+    ]);
+
+    const [summarised] = freezePayload({ ...input(), kind: 'MULTI_ZONE_SUMMARY', history }).zones;
+    expect(summarised!.history).toBeUndefined();
   });
 
   it('keeps a finding’s after photo its own, not the before photo', () => {
@@ -175,5 +191,47 @@ describe('freezePayload', () => {
         comment: 'Scrap is back under the bench',
       });
     });
+  });
+});
+
+describe('freezeTrendPayload (R-75)', () => {
+  const section = (raw: number, max: number) =>
+    (['S1_SORT', 'S2_SET_IN_ORDER', 'S3_SHINE', 'S4_STANDARDIZE', 'S5_SUSTAIN'] as const).map((s, i) => ({
+      section: s,
+      applicable: i === 0 ? 10 : 0,
+      na: 0,
+      raw: i === 0 ? raw : 0,
+      max: i === 0 ? max : 0,
+      pct: i === 0 ? (raw / max) * 100 : null,
+    }));
+  const summary = (id: string, from: string, raw: number, max: number) => ({
+    id,
+    from,
+    to: from,
+    zoneCount: 3,
+    totals: { applicableQuestions: 10, naQuestions: 0, rawScore: raw, maxScore: max, scorePercentage: (raw / max) * 100 },
+    sections: section(raw, max),
+    auditorNames: ['B. Auditor', 'A. Auditor'],
+  });
+
+  it('orders points oldest first and sums marks rather than averaging percentages', () => {
+    const payload = freezeTrendPayload({
+      snapshotId: 'snapshot-1',
+      version: 1,
+      generatedAt: new Date('2026-10-31T10:00:00Z'),
+      generatedByName: 'Sam Admin',
+      unit: { id: 'unit-1', name: 'Unit A', address: null, city: null, state: null },
+      // A big summary at 90% and a small one at 10%: the mean would be 50%.
+      trend: unitTrend([summary('late', '2026-09-01T00:00:00.000Z', 9, 10), summary('early', '2026-08-01T00:00:00.000Z', 90, 100)]),
+      auditorNames: ['B. Auditor', 'A. Auditor', 'A. Auditor'],
+    });
+
+    expect(payload.kind).toBe('TREND_SUMMARY');
+    expect(payload.trend!.points.map((point) => point.id)).toEqual(['early', 'late']);
+    expect(payload.totals).toMatchObject({ rawScore: 99, maxScore: 110 });
+    expect(payload.totals.scorePercentage).toBeCloseTo(90, 3);
+    expect(payload.auditDateRange).toEqual({ from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' });
+    expect(payload.auditorNames).toEqual(['A. Auditor', 'B. Auditor']);
+    expect(payload.zones).toEqual([]);
   });
 });
