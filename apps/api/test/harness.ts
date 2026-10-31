@@ -361,7 +361,7 @@ export async function captureEvidence(
     token: string;
     evidenceId: string;
     auditId: string;
-    kind?: 'AUDITOR_SELFIE' | 'QUESTION_EVIDENCE' | 'WALK_BY_PHOTO' | 'CORRECTIVE_AFTER';
+    kind?: 'AUDITOR_SELFIE' | 'QUESTION_EVIDENCE' | 'WALK_BY_PHOTO' | 'CORRECTIVE_AFTER' | 'AUDITEE_PHOTO';
     auditZoneId?: string;
     questionResponseId?: string;
     classification?: 'GOOD' | 'NONCONFORMITY' | 'NEUTRAL';

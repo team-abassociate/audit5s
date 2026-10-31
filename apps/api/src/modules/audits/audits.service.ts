@@ -206,6 +206,7 @@ export class AuditsService {
   async summary(scope: ScopeContext, auditId: string): Promise<AuditScoreSummary> {
     const audit = await this.mustFind(scope, auditId);
     const zones = await this.repository.listZones(scope, auditId);
+    const auditeePhotos = await this.repository.listAuditeePhotoIds(scope, auditId);
     const { audit: auditBreakdown, zones: zoneBreakdowns } = await this.scoring.summarise(
       scope,
       auditId,
@@ -221,6 +222,8 @@ export class AuditsService {
           zoneCode: zone.zoneCodeSnapshot,
           zoneName: zone.zoneNameSnapshot,
           zoneDescription: zone.zoneDescriptionSnapshot,
+          auditeeName: zone.auditeeName,
+          auditeePhotoEvidenceId: auditeePhotos.get(zone.id) ?? null,
           checklistTemplateName: zone.checklistTemplateNameSnapshot,
           status: zone.status,
         };

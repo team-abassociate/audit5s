@@ -1,7 +1,7 @@
-import { ScrollView, View } from 'react-native';
+import { Image, ScrollView, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
-import type { AuditScoreSummary } from '@audit5s/contracts';
+import type { AuditScoreSummary, EvidenceViewUrl } from '@audit5s/contracts';
 import { bandFor, zoneDisplayLabel } from '@audit5s/domain';
 import { api, problemMessage } from '../../../lib/api';
 import {
@@ -10,6 +10,7 @@ import {
   CardHeader,
   Chip,
   EmptyState,
+  LedgerRow,
   Muted,
   Screen,
   SectionHead,
@@ -115,6 +116,8 @@ export default function AuditSummaryScreen() {
             description={zone.checklistTemplateName}
             totals={zone.totals}
             sections={zone.sections}
+            auditeeName={zone.auditeeName ?? null}
+            auditeePhotoEvidenceId={zone.auditeePhotoEvidenceId ?? null}
           />
         ))}
 
@@ -132,11 +135,16 @@ function ScoreBlock({
   description,
   totals,
   sections,
+  auditeeName,
+  auditeePhotoEvidenceId,
 }: {
   title: string;
   description?: string | null;
   totals: AuditScoreSummary['audit']['totals'];
   sections: AuditScoreSummary['audit']['sections'];
+  /** R-72, on a Zone's block only. */
+  auditeeName?: string | null;
+  auditeePhotoEvidenceId?: string | null;
 }) {
   const styles = useStyles();
   const band = bandOf(totals.scorePercentage);
@@ -165,12 +173,40 @@ function ScoreBlock({
           max: section.max,
         }))}
       />
+      {auditeeName ? (
+        <View style={styles.auditee}>
+          <LedgerRow label="Auditee" value={auditeeName} last />
+        </View>
+      ) : null}
+      {auditeePhotoEvidenceId ? <AuditeePhoto evidenceId={auditeePhotoEvidenceId} label={auditeeName ?? 'Auditee'} /> : null}
     </Card>
   );
+}
+
+/** R-72: the auditee's photo, from the server through a short-lived link. */
+function AuditeePhoto({ evidenceId, label }: { evidenceId: string; label: string }) {
+  const styles = useStyles();
+  const view = useQuery({
+    queryKey: ['evidence-view-url', evidenceId],
+    queryFn: () => api.get<EvidenceViewUrl>(`/evidence/${evidenceId}/view-url?variant=thumbnail`),
+    staleTime: 240_000,
+    retry: false,
+  });
+  if (!view.data) return view.isError ? <Muted>The auditee photo could not load.</Muted> : null;
+  return <Image source={{ uri: view.data.url }} style={styles.auditeePhoto} resizeMode="cover" accessibilityLabel={label} />;
 }
 
 const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.xl, gap: theme.space.sm },
   stack: { gap: theme.space.md },
   band: { marginTop: 10, marginBottom: theme.space.md },
+  auditee: { marginTop: theme.space.md },
+  auditeePhoto: {
+    width: 120,
+    aspectRatio: 1,
+    marginTop: theme.space.sm,
+    borderWidth: 1.5,
+    borderColor: theme.color.edge,
+    backgroundColor: theme.color.tile2,
+  },
 }));

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notExists, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, notExists, sql, type SQL } from 'drizzle-orm';
 import {
   auditAssignments,
   auditLogs,
@@ -455,6 +455,30 @@ export class AuditsRepository extends BaseRepository {
         .where(and(eq(auditZones.auditId, auditId), this.scoped(scope, auditScopeColumns)))
         .orderBy(asc(auditZones.sequenceNo));
     });
+  }
+
+  /** R-72: each Zone's auditee photo that has reached the bucket, `auditZoneId → evidence id`. */
+  async listAuditeePhotoIds(scope: ScopeContext, auditId: string): Promise<Map<string, string>> {
+    const rows = await this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      return tx
+        .select({ auditZoneId: evidence.auditZoneId, id: evidence.id })
+        .from(evidence)
+        .innerJoin(audits, eq(audits.id, evidence.auditId))
+        .where(
+          and(
+            eq(evidence.auditId, auditId),
+            eq(evidence.kind, 'AUDITEE_PHOTO'),
+            isNull(evidence.deletedAt),
+            isNull(evidence.redactedAt),
+            isNotNull(evidence.uploadedAt),
+            this.scoped(scope, auditScopeColumns),
+          ),
+        )
+        // Oldest first, so a retake (the later photo) is the one the Map keeps.
+        .orderBy(asc(evidence.capturedAt));
+    });
+    return new Map(rows.flatMap((row) => (row.auditZoneId ? [[row.auditZoneId, row.id] as const] : [])));
   }
 
   async updateZone(
