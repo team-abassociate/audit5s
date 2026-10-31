@@ -3,9 +3,15 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
-import { adoptSharedDatabase, databaseNameFor, openExpoExecutor } from './expo-executor';
+import {
+  adoptSharedDatabase,
+  databaseNameFor,
+  openExpoExecutor,
+  yieldedToAnotherTab,
+} from './expo-executor';
 import { useSession } from '../session';
 import { createThemedStyles, useTheme } from '../theme';
+import { Button } from '../../components/ui';
 
 /**
  * Opens the signed-in person's own database, migrates it, and hands it to the tree.
@@ -36,13 +42,17 @@ export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
   const [owner, setOwner] = useState<string | null>(null);
   const [database, setDatabase] = useState<LocalDatabase | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Web: another tab of the app holds the database (see `openWithRetry`).
+  const [elsewhere, setElsewhere] = useState(yieldedToAnotherTab);
+  // Bumped by "Try again" to rerun the open.
+  const [tries, setTries] = useState(0);
 
   // Signed out keeps whoever was open; a new person replaces them. Before anybody has
   // signed in on this launch, the empty placeholder is open.
   const wanted = user?.id ?? owner ?? NOBODY;
 
   useEffect(() => {
-    if (wanted === owner) return;
+    if (elsewhere || wanted === owner) return;
     let cancelled = false;
     let opened: Awaited<ReturnType<typeof openExpoExecutor>> | null = null;
 
@@ -71,12 +81,28 @@ export function LocalDatabaseProvider({ children }: { children: ReactNode }) {
       void opened?.close().catch(() => undefined);
     };
     // `owner` is deliberately read, not depended on: it only ever follows `wanted`.
-  }, [wanted, queryClient]);
+  }, [wanted, queryClient, elsewhere, tries]);
+
+  if (elsewhere) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.message}>Leanstack is open in another tab.</Text>
+        <Button title="Use here" onPress={() => setElsewhere(false)} />
+      </View>
+    );
+  }
 
   if (error) {
     return (
       <View style={styles.centered}>
         <Text style={styles.error}>{error}</Text>
+        <Button
+          title="Try again"
+          onPress={() => {
+            setError(null);
+            setTries((n) => n + 1);
+          }}
+        />
       </View>
     );
   }
@@ -118,6 +144,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
   error: {
     color: theme.color.crit,
+    fontFamily: theme.family.regular,
+    textAlign: 'center',
+    padding: theme.space.lg,
+  },
+  message: {
+    color: theme.color.ink,
     fontFamily: theme.family.regular,
     textAlign: 'center',
     padding: theme.space.lg,
