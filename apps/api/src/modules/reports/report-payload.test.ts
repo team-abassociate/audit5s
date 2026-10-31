@@ -28,6 +28,7 @@ function input(): FreezeInput {
         zoneName: 'Trimming',
         zoneDescription: null,
         zoneLeaderName: 'A Leader',
+        auditeeName: 'S. Patil',
         departmentName: 'Production',
         checklistVersionNo: 1,
         auditCompletedAt: at,
@@ -90,11 +91,17 @@ function input(): FreezeInput {
       },
     ],
     selfieObjectKey: null,
+    auditeePhotoKeys: new Map([['zone-1', 'auditee-key']]),
     actionUrls: new Map(),
   } as unknown as FreezeInput;
 }
 
 describe('freezePayload', () => {
+  it('carries the auditee and their photo onto the Zone (R-72)', () => {
+    const [zone] = freezePayload(input()).zones;
+    expect(zone).toMatchObject({ auditeeName: 'S. Patil', auditeePhotoObjectKey: 'auditee-key' });
+  });
+
   it('keeps a finding’s after photo its own, not the before photo', () => {
     const [finding] = freezePayload(input()).zones[0]!.nonconformities;
 

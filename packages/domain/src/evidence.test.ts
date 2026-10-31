@@ -66,7 +66,7 @@ describe('E-1 — classification is derived from the score', () => {
     expect(classifyEvidence({ kind: 'WALK_BY_PHOTO' })).toBe('NEUTRAL');
   });
 
-  it.each(['AUDITOR_SELFIE', 'CORRECTIVE_AFTER'] as const)('always classifies %s NEUTRAL', (kind) => {
+  it.each(['AUDITOR_SELFIE', 'CORRECTIVE_AFTER', 'AUDITEE_PHOTO'] as const)('always classifies %s NEUTRAL', (kind) => {
     // Even if a client asserts otherwise: a selfie is attendance, an after-photo is a fix.
     expect(classifyEvidence({ kind, auditorSelected: 'NONCONFORMITY' })).toBe('NEUTRAL');
   });

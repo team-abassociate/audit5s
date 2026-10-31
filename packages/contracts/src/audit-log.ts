@@ -72,6 +72,8 @@ export const AUDIT_LOG_ACTIONS = [
   'unit.cross_audit_called',
   /** The Coordinator moved a called cross audit's deadline (0051). */
   'cross_audit.deadline_changed',
+  /** R-73: a Zone of a called cross audit given to another Zone Leader. */
+  'cross_audit.reassigned',
   /** The Coordinator completed a called cross audit, with a remark if a Zone was left (0051). */
   'cross_audit.completed',
   'device.revoked',

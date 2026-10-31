@@ -176,17 +176,18 @@ describe('§2.7 — the ten steps, in order', () => {
     const auditId = await startWalkBy();
     const zoneId = await makeZone('The Zone’s own description, from master data');
 
-    // Steps 3 and 4: the auditor describes what they are looking at and confirms the
-    // leader they are standing with. Both are snapshotted (D6).
+    // Steps 3 and 4: the Zone's description and leader are the Coordinator's (R-74), so a
+    // Consultant's typing is dropped and the Zone's own are snapshotted (D6). Who faced the
+    // audit is the auditor's to record (R-72).
     const { auditZoneId, body: zone, status } = await addZone(auditId, zoneId, 1, {
       zoneDescription: 'Press line, north bay — pallets stacked against the panel',
-      zoneLeaderUserId: world.actors.ZONE_LEADER.userId,
+      zoneLeaderUserId: world.outOfScopeUserId,
+      auditeeName: 'Zoe Leader',
     });
     expect(status, JSON.stringify(zone)).toBe(200);
-    expect(zone.zoneDescriptionSnapshot).toBe(
-      'Press line, north bay — pallets stacked against the panel',
-    );
+    expect(zone.zoneDescriptionSnapshot).toBe('The Zone’s own description, from master data');
     expect(zone.zoneLeaderUserIdSnapshot).toBe(world.actors.ZONE_LEADER.userId);
+    expect(zone.auditeeName).toBe('Zoe Leader');
     // The *name*, not just the id — D6 snapshots it "so it survives even a user rename",
     // and before 0008's definer function this was silently null for a Consultant.
     expect(zone.zoneLeaderNameSnapshot).toBe('Zoe Leader');
@@ -253,13 +254,17 @@ describe('§2.7 — the ten steps, in order', () => {
 
   it('refuses a Zone Leader from another Unit', async () => {
     // C2: the leader pointer grants nothing, so the membership is the check. A leader of
-    // another Unit would put a name on a report for a plant they do not work in.
-    const auditId = await startWalkBy();
+    // another Unit would put a name on a report for a plant they do not work in. R-74: only
+    // a Super Admin or Coordinator names a leader at all.
+    const coordinatorToken = await loginFromDevice(world, world.actors.COORDINATOR, COORDINATOR_DEVICE);
+    const auditId = await startWalkBy(coordinatorToken, COORDINATOR_DEVICE);
     const zoneId = await makeZone();
 
-    const { status, body } = await addZone(auditId, zoneId, 1, {
-      zoneLeaderUserId: world.outOfScopeUserId,
+    const response = await world.request('PUT', `${base}/audits/${auditId}/zones/${randomUUID()}`, {
+      token: coordinatorToken,
+      body: { zoneId, sequenceNo: 1, zoneLeaderUserId: world.outOfScopeUserId },
     });
+    const { status, body } = response as { status: number; body: unknown };
     expect(status, JSON.stringify(body)).toBe(422);
     expect((body as unknown as { errors: Array<{ field: string }> }).errors[0]!.field).toBe(
       'zoneLeaderUserId',
@@ -278,17 +283,20 @@ describe('§2.7 — the ten steps, in order', () => {
    * Coordinator renaming this Zone in master data still never reaches the snapshot, and
    * `audits.e2e.test.ts` pins that from the other side.
    */
-  it('lets the auditor rewrite the description they typed, while the audit is open', async () => {
-    const auditId = await startWalkBy();
+  it('lets a Coordinator rewrite the description they typed, while the audit is open', async () => {
+    // R-74: the Coordinator, who alone may describe a Zone, auditing it themselves.
+    const coordinatorToken = await loginFromDevice(world, world.actors.COORDINATOR, COORDINATOR_DEVICE);
+    const auditId = await startWalkBy(coordinatorToken, COORDINATOR_DEVICE);
     const zoneId = await makeZone('Original');
-
-    const { auditZoneId } = await addZone(auditId, zoneId, 1, {
-      zoneDescription: 'What the auditor saw on the day',
+    const auditZoneId = randomUUID();
+    await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
+      token: coordinatorToken,
+      body: { zoneId, sequenceNo: 1, zoneDescription: 'What the auditor saw on the day' },
     });
 
     // Still open: the auditor's own correction lands (R-34).
     const again = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
-      token: consultantToken,
+      token: coordinatorToken,
       body: { zoneId, sequenceNo: 1, zoneDescription: 'Corrected before leaving site' },
     });
     expect(again.status).toBe(200);
@@ -299,7 +307,7 @@ describe('§2.7 — the ten steps, in order', () => {
     // A write that names no description leaves the one there is — only what the request
     // supplies is ever re-taken, which is what keeps a master rename out.
     const remarkOnly = await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
-      token: consultantToken,
+      token: coordinatorToken,
       body: { zoneId, sequenceNo: 1, zoneRemark: 'Tidy' },
     });
     expect(remarkOnly.status).toBe(200);

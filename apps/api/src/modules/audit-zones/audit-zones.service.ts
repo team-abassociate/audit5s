@@ -56,10 +56,19 @@ export class AuditZonesService {
     scope: ScopeContext,
     auditId: string,
     auditZoneId: string,
-    request: UpsertAuditZoneRequest,
+    typed: UpsertAuditZoneRequest,
   ): Promise<AuditZone> {
     const audit = await this.mustFindAudit(scope, auditId);
     this.assertWritable(scope, audit);
+
+    // R-74: only a Super Admin or a Coordinator says what a Zone is and who leads it. Anyone
+    // else's is dropped rather than refused, because phones before R-74 still send what the
+    // auditor typed, and an audit is never blocked over a display field. The Zone's own then
+    // goes on the snapshot. Who stood in for the leader is the auditee (R-72).
+    const request: UpsertAuditZoneRequest =
+      scope.actor.role === 'SUPER_ADMIN' || scope.actor.role === 'COORDINATOR'
+        ? typed
+        : { ...typed, zoneDescription: undefined, zoneLeaderName: undefined, zoneLeaderUserId: undefined };
 
     const existing = await this.repository.findZone(scope, auditZoneId);
     if (existing && existing.auditId !== auditId) {
@@ -210,6 +219,8 @@ export class AuditZonesService {
         zoneRemark: request.zoneRemark,
         overallActionSuggestions: request.overallActionSuggestions,
         resumeQuestionId: request.resumeQuestionId,
+        // R-72: the auditor may correct it while the audit is open; a finished one keeps it.
+        auditeeName: editable ? request.auditeeName : undefined,
         clientUpdatedAt: request.clientUpdatedAt ? new Date(request.clientUpdatedAt) : new Date(),
         snapshot,
         /*

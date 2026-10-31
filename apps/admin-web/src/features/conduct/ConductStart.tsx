@@ -106,7 +106,7 @@ export function ConductStartPage() {
         <Card>
           <CardHeader
             title="Cross audit"
-            description="Pick the Zones — or all of them — and the date it is due. Every Zone Leader of the Unit is notified. Follow it on the Audits page."
+            description="Pick the Zones — or all of them — who audits each, and the date it is due. Only the people you choose are notified. Follow it on the Audits page."
             action={
               <Button variant="secondary" onClick={() => setCalling(true)}>
                 Start a cross audit

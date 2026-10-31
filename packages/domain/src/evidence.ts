@@ -38,8 +38,9 @@ export function classifyEvidence(input: ClassifyEvidenceInput): EvidenceClassifi
 
     case 'AUDITOR_SELFIE':
     case 'CORRECTIVE_AFTER':
-      // Always NEUTRAL (E-1). A selfie is proof of attendance and an after-photo is proof
-      // of a fix; neither is a finding.
+    case 'AUDITEE_PHOTO':
+      // Always NEUTRAL (E-1). A selfie is proof of attendance, an after-photo is proof of a
+      // fix and an auditee photo is proof of who faced the audit (R-72); none is a finding.
       return 'NEUTRAL';
   }
 }

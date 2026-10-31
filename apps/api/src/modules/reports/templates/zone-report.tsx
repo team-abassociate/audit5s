@@ -94,6 +94,16 @@ export function ZoneReport({
             <div className="redacted">No selfie on record</div>
           )}
           <div className="caption">{zone.auditorName}</div>
+          {/* R-72: who faced the audit; absent on an audit from before it was asked. */}
+          {zone.auditeeName || zone.auditeePhotoObjectKey ? (
+            <>
+              <h2 className="section-title">Auditee</h2>
+              {zone.auditeePhotoObjectKey ? (
+                <SelfieImage objectKey={zone.auditeePhotoObjectKey} resolve={resolve} />
+              ) : null}
+              <div className="caption">{zone.auditeeName ?? '—'}</div>
+            </>
+          ) : null}
         </div>
         <div className="radar-box">
           <h2 className="section-title">5S performance web</h2>

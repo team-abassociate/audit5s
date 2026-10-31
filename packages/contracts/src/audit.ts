@@ -265,6 +265,8 @@ export const auditZoneSchema = z.object({
   zoneLeaderUserIdSnapshot: uuidSchema.nullable(),
   /** Survives even a user rename, which is the point of snapshotting the name too. */
   zoneLeaderNameSnapshot: z.string().nullable(),
+  /** R-72: who faced the audit of this Zone, as the auditor typed it. */
+  auditeeName: z.string().nullable().optional(),
   /** **The binding version** for this Zone's questions (QR-2). */
   checklistVersionId: uuidSchema.nullable(),
   checklistTemplateNameSnapshot: z.string().nullable(),
@@ -491,13 +493,14 @@ export const upsertAuditZoneRequestSchema = z
     checklistVersionId: uuidSchema.optional(),
     /**
      * Optional on every audit type (§2.7 step 3, R-19). Absent or empty, the server copies
-     * the Zone's own description.
+     * the Zone's own description. R-74: honoured only from a Super Admin or a Coordinator;
+     * anyone else's is ignored and the Zone's own is used.
      */
     zoneDescription: clearable(z.string().trim().max(2000)),
     /**
      * R-19 — the Zone leader's name as the auditor typed it. A name, not an account: it is
      * printed on the reports and routes nothing. Absent or empty, the Zone's own leader is
-     * used.
+     * used. R-74: honoured only from a Super Admin or a Coordinator, as is `zoneLeaderUserId`.
      */
     zoneLeaderName: clearable(z.string().trim().max(200)),
     /**
@@ -506,6 +509,11 @@ export const upsertAuditZoneRequestSchema = z
      * `422 ZONE_LEADER_NOT_IN_UNIT`.
      */
     zoneLeaderUserId: uuidSchema.optional(),
+    /**
+     * R-72 — who faced the audit of this Zone: the Zone Leader, or whoever stood in for them.
+     * Optional on the wire, because phones before R-72 never send it.
+     */
+    auditeeName: clearable(z.string().trim().max(200)),
     zoneRemark: clearable(z.string().trim().max(4000)),
     /**
      * R-38: the Zone's overall corrective-action suggestions, whole — the list replaces

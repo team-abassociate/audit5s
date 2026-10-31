@@ -34,6 +34,18 @@ describe('notification policy (§5.9)', () => {
     expect(one.title).toContain('Paint shop');
   });
 
+  it('tells a Zone Leader the cross-audit Zones given to them, and nobody else (R-73)', () => {
+    expect(RECIPIENT_ROLES.CROSS_AUDIT_ASSIGNED).toEqual([]);
+    const one = renderNotification(
+      job('CROSS_AUDIT_ASSIGNED', { unitName: 'Pune', zoneCount: 1, zoneCode: 'Z-04', zoneName: 'Paint shop', dueOn: '2026-11-05' }),
+    );
+    expect(one.title).toMatch(/Paint shop is yours/);
+    expect(one.body).toContain('Pune');
+    expect(renderNotification(job('CROSS_AUDIT_ASSIGNED', { unitName: 'Pune', zoneCount: 3 })).title).toBe(
+      'Cross audit: 3 Zones are yours',
+    );
+  });
+
   it('names the auditor, the Unit and the day a completed audit finished', () => {
     const { title, body } = renderNotification(
       job('AUDIT_COMPLETED', {

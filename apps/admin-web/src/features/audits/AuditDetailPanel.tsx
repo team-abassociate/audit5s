@@ -174,6 +174,7 @@ export function AuditDetailPanel({
                   {zone.zoneDescriptionSnapshot ? `${zone.zoneDescriptionSnapshot} · ` : ''}
                   {zone.checklistTemplateNameSnapshot ?? 'No checklist'}
                   {zone.zoneLeaderNameSnapshot ? ` · Zone Leader: ${zone.zoneLeaderNameSnapshot}` : ''}
+                  {zone.auditeeName ? ` · Auditee: ${zone.auditeeName}` : ''}
                 </p>
 
                 {audit.scored && <SectionTable sections={zoneScore?.sections ?? zone.sections} />}
@@ -333,9 +334,10 @@ function EvidenceGallery({
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
 
-  // AU5: the auditor's own photo is not a finding, so it sits after the findings' photos.
+  // AU5: the auditor's own photo is not a finding, so it sits after the findings' photos, and
+  // so does the auditee's (R-72).
   const evidence = (gallery.data?.pages.flatMap((page) => page.data) ?? []).sort(
-    (a, b) => Number(a.kind === 'AUDITOR_SELFIE') - Number(b.kind === 'AUDITOR_SELFIE'),
+    (a, b) => Number(isPortrait(a.kind)) - Number(isPortrait(b.kind)),
   );
 
   return (
@@ -421,7 +423,7 @@ function EvidenceTile({
     staleTime: 240_000,
   });
   const label = evidence.classification === 'NONCONFORMITY' ? 'Nonconformity' : evidence.classification === 'GOOD' ? 'Good' : 'Neutral';
-  const where = evidence.kind === 'AUDITOR_SELFIE' ? EVIDENCE_KIND_LABEL.AUDITOR_SELFIE : (caption ?? EVIDENCE_KIND_LABEL[evidence.kind]);
+  const where = isPortrait(evidence.kind) ? EVIDENCE_KIND_LABEL[evidence.kind] : (caption ?? EVIDENCE_KIND_LABEL[evidence.kind]);
 
   return (
     <button
@@ -439,7 +441,7 @@ function EvidenceTile({
       )}
       <div className="space-y-1 p-2">
         <div className="flex flex-wrap items-center gap-1">
-          {evidence.kind !== 'AUDITOR_SELFIE' && <Badge tone={evidenceTone(evidence.classification)}>{label}</Badge>}
+          {!isPortrait(evidence.kind) && <Badge tone={evidenceTone(evidence.classification)}>{label}</Badge>}
           {evidence.isSummaryFlagged && <Badge tone="warn">Summary photo</Badge>}
         </div>
         <p className="line-clamp-3 text-xs text-ink-2 [overflow-wrap:anywhere]">{where}</p>
@@ -671,4 +673,9 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: s
       </p>
     </div>
   );
+}
+
+/** A photo of a person — the auditor's selfie or the auditee (R-72) — never a finding. */
+function isPortrait(kind: Evidence['kind']): boolean {
+  return kind === 'AUDITOR_SELFIE' || kind === 'AUDITEE_PHOTO';
 }

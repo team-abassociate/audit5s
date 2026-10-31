@@ -2786,3 +2786,54 @@ and server (R-48). So that a Kaizen fault in production can be stopped without r
 Nothing is deleted, and each person's Kaizen grant (R-57) is kept. To switch Kaizen off, set
 `KAIZEN_ENABLED=false` in `/opt/audit5s/.env` and recreate the `api`, `worker-general` and
 `worker-report` containers. Set it back to `true` and recreate them again to switch it on.
+
+## R-72 — An audit records its auditee, by name and photo
+
+**Settled 2026-10-31 by the product owner.** When an audit is called, the Zone Leader is
+sometimes away and someone else faces the audit of their Zone. The auditor records who did,
+as proof for management:
+
+- **Auditee's name** (`audit_zone.auditee_name`, migration 0060), on the form where the Zone
+  is picked before the questions. It starts as the Zone Leader's name, because the Zone Leader
+  faces it when they are there, and the auditor types over it for whoever stands in. The
+  auditor may correct it while the audit is open; a finished audit keeps it.
+- **Auditee's photo**, a live photograph (`AUDITEE_PHOTO`). Like the selfie it is never a
+  finding: always `NEUTRAL`, outside the Zone's 25-photo limit, and not among the report's
+  good or nonconformity photos.
+- **Report:** the Zone report's Auditor verification box shows the auditee and their photo
+  under the auditor's selfie (template 1.10.0). A report issued before keeps its bytes (R-35).
+- **Old phones:** both are optional on the server, because phones before R-72 never send them.
+  The phone and the web require both before the questions open.
+
+## R-73 — A Coordinator gives each Zone of a cross audit to one Zone Leader
+
+**Settled 2026-10-31 by the product owner.** Calling a cross audit, the Coordinator picks each
+Zone and who audits it, from the Unit's Zone Leaders / Auditors: every Auditor-list account,
+external auditors included (R-64). Consultants are not on the list, because R-64 hides them
+from the Coordinator. A Zone Leader may be given their own Zone (D9).
+
+- **Who is told:** only the person a Zone is given to (`CROSS_AUDIT_ASSIGNED`), once, however
+  many of their Zones the call names. A call with no assignments, which phones before R-73
+  send, still goes to every Zone Leader (`CROSS_AUDIT_CALLED`).
+- **Who sees it:** a Zone Leader's list of standing calls shows the Zones given to them, plus
+  calls given to nobody. The Coordinator's cross-audit card shows who each Zone is given to.
+- **Changing it:** the Coordinator may give a Zone that is not yet started to someone else.
+  `cross_audit_assignment` is append-only: a new row, and the latest one is in force, so who
+  held it before stays on record. Logged as `cross_audit.reassigned`.
+- **Not enforced at sync:** another Zone Leader's audit of the Zone is still accepted and still
+  answers the call. A phone offline must never be refused an audit it already recorded.
+
+## R-74 — Only a Super Admin or Coordinator sets a Zone's description and leader
+
+**Settled 2026-10-31 by the product owner.** No auditor, whether a Consultant, an external
+auditor or a cross-auditing Zone Leader, may change a Zone's description or its Zone Leader.
+Only a Super Admin or the Unit's Coordinator may. Withdraws R-19's "typed by the auditor" for
+both fields, and R-34's correction of them by anyone else.
+
+- On the Zone form the two fields are read-only for everyone else, showing the Zone's own.
+  Who stood in for an absent leader goes in the auditee (R-72).
+- The server drops `zoneDescription`, `zoneLeaderName` and `zoneLeaderUserId` from anyone
+  else's request, rather than refusing it, so older phones still sync. The snapshot takes the
+  Zone's own, and a typed name is no longer written back to the Zone (0015).
+- R-67 clears descriptions when a Zone list is imported so that the current one is typed in.
+  The Coordinator now types it on the Zones page; until then auditors see none.

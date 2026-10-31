@@ -108,3 +108,32 @@ export const crossAuditCalls = pgTable(
     index('cross_audit_call_round_idx').on(table.roundId),
   ],
 );
+
+/**
+ * R-73 (0060): who the Coordinator gave a Zone of a called cross audit to. Append-only: a
+ * reassignment is a new row, and the latest row for a call is the assignment in force. A
+ * call with no row went to every Zone Leader, as calls before 0060 did.
+ */
+export const crossAuditAssignments = pgTable(
+  'cross_audit_assignment',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    callId: uuid('call_id')
+      .notNull()
+      .references(() => crossAuditCalls.id, { onDelete: 'restrict' }),
+    unitId: uuid('unit_id')
+      .notNull()
+      .references(() => units.id, { onDelete: 'restrict' }),
+    auditorUserId: uuid('auditor_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    assignedByUserId: uuid('assigned_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('cross_audit_assignment_call_idx').on(table.callId, table.createdAt),
+    index('cross_audit_assignment_auditor_idx').on(table.auditorUserId),
+  ],
+);

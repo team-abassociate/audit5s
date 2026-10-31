@@ -33,8 +33,9 @@ type AuditZone = AuditDetail['zones'][number];
 /**
  * One audit being conducted on the web (R-51): the phone's Zones screen
  * (`audit/zones/[auditId].tsx`). The next Zone first — one of the Unit's Zones (a Super Admin
- * or Coordinator may add one, R-52), an optional description, the Zone Leader's name and, on
- * a scored audit, the department — then the
+ * or Coordinator may add one, R-52), an optional description, the Zone Leader's name — both
+ * set only by a Super Admin or Coordinator, read-only to anyone else (R-74) — the auditee's
+ * name and live photo (R-72) and, on a scored audit, the department — then the
  * Zones already in it, then Save & pause and Finish. A Zone another open audit holds is
  * refused before forty minutes of questions, not after (R-29).
  *
@@ -58,11 +59,16 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const [zoneCode, setZoneCode] = useState<string | null>(null);
   // R-52: a Zone added here — its label (`1A`, at most 3) and name, on one line.
   const [newZone, setNewZone] = useState<{ label: string; name: string } | null>(null);
+  // R-74: what a Zone is and who leads it are the Super Admin's and Coordinator's to say.
+  const mayEditZone = scope?.role === 'SUPER_ADMIN' || scope?.role === 'COORDINATOR';
   const [description, setDescription] = useState('');
   const [leaderName, setLeaderName] = useState('');
+  // R-72: who faced the audit, and a live photo of them.
+  const [auditeeName, setAuditeeName] = useState('');
+  const [auditeePhoto, setAuditeePhoto] = useState<Blob | null>(null);
   const [versionId, setVersionId] = useState('');
   const [showErrors, setShowErrors] = useState(false);
-  const [editing, setEditing] = useState<{ zone: AuditZone; description: string; leaderName: string } | null>(null);
+  const [editing, setEditing] = useState<{ zone: AuditZone; description: string; leaderName: string; auditeeName: string } | null>(null);
   const [aborting, setAborting] = useState<AuditZone | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [discarding, setDiscarding] = useState(false);
@@ -132,12 +138,13 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
           ...(newZone?.name.trim() ? { zoneName: newZone.name.trim() } : {}),
           sequenceNo: (audit?.zones.length ?? 0) + 1,
           ...(walkBy ? {} : { checklistVersionId: versionId }),
-          zoneDescription: description.trim() || null,
-          zoneLeaderName: leaderName.trim(),
+          ...(mayEditZone ? { zoneDescription: description.trim() || null, zoneLeaderName: leaderName.trim() } : {}),
+          auditeeName: auditeeName.trim(),
           clientUpdatedAt: new Date().toISOString(),
         },
         auditZoneId,
       );
+      await uploadEvidence(auditeePhoto!, { kind: 'AUDITEE_PHOTO', auditId, auditZoneId, isLiveCapture: true }, client!);
       return auditZoneId;
     },
     onSuccess: async (auditZoneId) => {
@@ -152,8 +159,10 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
         {
           zoneId: next.zone.zoneId,
           sequenceNo: next.zone.sequenceNo,
-          zoneDescription: next.description.trim() || null,
-          zoneLeaderName: next.leaderName.trim() || null,
+          ...(mayEditZone
+            ? { zoneDescription: next.description.trim() || null, zoneLeaderName: next.leaderName.trim() || null }
+            : {}),
+          auditeeName: next.auditeeName.trim() || null,
           clientUpdatedAt: new Date().toISOString(),
         },
         uuidv7(),
@@ -211,7 +220,9 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
         : lock
           ? 'Another audit holds this Zone'
           : null,
-    leader: leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
+    leader: mayEditZone && leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
+    auditee: auditeeName.trim() === '' ? 'Enter who is facing the audit' : null,
+    auditeePhoto: auditeePhoto === null ? 'Take a photo of the auditee' : null,
     department: !walkBy && !versionId ? 'Choose the department' : null,
   };
 
@@ -221,8 +232,11 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
     setShowErrors(false);
     const known = code === null ? undefined : byCode.get(code);
     if (!known) return;
-    if (!description.trim()) setDescription(known.description ?? '');
-    if (!leaderName.trim()) setLeaderName(known.zoneLeaderName ?? '');
+    // Someone else's typing never stands in for the Zone's own (R-74).
+    if (!mayEditZone || !description.trim()) setDescription(known.description ?? '');
+    if (!mayEditZone || !leaderName.trim()) setLeaderName(known.zoneLeaderName ?? '');
+    // The Zone Leader faces it when they are there; whoever stands in is typed over it.
+    if (!auditeeName.trim()) setAuditeeName(known.zoneLeaderName ?? '');
     if (!versionId && known.defaultChecklistTemplateId) {
       setVersionId(versions.find((version) => version.templateId === known.defaultChecklistTemplateId)?.id ?? '');
     }
@@ -320,12 +334,39 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
                 ) : null}
               </Field>
             )}
-            <Field label="Zone Leader’s name" {...(showErrors && errors.leader ? { error: errors.leader } : {})}>
-              <Input value={leaderName} maxLength={200} onChange={(event) => setLeaderName(event.target.value)} placeholder="Full name" />
+            <Field
+              label="Zone Leader’s name"
+              {...(showErrors && errors.leader ? { error: errors.leader } : {})}
+              {...(mayEditZone ? {} : { hint: 'Set by the Unit’s Coordinator.' })}
+            >
+              <Input value={leaderName} maxLength={200} readOnly={!mayEditZone} onChange={(event) => setLeaderName(event.target.value)} placeholder={mayEditZone ? 'Full name' : 'Not set'} />
             </Field>
-            <Field label="Zone description (optional)">
-              <Input value={description} maxLength={2000} onChange={(event) => setDescription(event.target.value)} placeholder="What this Zone covers" />
+            <Field label="Zone description (optional)" {...(mayEditZone ? {} : { hint: 'Set by the Unit’s Coordinator.' })}>
+              <Input value={description} maxLength={2000} readOnly={!mayEditZone} onChange={(event) => setDescription(event.target.value)} placeholder={mayEditZone ? 'What this Zone covers' : 'Not set'} />
             </Field>
+            <Field
+              label="Auditee’s name"
+              hint="Who is facing this audit: the Zone Leader, or whoever stands in for them."
+              {...(showErrors && errors.auditee ? { error: errors.auditee } : {})}
+            >
+              <Input value={auditeeName} maxLength={200} onChange={(event) => setAuditeeName(event.target.value)} placeholder="Full name" />
+            </Field>
+            <div className="sm:col-span-2">
+              <span className="gb-label">Auditee’s photo</span>
+              {auditeePhoto ? (
+                <p className="mt-1 flex items-center gap-3 text-sm">
+                  Photo taken.
+                  <button type="button" className="underline" onClick={() => setAuditeePhoto(null)}>
+                    Retake
+                  </button>
+                </p>
+              ) : (
+                <div className="mt-1 max-w-md">
+                  <LiveCapture openLabel="Open the camera for the auditee’s photo" onCapture={setAuditeePhoto} />
+                </div>
+              )}
+              {showErrors && errors.auditeePhoto ? <span className="gb-field-error">{errors.auditeePhoto}</span> : null}
+            </div>
             {walkBy ? null : (
               <Field label="Department" {...(showErrors && errors.department ? { error: errors.department } : {})}>
                 <Select value={versionId} onChange={(event) => setVersionId(event.target.value)}>
@@ -344,7 +385,7 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
             <Button
               disabled={addZone.isPending}
               onClick={() => {
-                if (errors.zone || errors.leader || errors.department) setShowErrors(true);
+                if (Object.values(errors).some(Boolean)) setShowErrors(true);
                 else addZone.mutate();
               }}
             >
@@ -394,7 +435,13 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
                 <div className="min-w-0">
                   <p className="font-bold text-ink">{zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)}</p>
                   <p className="text-sm text-ink-2">
-                    {[zone.checklistTemplateNameSnapshot, zone.zoneLeaderNameSnapshot && `Leader ${zone.zoneLeaderNameSnapshot}`].filter(Boolean).join(' · ')}
+                    {[
+                      zone.checklistTemplateNameSnapshot,
+                      zone.zoneLeaderNameSnapshot && `Leader ${zone.zoneLeaderNameSnapshot}`,
+                      zone.auditeeName && `Auditee ${zone.auditeeName}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </p>
                   {zone.status === 'WITHDRAWN' ? (
                     <p className="text-sm text-ink-2">Aborted: its answers are out of this audit and it is not scored.</p>
@@ -410,7 +457,14 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
                   {running && zone.status !== 'WITHDRAWN' ? (
                     <Button
                       variant="secondary"
-                      onClick={() => setEditing({ zone, description: zone.zoneDescriptionSnapshot ?? '', leaderName: zone.zoneLeaderNameSnapshot ?? '' })}
+                      onClick={() =>
+                        setEditing({
+                          zone,
+                          description: zone.zoneDescriptionSnapshot ?? '',
+                          leaderName: zone.zoneLeaderNameSnapshot ?? '',
+                          auditeeName: zone.auditeeName ?? '',
+                        })
+                      }
                     >
                       Edit details
                     </Button>
@@ -469,11 +523,18 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
       <Dialog open={editing !== null} onClose={() => setEditing(null)} title={editing ? zoneDisplayLabel(editing.zone.zoneCodeSnapshot, editing.zone.zoneNameSnapshot) : 'Zone details'}>
         {editing ? (
           <div className="gb-dialog-section space-y-3">
-            <Field label="Description">
-              <Input value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} />
-            </Field>
-            <Field label="Zone Leader">
-              <Input value={editing.leaderName} onChange={(event) => setEditing({ ...editing, leaderName: event.target.value })} />
+            {mayEditZone ? (
+              <>
+                <Field label="Description">
+                  <Input value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} />
+                </Field>
+                <Field label="Zone Leader">
+                  <Input value={editing.leaderName} onChange={(event) => setEditing({ ...editing, leaderName: event.target.value })} />
+                </Field>
+              </>
+            ) : null}
+            <Field label="Auditee’s name">
+              <Input value={editing.auditeeName} maxLength={200} onChange={(event) => setEditing({ ...editing, auditeeName: event.target.value })} />
             </Field>
             <ErrorNotice error={editZone.error} />
           </div>

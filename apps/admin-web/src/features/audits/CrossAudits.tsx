@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CrossAuditRound, CrossAuditZoneState, Page, Zone } from '@audit5s/contracts';
+import type { CrossAuditor, CrossAuditRound, CrossAuditZoneState, Page, Zone } from '@audit5s/contracts';
 import { formatDate, istDateKey, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
-import { Badge, Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorNotice, Field, Input, Segmented, Table, Td, Th } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorNotice, Field, Input, Segmented, Select, Table, Td, Th } from '@/components/ui';
 import { api } from '@/lib/api';
 
 /**
  * Cross audits on the web (R-56), as on the phone: one call of any number of Zones — or all —
  * is one cross-zonal audit, listed on the Active, Completed and Assigned boards; opening it
  * shows that board's Zones, and the Coordinator moves its deadline or completes it, with a
- * remark when a Zone was left.
+ * remark when a Zone was left. R-73: each Zone is given to one of the Unit's Zone Leaders /
+ * Auditors, who alone is told and alone sees it; the Coordinator may give it to someone else.
  */
 
 type Board = 'ACTIVE' | 'DONE' | 'ASSIGNED';
@@ -29,7 +30,16 @@ function closed(round: CrossAuditRound): boolean {
   return round.completedAt !== null || round.zones.every((zone) => zone.state === 'COMPLETED');
 }
 
-/** Tick the Zones — or Select all — and the day it is due; every Zone Leader is notified once. */
+/** The Unit's Zone Leaders / Auditors, who a Zone of a cross audit may be given to (R-73). */
+function useCrossAuditors(unitId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['cross-auditors', unitId],
+    queryFn: () => api.get<CrossAuditor[]>(`/units/${unitId}/cross-auditors`),
+    enabled: enabled && unitId !== '',
+  });
+}
+
+/** Tick the Zones — or Select all — give each to someone, and the day it is due (R-73). */
 export function CallCrossAuditDialog({ unitId, open, onClose }: { unitId: string; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const zones = useQuery({
@@ -38,14 +48,25 @@ export function CallCrossAuditDialog({ unitId, open, onClose }: { unitId: string
     enabled: open && unitId !== '',
   });
   const list = [...(zones.data?.data ?? [])].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  const people = useCrossAuditors(unitId, open);
   const [selected, setSelected] = useState<string[]>([]);
+  const [auditorOf, setAuditorOf] = useState<Record<string, string>>({});
   const [dueOn, setDueOn] = useState(() => istDateKey(Date.now() + 7 * 86_400_000) ?? '');
   useEffect(() => {
-    if (open) setSelected([]);
+    if (open) {
+      setSelected([]);
+      setAuditorOf({});
+    }
   }, [open]);
   const all = list.length > 0 && selected.length === list.length;
+  const unassigned = selected.filter((zoneId) => !auditorOf[zoneId]).length;
   const call = useMutation({
-    mutationFn: () => api.post(`/units/${unitId}/cross-audit`, { zoneIds: selected, dueOn }, uuidv7()),
+    mutationFn: () =>
+      api.post(
+        `/units/${unitId}/cross-audit`,
+        { assignments: selected.map((zoneId) => ({ zoneId, auditorUserId: auditorOf[zoneId]! })), dueOn },
+        uuidv7(),
+      ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['cross-audits', unitId] });
       onClose();
@@ -57,9 +78,9 @@ export function CallCrossAuditDialog({ unitId, open, onClose }: { unitId: string
       open={open}
       title="Start a cross audit"
       tone="primary"
-      confirmLabel={selected.length > 0 ? `Notify Zone Leaders · ${selected.length} Zone${selected.length === 1 ? '' : 's'}` : 'Notify Zone Leaders'}
+      confirmLabel={selected.length > 0 ? `Notify auditors · ${selected.length} Zone${selected.length === 1 ? '' : 's'}` : 'Notify auditors'}
       pending={call.isPending}
-      disabled={selected.length === 0 || !dueOn}
+      disabled={selected.length === 0 || unassigned > 0 || !dueOn}
       error={call.error}
       onConfirm={() => call.mutate()}
       onCancel={onClose}
@@ -80,24 +101,47 @@ export function CallCrossAuditDialog({ unitId, open, onClose }: { unitId: string
         {zones.isPending ? <p className="text-sm text-ink-2">Loading Zones…</p> : null}
         {zones.data && list.length === 0 ? <p className="text-sm text-ink-2">This Unit has no Zones yet.</p> : null}
         {list.map((zone) => (
-          <label key={zone.id} className="flex items-center justify-between gap-3 py-1 text-sm">
-            {zoneDisplayLabel(zone.code, zone.name)}
-            <input
-              type="checkbox"
-              checked={selected.includes(zone.id)}
-              onChange={(event) =>
-                setSelected(list.map((one) => one.id).filter((id) => (id === zone.id ? event.target.checked : selected.includes(id))))
-              }
-            />
-          </label>
+          <div key={zone.id} className="py-1">
+            <label className="flex items-center justify-between gap-3 text-sm">
+              {zoneDisplayLabel(zone.code, zone.name)}
+              <input
+                type="checkbox"
+                checked={selected.includes(zone.id)}
+                onChange={(event) =>
+                  setSelected(list.map((one) => one.id).filter((id) => (id === zone.id ? event.target.checked : selected.includes(id))))
+                }
+              />
+            </label>
+            {selected.includes(zone.id) ? (
+              <Select
+                aria-label={`Who audits ${zoneDisplayLabel(zone.code, zone.name)}`}
+                className="mt-1"
+                value={auditorOf[zone.id] ?? ''}
+                onChange={(event) => setAuditorOf({ ...auditorOf, [zone.id]: event.target.value })}
+              >
+                <option value="">Who audits this Zone?</option>
+                {(people.data ?? []).map((person) => (
+                  <option key={person.userId} value={person.userId}>
+                    {person.fullName}
+                    {person.loginId ? ` (${person.loginId})` : ''}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+          </div>
         ))}
+        {people.data && people.data.length === 0 ? (
+          <p className="text-sm text-ink-2">This Unit has no Zone Leaders / Auditors yet. Add them from the Auditor list.</p>
+        ) : null}
       </div>
+      <ErrorNotice error={people.error} />
       <Field label="Due by">
         <Input type="date" value={dueOn} min={today()} onChange={(event) => setDueOn(event.target.value)} />
       </Field>
       <p className="mt-3">
-        Every Zone Leader of the Unit gets one notification asking them to audit the Zones you ticked
-        {dueOn ? ` by ${day(dueOn)}` : ''}. Each Zone stays on their list, marked overdue after that day, until one of them audits it.
+        Each person you chose gets one notification asking them to audit their Zones
+        {dueOn ? ` by ${day(dueOn)}` : ''}. Only they see those Zones on their list, marked overdue after that day, until the Zone
+        is audited.{unassigned > 0 ? ` Choose who audits ${unassigned === 1 ? 'the last Zone' : `${unassigned} Zones`}.` : ''}
       </p>
     </ConfirmDialog>
   );
@@ -181,6 +225,12 @@ function RoundCard({
     },
   });
   const manage = mayManage && round.completedAt === null;
+  const people = useCrossAuditors(round.unitId, open && manage);
+  const reassign = useMutation({
+    mutationFn: ({ zoneId, auditorUserId }: { zoneId: string; auditorUserId: string }) =>
+      api.put(`${path}/zones/${zoneId}/assignee`, { auditorUserId }),
+    onSuccess: refresh,
+  });
 
   return (
     <div className={late ? 'gb-panel border-l-4 border-l-crit' : 'gb-panel'}>
@@ -213,6 +263,7 @@ function RoundCard({
               <thead>
                 <tr>
                   <Th>Zone</Th>
+                  <Th>Assigned to</Th>
                   <Th>Auditor</Th>
                 </tr>
               </thead>
@@ -220,6 +271,25 @@ function RoundCard({
                 {zones.map((zone) => (
                   <tr key={zone.zoneId}>
                     <Td>{zoneDisplayLabel(zone.zoneCode, zone.zoneName)}</Td>
+                    <Td>
+                      {manage && zone.state === 'NOT_STARTED' && people.data ? (
+                        <Select
+                          aria-label={`Who audits ${zoneDisplayLabel(zone.zoneCode, zone.zoneName)}`}
+                          value={zone.assigneeUserId ?? ''}
+                          disabled={reassign.isPending}
+                          onChange={(event) => reassign.mutate({ zoneId: zone.zoneId, auditorUserId: event.target.value })}
+                        >
+                          {zone.assigneeUserId ? null : <option value="">Every Zone Leader</option>}
+                          {people.data.map((person) => (
+                            <option key={person.userId} value={person.userId}>
+                              {person.fullName}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        (zone.assigneeName ?? 'Every Zone Leader')
+                      )}
+                    </Td>
                     <Td>{zone.auditorName ?? 'Nobody has started it'}</Td>
                   </tr>
                 ))}
@@ -237,7 +307,7 @@ function RoundCard({
               <Button onClick={() => setCompleting(true)}>Complete cross audit</Button>
             </div>
           ) : null}
-          <ErrorNotice error={extend.error} />
+          <ErrorNotice error={extend.error ?? reassign.error} />
         </div>
       ) : null}
       <ConfirmDialog

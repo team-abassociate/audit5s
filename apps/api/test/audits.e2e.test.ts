@@ -9,6 +9,7 @@ import {
   type AuditZone,
   type CorrectiveAction,
   type CrossAuditCall,
+  type CrossAuditor,
   type CrossAuditRound,
   type Page,
   type ResponseValue,
@@ -19,6 +20,7 @@ import {
   FIXTURE_PASSWORD,
   captureEvidence,
   loginFromDevice,
+  makeActor,
   startWorld,
   stopWorld,
   type TestWorld,
@@ -1560,7 +1562,7 @@ describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)
    * never reaches a snapshot, and the auditor's own correction now does. One of those is
    * D6's guarantee and the other was D6 being read wider than it said.
    */
-  it('lets the auditor correct the Zone description and leader they typed, while open', async () => {
+  it('keeps the Zone’s own description and leader from an auditor, and lets them correct the auditee while open (R-72, R-74)', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
     const zoneId = await createZone('Z-97', 'Corrected zone', 'Typed in a hurry');
     const { auditId, auditZoneId } = await startAuditWithZone({
@@ -1578,13 +1580,14 @@ describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)
         checklistVersionId: versionId,
         zoneDescription: 'Press shop, bay 7 — corrected on site',
         zoneLeaderName: 'R. Iyer',
+        auditeeName: 'S. Patil',
       },
     });
     expect(fixed.status, JSON.stringify(fixed.body)).toBe(200);
-    expect((fixed.body as AuditZone).zoneDescriptionSnapshot).toBe(
-      'Press shop, bay 7 — corrected on site',
-    );
-    expect((fixed.body as AuditZone).zoneLeaderNameSnapshot).toBe('R. Iyer');
+    // R-74: only a Super Admin or the Coordinator says what the Zone is and who leads it.
+    expect((fixed.body as AuditZone).zoneDescriptionSnapshot).toBe('Typed in a hurry');
+    expect((fixed.body as AuditZone).zoneLeaderNameSnapshot).not.toBe('R. Iyer');
+    expect((fixed.body as AuditZone).auditeeName).toBe('S. Patil');
 
     // And once it is finished, the same correction is refused — the snapshot is history.
     await answer(consultantToken, auditZoneId, fiftyAnswers());
@@ -1604,6 +1607,7 @@ describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)
         sequenceNo: 1,
         checklistVersionId: versionId,
         zoneDescription: 'Changed after the fact',
+        auditeeName: 'Someone else',
       },
     });
     // Whether it is refused outright or accepted-but-ignored, the snapshot must not move.
@@ -1611,7 +1615,8 @@ describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)
       token: consultantToken,
     });
     const frozen = (after.body as AuditDetail).zones.find((zone) => zone.id === auditZoneId)!;
-    expect(frozen.zoneDescriptionSnapshot).toBe('Press shop, bay 7 — corrected on site');
+    expect(frozen.zoneDescriptionSnapshot).toBe('Typed in a hurry');
+    expect(frozen.auditeeName).toBe('S. Patil');
     expect([200, 409]).toContain(late.status);
   }, 180_000);
 
@@ -1749,6 +1754,60 @@ describe('one cross audit of several Zones (0051)', () => {
     const elsewhere = `${base}/units/${world.unitB}/cross-audits/${round.id}`;
     expect((await world.request('PATCH', elsewhere, { token: coordinator(), body: { dueOn: inDays(3) } })).status).toBe(404);
     expect((await world.request('POST', `${elsewhere}/complete`, { token: asSuperAdmin(), body: { remark: 'x' } })).status).toBe(404);
+  });
+});
+
+describe('a cross audit gives each Zone to one Zone Leader (R-73)', () => {
+  const coordinator = () => world.actors.COORDINATOR.accessToken;
+  const unitPath = () => `${base}/units/${world.unitA}`;
+  const standingFor = async (token: string) =>
+    (await world.request('GET', `${unitPath()}/cross-audit-calls`, { token })).body as CrossAuditCall[];
+
+  it('lists the Unit’s Zone Leaders, shows the Zone only to its assignee, and lets the Coordinator give it to another', async () => {
+    const other = await makeActor(world.owner, world.request, 'ZONE_LEADER', 'Ravi Second', '+919000000501', world.unitA);
+    const zoneId = await createZone('Z-1G', 'Given');
+
+    const people = await world.request('GET', `${unitPath()}/cross-auditors`, { token: coordinator() });
+    expect(people.status).toBe(200);
+    const ids = (people.body as CrossAuditor[]).map((person) => person.userId);
+    expect(ids).toEqual(expect.arrayContaining([world.actors.ZONE_LEADER.userId, other.userId]));
+    // R-64: the Coordinator never sees a Consultant, so cannot give one a Zone.
+    expect(ids).not.toContain(world.actors.CONSULTANT.userId);
+    expect((await world.request('GET', `${unitPath()}/cross-auditors`, { token: leaderToken })).status).toBe(403);
+
+    const refused = await world.request('POST', `${unitPath()}/cross-audit`, {
+      token: coordinator(),
+      body: { assignments: [{ zoneId, auditorUserId: world.actors.CONSULTANT.userId }] },
+    });
+    expect(refused.status).toBe(422);
+
+    const called = await world.request('POST', `${unitPath()}/cross-audit`, {
+      token: coordinator(),
+      body: { assignments: [{ zoneId, auditorUserId: other.userId }] },
+    });
+    expect(called.status, JSON.stringify(called.body)).toBe(204);
+
+    // Only the person it was given to sees it among their calls; the Coordinator sees who.
+    expect((await standingFor(other.accessToken)).find((call) => call.zoneId === zoneId)).toMatchObject({
+      assigneeUserId: other.userId,
+    });
+    expect((await standingFor(leaderToken)).map((call) => call.zoneId)).not.toContain(zoneId);
+    const round = ((await world.request('GET', `${unitPath()}/cross-audits`, { token: coordinator() })).body as CrossAuditRound[])[0]!;
+    expect(round.zones[0]).toMatchObject({ zoneId, assigneeUserId: other.userId, assigneeName: 'Ravi Second' });
+
+    // Given to someone else: they see it now, the first person no longer does.
+    const reassign = `${unitPath()}/cross-audits/${round.id}/zones/${zoneId}/assignee`;
+    expect((await world.request('PUT', reassign, { token: leaderToken, body: { auditorUserId: other.userId } })).status).toBe(403);
+    const moved = await world.request('PUT', reassign, { token: coordinator(), body: { auditorUserId: world.actors.ZONE_LEADER.userId } });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(204);
+    expect((await standingFor(leaderToken)).map((call) => call.zoneId)).toContain(zoneId);
+    expect((await standingFor(other.accessToken)).map((call) => call.zoneId)).not.toContain(zoneId);
+    expect(
+      (await world.request('PUT', `${base}/units/${world.unitB}/cross-audits/${round.id}/zones/${zoneId}/assignee`, {
+        token: coordinator(),
+        body: { auditorUserId: other.userId },
+      })).status,
+    ).toBe(404);
   });
 });
 

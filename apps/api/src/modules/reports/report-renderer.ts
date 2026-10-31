@@ -230,7 +230,10 @@ export class ReportRenderer implements OnModuleDestroy {
       return null;
     });
 
-    const selfie = payload.audit?.selfieObjectKey ?? null;
+    // Portraits, not findings: the auditor's selfie and each Zone's auditee photo (R-72).
+    const portraits = new Set(
+      [payload.audit?.selfieObjectKey, ...payload.zones.map((zone) => zone.auditeePhotoObjectKey)].filter(Boolean),
+    );
 
     // Fetched in parallel, inserted in key order: the map's order is what the tier search
     // iterates, and it must not depend on which download happened to finish first.
@@ -243,7 +246,7 @@ export class ReportRenderer implements OnModuleDestroy {
           return [
             key,
             {
-              slot: key === selfie ? "selfie" : "photo",
+              slot: portraits.has(key) ? "selfie" : "photo",
               bytes: Buffer.from(bytes),
               contentType: contentTypeOf(key),
             },
