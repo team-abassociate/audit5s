@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, RefreshControl, SectionList, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
-import type { Audit, AuditAssignment, AuditStatus, AuditType, Page, Unit } from '@audit5s/contracts';
-import { AuditCard } from '../../components/audit-card';
+import type { Audit, AuditAssignment, Page, Unit } from '@audit5s/contracts';
+import { AuditCard, ResumeSlip } from '../../components/audit-card';
 import { CallCrossAuditSheet, CrossAuditRoundCard, roundsOnBoard, useCrossAuditRounds } from '../../components/cross-audit-round';
 import {
   ActionSheet,
@@ -17,8 +17,6 @@ import {
   Screen,
   SectionHead,
   Segmented,
-  Slip,
-  SlipText,
 } from '../../components/ui';
 import {
   ZoneFilterButton,
@@ -32,10 +30,8 @@ import {
   type ZoneOption,
 } from '../../components/zone-filter';
 import { api } from '../../lib/api';
-import { listLocalAudits } from '../../lib/db/audit.repository';
-import { useLocalDatabase } from '../../lib/db/provider';
 import { formatDate } from '../../lib/format';
-import { AUDIT_STATUS_LABELS, AUDIT_TYPE_LABELS, humanize, isFinished, isRunning } from '../../lib/labels';
+import { AUDIT_TYPE_LABELS, humanize, isFinished, isRunning } from '../../lib/labels';
 import { useSession } from '../../lib/session';
 import { createThemedStyles, useTheme } from '../../lib/theme';
 
@@ -85,7 +81,6 @@ export default function AuditsScreen() {
   const styles = useStyles();
   const theme = useTheme();
   const router = useRouter();
-  const database = useLocalDatabase();
   const { can, scope } = useSession();
   // A Coordinator holds one Unit (M-1): naming it on every card says nothing. It is said once,
   // in the section head, and the card leads with who is auditing.
@@ -127,9 +122,6 @@ export default function AuditsScreen() {
   const rounds = useCrossAuditRounds(can('unit', 'call_cross_audit') ? ownUnitId : undefined);
   // Not filtered by Zone: a cross audit spans Zones, and its own screen lists them.
   const roundCards = roundsOnBoard(rounds.data ?? [], board);
-
-  const mine = useQuery({ queryKey: ['local', 'audits'], queryFn: () => listLocalAudits(database) });
-  const resumable = (mine.data ?? []).find((audit) => audit.status === 'IN_PROGRESS' || audit.status === 'PAUSED');
 
   const active = useQuery({
     queryKey: ['audits', 'active'],
@@ -211,18 +203,7 @@ export default function AuditsScreen() {
 
   const header = (
     <>
-      {resumable ? (
-        <Slip
-          accessibilityRole="button"
-          title="Your audit on this phone"
-          onPress={() => router.push({ pathname: '/audit/zones/[auditId]', params: { auditId: resumable.id } })}
-        >
-          <SlipText>
-            {AUDIT_TYPE_LABELS[resumable.auditType as AuditType]},{' '}
-            {AUDIT_STATUS_LABELS[resumable.status as AuditStatus].toLowerCase()}. Carry on where you stopped.
-          </SlipText>
-        </Slip>
-      ) : null}
+      <ResumeSlip />
       <Segmented options={BOARDS} value={board} onChange={setBoard} />
       <ZoneFilterChips zones={zones} selected={zoneFilter.selected} onChange={zoneFilter.setSelected} />
       {roundCards.map((round) => (

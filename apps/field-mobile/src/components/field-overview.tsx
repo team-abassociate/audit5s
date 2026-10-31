@@ -20,14 +20,8 @@ import {
 import { crossAuditAssignee, crossAuditCallZone, crossAuditDue, crossAuditStart, useOpenCrossAuditCalls } from './cross-audit-calls';
 import { isOverdue } from '../lib/cross-audit-call';
 import { syncCatalogue } from '../lib/catalogue';
-import {
-  listLocalAudits,
-  listResumableAudits,
-  pendingOutboxCount,
-  resumeCursor,
-  resumeLocalAudit,
-  type ResumableAudit,
-} from '../lib/db/audit.repository';
+import { listLocalAudits, pendingOutboxCount } from '../lib/db/audit.repository';
+import { useResumableAudits, useResumeAudit } from '../lib/resume-audit';
 import { listLocalCorrectiveActions } from '../lib/db/corrective-action.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import { formatDateTime } from '../lib/format';
@@ -61,10 +55,7 @@ export function FieldOverview() {
   // A Zone Leader has one Unit and no Units tab: their shortcut starts the audit itself.
   const zoneLeader = scope?.role === 'ZONE_LEADER';
 
-  const resumable = useQuery({
-    queryKey: ['local', 'resumable-audits'],
-    queryFn: () => listResumableAudits(database),
-  });
+  const resumable = useResumableAudits();
 
   const audits = useQuery({
     queryKey: ['local', 'audits'],
@@ -91,33 +82,7 @@ export function FieldOverview() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local'] }),
   });
 
-  /**
-   * Back into the audit, at the question it stopped on.
-   *
-   * A paused audit is resumed first — the status has to move before the questionnaire will
-   * accept another answer — and then the cursor decides where to land: the Zone that was
-   * open, or the Zone list when there is none, which is the case for an audit that was
-   * started and never opened a Zone.
-   */
-  const resume = useMutation({
-    mutationFn: async (audit: ResumableAudit) => {
-      if (audit.status === 'PAUSED') {
-        await resumeLocalAudit(database, audit.id);
-      }
-      return { audit, cursor: await resumeCursor(database, audit.id) };
-    },
-    onSuccess: async ({ audit, cursor }) => {
-      await queryClient.invalidateQueries({ queryKey: ['local'] });
-      if (cursor.auditZoneId) {
-        router.push({
-          pathname: audit.auditType === 'WALK_BY' ? '/walk-by/[auditZoneId]' : '/audit/[auditZoneId]',
-          params: { auditZoneId: cursor.auditZoneId },
-        });
-        return;
-      }
-      router.push({ pathname: '/audit/zones/[auditId]', params: { auditId: audit.id } });
-    },
-  });
+  const resume = useResumeAudit();
 
   const open = resumable.data ?? [];
   const finishedCount = (audits.data ?? []).filter((audit) => isFinished(audit.status)).length;
