@@ -102,13 +102,13 @@ export default function AuditsScreen() {
   if (can('audit', 'create_external')) {
     newAudit.push({ label: 'Start one myself', detail: 'Take the selfie, then select the Zone', onPress: () => router.push('/audit/start') });
   }
-  // §2.6, 0051: a Coordinator calls one cross audit of any number of Zones; every Zone Leader
-  // of the Unit is told once. It is a card on every board below.
+  // §2.6, 0051: a Coordinator calls one cross audit of any number of Zones; R-73: each Zone
+  // goes to one auditor, and only they are told. It is a card on every board below.
   const [callingCross, setCallingCross] = useState(false);
   if (can('unit', 'call_cross_audit') && oneUnit) {
     newAudit.push({
       label: 'Start a cross audit',
-      detail: 'Pick the Zones — or all of them — and the date it is due; every Zone Leader is notified',
+      detail: 'Pick the Zones, who audits each, and the date it is due; each auditor is notified',
       onPress: () => setCallingCross(true),
     });
   }
