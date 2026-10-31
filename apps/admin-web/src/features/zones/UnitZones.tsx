@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { Controller, useForm } from 'react-hook-form';
 import type {
+  Audit,
   ChecklistTemplate,
   CreateZoneRequest,
   CreateUserResponse,
@@ -33,6 +35,9 @@ import {
   Th,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { AUDIT_TYPE_LABEL } from '@/lib/labels';
+import { RowToggle, ScoreCell } from '@/features/audits/AuditsPage';
+import { readAll } from '@/features/audits/data';
 import { ZoneNumberInput } from './ZoneNumberInput';
 import { BootstrapNotice, CreateUserForm } from '@/features/users/UsersPage';
 import {
@@ -318,6 +323,7 @@ function ZoneRow({ zone, unitId, codes }: { zone: Zone; unitId: string; codes: r
   const { can } = useSession();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [history, setHistory] = useState(false);
 
   const archive = useMutation({
     mutationFn: () => api.post(`/zones/${zone.id}/archive`),
@@ -337,7 +343,9 @@ function ZoneRow({ zone, unitId, codes }: { zone: Zone; unitId: string; codes: r
     <>
       <tr className={zone.archivedAt ? 'opacity-60' : undefined}>
         <Td>
-          <span className="font-medium break-words">{label}</span>
+          <RowToggle open={history} onClick={() => setHistory((open) => !open)}>
+            <span className="font-medium break-words">{label}</span>
+          </RowToggle>
         </Td>
         <Td className="truncate text-ink-2">{zone.description ?? '—'}</Td>
         <Td>{zone.zoneLeaderName ?? <span className="text-ink-3">Unassigned</span>}</Td>
@@ -392,7 +400,73 @@ function ZoneRow({ zone, unitId, codes }: { zone: Zone; unitId: string; codes: r
           </td>
         </tr>
       )}
+      {history && (
+        <tr>
+          <td colSpan={6} className="bg-board p-0">
+            <ZoneAudits zoneId={zone.id} unitId={unitId} />
+          </td>
+        </tr>
+      )}
     </>
+  );
+}
+
+/** The day an audit happened: when it finished, else when it started, else when it was given. */
+const auditDate = (audit: Audit) => audit.completedAt ?? audit.startedAt ?? audit.createdAt;
+
+/**
+ * Every audit that covered this Zone, newest first. One read of the Unit's audits, shared by
+ * every Zone opened under it; `zoneIds` on each audit says which Zones it covered (R-43).
+ * The score is the audit's, which for a multi-Zone audit is all its Zones together.
+ */
+function ZoneAudits({ zoneId, unitId }: { zoneId: string; unitId: string }) {
+  const audits = useQuery({
+    queryKey: ['audits', 'register', unitId],
+    queryFn: () => readAll<Audit>(`/audits?limit=200&unitId=${unitId}`),
+  });
+  const rows = (audits.data ?? [])
+    .filter((audit) => audit.zoneIds?.includes(zoneId))
+    .sort((a, b) => auditDate(b).localeCompare(auditDate(a)));
+
+  if (audits.isPending) return <Spinner />;
+  if (audits.error) {
+    return (
+      <div className="p-4">
+        <ErrorNotice error={audits.error} />
+      </div>
+    );
+  }
+  if (rows.length === 0) return <EmptyState title="No audits of this Zone yet." />;
+  return (
+    <Table label="Audits of this Zone">
+      <thead>
+        <tr>
+          <Th>Date</Th>
+          <Th>Auditor</Th>
+          <Th>Status</Th>
+          <Th>Score</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((audit) => (
+          <tr key={audit.id}>
+            <Td>
+              <Link to="/audits" search={{ audit: audit.id } as never} className="gb-data underline">
+                {formatDate(auditDate(audit))}
+              </Link>
+              <span className="block text-xs text-ink-3">{AUDIT_TYPE_LABEL[audit.auditType]}</span>
+            </Td>
+            <Td>{audit.auditorName}</Td>
+            <Td>
+              <StatusChip kind="audit" status={audit.status} />
+            </Td>
+            <Td>
+              <ScoreCell audit={audit} />
+            </Td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
   );
 }
 
