@@ -57,6 +57,7 @@ export interface AuditStrings {
   addOverallAction: string;
   removeOverallAction: string;
   scoreSoFar: string;
+  auditee: string;
   scoreNote: string;
   marksLine: (raw: number, max: number, answered: number, na: number) => string;
   band: Record<RatingBandToken, string>;
@@ -140,6 +141,7 @@ const EN: AuditStrings = {
   addOverallAction: 'Add corrective action',
   removeOverallAction: 'Remove',
   scoreSoFar: 'Score so far',
+  auditee: 'Auditee',
   scoreNote: 'Worked out on this device as a guide. The server recomputes it when the audit syncs.',
   marksLine: (raw, max, answered, na) => `${raw}/${max} marks\n${answered} answered, ${na} NA`,
   band: {
@@ -232,6 +234,7 @@ const HI: AuditStrings = {
   addOverallAction: 'सुधारात्मक कार्रवाई जोड़ें',
   removeOverallAction: 'हटाएँ',
   scoreSoFar: 'अब तक का स्कोर',
+  auditee: 'ऑडिटी',
   scoreNote: 'यह स्कोर अंदाज़े के लिए इसी फ़ोन पर निकाला गया है। ऑडिट सिंक होने पर सर्वर इसे फिर से गिनता है।',
   marksLine: (raw, max, answered, na) => `${raw}/${max} अंक\n${answered} उत्तर दिए, ${na} NA`,
   band: {
@@ -324,6 +327,7 @@ const MR: AuditStrings = {
   addOverallAction: 'सुधारात्मक कृती जोडा',
   removeOverallAction: 'काढा',
   scoreSoFar: 'आतापर्यंतचा स्कोअर',
+  auditee: 'ऑडिटी',
   scoreNote: 'हा स्कोअर अंदाजासाठी याच फोनवर काढलेला आहे. ऑडिट सिंक झाल्यावर सर्व्हर तो पुन्हा मोजतो.',
   marksLine: (raw, max, answered, na) => `${raw}/${max} गुण\n${answered} उत्तरे दिली, ${na} NA`,
   band: {

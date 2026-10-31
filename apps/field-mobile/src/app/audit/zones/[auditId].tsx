@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, FlatList, Image, Modal, Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import {
   Field,
   HeaderAction,
   Label,
+  LedgerRow,
   ConfirmAction,
   Muted,
   Screen,
@@ -43,7 +44,9 @@ import {
   listLocalZones as listCatalogueZones,
   unitHasZoneList,
 } from '../../../lib/db/catalogue.repository';
+import { captureLocalEvidence } from '../../../lib/db/evidence.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
+import type { ProcessedImage } from '../../../lib/capture/media';
 import { api } from '../../../lib/api';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 import { leaveScreen } from '../../../lib/leave-screen';
@@ -51,6 +54,7 @@ import { useRequiredFields } from '../../../lib/required-fields';
 import { useSession } from '../../../lib/session';
 import { ZoneNumberField } from '../../../components/zone-number-field';
 import { useSelfieCheck } from '../../../components/selfie-check';
+import { CameraCapture } from '../../../components/camera-capture';
 
 type CatalogueZone = Awaited<ReturnType<typeof listCatalogueZones>>[number];
 
@@ -60,6 +64,7 @@ interface ZoneEdit {
   label: string;
   description: string;
   leaderName: string;
+  auditeeName: string;
 }
 
 /** The server's floor for a restart justification, mirrored so the button can gate on it. */
@@ -79,9 +84,12 @@ interface ZoneDraft {
   description: string;
   leaderName: string;
   versionId: string | null;
+  /** R-72: who faces the audit, and their live photo — both required to start. */
+  auditeeName: string;
+  auditeePhoto: ProcessedImage | null;
 }
 
-const EMPTY_DRAFT: ZoneDraft = { description: '', leaderName: '', versionId: null };
+const EMPTY_DRAFT: ZoneDraft = { description: '', leaderName: '', versionId: null, auditeeName: '', auditeePhoto: null };
 
 /** The slot for what is typed before any Zone is chosen; it follows the first choice. */
 const NO_ZONE = '';
@@ -95,7 +103,13 @@ interface NewZone {
 }
 
 function isEmptyDraft(draft: ZoneDraft): boolean {
-  return draft.description.trim() === '' && draft.leaderName.trim() === '' && !draft.versionId;
+  return (
+    draft.description.trim() === '' &&
+    draft.leaderName.trim() === '' &&
+    !draft.versionId &&
+    draft.auditeeName.trim() === '' &&
+    !draft.auditeePhoto
+  );
 }
 
 /**
@@ -146,7 +160,20 @@ export default function AuditZonesScreen() {
   const [drafts, setDrafts] = useState<Record<string, ZoneDraft>>({});
   const [picking, setPicking] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
-  const required = useRequiredFields<'zone' | 'leader' | 'department'>();
+  const [auditeeCamera, setAuditeeCamera] = useState(false);
+  const required = useRequiredFields<'zone' | 'leader' | 'auditee' | 'auditeePhoto' | 'department'>();
+  // R-74: what a Zone is and who leads it are the Super Admin's and Coordinator's to say.
+  const mayEditZone = scope?.role === 'SUPER_ADMIN' || scope?.role === 'COORDINATOR';
+
+  // Back over the auditee's camera closes it, not the screen (which would drop the audit).
+  useEffect(() => {
+    if (!auditeeCamera) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setAuditeeCamera(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [auditeeCamera]);
 
   const draftKey = newZone ? NEW_ZONE : (zoneCode ?? NO_ZONE);
   const draft = drafts[draftKey] ?? EMPTY_DRAFT;
@@ -216,16 +243,31 @@ export default function AuditZonesScreen() {
   const walkBy = audit.data?.auditType === 'WALK_BY';
 
   const addZone = useMutation({
-    mutationFn: (input: { zoneCode: string; zoneName: string | null; draftKey: string; draft: ZoneDraft }) =>
-      addLocalZone(database, {
+    mutationFn: async (input: { zoneCode: string; zoneName: string | null; draftKey: string; draft: ZoneDraft }) => {
+      const auditZoneId = await addLocalZone(database, {
         auditId,
         zoneCode: input.zoneCode,
         zoneName: input.zoneName,
         sequenceNo: (auditZones.data?.length ?? 0) + 1,
         checklistVersionId: walkBy ? null : input.draft.versionId,
-        zoneDescription: input.draft.description,
-        zoneLeaderName: input.draft.leaderName,
-      }),
+        // Anyone else's are dropped by the server (R-74), so they are not sent.
+        ...(mayEditZone ? { zoneDescription: input.draft.description, zoneLeaderName: input.draft.leaderName } : {}),
+        auditeeName: input.draft.auditeeName,
+      });
+      const photo = input.draft.auditeePhoto!;
+      await captureLocalEvidence(database, {
+        auditId,
+        auditZoneId,
+        kind: 'AUDITEE_PHOTO',
+        localFileUri: photo.uri,
+        byteSize: photo.byteSize,
+        width: photo.width,
+        height: photo.height,
+        checksumSha256: photo.checksumSha256,
+        isLiveCapture: true,
+      });
+      return auditZoneId;
+    },
     onSuccess: async (auditZoneId, input) => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       // The Zone is in the audit now, so its draft has nowhere left to go back to.
@@ -314,8 +356,8 @@ export default function AuditZonesScreen() {
     mutationFn: (next: ZoneEdit) =>
       editLocalZone(database, {
         auditZoneId: next.auditZoneId,
-        zoneDescription: next.description,
-        zoneLeaderName: next.leaderName,
+        ...(mayEditZone ? { zoneDescription: next.description, zoneLeaderName: next.leaderName } : {}),
+        auditeeName: next.auditeeName,
       }),
     onSuccess: () => {
       setEditing(null);
@@ -359,6 +401,18 @@ export default function AuditZonesScreen() {
     );
   }
   if (selfie.camera) return selfie.camera;
+  if (auditeeCamera) {
+    return (
+      <CameraCapture
+        prompt="Photo of the auditee"
+        onCaptured={(image) => {
+          editDraft({ auditeePhoto: image });
+          setAuditeeCamera(false);
+        }}
+        onCancel={() => setAuditeeCamera(false)}
+      />
+    );
+  }
 
   const zonesInAudit = auditZones.data ?? [];
   // A withdrawn Zone is still listed — it happened — but it is out of the audit: it does
@@ -408,7 +462,9 @@ export default function AuditZonesScreen() {
       : zoneCode === null
         ? 'Choose the Zone'
         : null,
-    leader: draft.leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
+    leader: mayEditZone && draft.leaderName.trim() === '' ? 'Enter the Zone Leader’s name' : null,
+    auditee: draft.auditeeName.trim() === '' ? 'Enter who is facing the audit' : null,
+    auditeePhoto: draft.auditeePhoto === null ? 'Take a photo of the auditee' : null,
     department: !walkBy && !draft.versionId ? 'Choose the department' : null,
   };
 
@@ -436,10 +492,15 @@ export default function AuditZonesScreen() {
 
       const next = { ...current };
       delete next[NO_ZONE];
+      // Someone else's typing never stands in for the Zone's own (R-74).
+      const own = mayEditZone ? carry : null;
       next[code] = {
-        description: carry?.description.trim() ? carry.description : (known?.description ?? ''),
-        leaderName: carry?.leaderName.trim() ? carry.leaderName : (known?.zoneLeaderName ?? ''),
+        description: own?.description.trim() ? own.description : (known?.description ?? ''),
+        leaderName: own?.leaderName.trim() ? own.leaderName : (known?.zoneLeaderName ?? ''),
         versionId: carry?.versionId ?? template?.id ?? null,
+        // The Zone Leader faces it when they are there; whoever stands in is typed over it.
+        auditeeName: carry?.auditeeName.trim() ? carry.auditeeName : (known?.zoneLeaderName ?? ''),
+        auditeePhoto: carry?.auditeePhoto ?? null,
       };
       return next;
     });
@@ -461,6 +522,8 @@ export default function AuditZonesScreen() {
       // A Zone somebody else holds is not a Zone chosen: its slip is shown right there.
       ['zone', pickedCode !== null && !errors.zone && !lockOnSelection],
       ['leader', !errors.leader],
+      ['auditee', !errors.auditee],
+      ['auditeePhoto', !errors.auditeePhoto],
       ['department', !errors.department],
     ]);
     if (!complete || pickedCode === null) {
@@ -545,25 +608,65 @@ export default function AuditZonesScreen() {
         </Slip>
       ) : null}
 
+      {mayEditZone ? (
+        <>
+          <Field
+            label="Zone description (optional)"
+            multiline
+            value={draft.description}
+            onChangeText={(value) => editDraft({ description: value })}
+            placeholder="What this Zone covers"
+            containerStyle={styles.gapAbove}
+          />
+
+          <Field
+            testID="zone-leader-name"
+            inputRef={required.input('leader')}
+            label="Zone Leader’s name"
+            value={draft.leaderName}
+            onChangeText={(value) => editDraft({ leaderName: value })}
+            placeholder="Full name"
+            autoCapitalize="words"
+            error={showErrors && errors.leader ? errors.leader : undefined}
+          />
+        </>
+      ) : (
+        // R-74: set by the Unit's Coordinator; whoever stands in goes in Auditee below.
+        <View style={styles.gapAbove}>
+          <LedgerRow label="Zone description" value={draft.description.trim() || 'Not set'} />
+          <LedgerRow label="Zone Leader" value={draft.leaderName.trim() || 'Not set'} last />
+          <Muted>Set by the Unit’s Coordinator.</Muted>
+        </View>
+      )}
+
       <Field
-        label="Zone description (optional)"
-        multiline
-        value={draft.description}
-        onChangeText={(value) => editDraft({ description: value })}
-        placeholder="What this Zone covers"
+        testID="auditee-name"
+        inputRef={required.input('auditee')}
+        label="Auditee name"
+        value={draft.auditeeName}
+        onChangeText={(value) => editDraft({ auditeeName: value })}
+        placeholder="Who is facing this audit"
+        autoCapitalize="words"
+        maxLength={200}
+        error={showErrors && errors.auditee ? errors.auditee : undefined}
         containerStyle={styles.gapAbove}
       />
 
-      <Field
-        testID="zone-leader-name"
-        inputRef={required.input('leader')}
-        label="Zone Leader’s name"
-        value={draft.leaderName}
-        onChangeText={(value) => editDraft({ leaderName: value })}
-        placeholder="Full name"
-        autoCapitalize="words"
-        error={showErrors && errors.leader ? errors.leader : undefined}
-      />
+      {/* R-72: live camera only, as proof for management of who faced the audit. */}
+      <View ref={required.anchor('auditeePhoto')} collapsable={false} style={styles.auditee}>
+        <Label>Photo of auditee</Label>
+        {draft.auditeePhoto ? (
+          <Image source={{ uri: draft.auditeePhoto.uri }} style={styles.auditeePhoto} resizeMode="cover" />
+        ) : null}
+        <Button
+          icon="photo-camera"
+          testID="auditee-photo"
+          title={draft.auditeePhoto ? 'Retake' : 'Take photo of auditee'}
+          variant="secondary"
+          onPress={() => setAuditeeCamera(true)}
+        />
+        {showErrors && errors.auditeePhoto ? <Text style={styles.error}>{errors.auditeePhoto}</Text> : null}
+      </View>
 
       {!walkBy ? (
         <View ref={required.anchor('department')} collapsable={false}>
@@ -693,7 +796,11 @@ export default function AuditZonesScreen() {
             <CardHeader
               title={zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot)}
               description={
-                [item.checklistTemplateNameSnapshot, item.zoneLeaderNameSnapshot && `Leader ${item.zoneLeaderNameSnapshot}`]
+                [
+                  item.checklistTemplateNameSnapshot,
+                  item.zoneLeaderNameSnapshot && `Leader ${item.zoneLeaderNameSnapshot}`,
+                  item.auditeeName && `Auditee ${item.auditeeName}`,
+                ]
                   .filter(Boolean)
                   .join(' · ') || null
               }
@@ -752,6 +859,7 @@ export default function AuditZonesScreen() {
                           label: zoneDisplayLabel(item.zoneCodeSnapshot, item.zoneNameSnapshot),
                           description: item.zoneDescriptionSnapshot ?? '',
                           leaderName: item.zoneLeaderNameSnapshot ?? '',
+                          auditeeName: item.auditeeName ?? '',
                         })
                       }
                     />
@@ -786,6 +894,7 @@ export default function AuditZonesScreen() {
 
       <ZoneDetailsPrompt
         edit={editing}
+        mayEditZone={mayEditZone}
         busy={editZone.isPending}
         error={editZone.error ? editZone.error.message : null}
         onChange={setEditing}
@@ -831,6 +940,7 @@ export default function AuditZonesScreen() {
  */
 function ZoneDetailsPrompt({
   edit,
+  mayEditZone,
   busy,
   error,
   onChange,
@@ -838,6 +948,8 @@ function ZoneDetailsPrompt({
   onSave,
 }: {
   edit: ZoneEdit | null;
+  /** R-74: description and leader only for a Super Admin or Coordinator. */
+  mayEditZone: boolean;
   busy: boolean;
   error: string | null;
   onChange: (next: ZoneEdit) => void;
@@ -862,18 +974,29 @@ function ZoneDetailsPrompt({
         </Text>
         {edit ? (
           <View style={styles.restartBody}>
+            {mayEditZone ? (
+              <>
+                <Field
+                  label="Description"
+                  value={edit.description}
+                  onChangeText={(value) => onChange({ ...edit, description: value })}
+                  multiline
+                  placeholder="What this Zone covers"
+                />
+                <Field
+                  label="Zone Leader"
+                  value={edit.leaderName}
+                  onChangeText={(value) => onChange({ ...edit, leaderName: value })}
+                  placeholder="The name to print on the report"
+                />
+              </>
+            ) : null}
             <Field
-              label="Description"
-              value={edit.description}
-              onChangeText={(value) => onChange({ ...edit, description: value })}
-              multiline
-              placeholder="What this Zone covers"
-            />
-            <Field
-              label="Zone Leader"
-              value={edit.leaderName}
-              onChangeText={(value) => onChange({ ...edit, leaderName: value })}
-              placeholder="The name to print on the report"
+              label="Auditee name"
+              value={edit.auditeeName}
+              onChangeText={(value) => onChange({ ...edit, auditeeName: value })}
+              maxLength={200}
+              placeholder="Who faced this audit"
             />
             <ErrorBanner message={error} />
             <Button icon="save" title="Save details" busy={busy} onPress={onSave} />
@@ -1055,6 +1178,8 @@ const useStyles = createThemedStyles((theme) => ({
   footer: { gap: theme.space.sm, marginTop: theme.space.lg, paddingBottom: theme.space.md },
   slipAction: { marginTop: theme.space.xs },
   gapAbove: { marginTop: theme.space.md },
+  auditee: { gap: theme.space.sm, marginTop: theme.space.md, marginBottom: theme.space.md },
+  auditeePhoto: { width: 120, aspectRatio: 1, borderWidth: 1.5, borderColor: theme.color.edge, backgroundColor: theme.color.tile2 },
   newZoneName: { flex: 1 },
   link: {
     fontFamily: theme.family.medium,

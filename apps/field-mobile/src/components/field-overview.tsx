@@ -17,7 +17,7 @@ import {
   SlipStack,
   StatGrid,
 } from './ui';
-import { crossAuditCallZone, crossAuditDue, crossAuditStart, useOpenCrossAuditCalls } from './cross-audit-calls';
+import { crossAuditAssignee, crossAuditCallZone, crossAuditDue, crossAuditStart, useOpenCrossAuditCalls } from './cross-audit-calls';
 import { isOverdue } from '../lib/cross-audit-call';
 import { syncCatalogue } from '../lib/catalogue';
 import {
@@ -175,7 +175,9 @@ export function FieldOverview() {
                   {
                     tone: 'crossAudit' as const,
                     title: `Cross audit called · ${crossAuditCallZone(crossAuditCalls[0]!)}`,
-                    detail: `${crossAuditDue(crossAuditCalls[0]!)}. Tap to start it.`,
+                    detail: [crossAuditDue(crossAuditCalls[0]!), crossAuditAssignee(crossAuditCalls[0]!, user?.id), 'Tap to start it.']
+                      .filter(Boolean)
+                      .join('. '),
                     onPress: () => router.push(crossAuditStart(crossAuditCalls[0]!)),
                   },
                 ]

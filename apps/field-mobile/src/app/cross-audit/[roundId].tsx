@@ -16,13 +16,17 @@ import {
   Muted,
   Screen,
   Segmented,
+  SelectField,
 } from '../../components/ui';
+import { crossAuditAssignee } from '../../components/cross-audit-calls';
 import {
   BOARD_STATE,
+  auditorOptions,
   pickDueDate,
   roundClosed,
   roundDue,
   useCrossAuditRounds,
+  useCrossAuditors,
   type RoundBoard,
 } from '../../components/cross-audit-round';
 import { api, problemMessage } from '../../lib/api';
@@ -55,7 +59,7 @@ export default function CrossAuditRoundScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ roundId: string; board?: RoundBoard }>();
-  const { scope, can } = useSession();
+  const { scope, can, user } = useSession();
   const unitId = scope?.unitIds[0];
   const rounds = useCrossAuditRounds(unitId);
   const round = rounds.data?.find((one) => one.id === params.roundId);
@@ -65,6 +69,7 @@ export default function CrossAuditRoundScreen() {
   const [busy, setBusy] = useState(false);
 
   const mayManage = can('unit', 'call_cross_audit') && round !== undefined && round.completedAt === null;
+  const auditors = useCrossAuditors(unitId, mayManage);
   const left = round?.zones.filter((zone) => zone.state !== 'COMPLETED').length ?? 0;
   const shown = round?.zones.filter((zone) => zone.state === BOARD_STATE[board]) ?? [];
   const path = `/units/${unitId}/cross-audits/${params.roundId}`;
@@ -83,6 +88,25 @@ export default function CrossAuditRoundScreen() {
         Alert.alert('Deadline moved', `The cross audit is now due by ${formatDayMonth(`${dueOn}T12:00:00+05:30`)}.`);
       }, fail('Could not move the deadline'));
     });
+
+  // R-73: a Zone nobody has started goes to someone else; only they are told.
+  const reassign = (zone: { zoneId: string; zoneCode: string; zoneName: string }, auditorUserId: string) => {
+    const who = auditors.data?.find((auditor) => auditor.userId === auditorUserId)?.fullName ?? 'them';
+    const what = zoneDisplayLabel(zone.zoneCode, zone.zoneName);
+    Alert.alert(`Give ${what} to ${who}?`, `${who} is told to audit it by the deadline.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Change auditor',
+        onPress: () => {
+          setBusy(true);
+          api.put(`${path}/zones/${zone.zoneId}/assignee`, { auditorUserId }).then(() => {
+            setBusy(false);
+            void refresh();
+          }, fail('Could not change the auditor'));
+        },
+      },
+    ]);
+  };
 
   const complete = () => {
     setBusy(true);
@@ -141,6 +165,17 @@ export default function CrossAuditRoundScreen() {
           >
             <Text style={styles.zone}>{zoneDisplayLabel(item.zoneCode, item.zoneName)}</Text>
             <Muted>{item.auditorName ? `Audited by ${item.auditorName}` : 'Nobody has started it'}</Muted>
+            {crossAuditAssignee(item, user?.id) ? <Muted>{crossAuditAssignee(item, user?.id)}</Muted> : null}
+            {mayManage && item.state === 'NOT_STARTED' ? (
+              <SelectField
+                label="Change auditor"
+                placeholder="Choose who audits it"
+                options={auditorOptions(auditors.data)}
+                value={item.assigneeUserId ?? null}
+                onChange={(userId) => userId !== item.assigneeUserId && reassign(item, userId)}
+                searchable={(auditors.data?.length ?? 0) > 8}
+              />
+            ) : null}
           </Card>
         )}
         ListEmptyComponent={round ? <EmptyState title="Nothing here" detail={EMPTY[board]} /> : null}

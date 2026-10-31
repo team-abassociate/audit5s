@@ -35,6 +35,15 @@ export function crossAuditDue(call: CrossAuditCall): string {
   return `${isOverdue(call) ? 'Overdue since' : 'Due'} ${formatDayMonth(`${call.dueOn}T12:00:00+05:30`)}`;
 }
 
+/** R-73: "Assigned to you", "Assigned to Asha Rao", or null for a call to every Zone Leader. */
+export function crossAuditAssignee(
+  item: { assigneeUserId?: string | null; assigneeName?: string | null },
+  userId: string | undefined,
+): string | null {
+  if (item.assigneeUserId && item.assigneeUserId === userId) return 'Assigned to you';
+  return item.assigneeName ? `Assigned to ${item.assigneeName}` : null;
+}
+
 /** Answering a call: the selfie, then that Zone, as a cross audit. */
 export function crossAuditStart(call: CrossAuditCall): Href {
   return { pathname: '/audit/start', params: { type: 'CROSS_5S', zoneId: call.zoneId } };

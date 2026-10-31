@@ -429,6 +429,12 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
        )`,
     ],
   },
+  {
+    // R-72: who faced the audit of this Zone, typed on the Zone form. A table rather than
+    // an `ADD COLUMN`, for v8's reason: `CREATE TABLE IF NOT EXISTS` re-runs cleanly.
+    version: 15,
+    statements: [`CREATE TABLE IF NOT EXISTS audit_zone_auditee (audit_zone_id TEXT PRIMARY KEY, auditee_name TEXT)`],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

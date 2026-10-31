@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addLocalZone,
   createLocalAudit,
+  editLocalZone,
   enqueue,
   getLocalAuditZone,
   listOutbox,
@@ -10,6 +11,7 @@ import {
 import {
   captureLocalEvidence,
   deleteLocalEvidence,
+  getLocalAuditeePhoto,
   getLocalEvidence,
   hasLocalSelfie,
   listLocalEvidenceForZone,
@@ -737,5 +739,34 @@ describe('photos stuck after every automatic try', () => {
 
     expect(await resetDeadLetters(database)).toBe(2);
     expect(await readSyncStatus(database)).toMatchObject({ deadLettered: 0, deadLetteredPhotos: 0 });
+  });
+});
+
+describe('R-72 — the auditee', () => {
+  it('sends the name with the Zone, keeps the photo out of the Zone and its limit, and starts nothing', async () => {
+    const auditId = await createLocalAudit(database, { unitId: UNIT, auditType: 'WALK_BY', checklistVersionId: null });
+    const auditZoneId = await addLocalZone(database, {
+      auditId,
+      zoneNumber: 1,
+      sequenceNo: 1,
+      checklistVersionId: null,
+      auditeeName: '  Ravi Kumar ',
+    });
+    const photoId = await captureLocalEvidence(database, { auditId, auditZoneId, kind: 'AUDITEE_PHOTO', ...PHOTO });
+
+    const [zone] = await getLocalAuditZone(database, auditZoneId);
+    expect(zone).toMatchObject({ auditeeName: 'Ravi Kumar', status: 'DRAFT' });
+    const upsert = (await listOutbox(database)).find((item) => item.entityType === 'audit_zone');
+    expect(JSON.parse(upsert!.payload)).toMatchObject({ auditeeName: 'Ravi Kumar' });
+
+    // Not a walk-by photo: the §7.2 gate still wants one, and the list does not show it.
+    expect(await zoneHasLocalEvidence(database, auditZoneId)).toBe(false);
+    expect(await listLocalEvidenceForZone(database, auditZoneId)).toEqual([]);
+    expect((await getLocalAuditeePhoto(database, auditZoneId))?.id).toBe(photoId);
+
+    // A later edit that does not touch the auditee keeps it in the coalesced upsert.
+    await editLocalZone(database, { auditZoneId, zoneDescription: 'Press line' });
+    const edited = (await listOutbox(database)).find((item) => item.entityType === 'audit_zone');
+    expect(JSON.parse(edited!.payload)).toMatchObject({ auditeeName: 'Ravi Kumar' });
   });
 });

@@ -1,8 +1,15 @@
 import { FlatList } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Card, CardHeader, Chip, Data, EmptyState, Screen } from '../components/ui';
-import { crossAuditCallZone, crossAuditDue, crossAuditStart, useOpenCrossAuditCalls } from '../components/cross-audit-calls';
+import {
+  crossAuditAssignee,
+  crossAuditCallZone,
+  crossAuditDue,
+  crossAuditStart,
+  useOpenCrossAuditCalls,
+} from '../components/cross-audit-calls';
 import { isOverdue } from '../lib/cross-audit-call';
+import { useSession } from '../lib/session';
 
 /**
  * Every cross audit called at the Unit and not yet done by anyone (owner, 2026-10-14), oldest
@@ -12,6 +19,7 @@ import { isOverdue } from '../lib/cross-audit-call';
 export default function CrossAuditsScreen() {
   const router = useRouter();
   const { calls, standing } = useOpenCrossAuditCalls(true);
+  const { user } = useSession();
   return (
     <Screen>
       <Stack.Screen options={{ title: 'Cross audits called' }} />
@@ -24,6 +32,7 @@ export default function CrossAuditsScreen() {
           const zone = crossAuditCallZone(item);
           const late = isOverdue(item);
           const due = crossAuditDue(item);
+          const assignee = crossAuditAssignee(item, user?.id);
           return (
             <Card
               rail={late ? 'crit' : 'none'}
@@ -33,7 +42,7 @@ export default function CrossAuditsScreen() {
             >
               <CardHeader
                 title={zone}
-                description={`${item.unitName} · called by ${item.calledBy}`}
+                description={[item.unitName, `called by ${item.calledBy}`, assignee].filter(Boolean).join(' · ')}
                 action={late ? <Chip tone="crit">Overdue</Chip> : undefined}
               />
               <Data>{due}</Data>

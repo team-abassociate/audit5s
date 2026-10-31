@@ -24,6 +24,7 @@ import {
   localAuditZones,
   localEvidence,
   localQuestionResponses,
+  localAuditZoneAuditees,
   localZoneActionSuggestions,
   outbox,
   zones,
@@ -108,6 +109,8 @@ export interface AddZoneInput {
   zoneDescription?: string | null;
   /** The Zone leader's name, as the auditor typed it (R-19). */
   zoneLeaderName?: string | null;
+  /** R-72: who faced the audit. */
+  auditeeName?: string | null;
   id?: string;
   now?: string;
 }
@@ -188,6 +191,7 @@ export async function addLocalZone(
   const typedDescription = input.zoneDescription?.trim() || null;
   const typedLeader = input.zoneLeaderName?.trim() || null;
   const leader = zoneLeaderSnapshot(zone, typedLeader);
+  const auditee = input.auditeeName?.trim() || null;
 
   await database.insert(localAuditZones).values({
     id,
@@ -209,6 +213,7 @@ export async function addLocalZone(
     .update(audits)
     .set({ resumeAuditZoneId: id, clientUpdatedAt: now })
     .where(eq(audits.id, input.auditId));
+  if (auditee) await setAuditeeName(database, id, auditee);
 
   await enqueue(database, 'audit_zone', id, 'upsert', {
     auditId: input.auditId,
@@ -218,6 +223,7 @@ export async function addLocalZone(
     checklistVersionId: input.checklistVersionId ?? undefined,
     ...(typedDescription ? { zoneDescription: typedDescription } : {}),
     ...(typedLeader ? { zoneLeaderName: typedLeader } : {}),
+    ...(auditee ? { auditeeName: auditee } : {}),
   });
 
   return id;
@@ -242,23 +248,21 @@ export async function editLocalZone(
     auditZoneId: string;
     zoneDescription?: string | null;
     zoneLeaderName?: string | null;
+    auditeeName?: string | null;
     checklistVersionId?: string | null;
     now?: string;
   },
 ): Promise<void> {
   const now = input.now ?? new Date().toISOString();
 
-  const [existing] = await database
-    .select()
-    .from(localAuditZones)
-    .where(eq(localAuditZones.id, input.auditZoneId))
-    .limit(1);
+  const [existing] = await getLocalAuditZone(database, input.auditZoneId);
   if (!existing) {
     throw new Error(`Audit Zone ${input.auditZoneId} is not on this device`);
   }
 
   const typedDescription = input.zoneDescription?.trim() || null;
   const typedLeader = input.zoneLeaderName?.trim() || null;
+  const auditee = input.auditeeName !== undefined ? input.auditeeName?.trim() || null : existing.auditeeName;
 
   const version = input.checklistVersionId
     ? (
@@ -286,6 +290,7 @@ export async function editLocalZone(
       clientUpdatedAt: now,
     })
     .where(eq(localAuditZones.id, input.auditZoneId));
+  if (input.auditeeName !== undefined) await setAuditeeName(database, input.auditZoneId, auditee);
 
   await enqueue(database, 'audit_zone', input.auditZoneId, 'upsert', {
     auditId: existing.auditId,
@@ -298,6 +303,7 @@ export async function editLocalZone(
     // field the request carries is ever re-snapshotted (R-34).
     ...(input.zoneDescription !== undefined ? { zoneDescription: typedDescription } : {}),
     ...(input.zoneLeaderName !== undefined ? { zoneLeaderName: typedLeader } : {}),
+    auditeeName: auditee,
     // The outbox replaces an unsynced upsert's payload whole, so this one carries the
     // suggestions too — or an edit after them would quietly empty the list (R-38).
     overallActionSuggestions: await getZoneSuggestions(database, input.auditZoneId),
@@ -416,6 +422,14 @@ export async function saveLocalResponse(
  * R-38: the auditor's overall corrective-action suggestions for a Zone, in their order.
  * Empty when there are none — none are required.
  */
+/** R-72: who faced the audit of a Zone, beside the row rather than on it (local v15). */
+async function setAuditeeName(database: LocalDatabase, auditZoneId: string, auditeeName: string | null) {
+  await database
+    .insert(localAuditZoneAuditees)
+    .values({ auditZoneId, auditeeName })
+    .onConflictDoUpdate({ target: localAuditZoneAuditees.auditZoneId, set: { auditeeName } });
+}
+
 export async function getZoneSuggestions(
   database: LocalDatabase,
   auditZoneId: string,
@@ -464,11 +478,7 @@ export async function saveZoneRemark(
       });
   }
 
-  const [zone] = await database
-    .select()
-    .from(localAuditZones)
-    .where(eq(localAuditZones.id, auditZoneId))
-    .limit(1);
+  const [zone] = await getLocalAuditZone(database, auditZoneId);
 
   if (zone) {
     // The outbox coalesces this with a first write that has not synced yet, so it must carry
@@ -482,6 +492,7 @@ export async function saveZoneRemark(
       checklistVersionId: zone.checklistVersionId ?? undefined,
       zoneDescription: zone.zoneDescriptionSnapshot,
       zoneLeaderName: zone.zoneLeaderNameSnapshot,
+      auditeeName: zone.auditeeName,
       zoneRemark: remark,
       overallActionSuggestions: await getZoneSuggestions(database, auditZoneId),
     });
@@ -908,18 +919,23 @@ export async function listResumableAudits(database: LocalDatabase): Promise<Resu
   });
 }
 
+/** An audit Zone's row, with who faced its audit (R-72). */
+const AUDIT_ZONE_COLUMNS = { ...getTableColumns(localAuditZones), auditeeName: localAuditZoneAuditees.auditeeName };
+
 export function listLocalAuditZones(database: LocalDatabase, auditId: string) {
   return database
-    .select()
+    .select(AUDIT_ZONE_COLUMNS)
     .from(localAuditZones)
+    .leftJoin(localAuditZoneAuditees, eq(localAuditZoneAuditees.auditZoneId, localAuditZones.id))
     .where(eq(localAuditZones.auditId, auditId))
     .orderBy(asc(localAuditZones.sequenceNo));
 }
 
 export function getLocalAuditZone(database: LocalDatabase, auditZoneId: string) {
   return database
-    .select()
+    .select(AUDIT_ZONE_COLUMNS)
     .from(localAuditZones)
+    .leftJoin(localAuditZoneAuditees, eq(localAuditZoneAuditees.auditZoneId, localAuditZones.id))
     .where(eq(localAuditZones.id, auditZoneId))
     .limit(1);
 }

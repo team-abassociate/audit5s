@@ -41,6 +41,7 @@ import {
   PhotoPreview,
   PhotoThumbs,
   SummaryPhotosCard,
+  AuditeeCard,
   type LocalPhoto,
 } from '../../components/evidence-photos';
 import { ResponseChips } from '../../components/response-chips';
@@ -668,6 +669,7 @@ export default function QuestionnaireScreen() {
           lastPage ? (
             <View style={styles.footer}>
               <ScoreCard breakdown={score.data} answered={answered} />
+              <AuditeeCard auditZoneId={auditZoneId} name={zone.data.auditeeName} title={t.auditee} />
               <SummaryPhotosCard photos={zonePhotos} onOpen={setPreviewId} />
               <Card>
                 <Field

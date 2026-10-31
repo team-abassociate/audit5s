@@ -329,6 +329,12 @@ export const localCorrectiveActions = sqliteTable('corrective_action', {
  * R-38: the auditor's overall corrective-action suggestions for one Zone, as a JSON array
  * of strings in their order. One row per Zone; the whole list is replaced on each save.
  */
+/** R-72 (local v15): who faced the audit of a Zone — the Zone Leader, or whoever stood in. */
+export const localAuditZoneAuditees = sqliteTable('audit_zone_auditee', {
+  auditZoneId: text('audit_zone_id').primaryKey(),
+  auditeeName: text('auditee_name'),
+});
+
 export const localZoneActionSuggestions = sqliteTable('zone_action_suggestion', {
   auditZoneId: text('audit_zone_id').primaryKey(),
   suggestions: text('suggestions').notNull().default('[]'),
