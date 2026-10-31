@@ -160,7 +160,7 @@ export class AuthService {
 
     return {
       ...pair,
-      user: toAuthenticatedUser(user),
+      user: toAuthenticatedUser(user, this.config.KAIZEN_ENABLED),
       mustResetPassword: user.mustResetPassword,
       scope,
     };
@@ -522,7 +522,7 @@ export class AuthService {
       throw AppError.unauthorized('TOKEN_INVALID');
     }
     return {
-      user: toAuthenticatedUser(user),
+      user: toAuthenticatedUser(user, this.config.KAIZEN_ENABLED),
       scope: await this.resolveScope(actor.userId, actor.deviceId),
     };
   }
@@ -632,7 +632,7 @@ function constantTimeEquals(a: string, b: string): boolean {
   return timingSafeEqual(left, right);
 }
 
-function toAuthenticatedUser(user: UserRow): AuthenticatedUser {
+function toAuthenticatedUser(user: UserRow, kaizenEnabled: boolean): AuthenticatedUser {
   return {
     id: user.id,
     loginId: user.loginId,
@@ -644,6 +644,6 @@ function toAuthenticatedUser(user: UserRow): AuthenticatedUser {
     mustResetPassword: user.mustResetPassword,
     bootstrapExpiresAt: user.bootstrapExpiresAt?.toISOString() ?? null,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
-    kaizenAccess: hasKaizenAccess({ role: user.role as Role, kaizenAccess: user.kaizenAccess }),
+    kaizenAccess: kaizenEnabled && hasKaizenAccess({ role: user.role as Role, kaizenAccess: user.kaizenAccess }),
   };
 }
