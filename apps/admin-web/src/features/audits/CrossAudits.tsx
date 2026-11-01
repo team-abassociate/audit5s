@@ -233,16 +233,16 @@ function RoundCard({
   });
 
   return (
-    <div className={late ? 'gb-panel border-l-4 border-l-crit' : 'gb-panel'}>
+    <div className={late ? 'gb-panel border-l-4 border-l-primary-ink' : 'gb-panel'}>
       <button type="button" className="flex w-full cursor-pointer flex-col gap-1 p-3 text-left" aria-expanded={open} onClick={onToggle}>
         <span className="flex flex-wrap items-center justify-between gap-2">
           <span className="font-bold uppercase">
             Cross-zonal audit · {round.zones.length} Zone{round.zones.length === 1 ? '' : 's'}
           </span>
-          {round.completedAt ? <Badge>Completed</Badge> : late ? <Badge tone="bad">Overdue</Badge> : closed(round) ? <Badge tone="good">All done</Badge> : null}
+          {round.completedAt ? <Badge>Completed</Badge> : late ? <Badge tone="late">Past due</Badge> : closed(round) ? <Badge tone="good">All done</Badge> : null}
         </span>
         <span className="text-sm text-ink-2">
-          Called {formatDate(round.createdAt)} by {round.calledBy} · {late ? 'Overdue since' : 'Due'} {day(round.dueOn)}
+          Called {formatDate(round.createdAt)} by {round.calledBy} · {late ? 'Past due since' : 'Due'} {day(round.dueOn)}
         </span>
         <span className="gb-data text-sm">
           {count('NOT_STARTED')} not started · {count('IN_PROGRESS')} under way · {count('COMPLETED')} done

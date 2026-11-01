@@ -21,11 +21,17 @@ import { useToken } from '@/lib/tokens';
 
 const TOOLTIP = {
   background: 'var(--surface)',
-  border: '1.5px solid var(--rule)',
-  borderRadius: 0,
+  border: '1px solid var(--rule)',
+  borderRadius: 'var(--radius-panel)',
   color: 'var(--ink)',
   fontSize: 12.5,
 } as const;
+
+/** A column's top, from `--radius-control` (LEDGER.md rule 6); square at the baseline. */
+function columnEnd(token: (name: string) => string): [number, number, number, number] {
+  const r = Number.parseFloat(token('--radius-control')) || 0;
+  return [r, r, 0, 0];
+}
 
 const PERIODS = [
   { value: 'overall', label: 'Overall' },
@@ -135,8 +141,8 @@ export function TrendCard({ trend }: { trend: readonly KaizenTrendMonth[] }) {
             <XAxis dataKey="month" stroke={token('--muted')} tick={{ fontFamily: 'var(--font-ui)', fontSize: 11 }} />
             <YAxis allowDecimals={false} domain={[0, 'auto']} stroke={token('--muted')} tick={{ fontFamily: 'var(--font-ui)', fontSize: 11 }} />
             <Tooltip contentStyle={TOOLTIP} cursor={{ fill: token('--chip') }} />
-            <Bar isAnimationActive={false} dataKey="submitted" name="Submitted" fill={token('--rule-soft')} stroke={token('--muted')} strokeWidth={1} />
-            <Bar isAnimationActive={false} dataKey="approved" name="Approved" fill={token('--band-outstanding')} />
+            <Bar isAnimationActive={false} dataKey="submitted" name="Submitted" fill={token('--rule-soft')} stroke={token('--muted')} strokeWidth={1} radius={columnEnd(token)} maxBarSize={24} />
+            <Bar isAnimationActive={false} dataKey="approved" name="Approved" fill={token('--band-outstanding')} radius={columnEnd(token)} maxBarSize={24} />
           </BarChart>
         </ResponsiveContainer>
       </figure>

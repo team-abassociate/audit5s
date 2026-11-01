@@ -13,8 +13,11 @@ import type { ResponseValue } from '@audit5s/contracts';
  */
 export type Band = 'outstanding' | 'on-track' | 'improving' | 'needs-support' | 'none';
 
-/** A status that is not a score (overdue, waiting, approved …), drawn in a band's colour. */
-export type Tone = 'ok' | 'warn' | 'crit' | 'none';
+/**
+ * A status that is not a score (waiting, approved …), drawn in a band's colour. `late` is past
+ * due: maroon and the words, never red, because red is a score (LEDGER.md rule 4).
+ */
+export type Tone = 'ok' | 'warn' | 'crit' | 'late' | 'none';
 
 export function bandOf(percentage: number | null): Band {
   const band = bandFor(percentage);
