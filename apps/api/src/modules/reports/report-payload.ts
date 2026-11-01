@@ -470,11 +470,45 @@ export function zoneTrend(
         scorePercentage: zone.scorePercentage === null ? null : Number(zone.scorePercentage),
       },
       sections: sectionsOf(zone.auditZoneId, sectionScores),
+      auditType: zone.auditType,
     };
   });
   // Named as the latest audit named it: a Zone renamed since reads as it is now known.
   const latest = [...zones].sort((a, b) => (auditDateOf(a) ?? '').localeCompare(auditDateOf(b) ?? '')).at(-1);
   return { scope: 'ZONE', zoneLabel: latest ? reportZoneLabel(latest) : null, points };
+}
+
+/**
+ * Unit-wise points from audits: one per chosen audit, Cross or External, over the Zones of
+ * it that were chosen — Σachieved / Σmax across them, as every summary sums.
+ */
+export function auditTrend(
+  zones: FreezeInput['zones'],
+  sectionScores: FreezeInput['sectionScores'],
+): ReportTrend {
+  const byAudit = new Map<string, FreezeInput['zones'][number][]>();
+  for (const zone of zones) byAudit.set(zone.auditId, [...(byAudit.get(zone.auditId) ?? []), zone]);
+  const points = [...byAudit].map(([auditId, ofAudit]) => {
+    const date = auditDateOf(ofAudit[0]!);
+    const rawScore = ofAudit.reduce((sum, zone) => sum + zone.rawScore, 0);
+    const maxScore = ofAudit.reduce((sum, zone) => sum + zone.maxScore, 0);
+    return {
+      id: auditId,
+      from: date,
+      to: date,
+      zoneCount: ofAudit.length,
+      totals: {
+        applicableQuestions: ofAudit.reduce((sum, zone) => sum + zone.applicableQuestions, 0),
+        naQuestions: ofAudit.reduce((sum, zone) => sum + zone.naQuestions, 0),
+        rawScore,
+        maxScore,
+        scorePercentage: percentageOf(rawScore, maxScore),
+      },
+      sections: sumSectionsAcross(ofAudit.map((zone) => ({ sections: sectionsOf(zone.auditZoneId, sectionScores) }))),
+      auditType: ofAudit[0]!.auditType,
+    };
+  });
+  return { scope: 'UNIT', zoneLabel: null, points };
 }
 
 /** Unit-wise points: one per chosen Summary report, exactly as that report printed it. */

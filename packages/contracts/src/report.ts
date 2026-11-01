@@ -273,7 +273,7 @@ export const reportTrendSchema = z.object({
   zoneLabel: z.string().nullable(),
   points: z.array(
     z.object({
-      /** The audit Zone, or the summary snapshot, this point is. */
+      /** The audit Zone, the audit (unit-wise from audits), or the summary snapshot, this point is. */
       id: uuidSchema,
       from: isoDateTimeSchema.nullable(),
       to: isoDateTimeSchema.nullable(),
@@ -281,6 +281,8 @@ export const reportTrendSchema = z.object({
       zoneCount: z.number().int().nonnegative(),
       totals: scoreTotalsSchema,
       sections: z.array(sectionScoreSchema),
+      /** The audit's type, when the point is an audit; absent on a Summary report. */
+      auditType: auditTypeSchema.optional(),
     }),
   ),
 });

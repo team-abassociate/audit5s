@@ -2434,15 +2434,18 @@ describe('a Zone’s trend in its report, and the summary of summaries (R-75)', 
     expect((again.body as ReportSnapshot).selectedAuditZoneIds).toEqual(snapshot.selectedAuditZoneIds);
   });
 
-  it('refuses audits of two different Zones in one zone-wise trend', async () => {
+  it('compares audits of several Zones unit-wise, one point per audit with its type', async () => {
     const other = await completedAudit('TR-2', 'Other line');
     const response = await generate({
       kind: 'TREND_SUMMARY',
       unitId: world.unitA,
       selectedAuditZoneIds: [audits[0]!.auditZoneId, other.auditZoneId],
     });
-    expect(response.status).toBe(422);
-    expect(JSON.stringify(response.body)).toContain('one Zone');
+    expect(response.status, JSON.stringify(response.body)).toBe(202);
+    const trend = (await payloadOf((response.body as ReportSnapshot).id)).trend!;
+    expect(trend.scope).toBe('UNIT');
+    expect(trend.points).toHaveLength(2);
+    expect(trend.points.every((point) => point.zoneCount === 1 && point.auditType)).toBe(true);
   });
 
   it('compares issued Summary reports of the Unit, unit-wise, and refuses one not issued', async () => {

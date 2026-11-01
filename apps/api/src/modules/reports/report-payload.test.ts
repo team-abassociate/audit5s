@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { freezePayload, freezeTrendPayload, unitTrend, type FreezeInput } from './report-payload';
+import { auditTrend, freezePayload, freezeTrendPayload, unitTrend, type FreezeInput } from './report-payload';
 
 /**
  * Field report, 2026-09-30: an after-evidence report printed each finding's own photograph
@@ -233,5 +233,28 @@ describe('freezeTrendPayload (R-75)', () => {
     expect(payload.auditDateRange).toEqual({ from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' });
     expect(payload.auditorNames).toEqual(['A. Auditor', 'B. Auditor']);
     expect(payload.zones).toEqual([]);
+  });
+});
+
+describe('a unit-wise trend from audits (R-75)', () => {
+  it('makes one point per audit, Cross or External, summing its Zones’ marks', () => {
+    const base = input().zones[0]!;
+    const zone = (auditZoneId: string, auditId: string, auditType: 'EXTERNAL_5S' | 'CROSS_5S', raw: number, max: number) => ({
+      ...base,
+      auditZoneId,
+      auditId,
+      auditType,
+      rawScore: raw,
+      maxScore: max,
+    });
+    const trend = auditTrend(
+      [zone('z-1', 'external', 'EXTERNAL_5S', 9, 10), zone('z-2', 'external', 'EXTERNAL_5S', 1, 10), zone('z-3', 'cross', 'CROSS_5S', 5, 10)],
+      [],
+    );
+    expect(trend.scope).toBe('UNIT');
+    expect(trend.points.map((point) => [point.id, point.auditType, point.zoneCount, point.totals.scorePercentage])).toEqual([
+      ['external', 'EXTERNAL_5S', 2, 50],
+      ['cross', 'CROSS_5S', 1, 50],
+    ]);
   });
 });

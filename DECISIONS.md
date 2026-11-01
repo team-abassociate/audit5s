@@ -2853,8 +2853,11 @@ board at each Zone and for management reviewing months of audits at once.
   dated, with no question number, link or remark. A finding without an after photo, or with
   a redacted photo on either side, is left off it.
 - **A summary of summaries** (`TREND_SUMMARY`, migrations 0061–0062). Zone-wise: any number of
-  finished, scored audits of one Zone. Unit-wise: any number of issued (READY) Summary reports
-  of the Unit, each point read from what that summary printed. It prints the overall score
+  finished, scored audits of one Zone. Unit-wise: any number of finished audits of the Unit,
+  Cross and External alike, one point per audit over its finished Zones, each row naming the
+  audit's type (owner, 2026-11-01; audit Zones of several Zones make a request unit-wise).
+  The API still accepts issued (READY) Summary reports of the Unit, each point read from
+  what that summary printed. It prints the overall score
   trend, each S's trend, a table of every point, and a 5S web for every point and for all of
   them together — scores only, no photograph or link. Its overall figure is Σachieved / Σmax
   over the points, never the mean of their percentages. **No upper bound** on how many are

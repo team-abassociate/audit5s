@@ -20,7 +20,7 @@ import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
 import { reportFileName } from './report-file-name';
 import { reportSubject } from './report-subject';
-import { freezePayload, freezeTrendPayload, unitTrend, zoneTrend } from './report-payload';
+import { freezePayload, freezeTrendPayload, auditTrend, unitTrend, zoneTrend } from './report-payload';
 import { ReportTokensService, type MintedTokens } from './report-tokens.service';
 import { ReportsRepository, type ReportSnapshotRow } from './reports.repository';
 import { TEMPLATE_VERSION } from './templates/version';
@@ -300,6 +300,8 @@ export class ReportsService {
     auditZoneIds: string[];
     /** R-75: a unit-wise summary of summaries' Summary reports. */
     snapshotIds?: string[];
+    /** R-75: audits of several Zones, compared audit by audit across the Unit. */
+    unitWide?: boolean;
   }> {
     if (request.kind === 'TREND_SUMMARY') return this.resolveTrend(tx, request);
 
@@ -402,10 +404,9 @@ export class ReportsService {
     if (found.some((row) => row.auditType === 'WALK_BY')) {
       throw refuse('A walk-by has no score to compare; leave it out');
     }
-    if (new Set(found.map((row) => row.zoneId)).size > 1) {
-      throw refuse('Choose audits of one Zone');
-    }
-    return { ...base, auditZoneIds: chosen };
+    // Audits of one Zone compare Zone by Zone; audits of several, audit by audit (Cross and
+    // External alike) across the Unit.
+    return { ...base, auditZoneIds: chosen, unitWide: new Set(found.map((row) => row.zoneId)).size > 1 };
   }
 
   /** Reads everything the document prints, at one instant, and mints its links. */
@@ -420,6 +421,7 @@ export class ReportsService {
       auditId: string | null;
       auditZoneIds: string[];
       snapshotIds?: string[];
+      unitWide?: boolean;
       /** False for a preview: a preview must not be a way to issue live links. */
       mintTokens?: boolean;
     },
@@ -441,7 +443,7 @@ export class ReportsService {
           this.repository.readZones(tx, target.auditZoneIds),
           this.repository.readSectionScores(tx, target.auditZoneIds),
         ]);
-        trend = zoneTrend(zones, sectionScores);
+        trend = target.unitWide ? auditTrend(zones, sectionScores) : zoneTrend(zones, sectionScores);
         auditorNames = zones.map((zone) => zone.auditorName);
       }
       const payload = freezeTrendPayload({
