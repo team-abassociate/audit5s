@@ -371,7 +371,7 @@ export function CorrectiveActionsPage() {
                     </tr>
                     {unit.groups.map((entry) => (
                       <Fragment key={entry.key}>
-                        <tr className="bg-board">
+                        <tr className="bg-ground">
                           <Td colSpan={6}>
                             <span className="text-xs font-medium text-ink-2">
                               {entry.auditId !== null
@@ -379,11 +379,11 @@ export function CorrectiveActionsPage() {
                                 : `${entry.zone} · ${entry.leader ?? 'No Zone Leader on record'}`}
                             </span>
                             {entry.overdue > 0 && (
-                              <span className="ml-2 text-xs font-semibold gb-text-crit">{entry.overdue} overdue</span>
+                              <span className="ml-2 text-xs font-semibold gb-text-needs-support">{entry.overdue} overdue</span>
                             )}
                             {/* The rest of a group is on the next page; it continues under this header. */}
                             {entry.list.length < entry.total && (
-                              <span className="ml-2 text-xs text-ink-3">
+                              <span className="ml-2 text-xs text-muted">
                                 {entry.list.length} of {entry.total} shown
                               </span>
                             )}
@@ -457,18 +457,18 @@ function ActionRow({
         <button type="button" className="gb-rowtoggle" aria-current={open ? 'true' : undefined} onClick={onOpen}>
           {zoneDisplayLabel(action.zoneCode, action.zoneName)}
         </button>
-        <div className="text-xs text-ink-3">{itemLabel(action)}</div>
+        <div className="text-xs text-muted">{itemLabel(action)}</div>
       </Td>
       <Td>
         <StatusChip kind="action" status={action.status} />
-        {action.reopenCount > 0 && <div className="mt-1 text-xs whitespace-nowrap text-ink-3">reopened ×{action.reopenCount}</div>}
+        {action.reopenCount > 0 && <div className="mt-1 text-xs whitespace-nowrap text-muted">reopened ×{action.reopenCount}</div>}
       </Td>
       <Td>{leader ?? '—'}</Td>
       <Td className="gb-data">
         {action.dueAt ? (
           // The word as well as the colour: an overdue row has to survive a projector and a
           // colour-blind reader.
-          <span className={late ? 'gb-text-crit' : ''}>
+          <span className={late ? 'gb-text-needs-support' : ''}>
             {formatDate(action.dueAt)}
             {late && <b className="ml-1">Overdue</b>}
           </span>
@@ -627,7 +627,7 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
         ))}
 
         {(reviewable || reopenable) && (
-          <div className="space-y-2 border border-edge-soft p-3">
+          <div className="space-y-2 border border-rule-soft p-3">
             {/* R-40, R-43: disapproving is the reopen edge. Nothing is erased — the attempt
                 stays above, marked Disapproved — but the item waits for a new answer, the
                 same link in the PDF takes it, and a regenerated report prints the
@@ -736,13 +736,13 @@ function CopyLink({ actionId, listed }: { actionId: string; listed: boolean }) {
 
 function Attempt({ attempt }: { attempt: CorrectiveActionSubmission }) {
   return (
-    <div className="border border-edge-soft p-3">
+    <div className="border border-rule-soft p-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium">Attempt {attempt.attemptNo}</span>
         <StatusChip shape={attempt.option === 'COMPLETED' ? 'done' : 'attention'}>
           {attempt.option === 'COMPLETED' ? 'Completed' : 'Not possible'}
         </StatusChip>
-        <span className="text-xs text-ink-3">
+        <span className="text-xs text-muted">
           {attempt.submittedByName} · {formatDateTime(attempt.createdAt)} · via{' '}
           {SUBMISSION_CHANNEL_LABEL[attempt.submittedVia]}
         </span>
@@ -824,14 +824,14 @@ function Photo({ evidenceId, remark = null, alt }: { evidenceId: string; remark?
     <>
       <button
         type="button"
-        className="block w-full overflow-hidden border border-edge-soft hover:border-edge"
+        className="block w-full overflow-hidden border border-rule-soft hover:border-rule"
         aria-label={`Open ${alt.toLowerCase()}`}
         onClick={() => setOpen(true)}
       >
         {thumbnail.data ? (
           <img className="aspect-4/3 w-full object-cover" src={thumbnail.data.url} alt={alt} />
         ) : (
-          <div className="grid aspect-4/3 place-items-center bg-tile-2 text-xs text-ink-3">
+          <div className="grid aspect-4/3 place-items-center bg-chip text-xs text-muted">
             {thumbnail.error ? 'Preview unavailable' : 'Loading…'}
           </div>
         )}
@@ -850,9 +850,9 @@ function Closed({ action }: { action: CorrectiveAction }) {
   return (
     <span>
       {action.closedByName ?? '—'}
-      <div className="text-xs text-ink-3">{formatDateTime(action.resolvedAt)}</div>
+      <div className="text-xs text-muted">{formatDateTime(action.resolvedAt)}</div>
       {/* R-43: closed is not verified — say whether anybody approved it. */}
-      <div className="text-xs text-ink-3">
+      <div className="text-xs text-muted">
         {isUnapprovedClosure(action.status, action.verifiedByUserId)
           ? 'Not reviewed'
           : `✓ Approved by ${action.verifiedByName ?? '—'}`}

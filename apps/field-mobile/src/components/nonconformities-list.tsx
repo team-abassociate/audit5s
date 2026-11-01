@@ -98,7 +98,7 @@ export function NonconformitiesScreen() {
             refreshing={sync.isPending}
             onRefresh={() => sync.mutate()}
             colors={[theme.color.ink]}
-            progressBackgroundColor={theme.color.tile}
+            progressBackgroundColor={theme.color.surface}
           />
         }
         ListHeaderComponent={
@@ -131,13 +131,13 @@ const useStyles = createThemedStyles((theme) => ({
     gap: theme.space.sm,
     marginBottom: 6,
   },
-  zone: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink, flexShrink: 1 },
+  zone: { fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink, flexShrink: 1 },
   due: {
-    fontFamily: theme.family.mono,
+    fontFamily: theme.family.regular,
     fontSize: 12,
     color: theme.color.ink2,
     marginTop: 6,
     fontVariant: ['tabular-nums'],
   },
-  late: { fontFamily: theme.family.monoMedium, color: theme.color.crit },
+  late: { fontFamily: theme.family.medium, color: theme.color.needsSupport },
 }));

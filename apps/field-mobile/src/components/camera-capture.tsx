@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { Button } from './ui';
 import { MAX_LONG_EDGE_PX, processCapturedPhoto, type ProcessedImage } from '../lib/capture/media';
 import { ZONE_PHOTO_LIMIT_MESSAGE } from '../lib/db/photo-limit';
-import { gemba, gembaFonts } from '../lib/gemba';
+import { ledger, ledgerFonts } from '../lib/ledger';
 import { whilePrompting } from '../lib/permission-prompt';
 
 /**
@@ -104,7 +104,7 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
   if (!permission) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color={gemba.dark.ink} />
+        <ActivityIndicator color={ledger.dark.ink} />
       </View>
     );
   }
@@ -172,7 +172,7 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
           onPress={() => void take()}
           style={[styles.shutter, busy && styles.shutterBusy]}
         >
-          {busy ? <ActivityIndicator color={gemba.dark.ink} /> : <View style={styles.shutterInner} />}
+          {busy ? <ActivityIndicator color={ledger.dark.ink} /> : <View style={styles.shutterInner} />}
         </Pressable>
         <Button icon="close" title="Cancel" variant="secondary" onPress={onCancel} />
       </View>
@@ -181,21 +181,21 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: gemba.dark.board },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, backgroundColor: gemba.dark.board },
+  container: { flex: 1, backgroundColor: ledger.dark.ground },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, backgroundColor: ledger.dark.ground },
   preview: { flex: 1 },
-  controls: { padding: 20, gap: 14, alignItems: 'center', backgroundColor: gemba.dark.board },
-  prompt: { color: gemba.dark.ink, fontFamily: gembaFonts.medium, fontSize: 16, textAlign: 'center' },
-  detail: { color: gemba.dark.ink2, fontFamily: gembaFonts.regular, fontSize: 13, lineHeight: 20, textAlign: 'center' },
+  controls: { padding: 20, gap: 14, alignItems: 'center', backgroundColor: ledger.dark.ground },
+  prompt: { color: ledger.dark.ink, fontFamily: ledgerFonts.semibold, fontSize: 16, textAlign: 'center' },
+  detail: { color: ledger.dark.ink2, fontFamily: ledgerFonts.regular, fontSize: 13, lineHeight: 20, textAlign: 'center' },
   shutter: {
     width: 76,
     height: 76,
     borderWidth: 4,
-    borderColor: gemba.dark.ink,
+    borderColor: ledger.dark.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shutterBusy: { opacity: 0.6 },
-  error: { color: gemba.dark.crit, fontFamily: gembaFonts.medium, fontSize: 13, textAlign: 'center' },
-  shutterInner: { width: 58, height: 58, backgroundColor: gemba.dark.ink },
+  error: { color: ledger.dark.needsSupport, fontFamily: ledgerFonts.semibold, fontSize: 13, textAlign: 'center' },
+  shutterInner: { width: 58, height: 58, backgroundColor: ledger.dark.ink },
 });

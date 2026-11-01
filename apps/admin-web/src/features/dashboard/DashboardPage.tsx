@@ -37,6 +37,7 @@ import {
   trendGeometry,
   worstIndex,
   type Band,
+  type Tone,
   type BoardZone,
   type LatestZoneAudit,
 } from './board';
@@ -52,7 +53,7 @@ async function get<T>(path: string): Promise<T> {
   return api.get<T>(path);
 }
 
-/** Below this the detail panel sits under the tiles, out of sight (GEMBA §5). */
+/** Below this the detail panel sits under the tiles, out of sight. */
 const STACKED = '(max-width: 1180px)';
 
 /** The rollup's clock: "Synced 2:05 PM", in IST like every time in the portal (R-45(b)). */
@@ -82,7 +83,7 @@ const SHOWN = 12;
 const DAY = 86_400_000;
 
 /**
- * The Zone board (GEMBA-BOARD.md §1): every Zone in the Unit, its score, and the one thing
+ * The Zone board: every Zone in the Unit, its score, and the one thing
  * someone must act on.
  *
  * Every figure on it is the server's — the client filters and lays out, it never scores
@@ -506,7 +507,7 @@ export function DashboardPage() {
                   second, unrelated figure sitting inside the score — the zone count already has
                   its own tile beside this one. Only the band word stays, because it is what the
                   tile's colour means. */}
-              {/* One decimal, like every tile (D1, GEMBA §3). The weighted figure says which
+              {/* One decimal, like every tile (D1). The weighted figure says which
                   number it is and names the latest audit's, which the trajectory ends on (B3). */}
               <Kpi
                 label={chosenZone ? 'Zone score' : chosenAudit ? 'Audit score' : 'Unit score'}
@@ -893,7 +894,7 @@ function Kpi({
   label: string;
   value: string;
   context: string;
-  band: Band;
+  band: Band | Tone;
 }) {
   return (
     <div className={`gb-tile gb-kpi gb-${band}`}>
@@ -1051,7 +1052,7 @@ function DetailPanel({
           was invisible on the board that is supposed to show it.
 
           The rail and the chip carry the same fact, which is the point: colour alone never
-          says whether something is closed (non-negotiable 9), so the row stays readable on
+          says whether something is closed (LEDGER.md rule 3), so the row stays readable on
           a projector, in sunlight, and to a colour-blind reader.
         */}
         <div className="gb-findings">
@@ -1204,11 +1205,11 @@ function MatrixCell({ section }: { section?: SectionScorePayload }) {
 }
 
 /** The 4px severity rail on the first cell of a row (§6 "Table"). */
-function rail(band: Band): string {
+function rail(band: Band | Tone): string {
   return band === 'crit' ? 'gb-row-crit' : band === 'warn' ? 'gb-row-warn' : 'gb-row-none';
 }
 
-function chipTone(band: Band): string {
+function chipTone(band: Band | Tone): string {
   return band === 'none' ? 'muted' : band;
 }
 
@@ -1225,7 +1226,7 @@ function shareRows(board: BoardZone[]) {
   }));
 }
 
-function actionState(action: CorrectiveAction, now: number): { band: Band; label: string } {
+function actionState(action: CorrectiveAction, now: number): { band: Tone; label: string } {
   const live = action.status === 'OPEN' || action.status === 'REOPENED';
   const due = action.dueAt === null ? null : Date.parse(action.dueAt);
   if (live && due !== null && due < now) return { band: 'crit', label: 'Overdue' };

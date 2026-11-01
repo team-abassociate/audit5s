@@ -104,7 +104,7 @@ export function useDocumentTitle(...parts: Array<string | undefined>): void {
 }
 
 /**
- * The shell of GEMBA-BOARD.md §5: a fixed 216px rail (a horizontal strip below 860px) and
+ * The shell: a fixed 216px rail (a horizontal strip below 860px) and
  * a topbar. Only the title row is sticky; the scope row under it scrolls away with the page,
  * so a laptop keeps its height for the board (G15).
  */
@@ -437,24 +437,30 @@ export function TopbarTools({ children }: { children: ReactNode }) {
   return slot ? createPortal(children, slot) : null;
 }
 
-/** Two states, remembered per browser (§7). Light — the whiteboard — is the default. */
-const MODES = ['light', 'dark'] as const;
-const GLYPH = { light: '○', dark: '●' } as const;
+/**
+ * The theme follows the device until someone picks light or dark here; the choice is
+ * remembered per browser (LEDGER.md, Themes). `theme-init.js` applies it before first paint.
+ */
+const MODES = ['system', 'light', 'dark'] as const;
+const THEME_KEY = 'audit5s-theme';
 
 function ThemeSwitch() {
   const [mode, setMode] = useState<(typeof MODES)[number]>(() => {
     try {
-      const stored = localStorage.getItem('gemba-theme');
-      return MODES.find((m) => m === stored) ?? 'light';
+      const stored = localStorage.getItem(THEME_KEY);
+      return MODES.find((m) => m === stored) ?? 'system';
     } catch {
-      return 'light';
+      return 'system';
     }
   });
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', mode);
+    const root = document.documentElement;
+    if (mode === 'system') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', mode);
     try {
-      localStorage.setItem('gemba-theme', mode);
+      if (mode === 'system') localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, mode);
     } catch {
       // A browser that refuses storage still gets the theme, just not the memory of it.
     }
@@ -468,7 +474,6 @@ function ThemeSwitch() {
       title={`Theme: ${mode} — click to change`}
       onClick={() => setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]!)}
     >
-      <span className="gb-data" style={{ marginRight: 6 }}>{GLYPH[mode]}</span>
       {mode[0]!.toUpperCase() + mode.slice(1)}
     </button>
   );

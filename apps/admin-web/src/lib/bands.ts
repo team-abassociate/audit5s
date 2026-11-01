@@ -4,28 +4,21 @@ import type { ResponseValue } from '@audit5s/contracts';
 /**
  * Score band → design-system band, in one place for the whole app.
  *
- * `packages/domain` owns the scale (R-6b: four bands at 90 / 75 / 60) and is the only file
- * in the codebase allowed to name a colour. The design system carries three colour pairs,
- * so the two upper bands share `--ok` and the band **label** keeps the four apart — status
- * reads without colour either way (GEMBA-BOARD.md non-negotiable 8).
+ * `packages/domain` owns the scale (R-6b: four bands at 90 / 75 / 60), and Ledger draws all
+ * four: Outstanding green, On Track blue, Improving yellow, Needs Support red. The band
+ * **label** is shown beside the colour, so status reads without it (LEDGER.md rule 3).
  *
- * Everything here returns a class, never a value: a hex literal in a component — including
- * one smuggled in through an inline `style` — is a rejectable UI diff.
+ * Everything here returns a class or a name, never a value: a hex literal in a component —
+ * including one smuggled in through an inline `style` — is a rejectable UI diff.
  */
-export type Band = 'ok' | 'warn' | 'crit' | 'none';
+export type Band = 'outstanding' | 'on-track' | 'improving' | 'needs-support' | 'none';
+
+/** A status that is not a score (overdue, waiting, approved …), drawn in a band's colour. */
+export type Tone = 'ok' | 'warn' | 'crit' | 'none';
 
 export function bandOf(percentage: number | null): Band {
   const band = bandFor(percentage);
-  if (!band) return 'none';
-  switch (band.token) {
-    case 'band-outstanding':
-    case 'band-on-track':
-      return 'ok';
-    case 'band-improving':
-      return 'warn';
-    default:
-      return 'crit';
-  }
+  return band ? (band.token.slice('band-'.length) as Band) : 'none';
 }
 
 /** The R-6b label, so all four bands are readable without colour. */
@@ -38,10 +31,15 @@ export function bandTextClass(percentage: number | null): string {
   return `gb-text-${bandOf(percentage)}`;
 }
 
+/** The custom property of a band's solid colour, for a chart that needs a value (`useToken`). */
+export function bandToken(band: Band): string {
+  return band === 'none' ? '--rule-soft' : `--band-${band}`;
+}
+
 /** The same mapping for a single answer (`RESPONSE_TOKENS` in `packages/domain`). */
 export function responseTextClass(value: ResponseValue): string {
-  if (value === 'SCORE_2') return 'gb-text-ok';
-  if (value === 'SCORE_1') return 'gb-text-warn';
-  if (value === 'SCORE_0') return 'gb-text-crit';
+  if (value === 'SCORE_2') return 'gb-text-outstanding';
+  if (value === 'SCORE_1') return 'gb-text-improving';
+  if (value === 'SCORE_0') return 'gb-text-needs-support';
   return 'gb-text-none';
 }

@@ -181,5 +181,5 @@ function firstFreeNumber(taken: Set<string>): number {
 const useStyles = createThemedStyles((theme) => ({
   form: { gap: theme.space.sm, paddingVertical: theme.space.sm },
   name: { flex: 1 },
-  error: { fontFamily: theme.family.medium, fontSize: 12.5, color: theme.color.critBand },
+  error: { fontFamily: theme.family.semibold, fontSize: 12.5, color: theme.color.needsSupport },
 }));

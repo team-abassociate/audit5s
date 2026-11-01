@@ -214,15 +214,15 @@ export function ZoneGroupHead({ zone, count, noun }: { zone: ZoneOption; count: 
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.color.hard },
+  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.color.scrim },
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
     borderTopWidth: 2,
-    borderTopColor: theme.color.edge,
+    borderTopColor: theme.color.rule,
     padding: theme.space.md,
     gap: theme.space.md,
   },
@@ -246,8 +246,8 @@ const useStyles = createThemedStyles((theme) => ({
     gap: 6,
     paddingHorizontal: 8,
     borderWidth: 1.5,
-    borderColor: theme.color.accent,
-    backgroundColor: theme.color.accentSoft,
+    borderColor: theme.color.primaryInk,
+    backgroundColor: theme.color.secondarySoft,
   },
   chipPressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
   chipText: {
@@ -259,5 +259,5 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.color.ink,
   },
   chipX: { fontFamily: theme.family.bold, fontSize: 11, color: theme.color.ink2 },
-  groupHead: { marginTop: theme.space.sm, backgroundColor: theme.color.board },
+  groupHead: { marginTop: theme.space.sm, backgroundColor: theme.color.ground },
 }));

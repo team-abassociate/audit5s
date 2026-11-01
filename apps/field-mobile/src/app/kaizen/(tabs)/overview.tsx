@@ -28,7 +28,7 @@ import { KAIZEN_STRINGS } from '../../../lib/kaizen-strings';
 import { useLanguage } from '../../../lib/language-provider';
 import { useSession } from '../../../lib/session';
 import { useSync } from '../../../lib/sync/provider';
-import { createThemedStyles, type Band } from '../../../lib/theme';
+import { createThemedStyles, type Tone } from '../../../lib/theme';
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -246,10 +246,10 @@ function useClearParams(set: boolean, cleared: Record<string, undefined>) {
 }
 
 /**
- * GEMBA's KPI tile, one magnet per figure as the prototype had them: label, figure, one line
+ * The KPI tile, one card per figure as the prototype had them: label, figure, one line
  * of context, then the band. The band is the colour's shape, so the tile reads without it.
  */
-function KpiTile({ label, value, context, band }: { label: string; value: number; context: string; band?: Band }) {
+function KpiTile({ label, value, context, band }: { label: string; value: number; context: string; band?: Tone }) {
   const styles = useStyles();
   return (
     <View style={styles.tile}>

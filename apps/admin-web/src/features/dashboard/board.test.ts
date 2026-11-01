@@ -44,14 +44,15 @@ const ranked = (zoneId: string, zoneCode: string, pct: number | null): ZoneRanki
   }) as ZoneRankingItem;
 
 describe('band assignment', () => {
-  it('follows the four bands of R-6b, collapsed onto the three token colours', () => {
-    expect(bandOf(100)).toBe('ok');
-    expect(bandOf(90)).toBe('ok');
-    expect(bandOf(75)).toBe('ok');
-    expect(bandOf(74.999)).toBe('warn');
-    expect(bandOf(60)).toBe('warn');
-    expect(bandOf(59.999)).toBe('crit');
-    expect(bandOf(0)).toBe('crit');
+  it('follows the four bands of R-6b, each with its own colour (R-76)', () => {
+    expect(bandOf(100)).toBe('outstanding');
+    expect(bandOf(90)).toBe('outstanding');
+    expect(bandOf(89.999)).toBe('on-track');
+    expect(bandOf(75)).toBe('on-track');
+    expect(bandOf(74.999)).toBe('improving');
+    expect(bandOf(60)).toBe('improving');
+    expect(bandOf(59.999)).toBe('needs-support');
+    expect(bandOf(0)).toBe('needs-support');
   });
 
   it('treats nothing-applicable as N/A rather than as a zero score', () => {
@@ -79,8 +80,8 @@ describe('figures', () => {
     // 74.999 is Improving; rounded it would read 75.00, which is On Track. R-45(e) truncates.
     // The band still comes from the raw value. R-6b puts the boundaries at 90 / 75 / 60.
     expect(score2(74.999)).toBe('74.99');
-    expect(bandOf(74.999)).toBe('warn');
-    expect(bandOf(75)).toBe('ok');
+    expect(bandOf(74.999)).toBe('improving');
+    expect(bandOf(75)).toBe('on-track');
   });
 
   it('always signs a delta, with a real minus sign', () => {
@@ -120,7 +121,7 @@ describe('mergeBoard', () => {
     );
     expect(board.map((row) => row.code)).toEqual(['BOILER', 'OFFICE']);
     expect(board[0]!.score).toBe(48.6);
-    expect(board[0]!.band).toBe('crit');
+    expect(board[0]!.band).toBe('needs-support');
     expect(board[0]!.auditorName).toBe('R. Deshmukh');
     expect(board[1]!.score).toBeNull();
     expect(board[1]!.band).toBe('none');

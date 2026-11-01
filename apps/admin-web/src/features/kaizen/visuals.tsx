@@ -20,8 +20,8 @@ import { useToken } from '@/lib/tokens';
  */
 
 const TOOLTIP = {
-  background: 'var(--tile)',
-  border: '1.5px solid var(--edge)',
+  background: 'var(--surface)',
+  border: '1.5px solid var(--rule)',
   borderRadius: 0,
   color: 'var(--ink)',
   fontSize: 12.5,
@@ -76,15 +76,15 @@ const MIN_STAGE = 0.2;
 
 /**
  * Trapezoids whose top edge is the stage's own width and bottom edge the next stage's — the
- * reference shape — drawn with `clip-path`, so a period change eases every edge (`--motion`,
- * ease-out; none under reduced motion). Only the count sits on the fill: light `--ok-band`
+ * reference shape — drawn with `clip-path`, so a period change eases every edge (`--dur-micro`,
+ * ease-out; none under reduced motion). Only the count sits on the fill: light `--band-outstanding`
  * holds no small text at 4.5:1 in either ink or tile, so the name and share stand beside it.
  */
 export function FunnelCard({ funnel, period, onPeriod }: { funnel: KaizenFunnel; period: KaizenDashboardPeriod; onPeriod: (p: KaizenDashboardPeriod) => void }) {
   const token = useToken();
   const first = funnel[0]?.count ?? 0;
   const widths = funnel.map((stage) => (first > 0 ? Math.max(stage.count / first, MIN_STAGE) : MIN_STAGE) * 100);
-  const fills = ['--edge-soft', '--ink-3', '--ok-band', '--ok'];
+  const fills = ['--rule-soft', '--muted', '--band-outstanding', '--band-outstanding'];
   return (
     <Card>
       <CardHeader title="Kaizen funnel" action={<PeriodControl value={period} onChange={onPeriod} />} />
@@ -92,8 +92,8 @@ export function FunnelCard({ funnel, period, onPeriod }: { funnel: KaizenFunnel;
         {funnel.map((stage, index) => {
           const top = widths[index]!;
           const bottom = widths[index + 1] ?? top;
-          const fill = token(fills[index] ?? '--edge-soft');
-          const ink = fill ? textOn(fill, token('--ink'), token('--tile')) : 'var(--ink)';
+          const fill = token(fills[index] ?? '--rule-soft');
+          const ink = fill ? textOn(fill, token('--ink'), token('--surface')) : 'var(--ink)';
           const clip = `polygon(${(100 - top) / 2}% 0, ${(100 + top) / 2}% 0, ${(100 + bottom) / 2}% 100%, ${(100 - bottom) / 2}% 100%)`;
           return (
             <li key={stage.stage} className="gb-kz-stage">
@@ -125,18 +125,18 @@ export function TrendCard({ trend }: { trend: readonly KaizenTrendMonth[] }) {
       <div className="gb-panel-head">
         {/* The two title words are the legend, styled like their bars (§4.7 C). */}
         <h2 className="gb-h2 gb-kz-trend-title">
-          Kaizen <b style={{ color: 'var(--ink-3)' }}>submission</b> / <b style={{ color: 'var(--ok)' }}>completion</b> trend
+          Kaizen <b style={{ color: 'var(--muted)' }}>submission</b> / <b style={{ color: 'var(--band-outstanding)' }}>completion</b> trend
         </h2>
       </div>
       <figure className="m-0 p-3" aria-label={`Last six months: ${trend.map((m) => `${formatYearMonth(m.month)} ${m.submitted} submitted, ${m.approved} approved`).join('; ')}.`}>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data} accessibilityLayer={false} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
-            <CartesianGrid vertical={false} stroke={token('--edge-soft')} />
-            <XAxis dataKey="month" stroke={token('--ink-3')} tick={{ fontFamily: 'var(--font-data)', fontSize: 11 }} />
-            <YAxis allowDecimals={false} domain={[0, 'auto']} stroke={token('--ink-3')} tick={{ fontFamily: 'var(--font-data)', fontSize: 11 }} />
-            <Tooltip contentStyle={TOOLTIP} cursor={{ fill: token('--tile-2') }} />
-            <Bar isAnimationActive={false} dataKey="submitted" name="Submitted" fill={token('--edge-soft')} stroke={token('--ink-3')} strokeWidth={1} />
-            <Bar isAnimationActive={false} dataKey="approved" name="Approved" fill={token('--ok-band')} />
+            <CartesianGrid vertical={false} stroke={token('--rule-soft')} />
+            <XAxis dataKey="month" stroke={token('--muted')} tick={{ fontFamily: 'var(--font-ui)', fontSize: 11 }} />
+            <YAxis allowDecimals={false} domain={[0, 'auto']} stroke={token('--muted')} tick={{ fontFamily: 'var(--font-ui)', fontSize: 11 }} />
+            <Tooltip contentStyle={TOOLTIP} cursor={{ fill: token('--chip') }} />
+            <Bar isAnimationActive={false} dataKey="submitted" name="Submitted" fill={token('--rule-soft')} stroke={token('--muted')} strokeWidth={1} />
+            <Bar isAnimationActive={false} dataKey="approved" name="Approved" fill={token('--band-outstanding')} />
           </BarChart>
         </ResponsiveContainer>
       </figure>
@@ -150,7 +150,7 @@ export function TrendCard({ trend }: { trend: readonly KaizenTrendMonth[] }) {
  * Five departments told apart without colour (§4.7 D): an ink-scale fill **and** a pattern
  * on alternate series — solid, hatched, outlined — so it reads in sunlight and greyscale.
  */
-const SERIES = ['--ink', '--ink-2', '--ink-3', '--edge-soft', '--tape'] as const;
+const SERIES = ['--ink', '--ink-2', '--muted', '--rule-soft', '--secondary-soft'] as const;
 type Look = { fill: string; stroke?: string };
 
 export function TopDepartmentsCard({
@@ -165,9 +165,9 @@ export function TopDepartmentsCard({
   const lines = series[which];
   const name = (line: KaizenDepartmentSeries) => line.label ?? 'No department';
   const look = (index: number): Look => {
-    const colour = token(SERIES[index] ?? '--ink-3');
+    const colour = token(SERIES[index] ?? '--muted');
     if (index % 3 === 1) return { fill: `url(#kz-hatch-${index})`, stroke: colour };
-    if (index % 3 === 2) return { fill: token('--tile'), stroke: colour };
+    if (index % 3 === 2) return { fill: token('--surface'), stroke: colour };
     return { fill: colour };
   };
   const data = months.map((month, monthIndex) => ({
@@ -203,16 +203,16 @@ export function TopDepartmentsCard({
                 {lines.map((_, index) =>
                   index % 3 === 1 ? (
                     <pattern key={index} id={`kz-hatch-${index}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                      <rect width="6" height="6" fill={token('--tile')} />
-                      <rect width="3" height="6" fill={token(SERIES[index] ?? '--ink-3')} />
+                      <rect width="6" height="6" fill={token('--surface')} />
+                      <rect width="3" height="6" fill={token(SERIES[index] ?? '--muted')} />
                     </pattern>
                   ) : null,
                 )}
               </defs>
-              <CartesianGrid vertical={false} stroke={token('--edge-soft')} />
-              <XAxis dataKey="month" stroke={token('--ink-3')} tick={{ fontFamily: 'var(--font-data)', fontSize: 11 }} />
-              <YAxis allowDecimals={false} stroke={token('--ink-3')} tick={{ fontFamily: 'var(--font-data)', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP} cursor={{ fill: token('--tile-2') }} />
+              <CartesianGrid vertical={false} stroke={token('--rule-soft')} />
+              <XAxis dataKey="month" stroke={token('--muted')} tick={{ fontFamily: 'var(--font-ui)', fontSize: 11 }} />
+              <YAxis allowDecimals={false} stroke={token('--muted')} tick={{ fontFamily: 'var(--font-ui)', fontSize: 11 }} />
+              <Tooltip contentStyle={TOOLTIP} cursor={{ fill: token('--chip') }} />
               {lines.map((line, index) => (
                 <Bar
                   key={line.key || 'none'}

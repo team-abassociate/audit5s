@@ -10,7 +10,7 @@ import {
   type listLocalEvidenceForZone,
 } from '../lib/db/evidence.repository';
 import { useLocalDatabase } from '../lib/db/provider';
-import { createThemedStyles, type Band } from '../lib/theme';
+import { createThemedStyles, type Tone } from '../lib/theme';
 import { Button, Card, CardHeader, Chip, ConfirmAction, ErrorBanner, Field, Label, Muted } from './ui';
 
 /**
@@ -29,11 +29,11 @@ export function classificationLabel(value: string): string {
   return value === 'NONCONFORMITY' ? 'Nonconformity' : value === 'GOOD' ? 'Good' : 'Neutral';
 }
 
-function classificationTone(value: string): Band | 'muted' {
+function classificationTone(value: string): Tone | 'muted' {
   return value === 'GOOD' ? 'ok' : value === 'NONCONFORMITY' ? 'crit' : 'muted';
 }
 
-/** A row of tappable thumbnails. Status is written, not only coloured (GEMBA-BOARD.md). */
+/** A row of tappable thumbnails. Status is written, not only coloured (LEDGER.md rule 3). */
 export function PhotoThumbs({
   photos,
   onOpen,
@@ -286,23 +286,23 @@ export function PhotoPreview({
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  auditeePhoto: { width: 120, aspectRatio: 1, borderWidth: 1.5, borderColor: theme.color.edge, backgroundColor: theme.color.tile2 },
+  auditeePhoto: { width: 120, aspectRatio: 1, borderWidth: 1.5, borderColor: theme.color.rule, backgroundColor: theme.color.chip },
   thumbs: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm, marginTop: theme.space.sm },
-  thumb: { width: 88, borderWidth: 1.5, borderColor: theme.color.edge, backgroundColor: theme.color.tile },
-  thumbImage: { width: '100%', aspectRatio: 1, backgroundColor: theme.color.tile2 },
+  thumb: { width: 88, borderWidth: 1.5, borderColor: theme.color.rule, backgroundColor: theme.color.surface },
+  thumbImage: { width: '100%', aspectRatio: 1, backgroundColor: theme.color.chip },
   thumbMissing: {
     minHeight: 84,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     padding: theme.space.xs,
   },
   thumbMissingText: { fontFamily: theme.family.regular, fontSize: 11.5, color: theme.color.ink2, textAlign: 'center' },
   thumbLabel: {
-    fontFamily: theme.family.medium,
+    fontFamily: theme.family.semibold,
     fontSize: 11,
     color: theme.color.ink,
     paddingHorizontal: 4,
@@ -319,10 +319,10 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile2,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.chip,
   },
-  preview: { flex: 1, backgroundColor: theme.color.tile, paddingHorizontal: theme.space.md, gap: theme.space.sm },
+  preview: { flex: 1, backgroundColor: theme.color.surface, paddingHorizontal: theme.space.md, gap: theme.space.sm },
   previewContent: { gap: theme.space.sm, paddingBottom: theme.space.md },
   previewTitle: {
     fontFamily: theme.family.bold,
@@ -334,9 +334,9 @@ const useStyles = createThemedStyles((theme) => ({
   previewImage: {
     width: '100%',
     aspectRatio: 3 / 4,
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
   },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
   actions: { gap: theme.space.sm },

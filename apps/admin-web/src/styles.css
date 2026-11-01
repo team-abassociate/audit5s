@@ -1,40 +1,40 @@
 @import 'tailwindcss';
 
 /*
- * The Gemba Board token file (docs/design/GEMBA-BOARD.md §8) is *imported*, not copied:
- * it is the single definition of every colour, edge, shadow and type role in the product,
- * and a second copy would be a second definition. Nothing below re-declares a value it
- * already carries, and no rule in this app states a colour of its own.
+ * The Ledger token file (docs/design/LEDGER.md) is *imported*, not copied: it is the single
+ * definition of every colour, radius, shadow, duration and typeface on screen, and a second
+ * copy would be a second definition. No rule in this app states a colour of its own.
  */
-@import '../../../docs/design/gemba-tokens.css';
+@import '../../../docs/design/ledger-tokens.css';
 
 /*
- * The Gemba Board tokens, reachable from Tailwind (GEMBA-BOARD.md §8).
- *
- * The report's brand palette (R-6c) lived here too, as `--color-brand*` and
- * `--color-band-*`. It is gone: those seven hex literals were the app's second palette,
- * and the screen now draws only from the token file above. `packages/domain` remains the
- * single definition for the **printed** report, which is where that palette belongs.
+ * The Ledger roles, reachable from Tailwind. `packages/domain` BRAND_TOKENS stays the palette
+ * of the **printed** report, which is not this system.
  */
 @theme {
-  --color-board: var(--board);
-  --color-tile: var(--tile);
-  --color-tile-2: var(--tile-2);
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-chip: var(--chip);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
-  --color-ink-3: var(--ink-3);
-  --color-edge: var(--edge);
-  --color-edge-soft: var(--edge-soft);
-  --color-ok: var(--ok-band);
-  --color-warn: var(--warn-band);
-  --color-crit: var(--crit-band);
-  --shadow-tile: 3px 3px 0 var(--hard);
-  --shadow-tile-hover: 5px 5px 0 var(--hard);
-  --radius-*: initial; /* non-negotiable 1: nothing in this system is rounded */
-  /* Non-negotiable 4, two families: Tailwind's own stacks would bring the system UI face and
-     ui-monospace in as a third and fourth (`font-mono` on codes, IDs and IP addresses). */
-  --font-sans: var(--font-display);
-  --font-mono: var(--font-data);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-outstanding: var(--band-outstanding);
+  --color-on-track: var(--band-on-track);
+  --color-improving: var(--band-improving);
+  --color-needs-support: var(--band-needs-support);
+  --radius-*: initial;
+  --radius-chip: var(--radius-chip);
+  --radius-control: var(--radius-control);
+  --radius-panel: var(--radius-panel);
+  --radius-card: var(--radius-card);
+  --radius-full: var(--radius-pill);
+  /* Manrope only: Tailwind's own stacks would bring the system face and a monospace in. */
+  --font-*: initial;
+  --font-sans: var(--font-ui);
 }
 
 html,
@@ -48,7 +48,7 @@ body {
 }
 
 /* ==========================================================================
-   SHELL — GEMBA-BOARD.md §5: fixed 216px rail + fluid main, sticky topbar.
+   SHELL — fixed 216px sidebar + fluid main, sticky topbar.
    ========================================================================== */
 .gb-app {
   display: grid;
@@ -60,8 +60,8 @@ body {
 }
 
 .gb-rail {
-  border-right: 2px solid var(--edge);
-  background: var(--tile-2);
+  border-right: 1px solid var(--rule);
+  background: var(--chip);
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -70,7 +70,7 @@ body {
 }
 .gb-brand {
   padding: 18px 16px 16px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-brand-logo {
   display: block;
@@ -81,8 +81,7 @@ body {
   display: block;
   margin-top: 4px;
   font-size: 11px;
-  color: var(--ink-3);
-  letter-spacing: 0.06em;
+  color: var(--muted);
 }
 .gb-nav {
   padding: 10px 10px 0;
@@ -104,43 +103,42 @@ body {
   border: 1.5px solid transparent;
 }
 .gb-nav a:hover {
-  background: var(--tile);
-  border-color: var(--edge-soft);
+  background: var(--surface);
+  border-color: var(--rule-soft);
   color: var(--ink);
 }
 .gb-nav a[aria-current='page'] {
-  background: var(--tile);
-  border-color: var(--edge);
+  background: var(--surface);
+  border-color: var(--rule);
   color: var(--ink);
   font-weight: 700;
-  box-shadow: 2px 2px 0 var(--hard);
 }
 .gb-nav i {
   font-style: normal;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 11px;
-  color: var(--ink-3);
-  background: var(--board);
-  border: 1px solid var(--edge-soft);
+  color: var(--muted);
+  background: var(--ground);
+  border: 1px solid var(--rule-soft);
   padding: 0 5px;
   line-height: 16px;
 }
 .gb-nav hr {
   border: 0;
-  border-top: 1px solid var(--edge-soft);
+  border-top: 1px solid var(--rule-soft);
   margin: 10px 0;
 }
 .gb-nav a[aria-current='page'] i {
-  background: var(--crit-band);
-  color: var(--board);
-  border-color: var(--crit-band);
+  background: var(--band-needs-support);
+  color: var(--ground);
+  border-color: var(--band-needs-support);
 }
 .gb-railfoot {
   margin-top: auto;
   padding: 12px 14px;
-  border-top: 1px solid var(--edge-soft);
+  border-top: 1px solid var(--rule-soft);
   font-size: 11.5px;
-  color: var(--ink-3);
+  color: var(--muted);
 }
 .gb-railfoot b {
   display: block;
@@ -154,8 +152,8 @@ body {
   flex-direction: column;
   gap: 10px;
   padding: 10px 28px;
-  border-bottom: 2px solid var(--edge);
-  background: var(--tile-2);
+  border-bottom: 1px solid var(--rule);
+  background: var(--chip);
   position: sticky;
   top: 0;
   z-index: 5;
@@ -177,8 +175,6 @@ body {
 .gb-top h1 {
   font-size: 16px;
   font-weight: 800;
-  font-stretch: 112%;
-  text-transform: uppercase;
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
@@ -199,8 +195,8 @@ body {
   gap: 8px 14px;
   flex-wrap: wrap;
   padding: 10px 28px;
-  background: var(--tile-2);
-  border-bottom: 1px solid var(--edge-soft);
+  background: var(--chip);
+  border-bottom: 1px solid var(--rule-soft);
 }
 .gb-tools-slot {
   display: contents;
@@ -241,9 +237,9 @@ body {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  background: var(--tile);
+  background: var(--surface);
   color: var(--ink);
-  border: 1.5px solid var(--edge);
+  border: 1px solid var(--rule);
   padding: 5px 9px;
 }
 .gb-pill {
@@ -254,18 +250,18 @@ body {
   gap: 8px;
   font-size: 12px;
   color: var(--ink-2);
-  border: 1.5px solid var(--edge-soft);
-  background: var(--tile);
+  border: 1px solid var(--rule-soft);
+  background: var(--surface);
   padding: 5px 10px;
 }
 .gb-pill i {
   width: 8px;
   height: 8px;
-  background: var(--ok-band);
+  background: var(--band-outstanding);
   display: block;
 }
 .gb-pill i.gb-pill--stale {
-  background: var(--warn-band);
+  background: var(--band-improving);
 }
 .gb-who {
   display: flex;
@@ -284,7 +280,7 @@ a.gb-who:hover b {
   text-decoration: underline;
 }
 .gb-who span {
-  color: var(--ink-3);
+  color: var(--muted);
   display: block;
   font-size: 11px;
 }
@@ -292,7 +288,7 @@ a.gb-who:hover b {
   width: 32px;
   height: 32px;
   background: var(--ink);
-  color: var(--board);
+  color: var(--ground);
   display: grid;
   place-items: center;
   font-size: 12px;
@@ -319,10 +315,9 @@ a.gb-who:hover b {
   left: 8px;
   z-index: 20;
   padding: 8px 12px;
-  background: var(--tile);
+  background: var(--surface);
   color: var(--ink);
-  border: 2px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  border: 1px solid var(--rule);
   font-weight: 700;
   font-size: 13px;
   text-decoration: none;
@@ -335,9 +330,8 @@ a.gb-who:hover b {
 .gb-notfound {
   max-width: 62ch;
   padding: 22px;
-  background: var(--tile);
-  border: 2px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -346,8 +340,6 @@ a.gb-who:hover b {
 .gb-notfound h2 {
   font-size: 16px;
   font-weight: 800;
-  font-stretch: 110%;
-  text-transform: uppercase;
 }
 .gb-notfound p {
   margin: 0;
@@ -365,7 +357,7 @@ a.gb-who:hover b {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
   padding-bottom: 8px;
 }
 .gb-head p {
@@ -376,12 +368,12 @@ a.gb-who:hover b {
 .gb-foot {
   padding: 0 28px 36px;
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--muted);
   max-width: 80ch;
 }
 
 /* ==========================================================================
-   BOARD — KPI magnets, zone tiles, detail panel (GEMBA-BOARD.md §6).
+   BOARD — KPI cards, zone tiles, detail panel.
    ========================================================================== */
 .gb-kpis {
   display: grid;
@@ -440,9 +432,9 @@ a.gb-who:hover b {
   font-size: 29px;
 }
 .gb-zone .gb-delta {
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .gb-zone .gb-meta {
@@ -455,7 +447,7 @@ a.gb-who:hover b {
 }
 .gb-zone .gb-meta em {
   font-style: normal;
-  color: var(--crit);
+  color: var(--band-needs-support);
   font-weight: 700;
 }
 .gb-zone .gb-band {
@@ -464,17 +456,11 @@ a.gb-who:hover b {
 .gb-zone-band {
   margin-top: 2px;
 }
-.gb-ok .gb-figure {
-  color: var(--ok);
-}
-.gb-warn .gb-figure {
-  color: var(--warn);
-}
-.gb-crit .gb-figure {
-  color: var(--crit);
+:is(.gb-outstanding, .gb-on-track, .gb-improving, .gb-needs-support, .gb-ok, .gb-warn, .gb-crit) .gb-figure {
+  color: var(--b);
 }
 .gb-pending .gb-figure {
-  color: var(--ink-3);
+  color: var(--muted);
 }
 
 .gb-detail {
@@ -482,13 +468,12 @@ a.gb-who:hover b {
   top: 86px;
   /* Focus brings it into view below the sticky title row, not under it (B4). */
   scroll-margin-top: 86px;
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
 }
 .gb-detail-head {
   padding: 13px 15px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-detail-head p {
   margin: 4px 0 0;
@@ -519,31 +504,25 @@ a.gb-who:hover b {
 }
 .gb-track {
   height: 12px;
-  background: var(--tile-2);
-  border: 1px solid var(--edge-soft);
+  background: var(--chip);
+  border: 1px solid var(--rule-soft);
 }
 .gb-track i {
   display: block;
   height: 100%;
-  background: var(--edge-soft);
+  background: var(--rule-soft);
 }
-.gb-ok .gb-track i {
-  background: var(--ok-band);
-}
-.gb-warn .gb-track i {
-  background: var(--warn-band);
-}
-.gb-crit .gb-track i {
-  background: var(--crit-band);
+:is(.gb-outstanding, .gb-on-track, .gb-improving, .gb-needs-support, .gb-ok, .gb-warn, .gb-crit) .gb-track i {
+  background: var(--b);
 }
 .gb-srow b {
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 12.5px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .gb-srow.gb-none b {
-  color: var(--ink-3);
+  color: var(--muted);
   font-size: 11px;
 }
 /* Cross-Unit trend (AN1): Unit | line | latest | change, one row per Unit. */
@@ -558,17 +537,15 @@ a.gb-who:hover b {
   gap: 4px 14px;
   align-items: center;
   padding: 8px 0;
-  border-bottom: 1px solid var(--edge-soft);
+  border-bottom: 1px solid var(--rule-soft);
   font-size: 12.5px;
 }
 .gb-urow--head {
   padding-top: 0;
-  border-bottom: 1.5px solid var(--edge);
-  color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
 }
 .gb-urow-name {
   font-weight: 600;
@@ -592,7 +569,7 @@ a.gb-who:hover b {
 }
 .gb-urow-latest > b,
 .gb-urow-change > b {
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
@@ -624,13 +601,13 @@ a.gb-who:hover b {
 .gb-ticks div:nth-child(2) {
   display: flex;
   justify-content: space-between;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 9.5px;
-  color: var(--ink-3);
+  color: var(--muted);
 }
 .gb-findings {
   margin-top: 16px;
-  border-top: 1px solid var(--edge-soft);
+  border-top: 1px solid var(--rule-soft);
   padding-top: 12px;
 }
 .gb-findings ul {
@@ -642,29 +619,29 @@ a.gb-who:hover b {
   display: flex;
   gap: 9px;
   padding: 7px 0;
-  border-bottom: 1px dotted var(--edge-soft);
+  border-bottom: 1px dotted var(--rule-soft);
   font-size: 12.5px;
   align-items: flex-start;
 }
 .gb-findings li i {
   width: 4px;
   align-self: stretch;
-  background: var(--edge);
+  background: var(--rule);
   flex: none;
 }
 /*
  * The rail and the chip carry the finding's state together. Colour is the fast read and
- * the word is the reliable one — non-negotiable 9, and the reason a closed finding is
+ * the word is the reliable one — LEDGER.md rule 3, and the reason a closed finding is
  * still legible on a projector or to a reader who cannot separate the two hues.
  */
 .gb-finding--open i {
-  background: var(--crit-band);
+  background: var(--band-needs-support);
 }
 .gb-finding--closed i {
-  background: var(--warn-band);
+  background: var(--band-improving);
 }
 .gb-finding--submitted i {
-  background: var(--edge);
+  background: var(--rule);
 }
 .gb-finding-text {
   min-width: 0;
@@ -672,34 +649,32 @@ a.gb-who:hover b {
 /* A finding photographed at score 0 — the severity it was captured at, not its state. */
 .gb-finding-text b {
   font-weight: 500;
-  color: var(--ink-3);
+  color: var(--muted);
 }
 .gb-findings li em {
   margin-left: auto;
   font-style: normal;
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
   white-space: nowrap;
   border: 1.5px solid currentColor;
   padding: 2px 7px;
   align-self: center;
 }
 .gb-finding--open em {
-  color: var(--crit);
+  color: var(--band-needs-support);
 }
 .gb-finding--closed em {
-  color: var(--warn);
+  color: var(--band-improving);
 }
 .gb-finding--submitted em {
   color: var(--ink-2);
 }
 /* The age column keeps its place at the end once the chip takes `margin-left:auto`. */
 .gb-findings li span {
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--muted);
   white-space: nowrap;
   align-self: center;
 }
@@ -707,7 +682,7 @@ a.gb-who:hover b {
   font-size: 12px;
   color: var(--ink-2);
   margin: 12px 0 0;
-  border-left: 2px solid var(--edge-soft);
+  border-left: 1px solid var(--rule-soft);
   padding-left: 9px;
 }
 
@@ -716,9 +691,8 @@ a.gb-who:hover b {
    ========================================================================== */
 .gb-tablewrap,
 .gb-matrix {
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
-  background: var(--tile);
+  border: 1px solid var(--rule);
+  background: var(--surface);
   overflow-x: auto;
   /* Contains absolutely placed children (an `sr-only` column head), which otherwise escape
      the scroll box and widen the page (G14). */
@@ -737,19 +711,17 @@ a.gb-who:hover b {
 .gb-matrix th {
   text-align: left;
   font-size: 10.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--muted);
   font-weight: 700;
   padding: 10px 12px;
-  border-bottom: 2px solid var(--edge);
-  background: var(--tile-2);
+  border-bottom: 1px solid var(--rule);
+  background: var(--chip);
   white-space: nowrap;
 }
 .gb-tablewrap td,
 .gb-matrix td {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--edge-soft);
+  border-bottom: 1px solid var(--rule-soft);
   font-size: 13px;
   vertical-align: middle;
 }
@@ -758,7 +730,7 @@ a.gb-who:hover b {
   border-bottom: 0;
 }
 .gb-tablewrap tbody tr:hover td {
-  background: var(--tile-2);
+  background: var(--chip);
 }
 .gb-tablewrap td.gb-data,
 .gb-matrix td.gb-data {
@@ -767,29 +739,21 @@ a.gb-who:hover b {
 .gb-matrix th.gb-c,
 .gb-matrix td.gb-c {
   text-align: center;
-  border-left: 1px solid var(--edge-soft);
+  border-left: 1px solid var(--rule-soft);
 }
-.gb-matrix td.gb-c.gb-ok {
-  background: color-mix(in srgb, var(--ok-band) 20%, var(--tile));
-  color: var(--ok);
-}
-.gb-matrix td.gb-c.gb-warn {
-  background: color-mix(in srgb, var(--warn-band) 22%, var(--tile));
-  color: var(--warn);
-}
-.gb-matrix td.gb-c.gb-crit {
-  background: color-mix(in srgb, var(--crit-band) 22%, var(--tile));
-  color: var(--crit);
+.gb-matrix td.gb-c:is(.gb-outstanding, .gb-on-track, .gb-improving, .gb-needs-support, .gb-ok, .gb-warn, .gb-crit) {
+  background: var(--b-tint);
+  color: var(--b);
 }
 .gb-matrix td.gb-c.gb-none {
-  color: var(--ink-3);
+  color: var(--muted);
 }
 .gb-matrix td.gb-avg {
   text-align: center;
   font-weight: 800;
   font-size: 15px;
   letter-spacing: -0.02em;
-  border-left: 2px solid var(--edge);
+  border-left: 1px solid var(--rule);
   font-variant-numeric: tabular-nums;
 }
 
@@ -822,7 +786,7 @@ a.gb-who:hover b {
 .gb-head p a {
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: var(--edge-soft);
+  text-decoration-color: var(--rule-soft);
   text-underline-offset: 3px;
 }
 @media (hover: hover) and (pointer: fine) {
@@ -842,9 +806,8 @@ a.gb-who:hover b {
 }
 
 .gb-trend {
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
-  background: var(--tile);
+  border: 1px solid var(--rule);
+  background: var(--surface);
   padding: 14px 16px 8px;
 }
 .gb-trend {
@@ -874,61 +837,60 @@ a.gb-who:hover b {
   width: 16px;
   height: 3px;
   display: block;
-  background: var(--ok-band);
+  background: var(--band-outstanding);
 }
 .gb-legend i.gb-target {
-  background: repeating-linear-gradient(90deg, var(--crit-band) 0 5px, transparent 5px 9px);
+  background: repeating-linear-gradient(90deg, var(--band-needs-support) 0 5px, transparent 5px 9px);
 }
 .gb-grid-line {
-  stroke: var(--edge-soft);
+  stroke: var(--rule-soft);
   stroke-width: 1;
 }
 .gb-target-line {
-  stroke: var(--crit-band);
+  stroke: var(--band-needs-support);
   stroke-width: 1.5;
   stroke-dasharray: 5 5;
 }
 .gb-area {
-  fill: var(--ok-band);
+  fill: var(--band-outstanding);
   opacity: 0.12;
 }
 .gb-line {
   fill: none;
-  stroke: var(--ok-band);
+  stroke: var(--band-outstanding);
   stroke-width: 2.6;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 .gb-dot {
-  fill: var(--tile);
-  stroke: var(--ok-band);
+  fill: var(--surface);
+  stroke: var(--band-outstanding);
   stroke-width: 3;
 }
 /* One per audit behind the endpoint: same shape, quieter, so the latest reading still
    reads as the current one rather than as one of a row of equals. */
 .gb-mark {
-  fill: var(--tile);
-  stroke: var(--ok-band);
+  fill: var(--surface);
+  stroke: var(--band-outstanding);
   stroke-width: 2;
   opacity: 0.75;
 }
 .gb-axis {
-  fill: var(--ink-3);
+  fill: var(--muted);
   font-size: 10px;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
 }
 .gb-now {
   fill: var(--ink);
   font-size: 13px;
   font-weight: 900;
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   letter-spacing: -0.02em;
 }
 
 .gb-card {
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
-  background: var(--tile);
+  border: 1px solid var(--rule);
+  background: var(--surface);
   padding: 14px 16px 16px;
 }
 .gb-card > p {
@@ -940,12 +902,12 @@ a.gb-who:hover b {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1px;
-  background: var(--edge);
-  border: 1.5px solid var(--edge);
+  background: var(--rule);
+  border: 1px solid var(--rule);
   margin-top: 13px;
 }
 .gb-stats3 div {
-  background: var(--tile-2);
+  background: var(--chip);
   padding: 10px 12px;
 }
 .gb-stats3 .gb-figure {
@@ -961,13 +923,13 @@ a.gb-who:hover b {
   padding: 4px 0;
 }
 .gb-share .gb-srow b {
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-weight: 600;
   text-align: left;
   font-size: 12.5px;
 }
 .gb-share .gb-srow span {
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 12px;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -975,25 +937,25 @@ a.gb-who:hover b {
 .gb-share .gb-track {
   height: 11px;
 }
-/* A count of findings, not a score: ink, never a band colour (GEMBA §2.6). */
+/* A count of findings, not a score: ink, never a band colour (LEDGER.md rule 4). */
 .gb-share .gb-srow .gb-track i {
   background: var(--ink);
 }
 .gb-completion {
   margin-top: 18px;
-  border-top: 1px solid var(--edge-soft);
+  border-top: 1px solid var(--rule-soft);
   padding-top: 13px;
 }
 .gb-prog {
   height: 15px;
-  border: 1.5px solid var(--edge);
-  background: var(--tile-2);
+  border: 1px solid var(--rule);
+  background: var(--chip);
   margin-top: 9px;
 }
 .gb-prog i {
   display: block;
   height: 100%;
-  background: var(--ok-band);
+  background: var(--band-outstanding);
 }
 .gb-progmeta {
   display: flex;
@@ -1001,7 +963,7 @@ a.gb-who:hover b {
   font-size: 11.5px;
   color: var(--ink-2);
   margin-top: 6px;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
 }
 
 /* ==========================================================================
@@ -1044,13 +1006,13 @@ a.gb-who:hover b {
     position: static;
     height: auto;
     border-right: 0;
-    border-bottom: 2px solid var(--edge);
+    border-bottom: 1px solid var(--rule);
     flex-direction: row;
     align-items: center;
   }
   .gb-brand {
     border-bottom: 0;
-    border-right: 2px solid var(--edge);
+    border-right: 1px solid var(--rule);
     white-space: nowrap;
     padding: 12px 14px;
     display: flex;
@@ -1100,19 +1062,18 @@ a.gb-who:hover b {
     font-weight: 500;
     white-space: nowrap;
     color: var(--ink-2);
-    background: var(--tile);
-    border: 1.5px solid var(--edge-soft);
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
     cursor: pointer;
   }
   .gb-navmore-btn[aria-expanded='true'] {
-    border-color: var(--edge);
+    border-color: var(--rule);
     color: var(--ink);
   }
   .gb-navmore-btn[data-current] {
-    border-color: var(--edge);
+    border-color: var(--rule);
     color: var(--ink);
     font-weight: 700;
-    box-shadow: 2px 2px 0 var(--hard);
   }
   .gb-navmore-list {
     position: absolute;
@@ -1123,9 +1084,8 @@ a.gb-who:hover b {
     margin: 0;
     padding: 4px;
     list-style: none;
-    background: var(--tile);
-    border: 2px solid var(--edge);
-    box-shadow: 3px 3px 0 var(--hard);
+    background: var(--surface);
+    border: 1px solid var(--rule);
   }
   .gb-navmore-list a {
     display: block;
@@ -1135,7 +1095,7 @@ a.gb-who:hover b {
     text-decoration: none;
   }
   .gb-navmore-list a[aria-current='page'] {
-    background: var(--tile-2);
+    background: var(--chip);
     color: var(--ink);
     font-weight: 700;
   }
@@ -1171,12 +1131,11 @@ a.gb-who:hover b {
 
 /* ==========================================================================
    SHARED PRIMITIVES — what `components/ui.tsx` renders, so every screen in
-   the app is built from the same four objects as the board (GEMBA-BOARD.md §6).
+   the app's shared primitives (LEDGER.md).
    ========================================================================== */
 .gb-panel {
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
 }
 .gb-panel-head {
   display: flex;
@@ -1184,7 +1143,7 @@ a.gb-who:hover b {
   justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-panel-head p {
   margin: 3px 0 0;
@@ -1196,17 +1155,17 @@ a.gb-who:hover b {
   width: 100%;
   font: inherit;
   font-size: 13px;
-  background: var(--tile-2);
+  background: var(--chip);
   color: var(--ink);
-  border: 1.5px solid var(--edge);
+  border: 1px solid var(--rule);
   padding: 7px 9px;
 }
 .gb-input::placeholder {
-  color: var(--ink-3);
+  color: var(--muted);
 }
 .gb-input:disabled {
-  background: var(--tile);
-  color: var(--ink-3);
+  background: var(--surface);
+  color: var(--muted);
   cursor: not-allowed;
 }
 /* A password field and its show/hide toggle: one bordered box, the toggle inside its right edge. */
@@ -1227,7 +1186,7 @@ a.gb-who:hover b {
   align-items: center;
   justify-content: center;
   border: 0;
-  border-left: 1px solid var(--edge-soft);
+  border-left: 1px solid var(--rule-soft);
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
@@ -1236,7 +1195,7 @@ a.gb-who:hover b {
   color: var(--ink);
 }
 .gb-password-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: -2px;
 }
 .gb-combobox {
@@ -1254,9 +1213,8 @@ a.gb-who:hover b {
   margin: 0;
   padding: 0;
   list-style: none;
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
 }
 .gb-combobox-option,
 .gb-combobox-empty {
@@ -1269,11 +1227,11 @@ a.gb-who:hover b {
 }
 .gb-combobox-option:hover,
 .gb-combobox-option[aria-selected='true'] {
-  background: var(--accent-soft);
-  border-left-color: var(--accent);
+  background: var(--secondary-soft);
+  border-left-color: var(--primary-ink);
 }
 .gb-combobox-empty {
-  color: var(--ink-3);
+  color: var(--muted);
 }
 .gb-field {
   display: block;
@@ -1288,77 +1246,72 @@ a.gb-who:hover b {
   color: var(--ink-2);
   margin-top: 4px;
 }
-/* An error reads as a rail as well as a colour (non-negotiable 8). */
+/* An error reads as a rail as well as a colour (LEDGER.md rule 3). */
 .gb-field-error {
   display: block;
   font-size: 12.5px;
-  color: var(--crit);
-  border-left: 3px solid var(--crit-band);
+  color: var(--band-needs-support);
+  border-left: 3px solid var(--band-needs-support);
   padding-left: 7px;
   margin-top: 5px;
 }
 .gb-notice {
-  background: var(--tile-2);
-  border: 1.5px solid var(--edge);
-  border-left: 4px solid var(--crit-band);
+  background: var(--chip);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--band-needs-support);
   padding: 9px 12px;
   font-size: 13px;
   color: var(--ink);
 }
 .gb-btn {
-  border: 1.5px solid var(--edge);
-  background: var(--tile);
+  border: 1px solid var(--rule);
+  background: var(--surface);
   color: var(--ink);
   padding: 6px 11px;
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  box-shadow: 2px 2px 0 var(--hard);
   cursor: pointer;
   white-space: nowrap;
-  transition: box-shadow var(--motion) ease-out, transform var(--motion) ease-out;
+  transition: box-shadow var(--dur-micro) ease-out, transform var(--dur-micro) ease-out;
 }
 @media (hover: hover) and (pointer: fine) {
   .gb-btn:hover {
-    box-shadow: 3px 3px 0 var(--hard);
   }
 }
 .gb-btn:active {
-  box-shadow: 0 0 0 var(--hard);
-  transform: translate(var(--press), var(--press));
 }
 .gb-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: 2px;
 }
 .gb-btn--primary {
   background: var(--ink);
-  color: var(--board);
-  border-color: var(--edge);
+  color: var(--ground);
+  border-color: var(--rule);
 }
 .gb-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-  box-shadow: 0 0 0 var(--hard);
 }
-/* Destructive is an outline, never a red fill: red is a score band (non-negotiable 6). */
+/* Destructive is an outline, never a red fill: red is a score band (LEDGER.md rule 4). */
 .gb-btn--danger {
-  color: var(--crit);
-  border-color: var(--crit);
+  color: var(--band-needs-support);
+  border-color: var(--band-needs-support);
 }
 /* The public link's two answers, filled with their band colour by the owner's ruling
    (2026-10-15) — the one exception to the rule above. The chosen one carries an ink outline. */
 .gb-btn--ok,
 .gb-btn--crit {
-  color: var(--board);
+  color: var(--ground);
 }
 .gb-btn--ok {
-  background: var(--ok-band);
-  border-color: var(--ok-band);
+  background: var(--band-outstanding);
+  border-color: var(--band-outstanding);
 }
 .gb-btn--crit {
-  background: var(--crit-band);
-  border-color: var(--crit-band);
+  background: var(--band-needs-support);
+  border-color: var(--band-needs-support);
 }
 .gb-btn--ok[aria-pressed='true'],
 .gb-btn--crit[aria-pressed='true'] {
@@ -1383,9 +1336,8 @@ a.gb-who:hover b {
 .gb-gate-card {
   width: 100%;
   max-width: 400px;
-  background: var(--tile);
-  border: 2px solid var(--edge);
-  box-shadow: 6px 6px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   padding: 20px 22px 22px;
 }
 .gb-gate-card--wide {
@@ -1395,18 +1347,14 @@ a.gb-who:hover b {
   display: block;
   font-size: 24px;
   font-weight: 900;
-  font-stretch: 118%;
   letter-spacing: -0.02em;
   line-height: 1;
-  text-transform: uppercase;
 }
 .gb-gate-brand span {
   display: block;
   margin-top: 5px;
   font-size: 11px;
-  color: var(--ink-3);
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  color: var(--muted);
   font-weight: 600;
 }
 /* The public corrective-action page (/ca): a phone in a Zone Leader's hand. */
@@ -1430,18 +1378,130 @@ a.gb-who:hover b {
   gap: 14px;
 }
 
-/* Band text colours, so no component ever states one (GEMBA-BOARD.md §3). */
-.gb-text-ok {
-  color: var(--ok);
+/* ==========================================================================
+   PRIMITIVES — headings, labels, figures, tiles, bands, chips, rails and the N/A hatch,
+   in Ledger form (LEDGER.md). Sentence case, untracked; Manrope; tabular figures.
+   ========================================================================== */
+.gb-h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
-.gb-text-warn {
-  color: var(--warn);
+.gb-h2 {
+  font-size: 16px;
+  font-weight: 700;
 }
-.gb-text-crit {
-  color: var(--crit);
+.gb-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
 }
-.gb-text-none {
-  color: var(--ink-3);
+.gb-figure {
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.gb-data {
+  font-variant-numeric: tabular-nums;
+}
+.gb-tile {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  padding: 12px 14px 14px;
+}
+.gb-tile--interactive {
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+.gb-tile--interactive:active {
+  transform: scale(0.99);
+}
+.gb-tile--pending {
+  background: var(--chip);
+  border-style: dashed;
+}
+.gb-band {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--b, var(--rule-soft));
+}
+.gb-band--none {
+  background: repeating-linear-gradient(90deg, var(--rule) 0 6px, transparent 6px 12px);
+}
+.gb-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-chip);
+  background: var(--b-tint, var(--chip));
+  color: var(--b, var(--ink-2));
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gb-row-crit {
+  border-left: 4px solid var(--band-needs-support);
+}
+.gb-row-warn {
+  border-left: 4px solid var(--band-improving);
+}
+.gb-row-none {
+  border-left: 4px solid transparent;
+}
+/* A notice that someone must act on: the pale-apricot panel (LEDGER.md rule 2). */
+.gb-slip {
+  background: var(--secondary-soft);
+  color: var(--on-secondary-soft);
+  border-radius: var(--radius-panel);
+  padding: 12px 14px;
+}
+.gb-slip b {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+}
+.gb-slip p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+/* Not applicable: hatching, never a colour, never a zero. */
+.gb-na {
+  background: repeating-linear-gradient(-45deg, var(--rule) 0 4px, transparent 4px 8px);
+  color: var(--muted);
+}
+
+/*
+ * Band and tone colours, so no component ever states one (LEDGER.md rule 3). A score band
+ * (`gb-outstanding` …, from `bandOf`) or a status tone (`gb-ok` / `gb-warn` / `gb-crit`) sets
+ * `--b` (text, bars) and `--b-tint` (chip ground); the rules that draw a band read those.
+ */
+.gb-outstanding, .gb-text-outstanding, .gb-band--outstanding, .gb-chip--outstanding,
+.gb-ok, .gb-text-ok, .gb-band--ok, .gb-chip--ok {
+  --b: var(--band-outstanding);
+  --b-tint: var(--band-outstanding-tint);
+}
+.gb-on-track, .gb-text-on-track, .gb-band--on-track, .gb-chip--on-track {
+  --b: var(--band-on-track);
+  --b-tint: var(--band-on-track-tint);
+}
+.gb-improving, .gb-text-improving, .gb-band--improving, .gb-chip--improving,
+.gb-warn, .gb-text-warn, .gb-band--warn, .gb-chip--warn {
+  --b: var(--band-improving);
+  --b-tint: var(--band-improving-tint);
+}
+.gb-needs-support, .gb-text-needs-support, .gb-band--needs-support, .gb-chip--needs-support,
+.gb-crit, .gb-text-crit, .gb-band--crit, .gb-chip--crit {
+  --b: var(--band-needs-support);
+  --b-tint: var(--band-needs-support-tint);
+}
+.gb-none, .gb-text-none, .gb-chip--muted {
+  --b: var(--muted);
+  --b-tint: var(--chip);
+}
+:is(.gb-text-outstanding, .gb-text-on-track, .gb-text-improving, .gb-text-needs-support, .gb-text-ok, .gb-text-warn, .gb-text-crit, .gb-text-none) {
+  color: var(--b);
 }
 
 /* ==========================================================================
@@ -1461,11 +1521,11 @@ a.gb-who:hover b {
   cursor: pointer;
   text-align: left;
   text-decoration: underline;
-  text-decoration-color: var(--edge-soft);
+  text-decoration-color: var(--rule-soft);
   text-underline-offset: 3px;
 }
 .gb-rowtoggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: 2px;
 }
 @media (hover: hover) and (pointer: fine) {
@@ -1476,7 +1536,7 @@ a.gb-who:hover b {
 .gb-rowtoggle-chev {
   display: inline-block;
   font-size: 10px;
-  color: var(--ink-3);
+  color: var(--muted);
   transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .gb-rowtoggle[aria-expanded='true'] .gb-rowtoggle-chev {
@@ -1484,13 +1544,13 @@ a.gb-who:hover b {
   color: var(--ink);
 }
 .gb-tablewrap tr.gb-row--open td {
-  background: var(--tile-2);
+  background: var(--chip);
   border-bottom-color: transparent;
 }
 .gb-tablewrap tr.gb-row-expand td {
-  background: var(--tile-2);
+  background: var(--chip);
   padding: 4px 16px 16px 30px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-row-expand > td > * {
   opacity: 1;
@@ -1520,9 +1580,8 @@ a.gb-who:hover b {
   height: calc(100vh - 86px - 22px);
   display: flex;
   flex-direction: column;
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   opacity: 1;
   transform: translateX(0);
   transition: opacity 180ms ease-out, transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
@@ -1545,7 +1604,7 @@ a.gb-who:hover b {
   justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-pdfpanel-head p {
   margin: 3px 0 0;
@@ -1560,18 +1619,15 @@ a.gb-who:hover b {
   font: inherit;
   font-weight: 700;
   color: var(--ink);
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 2px 2px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   cursor: pointer;
-  transition: box-shadow var(--motion) ease-out, transform var(--motion) ease-out;
+  transition: box-shadow var(--dur-micro) ease-out, transform var(--dur-micro) ease-out;
 }
 .gb-pdfpanel-close:active {
-  box-shadow: 0 0 0 var(--hard);
-  transform: translate(var(--press), var(--press));
 }
 .gb-pdfpanel-close:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: 2px;
 }
 .gb-pdfpanel-tools {
@@ -1580,8 +1636,8 @@ a.gb-who:hover b {
   align-items: center;
   gap: 5px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--edge-soft);
-  background: var(--tile-2);
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--chip);
 }
 /* Tighter than a page's buttons: seven controls share one line at the docked width. */
 .gb-pdfpanel-tools .gb-btn {
@@ -1603,17 +1659,17 @@ a.gb-who:hover b {
 }
 .gb-zoom-select {
   font: inherit;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   padding: 4px 6px;
   cursor: pointer;
 }
 .gb-zoom-select:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: 2px;
 }
 /* The panel measures itself, not the window: the docked panel is a third of a laptop
@@ -1637,7 +1693,7 @@ a.gb-who:hover b {
 .gb-pdfpanel-count {
   min-width: 40px;
   text-align: center;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
@@ -1647,7 +1703,7 @@ a.gb-who:hover b {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--tile-2);
+  background: var(--chip);
 }
 .gb-pdfpanel-state {
   display: flex;
@@ -1663,19 +1719,19 @@ a.gb-who:hover b {
   padding: 10px 14px;
   font-size: 12.5px;
   color: var(--ink-2);
-  border-bottom: 1px solid var(--edge-soft);
+  border-bottom: 1px solid var(--rule-soft);
 }
 .gb-pdfpanel-note--crit {
-  color: var(--crit);
-  border-left: 4px solid var(--crit-band);
+  color: var(--band-needs-support);
+  border-left: 4px solid var(--band-needs-support);
 }
 .gb-pdfpanel-keys {
   margin: 0;
   padding: 6px 14px;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 11px;
-  color: var(--ink-3);
-  border-top: 1px solid var(--edge-soft);
+  color: var(--muted);
+  border-top: 1px solid var(--rule-soft);
 }
 .gb-pdf-pages {
   flex: 1;
@@ -1690,7 +1746,7 @@ a.gb-who:hover b {
   padding: 14px;
 }
 .gb-pdf-pages:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: -2px;
 }
 /* A page's drawing carries its own paper; until it lands, the hatch says one is coming. */
@@ -1698,15 +1754,14 @@ a.gb-who:hover b {
   flex: none;
   margin-inline: auto;
   position: relative;
-  background: var(--tile);
-  border: 1px solid var(--edge-soft);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule-soft);
 }
 .gb-pdf-page:not([data-drawn]) {
   background: repeating-linear-gradient(
     -45deg,
-    var(--tile) 0 10px,
-    var(--tile-2) 10px 20px
+    var(--surface) 0 10px,
+    var(--chip) 10px 20px
   );
 }
 .gb-pdf-page canvas {
@@ -1739,14 +1794,13 @@ a.gb-who:hover b {
 }
 
 /* ==========================================================================
-   DIALOG — GEMBA-BOARD.md §6: native <dialog>, 2px ink border, 6px hard shadow,
+   DIALOG — native <dialog>,
    label-above-field, actions right-aligned (secondary then primary).
    ========================================================================== */
 .gb-dialog {
-  border: 2px solid var(--edge);
-  background: var(--tile);
+  border: 1px solid var(--rule);
+  background: var(--surface);
   color: var(--ink);
-  box-shadow: 6px 6px 0 var(--hard);
   padding: 0;
   width: calc(100% - 32px);
   max-width: 520px;
@@ -1802,7 +1856,7 @@ a.gb-who:hover b {
   justify-content: space-between;
   gap: 14px;
   padding: 14px 18px 12px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-dialog-head p {
   margin: 4px 0 0;
@@ -1817,16 +1871,13 @@ a.gb-who:hover b {
   place-items: center;
   font: inherit;
   font-size: 15px;
-  background: var(--tile);
+  background: var(--surface);
   color: var(--ink);
-  border: 1.5px solid var(--edge);
-  box-shadow: 2px 2px 0 var(--hard);
+  border: 1px solid var(--rule);
   cursor: pointer;
-  transition: box-shadow var(--motion) ease-out, transform var(--motion) ease-out;
+  transition: box-shadow var(--dur-micro) ease-out, transform var(--dur-micro) ease-out;
 }
 .gb-dialog-close:active {
-  box-shadow: 0 0 0 var(--hard);
-  transform: translate(var(--press), var(--press));
 }
 .gb-dialog-section {
   padding: 14px 18px 0;
@@ -1876,20 +1927,17 @@ a.gb-who:hover b {
 .gb-choice label {
   display: block;
   cursor: pointer;
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 2px 2px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   padding: 10px 12px;
-  transition: box-shadow var(--motion) ease-out, transform var(--motion) ease-out;
+  transition: box-shadow var(--dur-micro) ease-out, transform var(--dur-micro) ease-out;
 }
 .gb-choice label:has(input:checked) {
-  background: var(--tile-2);
-  box-shadow: 0 0 0 var(--hard);
-  transform: translate(var(--press), var(--press));
-  outline: 2px solid var(--edge);
+  background: var(--chip);
+  outline: 1px solid var(--rule);
 }
 .gb-choice label:has(input:focus-visible) {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: 2px;
 }
 /* A choice that is not open right now: flat, and its own text says why. */
@@ -1928,15 +1976,14 @@ a.gb-who:hover b {
   margin: 0;
   padding: 4px 0;
   list-style: none;
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   transform-origin: top right;
   opacity: 1;
   transform: scale(1);
   transition:
-    opacity var(--motion) ease-out,
-    transform var(--motion) cubic-bezier(0.23, 1, 0.32, 1);
+    opacity var(--dur-micro) ease-out,
+    transform var(--dur-micro) cubic-bezier(0.23, 1, 0.32, 1);
   @starting-style {
     opacity: 0;
     transform: scale(0.97);
@@ -1956,16 +2003,16 @@ a.gb-who:hover b {
 }
 .gb-menu-item:hover:not(:disabled),
 .gb-menu-item:focus-visible {
-  background: var(--tile-2);
+  background: var(--chip);
   outline: none;
-  box-shadow: inset 3px 0 0 var(--edge);
+  box-shadow: inset 3px 0 0 var(--rule);
 }
 .gb-menu-item:disabled {
   color: var(--ink-2);
   cursor: not-allowed;
 }
 .gb-menu-item--danger {
-  color: var(--crit);
+  color: var(--band-needs-support);
 }
 /* Why an item is unavailable, under its label rather than in a tooltip. */
 .gb-menu-hint {
@@ -1980,7 +2027,7 @@ a.gb-who:hover b {
   max-width: min(280px, calc(100vw - 16px));
 }
 li:has(> .gb-menu-item--danger) {
-  border-top: 1px solid var(--edge-soft);
+  border-top: 1px solid var(--rule-soft);
   margin-top: 4px;
   padding-top: 4px;
 }
@@ -1994,7 +2041,7 @@ li:has(> .gb-menu-item--danger) {
   align-items: flex-end;
   gap: 10px 14px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--edge-soft);
+  border-bottom: 1px solid var(--rule-soft);
 }
 .gb-filters .gb-field {
   min-width: 150px;
@@ -2008,8 +2055,8 @@ li:has(> .gb-menu-item--danger) {
   padding-bottom: 8px;
 }
 .gb-tablewrap tr.gb-group td {
-  background: var(--tile-2);
-  border-top: 2px solid var(--edge);
+  background: var(--chip);
+  border-top: 1px solid var(--rule);
   padding-top: 9px;
   padding-bottom: 9px;
 }
@@ -2017,11 +2064,10 @@ li:has(> .gb-menu-item--danger) {
   border-top: 0;
 }
 .gb-tablewrap tbody tr.gb-group:hover td {
-  background: var(--tile-2);
+  background: var(--chip);
 }
 .gb-group-title {
   font-weight: 800;
-  font-stretch: 110%;
   font-size: 13.5px;
 }
 .gb-group-meta {
@@ -2033,7 +2079,7 @@ li:has(> .gb-menu-item--danger) {
   font-weight: 600;
 }
 .gb-tablewrap tr.gb-row--earlier td {
-  background: var(--board);
+  background: var(--ground);
   color: var(--ink-2);
 }
 .gb-tablewrap tr.gb-row--earlier td:first-child {
@@ -2082,7 +2128,7 @@ li:has(> .gb-menu-item--danger) {
   gap: 10px;
 }
 .gb-slip .gb-btn {
-  background: var(--tile);
+  background: var(--surface);
 }
 
 /*
@@ -2095,17 +2141,17 @@ li:has(> .gb-menu-item--danger) {
   box-shadow: inset 0 0 0 0 transparent;
   transition: box-shadow 600ms ease-out 900ms;
   @starting-style {
-    box-shadow: inset 0 0 0 100vmax var(--accent-soft);
+    box-shadow: inset 0 0 0 100vmax var(--secondary-soft);
   }
 }
 .gb-tablewrap tr.gb-row--target td:first-child {
   box-shadow:
-    inset 3px 0 0 var(--accent),
+    inset 3px 0 0 var(--primary-ink),
     inset 0 0 0 0 transparent;
   @starting-style {
     box-shadow:
-      inset 3px 0 0 var(--accent),
-      inset 0 0 0 100vmax var(--accent-soft);
+      inset 3px 0 0 var(--primary-ink),
+      inset 0 0 0 100vmax var(--secondary-soft);
   }
 }
 
@@ -2126,20 +2172,20 @@ li:has(> .gb-menu-item--danger) {
   position: relative;
   height: 6px;
   max-width: 420px;
-  background: var(--board);
-  border: 1px solid var(--edge-soft);
+  background: var(--ground);
+  border: 1px solid var(--rule-soft);
   overflow: hidden;
 }
 .gb-meter i {
   position: absolute;
   inset: 0;
-  background: var(--ok-band);
+  background: var(--band-outstanding);
   transform-origin: left center;
   transform: translateX(calc(var(--at, 0) * 100%)) scaleX(var(--v, 0));
   transition: transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .gb-meter i.gb-meter--going {
-  background: var(--warn-band);
+  background: var(--band-improving);
 }
 .gb-zonelist {
   list-style: none;
@@ -2155,12 +2201,12 @@ li:has(> .gb-menu-item--danger) {
   align-items: center;
   gap: 10px;
   padding: 6px 0;
-  border-bottom: 1px solid var(--edge-soft);
+  border-bottom: 1px solid var(--rule-soft);
   min-width: 0;
 }
 .gb-zonelist li > .gb-data:first-child {
   width: 2.5em;
-  color: var(--ink-3);
+  color: var(--muted);
   flex: none;
 }
 .gb-zonelist--compact li {
@@ -2182,16 +2228,15 @@ li:has(> .gb-menu-item--danger) {
   gap: 6px;
   font-size: 12.5px;
   font-weight: 600;
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 2px 2px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   padding: 3px 4px 3px 9px;
 }
 .gb-picked em {
   font-style: normal;
   font-weight: 500;
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--muted);
   margin-left: 4px;
 }
 .gb-picked button {
@@ -2199,17 +2244,16 @@ li:has(> .gb-menu-item--danger) {
   line-height: 1;
   background: none;
   border: 0;
-  color: var(--ink-3);
+  color: var(--muted);
   cursor: pointer;
   padding: 2px 5px;
-  transition: transform var(--motion) ease-out;
+  transition: transform var(--dur-micro) ease-out;
 }
 .gb-picked button:active {
-  transform: translate(var(--press), var(--press));
 }
 @media (hover: hover) and (pointer: fine) {
   .gb-picked button:hover {
-    color: var(--crit);
+    color: var(--band-needs-support);
   }
 }
 
@@ -2299,9 +2343,8 @@ li:has(> .gb-menu-item--danger) {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
   /* In from 16px to the right, 220ms; out the same way in 160ms (report §10.3 #1). */
   opacity: 1;
   transform: translateX(0);
@@ -2325,7 +2368,7 @@ li:has(> .gb-menu-item--danger) {
   justify-content: space-between;
   gap: 14px;
   padding: 12px 14px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-sidepanel-head h2 {
   margin: 0;
@@ -2347,8 +2390,8 @@ li:has(> .gb-menu-item--danger) {
   align-items: center;
   gap: 8px;
   padding: 9px 14px;
-  border-bottom: 1px solid var(--edge-soft);
-  background: var(--tile-2);
+  border-bottom: 1px solid var(--rule-soft);
+  background: var(--chip);
 }
 .gb-sidepanel-body {
   flex: 1 1 auto;
@@ -2404,8 +2447,6 @@ li:has(> .gb-menu-item--danger) {
   gap: 5px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 .gb-bandlabel-glyph {
@@ -2415,13 +2456,13 @@ li:has(> .gb-menu-item--danger) {
   fill: currentColor;
 }
 .gb-bandlabel--none {
-  color: var(--ink-3);
+  color: var(--muted);
 }
 .gb-bandlabel-na {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border: 1px solid var(--edge-soft);
+  border: 1px solid var(--rule-soft);
 }
 
 /* --- Skeleton: the shape of what is coming, and no value (B8). --- */
@@ -2432,13 +2473,13 @@ li:has(> .gb-menu-item--danger) {
 .gb-skeleton-bar,
 .gb-skeleton-band {
   display: block;
-  background: var(--tile-2);
+  background: var(--chip);
   animation: gb-skeleton-pulse 1.6s ease-in-out infinite;
 }
 .gb-skeleton-bar {
   height: 10px;
   max-width: 100%;
-  border: 1px solid var(--edge-soft);
+  border: 1px solid var(--rule-soft);
 }
 .gb-skeleton-bar--figure {
   height: 26px;
@@ -2450,8 +2491,8 @@ li:has(> .gb-menu-item--danger) {
   gap: 14px;
 }
 .gb-skeleton-tile {
-  background: var(--tile);
-  border: 1.5px dashed var(--edge-soft);
+  background: var(--surface);
+  border: 1px dashed var(--rule-soft);
   padding: 12px 14px 14px;
   display: grid;
   gap: 6px;
@@ -2461,16 +2502,16 @@ li:has(> .gb-menu-item--danger) {
   margin-top: 6px;
 }
 .gb-skeleton-chart {
-  background: var(--tile);
-  border: 1.5px dashed var(--edge-soft);
+  background: var(--surface);
+  border: 1px dashed var(--rule-soft);
   padding: 14px 16px;
 }
 .gb-skeleton-plot {
   display: block;
   height: 180px;
   margin-top: 12px;
-  border-left: 1.5px solid var(--edge-soft);
-  border-bottom: 1.5px solid var(--edge-soft);
+  border-left: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
 }
 .gb-skeleton .gb-tablewrap td {
   padding-top: 13px;
@@ -2490,8 +2531,8 @@ li:has(> .gb-menu-item--danger) {
   justify-content: space-between;
   gap: 10px 14px;
   padding: 22px 14px;
-  border-left: 4px solid var(--edge-soft);
-  background: var(--tile);
+  border-left: 4px solid var(--rule-soft);
+  background: var(--surface);
 }
 .gb-emptystate-title {
   margin: 0;
@@ -2534,7 +2575,7 @@ li:has(> .gb-menu-item--danger) {
   overscroll-behavior-x: contain;
 }
 .gb-tablewrap--register:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: -2px;
 }
 .gb-table--register {
@@ -2571,7 +2612,7 @@ li:has(> .gb-menu-item--danger) {
   justify-content: space-between;
   gap: 14px;
   padding-bottom: 12px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-gallery-head h1,
 .gb-gallery-section > h2 {
@@ -2579,7 +2620,7 @@ li:has(> .gb-menu-item--danger) {
 }
 .gb-gallery-section > h2 {
   padding-bottom: 6px;
-  border-bottom: 2px solid var(--edge);
+  border-bottom: 1px solid var(--rule);
 }
 .gb-gallery-row {
   display: grid;
@@ -2587,7 +2628,7 @@ li:has(> .gb-menu-item--danger) {
   gap: 10px;
   align-items: center;
   padding: 8px 0;
-  border-bottom: 1px solid var(--edge-soft);
+  border-bottom: 1px solid var(--rule-soft);
 }
 .gb-gallery-list {
   display: grid;
@@ -2595,9 +2636,8 @@ li:has(> .gb-menu-item--danger) {
   margin: 0;
   padding: 12px 14px;
   list-style: none;
-  background: var(--tile);
-  border: 1.5px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
 }
 .gb-gallery-list .gb-rowtoggle[aria-current='true'] {
   text-decoration-color: var(--ink);
@@ -2666,7 +2706,7 @@ li:has(> .gb-menu-item--danger) {
     align-items: start;
     gap: 8px 14px;
     padding: 10px 12px;
-    border-bottom: 1px solid var(--edge-soft);
+    border-bottom: 1px solid var(--rule-soft);
   }
   .gb-ca-list tbody tr:not(:has(> td[colspan])) td {
     padding: 0;
@@ -2681,9 +2721,7 @@ li:has(> .gb-menu-item--danger) {
     display: block;
     font-size: 10.5px;
     font-weight: 600;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    color: var(--ink-3);
+    color: var(--muted);
   }
   .gb-ca-list tbody tr td:nth-child(2)::before {
     content: 'Status';
@@ -2707,8 +2745,8 @@ li:has(> .gb-menu-item--danger) {
    ========================================================================== */
 .gb-seg {
   display: inline-flex;
-  border: 1.5px solid var(--edge);
-  background: var(--tile);
+  border: 1px solid var(--rule);
+  background: var(--surface);
 }
 .gb-seg button {
   font: inherit;
@@ -2721,15 +2759,15 @@ li:has(> .gb-menu-item--danger) {
   cursor: pointer;
 }
 .gb-seg button + button {
-  border-left: 1px solid var(--edge-soft);
+  border-left: 1px solid var(--rule-soft);
 }
 .gb-seg button[aria-pressed='true'] {
-  background: var(--accent-soft);
+  background: var(--secondary-soft);
   color: var(--ink);
-  box-shadow: inset 0 -3px 0 var(--accent);
+  box-shadow: inset 0 -3px 0 var(--primary-ink);
 }
 .gb-seg button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--primary-ink);
   outline-offset: -2px;
 }
 .gb-module {
@@ -2752,10 +2790,10 @@ li:has(> .gb-menu-item--danger) {
   padding: 10px 12px;
 }
 .gb-kz-kpi > div:nth-child(even) {
-  border-left: 1px solid var(--edge-soft);
+  border-left: 1px solid var(--rule-soft);
 }
 .gb-kz-kpi > div:nth-child(n + 3) {
-  border-top: 1px solid var(--edge-soft);
+  border-top: 1px solid var(--rule-soft);
 }
 .gb-kz-kpi .gb-figure {
   display: block;
@@ -2763,10 +2801,8 @@ li:has(> .gb-menu-item--danger) {
 }
 .gb-kz-kpi span {
   display: block;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--ink-2);
 }
 
@@ -2787,7 +2823,7 @@ li:has(> .gb-menu-item--danger) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: clip-path var(--motion) ease-out;
+  transition: clip-path var(--dur-micro) ease-out;
 }
 .gb-kz-trap .gb-figure {
   font-size: 20px;
@@ -2799,7 +2835,7 @@ li:has(> .gb-menu-item--danger) {
 }
 .gb-kz-stage-name small {
   display: block;
-  font-family: var(--font-data);
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 400;
   color: var(--ink-2);
@@ -2859,9 +2895,9 @@ li:has(> .gb-menu-item--danger) {
 }
 .gb-kz-photo {
   aspect-ratio: 1;
-  border: 1.5px solid var(--edge);
+  border: 1px solid var(--rule);
   /* The colour only: a missing photo also carries .gb-na, whose hatch is its background image. */
-  background-color: var(--tile-2);
+  background-color: var(--chip);
   overflow: hidden;
 }
 .gb-kz-photo img {
@@ -2882,37 +2918,36 @@ li:has(> .gb-menu-item--danger) {
   justify-content: space-between;
   gap: 10px 14px;
   padding: 12px 14px;
-  background: var(--tile);
-  border: 2px solid var(--edge);
-  box-shadow: 3px 3px 0 var(--hard);
+  background: var(--surface);
+  border: 1px solid var(--rule);
 }
 
 /* Kaizen's decisions, told apart by colour on every screen (owner, 2026-10-10): the one
    exception to StatusChip's ink. A chosen decision is also tinted, not only outlined. */
 .gb-tone--ok {
-  color: var(--ok);
-  border-color: var(--ok);
+  color: var(--band-outstanding);
+  border-color: var(--band-outstanding);
 }
 .gb-tone--warn {
-  color: var(--warn);
-  border-color: var(--warn);
+  color: var(--band-improving);
+  border-color: var(--band-improving);
 }
 .gb-tone--crit {
-  color: var(--crit);
-  border-color: var(--crit);
+  color: var(--band-needs-support);
+  border-color: var(--band-needs-support);
 }
 .gb-tone--accent {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--primary-ink);
+  border-color: var(--primary-ink);
 }
 .gb-btn.gb-tone--ok[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--ok-band) 20%, var(--tile));
+  background: color-mix(in srgb, var(--band-outstanding) 20%, var(--surface));
 }
 .gb-btn.gb-tone--warn[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--warn-band) 22%, var(--tile));
+  background: color-mix(in srgb, var(--band-improving) 22%, var(--surface));
 }
 .gb-btn.gb-tone--crit[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--crit-band) 22%, var(--tile));
+  background: color-mix(in srgb, var(--band-needs-support) 22%, var(--surface));
 }
 
 /* R-51: conducting an audit in the browser. */
@@ -2920,8 +2955,8 @@ li:has(> .gb-menu-item--danger) {
   width: 64px;
   height: 64px;
   padding: 0;
-  border: 1.5px solid var(--edge);
-  background: var(--tile-2);
+  border: 1px solid var(--rule);
+  background: var(--chip);
   overflow: hidden;
   cursor: pointer;
 }
@@ -2938,14 +2973,14 @@ li:has(> .gb-menu-item--danger) {
   border-left: 4px solid transparent;
 }
 .gb-conduct-q--missing {
-  border-left-color: var(--crit-band);
+  border-left-color: var(--band-needs-support);
 }
 
 /* A toggle button that is on (an answer, a waste, Yes/No): the segmented control's selection,
    accent as selection only, plus the inset rule so it reads without colour. A Kaizen decision
    keeps its own tone below this. */
 .gb-btn[aria-pressed='true']:not([class*='gb-tone--']) {
-  background: var(--accent-soft);
+  background: var(--secondary-soft);
   color: var(--ink);
-  box-shadow: inset 0 -3px 0 var(--accent), 2px 2px 0 var(--hard);
+  box-shadow: inset 0 -3px 0 var(--primary-ink);
 }

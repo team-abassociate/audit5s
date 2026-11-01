@@ -233,15 +233,15 @@ export function CallCrossAuditSheet({ unitId, visible, onClose }: { unitId: stri
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.color.hard },
+  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.color.scrim },
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
     borderTopWidth: 2,
-    borderTopColor: theme.color.edge,
+    borderTopColor: theme.color.rule,
     padding: theme.space.md,
     gap: theme.space.md,
   },

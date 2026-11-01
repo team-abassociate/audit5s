@@ -151,12 +151,12 @@ export function AuditDetailPanel({
         <h3 className="gb-label">
           {audit.zones.length} Zone{audit.zones.length === 1 ? '' : 's'}
         </h3>
-        {audit.zones.length === 0 && <p className="text-sm text-ink-3">No Zones have been added yet.</p>}
+        {audit.zones.length === 0 && <p className="text-sm text-muted">No Zones have been added yet.</p>}
         {audit.zones.map((zone) => {
           const zoneScore = summary.data?.zones.find((candidate) => candidate.auditZoneId === zone.id);
           const pct = zone.totals.scorePercentage;
           return (
-            <details key={zone.id} className="border border-edge-soft">
+            <details key={zone.id} className="border border-rule-soft">
               <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                 {/* The D6 snapshots, never the live Zone: renaming it must not move this. */}
                 <span className="min-w-0 flex-1 font-semibold [overflow-wrap:anywhere]">
@@ -169,8 +169,8 @@ export function AuditDetailPanel({
                   </span>
                 ) : null}
               </summary>
-              <div className="space-y-3 border-t border-edge-soft px-3 py-3">
-                <p className="text-xs text-ink-3">
+              <div className="space-y-3 border-t border-rule-soft px-3 py-3">
+                <p className="text-xs text-muted">
                   {zone.zoneDescriptionSnapshot ? `${zone.zoneDescriptionSnapshot} · ` : ''}
                   {zone.checklistTemplateNameSnapshot ?? 'No checklist'}
                   {zone.zoneLeaderNameSnapshot ? ` · Zone Leader: ${zone.zoneLeaderNameSnapshot}` : ''}
@@ -210,7 +210,7 @@ export function AuditDetailPanel({
       <EvidenceGallery auditId={auditId} zones={audit.zones} questions={questions} />
 
       {can('audit', 'cancel') && cancellable && (
-        <div className="border-t border-edge-soft pt-4">
+        <div className="border-t border-rule-soft pt-4">
           <Field
             label="Reason to cancel this audit"
             hint="Required. Cancelling keeps everything that was recorded. No one can delete an audit."
@@ -341,10 +341,10 @@ function EvidenceGallery({
   );
 
   return (
-    <section className="space-y-3 border-t border-edge-soft pt-4">
+    <section className="space-y-3 border-t border-rule-soft pt-4">
       <div>
         <h3 className="gb-label">Photos</h3>
-        <p className="text-xs text-ink-3">Thumbnails load here; originals load only when opened.</p>
+        <p className="text-xs text-muted">Thumbnails load here; originals load only when opened.</p>
       </div>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Zone">
@@ -380,7 +380,7 @@ function EvidenceGallery({
       {gallery.isLoading && <Spinner label="Loading photos…" />}
       {gallery.error && <ErrorNotice error={gallery.error} />}
       {!gallery.isLoading && evidence.length === 0 && (
-        <p className="py-2 text-sm text-ink-3">No photos match these filters.</p>
+        <p className="py-2 text-sm text-muted">No photos match these filters.</p>
       )}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3">
         {evidence.map((item) => (
@@ -428,14 +428,14 @@ function EvidenceTile({
   return (
     <button
       type="button"
-      className="min-w-0 overflow-hidden border border-edge-soft bg-tile text-left hover:border-edge focus:ring-2 focus:ring-accent focus:outline-none"
+      className="min-w-0 overflow-hidden border border-rule-soft bg-surface text-left hover:border-rule focus:ring-2 focus:ring-accent focus:outline-none"
       aria-label={`Open photo: ${where}, ${label}`}
       onClick={onOpen}
     >
       {thumbnail.data ? (
-        <img className="aspect-4/3 w-full bg-tile-2 object-cover" src={thumbnail.data.url} alt="" />
+        <img className="aspect-4/3 w-full bg-chip object-cover" src={thumbnail.data.url} alt="" />
       ) : (
-        <div className="aspect-4/3 grid place-items-center bg-tile-2 text-xs text-ink-3">
+        <div className="aspect-4/3 grid place-items-center bg-chip text-xs text-muted">
           {thumbnail.error ? 'Preview unavailable' : 'Loading preview…'}
         </div>
       )}
@@ -445,8 +445,8 @@ function EvidenceTile({
           {evidence.isSummaryFlagged && <Badge tone="warn">Summary photo</Badge>}
         </div>
         <p className="line-clamp-3 text-xs text-ink-2 [overflow-wrap:anywhere]">{where}</p>
-        {evidence.remark && <p className="line-clamp-2 text-xs text-ink-3">{evidence.remark}</p>}
-        {!evidence.mediaProcessedAt && <p className="text-xs text-ink-3">Thumbnail processing</p>}
+        {evidence.remark && <p className="line-clamp-2 text-xs text-muted">{evidence.remark}</p>}
+        {!evidence.mediaProcessedAt && <p className="text-xs text-muted">Thumbnail processing</p>}
       </div>
     </button>
   );
@@ -553,7 +553,7 @@ function SectionTable({ sections }: { sections: SectionScorePayload[] }) {
       <tbody>
         {sections.map((section) => {
           return (
-            <tr key={section.section} className="border-t border-edge-soft">
+            <tr key={section.section} className="border-t border-rule-soft">
               <Td>{SECTION_LABEL[section.section]}</Td>
               <Td>{section.raw}</Td>
               <Td>{section.max}</Td>

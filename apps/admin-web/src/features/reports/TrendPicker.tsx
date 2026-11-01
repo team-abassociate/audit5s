@@ -220,9 +220,9 @@ function Checklist({
           {all ? 'Clear all' : `Choose all ${items.length}`}
         </Button>
       </div>
-      <div className="max-h-[28rem] overflow-y-auto border border-edge-soft">
+      <div className="max-h-[28rem] overflow-y-auto border border-rule-soft">
         {items.map((item) => (
-          <label key={item.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-tile-2">
+          <label key={item.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-chip">
             <input
               type="checkbox"
               checked={chosen.includes(item.id)}

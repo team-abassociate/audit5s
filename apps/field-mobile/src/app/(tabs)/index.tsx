@@ -95,7 +95,7 @@ export default function UnitsScreen() {
             refreshing={sync.isPending}
             onRefresh={() => sync.mutate()}
             colors={[theme.color.ink]}
-            progressBackgroundColor={theme.color.tile}
+            progressBackgroundColor={theme.color.surface}
           />
         }
         ListHeaderComponent={

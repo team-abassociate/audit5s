@@ -227,7 +227,7 @@ const useStyles = createThemedStyles((theme) => ({
     aspectRatio: 1,
     marginTop: theme.space.sm,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile2,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.chip,
   },
 }));

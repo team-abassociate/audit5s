@@ -49,7 +49,7 @@ import {
   zoneHasLocalEvidence,
 } from '../../lib/db/evidence.repository';
 import { useLocalDatabase } from '../../lib/db/provider';
-import { bandInk, createThemedStyles, useTheme, type Band } from '../../lib/theme';
+import { bandInk, createThemedStyles, useTheme, type Tone } from '../../lib/theme';
 import { leaveScreen } from '../../lib/leave-screen';
 import { useRequiredFields } from '../../lib/required-fields';
 
@@ -407,7 +407,7 @@ function classificationLabel(value: EvidenceClassification): string {
   return value === 'NONCONFORMITY' ? 'Nonconformity' : value === 'GOOD' ? 'Good' : 'Neutral';
 }
 
-function classificationTone(value: string): Band | 'muted' {
+function classificationTone(value: string): Tone | 'muted' {
   return value === 'GOOD' ? 'ok' : value === 'NONCONFORMITY' ? 'crit' : 'muted';
 }
 
@@ -424,29 +424,29 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
     padding: theme.space.sm,
   },
-  // Selection is the one place the accent belongs (GEMBA-BOARD.md non-negotiable 6).
-  choiceSelected: { borderColor: theme.color.accent, borderLeftWidth: 6, backgroundColor: theme.color.accentSoft },
-  choiceText: { fontFamily: theme.family.medium, fontSize: theme.font.sm },
+  // Selection: primary-ink edge on the soft apricot panel (LEDGER.md rule 2).
+  choiceSelected: { borderColor: theme.color.primaryInk, borderLeftWidth: 6, backgroundColor: theme.color.secondarySoft },
+  choiceText: { fontFamily: theme.family.semibold, fontSize: theme.font.sm },
   photo: {
     width: '100%',
     aspectRatio: 4 / 3,
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderWidth: 1,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     marginBottom: theme.space.sm,
   },
   placeholder: {
     height: 96,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     marginBottom: theme.space.sm,
   },
   photoHeader: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm, marginBottom: theme.space.sm },

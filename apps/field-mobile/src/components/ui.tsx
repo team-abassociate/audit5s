@@ -1,11 +1,10 @@
-import { Children, memo, useEffect, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { Children, useEffect, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {
   ActivityIndicator,
   Image,
   Keyboard,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,9 +29,9 @@ import {
   bandInk,
   bandOf,
   createThemedStyles,
-  iosHardShadow,
   useTheme,
   type Band,
+  type Tone,
 } from '../lib/theme';
 import { EASE_OUT, fadeIn, transition } from '../lib/motion';
 
@@ -70,32 +69,12 @@ export function tabIcon(destination: keyof typeof TAB_ICON) {
 }
 
 /**
- * The shared controls, built from the Gemba Board primitives
- * (`docs/design/GEMBA-BOARD.md` §6), named after their admin-web counterparts in
+ * The shared controls, built from the Ledger tokens (`docs/design/LEDGER.md`), named after their admin-web counterparts in
  * `apps/admin-web/src/components/ui.tsx` and `styles.css` so the two apps read as one system.
  *
- * No hex literal, no radius, no blurred shadow: a card is a magnet, a button is a tile you
- * can press, status is a band, a rail, a chip or a hatch — never colour alone.
+ * No hex literal or radius outside `lib/ledger.ts`; status is a band, a rail, a chip or a
+ * hatch with its label — never colour alone.
  */
-
-const GRID = 28;
-
-/** The dry-erase ground: a faint 28px rule behind every screen, as on the web body. */
-const BoardGrid = memo(function BoardGrid() {
-  const { width, height } = useWindowDimensions();
-  const theme = useTheme();
-  const line = { position: 'absolute', backgroundColor: theme.color.boardLine } as const;
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {Array.from({ length: Math.ceil(height / GRID) }, (_, i) => (
-        <View key={`h${i}`} style={[line, { left: 0, right: 0, top: (i + 1) * GRID, height: 1 }]} />
-      ))}
-      {Array.from({ length: Math.ceil(width / GRID) }, (_, i) => (
-        <View key={`v${i}`} style={[line, { top: 0, bottom: 0, left: (i + 1) * GRID, width: 1 }]} />
-      ))}
-    </View>
-  );
-});
 
 /**
  * A screen on the board. The 2px ink rule at the top is the header's bottom edge (the web
@@ -146,66 +125,31 @@ export function Screen({
   const keyboard = useKeyboardHeight(ref);
   return (
     <View ref={ref} style={[styles.screen, !bare && styles.screenRuled, style, keyboard > 0 && { paddingBottom: keyboard }]} {...rest}>
-      <BoardGrid />
       {children}
     </View>
   );
 }
 
-/** The hard offset shadow. Android's `elevation` is always blurred, so it is a second view. */
-export function Magnet({
-  offset = 3,
-  pressed,
-  style,
-  children,
-}: {
-  offset?: number;
-  /** The face is pressed onto it: the shadow goes, which is all a press is under reduced motion. */
-  pressed?: boolean;
-  style?: StyleProp<ViewStyle>;
-  children: ReactNode;
-}) {
-  const theme = useTheme();
-  return (
-    <View style={[{ position: 'relative', marginRight: offset, marginBottom: offset }, style]}>
-      {Platform.OS === 'android' ? (
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            top: offset,
-            left: offset,
-            right: -offset,
-            bottom: -offset,
-            backgroundColor: theme.color.hard,
-            opacity: pressed ? 0 : 1,
-            transitionProperty: 'opacity',
-            ...transition,
-          }}
-        />
-      ) : null}
-      {children}
-    </View>
-  );
+/** A card's outer box. Cards sit flat on the ground (LEDGER.md rule 6): no shadow. */
+export function Magnet({ style, children }: { style?: StyleProp<ViewStyle>; children: ReactNode }) {
+  return <View style={style}>{children}</View>;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /**
- * The house press (GEMBA §2.2, plan M1): on press-in the face sinks onto its shadow and the
- * shadow goes, over the one 143 ms ease-out, and comes back the same way. Held in state, not
- * Pressable's style function, so the change can be a transition; two renders a press, none a
- * frame. Under reduced motion the face stays put and only the shadow goes (plan 002).
+ * The press (LEDGER.md rule 9): the face scales down a touch over `--dur-micro` and comes
+ * back. Held in state so the change can be a transition. Under reduced motion it stays put.
  */
-function usePress(offset: number, rest: Pick<PressableProps, 'onPressIn' | 'onPressOut'>, held = false) {
+function usePress(rest: Pick<PressableProps, 'onPressIn' | 'onPressOut'>, held = false) {
   const [down, setPressed] = useState(false);
   const pressed = down || held;
-  const travel = useReducedMotion() ? 0 : offset;
+  const reduced = useReducedMotion();
+  const scale = pressed && !reduced ? 0.98 : 1;
   return {
     pressed,
     sink: {
-      transform: [{ translateX: pressed ? travel : 0 }, { translateY: pressed ? travel : 0 }],
-      ...(pressed ? { shadowOpacity: 0 } : null),
+      transform: [{ scale }],
       transitionProperty: 'transform',
       ...transition,
     },
@@ -251,17 +195,17 @@ export function Card({
 }: Omit<PressableProps, 'style'> & {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
-  rail?: Band;
+  rail?: Band | Tone;
   /** The one just sent from this phone: lit in the selection colour, then fading to its own. */
   arrived?: boolean;
 }) {
   const styles = useStyles();
   const theme = useTheme();
   const tappable = rest.onPress !== undefined;
-  const press = usePress(theme.press, rest);
+  const press = usePress(rest);
   const lit = useArrival(arrived);
   return (
-    <Magnet style={styles.cardGap} pressed={tappable && press.pressed}>
+    <Magnet style={styles.cardGap}>
       {/* Only a Link card is one a11y element; otherwise TalkBack must reach the inputs inside. */}
       <AnimatedPressable
         accessible={tappable}
@@ -274,9 +218,9 @@ export function Card({
           style,
           tappable && press.sink,
           arrived && {
-            backgroundColor: lit ? theme.color.accentSoft : theme.color.tile,
+            backgroundColor: lit ? theme.color.secondarySoft : theme.color.surface,
             transitionProperty: ['transform', 'backgroundColor'],
-            transitionDuration: [theme.motion, 700],
+            transitionDuration: [theme.dur.micro, 700],
             transitionDelay: [0, lit ? 0 : 900],
           },
         ]}
@@ -354,20 +298,20 @@ export function Label({ children, fit }: { children: ReactNode; fit?: boolean })
   );
 }
 
-/** Small data — timestamps, counts, codes. DM Mono, tabular. Never a display figure. */
+/** Small data — timestamps, counts, codes. Manrope, tabular. Never a display figure. */
 export function Data({ children }: { children: ReactNode }) {
   const styles = useStyles();
   return <Text style={styles.data}>{children}</Text>;
 }
 
-/** A display figure: Archivo 900, tight, tabular (non-negotiable 5). */
+/** A display figure: Manrope 600, tight, tabular (LEDGER.md rule 5). */
 export function Figure({
   children,
   band,
   size = 29,
 }: {
   children: ReactNode;
-  band?: Band;
+  band?: Band | Tone;
   size?: number;
 }) {
   const styles = useStyles();
@@ -394,13 +338,13 @@ export function Chip({
   children,
 }: {
   /** `accent`: waiting on someone, a colour no decision uses. */
-  tone?: Band | 'muted' | 'accent';
+  tone?: Band | Tone | 'muted' | 'accent';
   icon?: IconName;
   children: ReactNode;
 }) {
   const styles = useStyles();
   const theme = useTheme();
-  const color = tone === 'muted' ? theme.color.ink2 : tone === 'accent' ? theme.color.accent : bandInk(tone, theme.color);
+  const color = tone === 'muted' ? theme.color.ink2 : tone === 'accent' ? theme.color.primaryInk : bandInk(tone, theme.color);
   return (
     <View style={[styles.chip, icon && styles.chipWithIcon, { borderColor: color }]}>
       {icon ? <Icon name={icon} color={color} size={13} /> : null}
@@ -420,14 +364,14 @@ export function Tape({ children }: { children: ReactNode }) {
 }
 
 /** `gb-band`: the 6px status stripe under a value. `none` is the dashed stripe. */
-export function StatusBand({ band }: { band: Band }) {
+export function StatusBand({ band }: { band: Band | Tone }) {
   const styles = useStyles();
   const theme = useTheme();
   if (band === 'none') {
     return (
       <View style={[styles.band, styles.bandDashed]}>
         {Array.from({ length: 40 }, (_, i) => (
-          <View key={i} style={[styles.bandDash, { backgroundColor: theme.color.edgeSoft }]} />
+          <View key={i} style={[styles.bandDash, { backgroundColor: theme.color.ruleSoft }]} />
         ))}
       </View>
     );
@@ -449,7 +393,7 @@ export function Hatch() {
             bottom: -40,
             left: i * 11 - 22,
             width: 4,
-            backgroundColor: theme.color.edgeSoft,
+            backgroundColor: theme.color.ruleSoft,
             transform: [{ rotate: '45deg' }],
           }}
         />
@@ -532,7 +476,7 @@ export function SectionRows({ rows, marks }: { rows: readonly SectionRow[]; mark
 export function StatGrid({
   items,
 }: {
-  items: ReadonlyArray<{ label: string; value: string; band?: Band }>;
+  items: ReadonlyArray<{ label: string; value: string; band?: Band | Tone }>;
 }) {
   const styles = useStyles();
   return (
@@ -600,7 +544,7 @@ export function HeaderAction({
         pressed && styles.headerActionPressed,
       ]}
     >
-      {icon ? <Icon name={icon} color={danger ? theme.color.crit : disabled ? theme.color.ink3 : theme.color.ink} size={16} /> : null}
+      {icon ? <Icon name={icon} color={danger ? theme.color.needsSupport : disabled ? theme.color.muted : theme.color.ink} size={16} /> : null}
       <Text style={[styles.headerActionText, danger && styles.headerActionDangerText, disabled && styles.headerActionTextDisabled]}>{title}</Text>
     </Pressable>
   );
@@ -673,7 +617,7 @@ export function Field({
         revealable && styles.inputRevealable,
         error ? styles.inputError : null,
       ]}
-      placeholderTextColor={theme.color.ink3}
+      placeholderTextColor={theme.color.muted}
       {...rest}
       {...(revealable ? { secureTextEntry: !revealed } : {})}
       onFocus={(event) => {
@@ -690,7 +634,7 @@ export function Field({
     <View style={[styles.field, containerStyle]}>
       <Label>{label}</Label>
       {/* The web's `:focus-visible` ring: 2px accent, offset 2px — the accent's one job. */}
-      <View style={[styles.focusRing, focused && { borderColor: theme.color.accent }]}>
+      <View style={[styles.focusRing, focused && { borderColor: theme.color.primaryInk }]}>
         {revealable ? (
           <View style={styles.inputRow}>
             {input}
@@ -735,10 +679,10 @@ export function Button({
   /** The symbol software puts on this action (delete, download, camera…), before the word. */
   icon?: IconName;
   /** An outline in a decision's colour: Approve `ok`, Send back `warn`, Reject `crit`. */
-  tone?: Exclude<Band, 'none'>;
+  tone?: Exclude<Band | Tone, 'none'>;
   /** 26dp tall on screen, still a 48dp target (hitSlop), for a bar that must stay slim. */
   compact?: boolean;
-  /** `danger` is an outline, never a red fill: red is a score band (non-negotiable 6). */
+  /** `danger` is an outline, never a red fill: red is a score band (LEDGER.md rule 4). */
   variant?: 'primary' | 'secondary' | 'danger';
   accessibilityLabel?: string;
   testID?: string;
@@ -750,14 +694,14 @@ export function Button({
   const ink = tone
     ? bandInk(tone, theme.color)
     : variant === 'danger'
-      ? theme.color.crit
+      ? theme.color.needsSupport
       : isPrimary
-        ? theme.color.board
+        ? theme.color.ground
         : theme.color.ink;
   // A busy button stays down, so the press reads as taken while it works.
-  const press = usePress(2, {}, Boolean(busy));
+  const press = usePress({}, Boolean(busy));
   return (
-    <Magnet offset={2} pressed={press.pressed} style={inert && styles.inert}>
+    <Magnet style={inert && styles.inert}>
       <AnimatedPressable
         testID={testID}
         accessibilityRole="button"
@@ -833,10 +777,10 @@ export function Slip({
   const styles = useStyles();
   const theme = useTheme();
   const tappable = rest.onPress !== undefined;
-  const press = usePress(theme.press, rest);
+  const press = usePress(rest);
   const reduced = useReducedMotion();
   const slip = (
-    <Magnet style={styles.cardGap} pressed={tappable && press.pressed}>
+    <Magnet style={styles.cardGap}>
       <AnimatedPressable
         accessible={tappable}
         {...rest}
@@ -852,7 +796,7 @@ export function Slip({
   // Reduced motion keeps the fade (opacity is not movement) and drops the drop.
   const entering = reduced
     ? fadeIn
-    : FadeInDown.withInitialValues({ transform: [{ translateY: -6 }] }).duration(theme.motion).easing(EASE_OUT);
+    : FadeInDown.withInitialValues({ transform: [{ translateY: -6 }] }).duration(theme.dur.short).easing(EASE_OUT);
   return <Animated.View entering={entering}>{slip}</Animated.View>;
 }
 
@@ -871,13 +815,13 @@ export type SlipRow = { title: string; detail?: string; tone: 'slip' | 'crossAud
 export function SlipStack({ rows }: { rows: SlipRow[] }) {
   const styles = useStyles();
   const theme = useTheme();
-  const press = usePress(theme.press, {});
+  const press = usePress({});
   if (rows.length === 0) return null;
   return (
-    <Magnet style={styles.cardGap} pressed={press.pressed}>
+    <Magnet style={styles.cardGap}>
       <Animated.View style={[styles.slipStack, press.sink]}>
         {rows.map((row, index) => {
-          const ink = row.tone === 'slip' ? theme.color.slipInk : theme.color.crossAuditInk;
+          const ink = row.tone === 'slip' ? theme.color.onSecondarySoft : theme.color.onPrimary;
           return (
             <Pressable
               key={row.title}
@@ -887,7 +831,7 @@ export function SlipStack({ rows }: { rows: SlipRow[] }) {
               {...press.handlers}
               style={[
                 styles.slipRow,
-                { backgroundColor: row.tone === 'slip' ? theme.color.slip : theme.color.crossAudit },
+                { backgroundColor: row.tone === 'slip' ? theme.color.secondarySoft : theme.color.primary },
                 index > 0 && styles.slipRowDivider,
               ]}
             >
@@ -919,7 +863,7 @@ export function EmptyState({ title, detail }: { title: string; detail?: string }
 export function GateCard({ children }: { children: ReactNode }) {
   const styles = useStyles();
   return (
-    <Magnet offset={6} style={styles.gateShell}>
+    <Magnet style={styles.gateShell}>
       <View style={styles.gate}>
         <View style={styles.brand}>
           <Image
@@ -968,7 +912,7 @@ export function SearchField({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={theme.color.ink3}
+        placeholderTextColor={theme.color.muted}
         accessibilityLabel={placeholder}
         autoCorrect={false}
         autoCapitalize="none"
@@ -1043,7 +987,7 @@ export function ChoiceList<T extends string>({
   empty,
 }: {
   /** `tone` and `icon`: a choice that is a decision wears that decision's colour and symbol. */
-  options: ReadonlyArray<{ value: T; label: string; detail?: string | null; tone?: Exclude<Band, 'none'>; icon?: IconName }>;
+  options: ReadonlyArray<{ value: T; label: string; detail?: string | null; tone?: Exclude<Band | Tone, 'none'>; icon?: IconName }>;
   value: T | null;
   onChange: (value: T) => void;
   empty?: string;
@@ -1264,8 +1208,7 @@ export function ActionSheet({
 }
 
 /**
- * A blocking notice (GEMBA-BOARD.md §6 "Dialog"): 2px ink border, 6px hard shadow, and the
- * crit rail of `gb-notice` because it reports something the auditor must fix before going
+ * A blocking notice: a card with the needs-support rail of `gb-notice` because it reports something the auditor must fix before going
  * on. One action, right-aligned — it is a stop sign, not a question.
  */
 export function NoticeDialog({
@@ -1286,7 +1229,7 @@ export function NoticeDialog({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.scrim} onPress={onClose} accessibilityRole="button" accessibilityLabel={actionLabel} />
       <View style={styles.dialogShell} pointerEvents="box-none">
-        <Magnet offset={6}>
+        <Magnet>
           <View style={styles.dialog} accessibilityRole="alert" accessibilityLiveRegion="assertive">
             <Text style={styles.h2} accessibilityRole="header">
               {title}
@@ -1303,8 +1246,7 @@ export function NoticeDialog({
 }
 
 /**
- * A destructive action that asks first, in place — never `Alert`/`confirm()` (GEMBA-BOARD.md
- * §6 "Dialog"). The question says what will and will not happen.
+ * A destructive action that asks first, in place — never `Alert`/`confirm()`. The question says what will and will not happen.
  */
 export function ConfirmAction({
   title,
@@ -1339,7 +1281,7 @@ export function ConfirmAction({
         hitSlop={6}
         style={({ pressed }) => [styles.headerAction, styles.compactDanger, icon && styles.buttonRow, pressed && styles.headerActionPressed]}
       >
-        {icon ? <Icon name={icon} color={theme.color.crit} size={14} /> : null}
+        {icon ? <Icon name={icon} color={theme.color.needsSupport} size={14} /> : null}
         <Text style={[styles.headerActionText, styles.compactDangerText]}>{title}</Text>
       </Pressable>
     );
@@ -1373,15 +1315,14 @@ export function Avatar({ name, size = 44 }: { name: string | undefined; size?: n
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  screen: { flex: 1, backgroundColor: theme.color.board, padding: theme.space.md },
-  screenRuled: { borderTopWidth: 2, borderTopColor: theme.color.edge },
+  screen: { flex: 1, backgroundColor: theme.color.ground, padding: theme.space.md },
+  screenRuled: { borderTopWidth: 2, borderTopColor: theme.color.rule },
   cardGap: { marginBottom: theme.space.sm + 3 },
   card: {
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     padding: theme.space.md,
-    ...iosHardShadow(theme.color.hard),
   },
   pressed: { transform: [{ translateX: 3 }, { translateY: 3 }], shadowOpacity: 0 },
   cardHead: {
@@ -1394,7 +1335,7 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.space.md,
     paddingVertical: 12,
     borderBottomWidth: 2,
-    borderBottomColor: theme.color.edge,
+    borderBottomColor: theme.color.rule,
   },
   headText: { flex: 1 },
   headDescription: {
@@ -1409,7 +1350,7 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: 'flex-end',
     gap: theme.space.md,
     borderBottomWidth: 2,
-    borderBottomColor: theme.color.edge,
+    borderBottomColor: theme.color.rule,
     paddingBottom: theme.space.sm,
     marginBottom: theme.space.md,
   },
@@ -1429,21 +1370,21 @@ const useStyles = createThemedStyles((theme) => ({
   },
   muted: { fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 20, color: theme.color.ink2 },
   label: {
-    fontFamily: theme.family.medium,
+    fontFamily: theme.family.semibold,
     fontSize: 10.5,
-    color: theme.color.ink3,
+    color: theme.color.muted,
     marginBottom: theme.space.xs,
     textTransform: 'uppercase',
     letterSpacing: 1.37,
   },
   data: {
-    fontFamily: theme.family.mono,
+    fontFamily: theme.family.regular,
     fontSize: 12.5,
     color: theme.color.ink2,
     fontVariant: ['tabular-nums'],
   },
   figure: {
-    fontFamily: theme.family.black,
+    fontFamily: theme.family.semibold,
     color: theme.color.ink,
     fontVariant: ['tabular-nums'],
   },
@@ -1455,13 +1396,13 @@ const useStyles = createThemedStyles((theme) => ({
     letterSpacing: 0.95,
     textTransform: 'uppercase',
   },
-  tape: { backgroundColor: theme.color.tape, paddingHorizontal: 12, paddingVertical: 4, alignSelf: 'flex-start' },
+  tape: { backgroundColor: theme.color.secondarySoft, paddingHorizontal: 12, paddingVertical: 4, alignSelf: 'flex-start' },
   tapeText: {
     fontFamily: theme.family.bold,
     fontSize: 10.5,
     letterSpacing: 1.47,
     textTransform: 'uppercase',
-    color: theme.color.tapeInk,
+    color: theme.color.onSecondarySoft,
   },
   band: { height: 6, alignSelf: 'stretch' },
   bandDashed: { flexDirection: 'row', overflow: 'hidden', gap: 6 },
@@ -1470,7 +1411,7 @@ const useStyles = createThemedStyles((theme) => ({
   srow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   srowLabel: {
     width: 104,
-    fontFamily: theme.family.medium,
+    fontFamily: theme.family.semibold,
     fontSize: 11,
     color: theme.color.ink2,
     textTransform: 'uppercase',
@@ -1478,39 +1419,39 @@ const useStyles = createThemedStyles((theme) => ({
   track: {
     flex: 1,
     height: 12,
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderWidth: 1,
-    borderColor: theme.color.edgeSoft,
+    borderColor: theme.color.ruleSoft,
     overflow: 'hidden',
   },
   trackFill: { height: '100%' },
   srowValue: {
     width: 46,
     textAlign: 'right',
-    fontFamily: theme.family.monoMedium,
+    fontFamily: theme.family.medium,
     fontSize: 12.5,
     color: theme.color.ink,
     fontVariant: ['tabular-nums'],
   },
-  srowNa: { fontSize: 11, color: theme.color.ink3 },
+  srowNa: { fontSize: 11, color: theme.color.muted },
   srowMarks: {
     width: 44,
     textAlign: 'right',
-    fontFamily: theme.family.mono,
+    fontFamily: theme.family.regular,
     fontSize: 11.5,
-    color: theme.color.ink3,
+    color: theme.color.muted,
     fontVariant: ['tabular-nums'],
   },
   ticks: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: -5 },
-  tick: { fontFamily: theme.family.mono, fontSize: 9.5, color: theme.color.ink3 },
+  tick: { fontFamily: theme.family.regular, fontSize: 9.5, color: theme.color.muted },
   stats: {
     flexDirection: 'row',
     gap: 1.5,
-    backgroundColor: theme.color.edge,
+    backgroundColor: theme.color.rule,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
   },
-  stat: { flex: 1, backgroundColor: theme.color.tile2, paddingVertical: 10, paddingHorizontal: 12 },
+  stat: { flex: 1, backgroundColor: theme.color.chip, paddingVertical: 10, paddingHorizontal: 12 },
   headerTitle: {
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
@@ -1523,26 +1464,26 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     paddingHorizontal: 12,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
   },
   headerActionPressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
-  headerActionDanger: { borderColor: theme.color.crit },
-  headerActionDangerText: { color: theme.color.crit },
-  headerActionDisabled: { borderColor: theme.color.edgeSoft },
-  headerActionTextDisabled: { color: theme.color.ink3 },
-  headerActionText: { fontFamily: theme.family.medium, fontSize: theme.font.sm, color: theme.color.ink },
-  compactDanger: { borderColor: theme.color.crit, alignSelf: 'flex-start' },
-  compactDangerText: { color: theme.color.crit },
+  headerActionDanger: { borderColor: theme.color.needsSupport },
+  headerActionDangerText: { color: theme.color.needsSupport },
+  headerActionDisabled: { borderColor: theme.color.ruleSoft },
+  headerActionTextDisabled: { color: theme.color.muted },
+  headerActionText: { fontFamily: theme.family.semibold, fontSize: theme.font.sm, color: theme.color.ink },
+  compactDanger: { borderColor: theme.color.needsSupport, alignSelf: 'flex-start' },
+  compactDangerText: { color: theme.color.needsSupport },
   actionBar: {
     marginHorizontal: -theme.space.md,
     marginBottom: -theme.space.md,
     paddingHorizontal: theme.space.md,
     paddingTop: theme.space.md,
     gap: theme.space.sm,
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderTopWidth: 2,
-    borderTopColor: theme.color.edge,
+    borderTopColor: theme.color.rule,
   },
   actionBarRow: { flexDirection: 'row', alignItems: 'stretch', gap: theme.space.xs },
   // Equal shares, and `minWidth: 0` so a long label wraps inside its cell instead of
@@ -1552,17 +1493,17 @@ const useStyles = createThemedStyles((theme) => ({
   focusRing: { margin: -4, padding: 2, borderWidth: 2, borderColor: 'transparent' },
   input: {
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.space.sm + 2,
     minHeight: 48,
     fontFamily: theme.family.regular,
     fontSize: theme.font.base,
     color: theme.color.ink,
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
   },
   inputMultiline: { minHeight: 88, textAlignVertical: 'top' },
-  inputError: { borderColor: theme.color.critBand },
+  inputError: { borderColor: theme.color.needsSupport },
   inputRow: { flexDirection: 'row' },
   inputRevealable: { flex: 1, borderRightWidth: 0 },
   // The Show / Hide toggle: a square tile sharing the input's ink edge.
@@ -1573,10 +1514,10 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
   },
-  revealPressed: { backgroundColor: theme.color.tile2 },
+  revealPressed: { backgroundColor: theme.color.chip },
   revealText: {
     fontFamily: theme.family.bold,
     fontSize: 10.5,
@@ -1587,11 +1528,11 @@ const useStyles = createThemedStyles((theme) => ({
   hint: { fontFamily: theme.family.regular, fontSize: 12.5, lineHeight: 18, color: theme.color.ink2, marginTop: theme.space.xs },
   error: {
     fontFamily: theme.family.regular,
-    color: theme.color.crit,
+    color: theme.color.needsSupport,
     fontSize: 12.5,
     marginTop: 5,
     borderLeftWidth: 3,
-    borderLeftColor: theme.color.critBand,
+    borderLeftColor: theme.color.needsSupport,
     paddingLeft: 7,
   },
   inert: { opacity: 0.55 },
@@ -1602,45 +1543,43 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     minHeight: 48,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    ...iosHardShadow(theme.color.hard, 2),
+    borderColor: theme.color.rule,
   },
   buttonCompact: { minHeight: 26, paddingVertical: 2, paddingHorizontal: 10 },
   buttonCompactText: { fontSize: 12 },
   buttonPrimary: { backgroundColor: theme.color.ink },
-  buttonSecondary: { backgroundColor: theme.color.tile },
+  buttonSecondary: { backgroundColor: theme.color.surface },
   buttonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  buttonPrimaryText: { color: theme.color.board, fontFamily: theme.family.medium, fontSize: theme.font.sm },
-  buttonSecondaryText: { color: theme.color.ink, fontFamily: theme.family.medium, fontSize: theme.font.sm },
+  buttonPrimaryText: { color: theme.color.ground, fontFamily: theme.family.semibold, fontSize: theme.font.sm },
+  buttonSecondaryText: { color: theme.color.ink, fontFamily: theme.family.semibold, fontSize: theme.font.sm },
   notice: {
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     borderLeftWidth: 4,
-    borderLeftColor: theme.color.critBand,
+    borderLeftColor: theme.color.needsSupport,
     paddingVertical: 9,
     paddingHorizontal: 12,
     marginBottom: theme.space.md,
   },
   noticeText: { color: theme.color.ink, fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 19 },
   slip: {
-    backgroundColor: theme.color.slip,
+    backgroundColor: theme.color.secondarySoft,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     paddingVertical: 12,
     paddingHorizontal: theme.space.md,
     gap: 6,
-    ...iosHardShadow(theme.color.hard),
   },
   slipTitle: {
     fontFamily: theme.family.bold,
     fontSize: 10.5,
     letterSpacing: 1.47,
     textTransform: 'uppercase',
-    color: theme.color.slipInk,
+    color: theme.color.onSecondarySoft,
   },
-  slipText: { fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.slipInk },
-  slipStack: { borderWidth: 1.5, borderColor: theme.color.edge, ...iosHardShadow(theme.color.hard) },
+  slipText: { fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.onSecondarySoft },
+  slipStack: { borderWidth: 1.5, borderColor: theme.color.rule },
   slipRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1648,33 +1587,32 @@ const useStyles = createThemedStyles((theme) => ({
     paddingVertical: 9,
     paddingHorizontal: theme.space.md,
   },
-  slipRowDivider: { borderTopWidth: 1, borderTopColor: theme.color.edge },
+  slipRowDivider: { borderTopWidth: 1, borderTopColor: theme.color.rule },
   slipRowText: { flex: 1, gap: 2 },
   slipRowTitle: { fontFamily: theme.family.bold, fontSize: theme.font.sm, lineHeight: 18 },
   slipRowChevron: { fontFamily: theme.family.bold, fontSize: 20 },
   empty: {
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     padding: theme.space.md,
     gap: theme.space.xs,
   },
   emptyTitle: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
   gateShell: { alignSelf: 'center', width: '100%', maxWidth: 400 },
   gate: {
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
     borderWidth: 2,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     paddingTop: 20,
     paddingHorizontal: theme.space.lg,
     paddingBottom: theme.space.lg,
-    ...iosHardShadow(theme.color.hard, 6),
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: theme.space.lg },
   brandLogo: { width: 42, height: 42 },
   brandName: {
-    fontFamily: theme.family.black,
+    fontFamily: theme.family.semibold,
     fontSize: 24,
     lineHeight: 26,
     letterSpacing: -0.48,
@@ -1682,11 +1620,11 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.color.ink,
   },
   brandLine: {
-    fontFamily: theme.family.medium,
+    fontFamily: theme.family.semibold,
     fontSize: 11,
     letterSpacing: 1.43,
     textTransform: 'uppercase',
-    color: theme.color.ink3,
+    color: theme.color.muted,
     marginTop: 3,
   },
   ledger: {
@@ -1696,18 +1634,18 @@ const useStyles = createThemedStyles((theme) => ({
     paddingVertical: 10,
     gap: theme.space.md,
     borderBottomWidth: 1,
-    borderBottomColor: theme.color.edgeSoft,
+    borderBottomColor: theme.color.ruleSoft,
   },
   ledgerLast: { borderBottomWidth: 0, paddingBottom: 0 },
   ledgerLabel: {
-    fontFamily: theme.family.medium,
+    fontFamily: theme.family.semibold,
     fontSize: 10.5,
-    color: theme.color.ink3,
+    color: theme.color.muted,
     textTransform: 'uppercase',
     letterSpacing: 1.37,
   },
   ledgerValue: {
-    fontFamily: theme.family.mono,
+    fontFamily: theme.family.regular,
     fontSize: theme.font.sm,
     color: theme.color.ink,
     flexShrink: 1,
@@ -1718,8 +1656,8 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
     marginBottom: theme.space.md,
   },
   searchInput: {
@@ -1731,63 +1669,63 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.color.ink,
   },
   searchClear: { minHeight: 48, justifyContent: 'center', paddingHorizontal: theme.space.md },
-  searchClearText: { fontFamily: theme.family.medium, fontSize: theme.font.sm, color: theme.color.ink2 },
+  searchClearText: { fontFamily: theme.family.semibold, fontSize: theme.font.sm, color: theme.color.ink2 },
   segmented: {
     flexDirection: 'row',
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
     marginBottom: theme.space.md,
   },
   segment: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   segmentScroller: { flexGrow: 1 },
   segmentedScrolls: { flexGrow: 1 },
   segmentScrolls: { flex: 0, flexGrow: 1, flexBasis: 'auto', minWidth: 88, paddingHorizontal: 12 },
-  segmentDivider: { borderLeftWidth: 1.5, borderLeftColor: theme.color.edge },
+  segmentDivider: { borderLeftWidth: 1.5, borderLeftColor: theme.color.rule },
   segmentSelected: { backgroundColor: theme.color.ink },
-  segmentText: { fontFamily: theme.family.medium, fontSize: 12.5, color: theme.color.ink2 },
-  segmentTextSelected: { color: theme.color.board },
+  segmentText: { fontFamily: theme.family.semibold, fontSize: 12.5, color: theme.color.ink2 },
+  segmentTextSelected: { color: theme.color.ground },
   choices: { gap: theme.space.sm, marginBottom: theme.space.md },
   choice: {
     minHeight: 48,
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
     paddingVertical: 10,
     paddingHorizontal: theme.space.md,
   },
-  choiceSelected: { borderColor: theme.color.accent, borderLeftWidth: 6, backgroundColor: theme.color.accentSoft },
+  choiceSelected: { borderColor: theme.color.primaryInk, borderLeftWidth: 6, backgroundColor: theme.color.secondarySoft },
   flexText: { flex: 1 },
-  choiceLabel: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
+  choiceLabel: { fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink },
   choiceDetail: { fontFamily: theme.family.regular, fontSize: 12.5, color: theme.color.ink2, marginTop: 2 },
   select: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   selectText: { flex: 1, minWidth: 0 },
-  selectPlaceholder: { fontFamily: theme.family.regular, fontSize: theme.font.base, color: theme.color.ink3 },
+  selectPlaceholder: { fontFamily: theme.family.regular, fontSize: theme.font.base, color: theme.color.muted },
   selectCaret: { fontFamily: theme.family.bold, fontSize: theme.font.base, color: theme.color.ink2 },
   selectList: { gap: theme.space.sm },
   checkHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
   checkLabel: { flexShrink: 1 },
   dialogShell: { flex: 1, justifyContent: 'center', padding: theme.space.md },
   dialog: {
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
     borderWidth: 2,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     borderLeftWidth: 6,
-    borderLeftColor: theme.color.critBand,
+    borderLeftColor: theme.color.needsSupport,
     padding: theme.space.md,
     gap: theme.space.sm,
   },
   dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.space.sm },
-  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.color.hard },
+  scrim: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.color.scrim },
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
     borderTopWidth: 2,
-    borderTopColor: theme.color.edge,
+    borderTopColor: theme.color.rule,
     padding: theme.space.md,
     gap: theme.space.sm,
   },
@@ -1795,18 +1733,18 @@ const useStyles = createThemedStyles((theme) => ({
     minHeight: 52,
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
     paddingVertical: 8,
     paddingHorizontal: theme.space.md,
   },
-  sheetLabel: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
+  sheetLabel: { fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink },
   confirm: {
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     borderLeftWidth: 4,
-    borderLeftColor: theme.color.critBand,
+    borderLeftColor: theme.color.needsSupport,
     padding: 12,
     gap: theme.space.sm,
   },
@@ -1819,5 +1757,5 @@ const useStyles = createThemedStyles((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontFamily: theme.family.bold, fontSize: 15, color: theme.color.board, letterSpacing: 0.3 },
+  avatarText: { fontFamily: theme.family.bold, fontSize: 15, color: theme.color.ground, letterSpacing: 0.3 },
 }));

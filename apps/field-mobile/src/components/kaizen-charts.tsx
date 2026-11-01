@@ -13,10 +13,10 @@ import type {
 import { formatKaizenRatio as ratio, formatRupees, formatScore, formatYearMonth as monthLabel, textOn, zoneLabelFromCode } from '@audit5s/domain';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
-import { createThemedStyles, useTheme, type Band } from '../lib/theme';
+import { createThemedStyles, useTheme, type Tone } from '../lib/theme';
 import { Card, CardHeader, Data, Figure, Hatch, Muted, Segmented } from './ui';
 
-/** GEMBA's ease-out (`--motion`), the curve every motion in the app uses. */
+/** The ease-out every motion in the app uses (`lib/motion.ts`). */
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 /**
@@ -47,7 +47,7 @@ export function KpiCard({ kpi, period, onPeriod }: { kpi: KaizenKpi; period: Kai
   const t = KAIZEN_STRINGS[language];
   // Submitted is the whole, across the top; under it, where they went. Approved green, sent
   // back amber and rejected red, as their chips are everywhere else.
-  const cells: [string, string, Band?][] = [
+  const cells: [string, string, Tone?][] = [
     [t.submitted, String(kpi.submitted)],
     [t.awaitingSection, String(kpi.awaitingReview)],
     [t.status.APPROVED, String(kpi.approved), 'ok'],
@@ -88,7 +88,7 @@ export function FunnelCard({ funnel, period, onPeriod }: { funnel: KaizenFunnel;
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
   const first = funnel[0]?.count ?? 0;
-  const fills = [theme.color.edgeSoft, theme.color.ink3, theme.color.okBand, theme.color.ok];
+  const fills = [theme.color.ruleSoft, theme.color.muted, theme.color.outstanding, theme.color.outstanding];
   return (
     <Card>
       <CardHeader title={t.funnelTitle} />
@@ -96,8 +96,8 @@ export function FunnelCard({ funnel, period, onPeriod }: { funnel: KaizenFunnel;
       <View style={styles.funnel}>
         {funnel.map((stage, index) => {
           const share = first > 0 ? Math.max(stage.count / first, MIN_STAGE) : MIN_STAGE;
-          const fill = fills[index] ?? theme.color.edgeSoft;
-          const ink = textOn(fill, theme.color.ink, theme.color.tile);
+          const fill = fills[index] ?? theme.color.ruleSoft;
+          const ink = textOn(fill, theme.color.ink, theme.color.surface);
           return (
             // Only the count, large, sits on the fill: light mode's --ok-band holds no small text
             // at 4.5:1 in either ink or tile, so the name and share are set under it, in ink.
@@ -124,12 +124,12 @@ export function FunnelCard({ funnel, period, onPeriod }: { funnel: KaizenFunnel;
 
 /**
  * A centred bar whose width follows the numbers, eased when the period changes (strong
- * ease-out, the one duration (`theme.motion`), restarted from wherever it is if changed again) and instant under
+ * ease-out, `theme.dur.short`, restarted from wherever it is if changed again) and instant under
  * reduced motion. Width is not a transform, so this runs on the JS thread: four bars, once
  * per tap, which the phone does not notice.
  */
 function AnimatedWidth({ share, children }: { share: number; children: React.ReactNode }) {
-  const { motion } = useTheme();
+  const motion = useTheme().dur.short;
   const value = useRef(new Animated.Value(share)).current;
   useEffect(() => {
     let cancelled = false;
@@ -162,9 +162,9 @@ export function TrendCard({ trend }: { trend: readonly KaizenTrendMonth[] }) {
     <Card>
       <View style={styles.trendTitle} accessibilityRole="header">
         <Text style={styles.titleWord}>{t.trendPrefix} </Text>
-        <Text style={[styles.titleWord, { color: theme.color.ink3 }]}>{t.trendSubmission}</Text>
+        <Text style={[styles.titleWord, { color: theme.color.muted }]}>{t.trendSubmission}</Text>
         <Text style={styles.titleWord}> / </Text>
-        <Text style={[styles.titleWord, { color: theme.color.ok }]}>{t.trendCompletion}</Text>
+        <Text style={[styles.titleWord, { color: theme.color.outstanding }]}>{t.trendCompletion}</Text>
         <Text style={styles.titleWord}> {t.trendSuffix}</Text>
       </View>
       <Chart max={max} picked={picked}>
@@ -174,14 +174,14 @@ export function TrendCard({ trend }: { trend: readonly KaizenTrendMonth[] }) {
               <Bar
                 value={month.submitted}
                 max={max}
-                style={{ backgroundColor: theme.color.edgeSoft, borderWidth: 1, borderColor: theme.color.ink3 }}
+                style={{ backgroundColor: theme.color.ruleSoft, borderWidth: 1, borderColor: theme.color.muted }}
                 label={`${t.submitted} · ${monthLabel(month.month)}`}
                 onPick={setPicked}
               />
               <Bar
                 value={month.approved}
                 max={max}
-                style={{ backgroundColor: theme.color.okBand }}
+                style={{ backgroundColor: theme.color.outstanding }}
                 label={`${t.approved} · ${monthLabel(month.month)}`}
                 onPick={setPicked}
               />
@@ -212,11 +212,11 @@ export function TopDepartmentsCard({
   const lines = series[which];
   const max = Math.max(1, ...lines.flatMap((line) => line.monthly));
   // Five series told apart without colour: an ink-scale fill, and a pattern on alternate ones.
-  const fills = [theme.color.ink, theme.color.ink2, theme.color.ink3, theme.color.edgeSoft, theme.color.tape];
+  const fills = [theme.color.ink, theme.color.ink2, theme.color.muted, theme.color.ruleSoft, theme.color.secondarySoft];
   const look = (index: number) => {
-    const fill = fills[index] ?? theme.color.ink3;
+    const fill = fills[index] ?? theme.color.muted;
     return index % 3 === 2
-      ? { style: { backgroundColor: theme.color.tile, borderWidth: 1.5, borderColor: fill }, hatch: false }
+      ? { style: { backgroundColor: theme.color.surface, borderWidth: 1.5, borderColor: fill }, hatch: false }
       : { style: { backgroundColor: fill }, hatch: index % 3 === 1 };
   };
   const name = (line: KaizenDepartmentSeries) => line.label ?? t.noDepartment;
@@ -426,7 +426,7 @@ function Figures({ cells }: { cells: [string, string][] }) {
 
 /**
  * The plot: a 0 / mid / max axis of integers and the groups, scrolling sideways **inside**
- * the card when six months do not fit (GEMBA §6), so the page never does. A tapped bar's
+ * the card when six months do not fit (LEDGER.md, done means), so the page never does. A tapped bar's
  * exact count shows in the tile above (there is no hover on a phone).
  */
 function Chart({ max, picked, children }: { max: number; picked: string | null; children: React.ReactNode }) {
@@ -486,10 +486,10 @@ const useStyles = createThemedStyles((theme) => ({
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.space.md },
   cell: { width: '50%', paddingVertical: theme.space.sm, paddingRight: theme.space.sm },
   cellWhole: { width: '100%' },
-  cellRight: { borderLeftWidth: 1, borderLeftColor: theme.color.edgeSoft, paddingLeft: theme.space.md },
-  cellBelow: { borderTopWidth: 1, borderTopColor: theme.color.edgeSoft },
+  cellRight: { borderLeftWidth: 1, borderLeftColor: theme.color.ruleSoft, paddingLeft: theme.space.md },
+  cellBelow: { borderTopWidth: 1, borderTopColor: theme.color.ruleSoft },
   cellLabel: {
-    fontFamily: theme.family.mono,
+    fontFamily: theme.family.regular,
     fontSize: 11,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
@@ -497,9 +497,9 @@ const useStyles = createThemedStyles((theme) => ({
   },
   funnel: { marginTop: theme.space.md, gap: 3 },
   stage: { alignItems: 'center', paddingVertical: 6, paddingHorizontal: 6 },
-  stageCount: { fontFamily: theme.family.black, fontSize: 20, fontVariant: ['tabular-nums'], letterSpacing: -0.8 },
-  stageName: { fontFamily: theme.family.medium, fontSize: 12, color: theme.color.ink, textAlign: 'center', marginTop: 2, marginBottom: 4 },
-  stagePct: { fontFamily: theme.family.mono, fontSize: 11, color: theme.color.ink2 },
+  stageCount: { fontFamily: theme.family.semibold, fontSize: 20, fontVariant: ['tabular-nums'], letterSpacing: -0.8 },
+  stageName: { fontFamily: theme.family.semibold, fontSize: 12, color: theme.color.ink, textAlign: 'center', marginTop: 2, marginBottom: 4 },
+  stagePct: { fontFamily: theme.family.regular, fontSize: 11, color: theme.color.ink2 },
   trendTitle: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: theme.space.sm },
   titleWord: {
     fontFamily: theme.family.bold,
@@ -510,8 +510,8 @@ const useStyles = createThemedStyles((theme) => ({
   pickedTile: { minHeight: 22, marginTop: theme.space.sm, alignItems: 'flex-start' },
   chart: { flexDirection: 'row', height: CHART_HEIGHT + 22 },
   axis: { height: CHART_HEIGHT, justifyContent: 'space-between', paddingRight: 6 },
-  tick: { fontFamily: theme.family.mono, fontSize: 10, color: theme.color.ink3, textAlign: 'right' },
-  plot: { alignItems: 'flex-start', gap: theme.space.md, borderLeftWidth: 1, borderLeftColor: theme.color.edgeSoft, paddingLeft: 6 },
+  tick: { fontFamily: theme.family.regular, fontSize: 10, color: theme.color.muted, textAlign: 'right' },
+  plot: { alignItems: 'flex-start', gap: theme.space.md, borderLeftWidth: 1, borderLeftColor: theme.color.ruleSoft, paddingLeft: 6 },
   group: { alignItems: 'center' },
   bars: {
     flexDirection: 'row',
@@ -519,21 +519,21 @@ const useStyles = createThemedStyles((theme) => ({
     gap: 2,
     height: CHART_HEIGHT,
     borderBottomWidth: 1,
-    borderBottomColor: theme.color.ink3,
+    borderBottomColor: theme.color.muted,
   },
   barSlot: { justifyContent: 'flex-end', height: CHART_HEIGHT },
   bar: { width: BAR, overflow: 'hidden' },
-  axisLabel: { fontFamily: theme.family.mono, fontSize: 10, color: theme.color.ink3, marginTop: 4 },
+  axisLabel: { fontFamily: theme.family.regular, fontSize: 10, color: theme.color.muted, marginTop: 4 },
   legend: { marginTop: theme.space.md, gap: 6 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   swatch: { width: 16, height: 16, overflow: 'hidden' },
   legendText: { flex: 1, fontFamily: theme.family.regular, fontSize: theme.font.sm, color: theme.color.ink },
   empty: { paddingVertical: theme.space.lg },
-  tableRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: theme.color.edgeSoft, paddingVertical: 8 },
+  tableRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: theme.color.ruleSoft, paddingVertical: 8 },
   tableHead: { borderTopWidth: 0, marginTop: theme.space.md },
-  th: { fontFamily: theme.family.mono, fontSize: 10.5, letterSpacing: 0.6, textTransform: 'uppercase', color: theme.color.ink2 },
-  td: { fontFamily: theme.family.medium, fontSize: theme.font.sm, color: theme.color.ink },
-  tdNum: { fontFamily: theme.family.mono, fontSize: theme.font.sm, color: theme.color.ink, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  th: { fontFamily: theme.family.regular, fontSize: 10.5, letterSpacing: 0.6, textTransform: 'uppercase', color: theme.color.ink2 },
+  td: { fontFamily: theme.family.semibold, fontSize: theme.font.sm, color: theme.color.ink },
+  tdNum: { fontFamily: theme.family.regular, fontSize: theme.font.sm, color: theme.color.ink, textAlign: 'right', fontVariant: ['tabular-nums'] },
   firstCol: { width: 150, paddingRight: theme.space.sm },
   numCol: { width: 78, textAlign: 'right' },
   flexCol: { flex: 1, paddingRight: theme.space.sm },

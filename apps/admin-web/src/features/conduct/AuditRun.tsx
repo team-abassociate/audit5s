@@ -429,7 +429,7 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
         {audit.zones.length === 0 ? (
           <EmptyState title="No Zones yet." />
         ) : (
-          <ul className="divide-y divide-edge-soft">
+          <ul className="divide-y divide-rule-soft">
             {audit.zones.map((zone) => (
               <li key={zone.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">

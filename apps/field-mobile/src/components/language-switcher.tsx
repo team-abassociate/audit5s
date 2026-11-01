@@ -58,8 +58,8 @@ const useStyles = createThemedStyles((theme) => ({
   strip: {
     flexDirection: 'row',
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
   },
   option: {
     flex: 1,
@@ -68,9 +68,9 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  divider: { borderLeftWidth: 1.5, borderLeftColor: theme.color.edge },
+  divider: { borderLeftWidth: 1.5, borderLeftColor: theme.color.rule },
   selected: { backgroundColor: theme.color.ink },
-  pressed: { backgroundColor: theme.color.tile2 },
-  text: { fontFamily: theme.family.medium, fontSize: 14, color: theme.color.ink2 },
-  textSelected: { color: theme.color.board },
+  pressed: { backgroundColor: theme.color.chip },
+  text: { fontFamily: theme.family.semibold, fontSize: 14, color: theme.color.ink2 },
+  textSelected: { color: theme.color.ground },
 }));

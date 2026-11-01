@@ -150,15 +150,15 @@ export function SummaryZonePicker({
         ) : null}
       </div>
 
-      <div className="max-h-[28rem] overflow-y-auto border border-edge-soft">
+      <div className="max-h-[28rem] overflow-y-auto border border-rule-soft">
         {shown.map((audit, index) => {
           const zones = zonesByAudit.get(audit.id) ?? [];
           const ids = zones.map((zone) => zone.auditZoneId!);
           const all = ids.length > 0 && ids.every((id) => chosen.includes(id));
           const some = ids.some((id) => chosen.includes(id));
           return (
-            <section key={audit.id} className="border-b border-edge-soft last:border-b-0">
-              <label className="flex flex-wrap items-center gap-2 bg-board px-3 py-2 text-sm">
+            <section key={audit.id} className="border-b border-rule-soft last:border-b-0">
+              <label className="flex flex-wrap items-center gap-2 bg-ground px-3 py-2 text-sm">
                 <input
                   type="checkbox"
                   checked={all}
@@ -188,7 +188,7 @@ export function SummaryZonePicker({
               {zones.map((zone) => (
                 <label
                   key={zone.auditZoneId}
-                  className="flex items-center gap-2 px-8 py-1 text-sm hover:bg-tile-2"
+                  className="flex items-center gap-2 px-8 py-1 text-sm hover:bg-chip"
                 >
                   <input
                     type="checkbox"

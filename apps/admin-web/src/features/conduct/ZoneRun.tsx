@@ -250,7 +250,7 @@ function Questionnaire({ audit, zone, evidence, editable, client }: ZoneProps) {
 
       <Card>
         <CardHeader title={SECTION_TITLE[section]} />
-        <ol className="divide-y divide-edge-soft">
+        <ol className="divide-y divide-rule-soft">
           {(bySection.get(section) ?? []).map((question) => {
             const answer = answers[question.id];
             const own = answer ? evidence.filter((e) => e.questionResponseId === answer.id) : [];
@@ -550,7 +550,7 @@ function PhotoDialog({
   return (
     <Dialog open onClose={onClose} title="Photograph" wide>
       <div className="gb-dialog-section space-y-3">
-        {view.data ? <img src={view.data.url} alt="" className="w-full border border-edge-soft" referrerPolicy="no-referrer" /> : <Spinner />}
+        {view.data ? <img src={view.data.url} alt="" className="w-full border border-rule-soft" referrerPolicy="no-referrer" /> : <Spinner />}
         {editable && walkBy ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="This photograph shows">

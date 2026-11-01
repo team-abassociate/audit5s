@@ -313,7 +313,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
       />
 
       {can('unit_membership', 'create') && (
-        <div className="flex items-end gap-2 border-b border-edge-soft bg-board p-4">
+        <div className="flex items-end gap-2 border-b border-rule-soft bg-ground p-4">
           <div className="flex-1">
             <Field
               label="Assign a user to this Unit"
@@ -338,7 +338,7 @@ function UnitMemberships({ unitId }: { unitId: string }) {
       )}
 
       {can('unit_membership', 'create') && can('unit_membership', 'revoke') && leaders.length > 0 && (
-        <div className="flex items-end gap-2 border-b border-edge-soft bg-board p-4">
+        <div className="flex items-end gap-2 border-b border-rule-soft bg-ground p-4">
           <div className="flex-1">
             <Field
               label={`Move all ${leaders.length} Zone Leaders to another Unit`}
@@ -391,9 +391,9 @@ function UnitMemberships({ unitId }: { unitId: string }) {
             {memberships.data.data.map((m) => (
               <tr key={m.id}>
                 <Td className="font-medium">{m.userFullName}</Td>
-                <Td className="font-mono text-xs">{m.userLoginId ?? 'No mobile number yet'}</Td>
+                <Td className="tabular-nums text-xs">{m.userLoginId ?? 'No mobile number yet'}</Td>
                 <Td>{roleLabel(m.role)}</Td>
-                <Td className="text-xs text-ink-3">
+                <Td className="text-xs text-muted">
                   {formatDate(m.validFrom)}
                 </Td>
                 <Td>

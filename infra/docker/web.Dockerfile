@@ -11,7 +11,7 @@ COPY packages/contracts/ packages/contracts/
 COPY packages/domain/ packages/domain/
 COPY apps/admin-web/ apps/admin-web/
 COPY apps/field-mobile/ apps/field-mobile/
-COPY docs/design/gemba-tokens.css docs/design/gemba-tokens.css
+COPY docs/design/ledger-tokens.css docs/design/ledger-tokens.css
 ENV VITE_API_BASE_URL=/api/v1
 RUN pnpm --filter @audit5s/contracts build \
  && pnpm --filter @audit5s/domain build \

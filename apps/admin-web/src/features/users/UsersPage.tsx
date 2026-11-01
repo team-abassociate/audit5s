@@ -142,7 +142,7 @@ export function UsersPage() {
           />
         )}
 
-        <div className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2">
+        <div className="grid gap-3 border-b border-rule-soft bg-ground p-4 sm:grid-cols-2">
           <Field label="Search users">
             <Input
               type="search"
@@ -331,35 +331,35 @@ function UserRow({
             {user.fullName}
           </RowToggle>
         </Td>
-        <Td className="font-mono text-xs">
+        <Td className="tabular-nums text-xs">
           {/* R-65: imported without a number; adding it in Edit makes the login. */}
-          {user.loginId ?? <span className="font-sans text-ink-3">No mobile number yet</span>}
+          {user.loginId ?? <span className="font-sans text-muted">No mobile number yet</span>}
         </Td>
         <Td>
           {ROLE_LABEL[user.role]}
           {user.role !== 'SUPER_ADMIN' && (
-            <div className="mt-1 text-xs text-ink-3">{user.kaizenAccess ? 'Kaizen access' : 'No Kaizen access'}</div>
+            <div className="mt-1 text-xs text-muted">{user.kaizenAccess ? 'Kaizen access' : 'No Kaizen access'}</div>
           )}
         </Td>
         <Td>
           {units === null ? (
-            <span className="text-ink-3">Every Unit</span>
+            <span className="text-muted">Every Unit</span>
           ) : units.length ? (
             // A Consultant may hold many assignments: name three, count the rest (their row lists all).
             <span title={units.join(', ')}>
               {units.slice(0, 3).join(', ')}
-              {units.length > 3 && <span className="text-ink-3"> +{units.length - 3} more</span>}
+              {units.length > 3 && <span className="text-muted"> +{units.length - 3} more</span>}
             </span>
           ) : (
-            <span className="text-ink-3">None</span>
+            <span className="text-muted">None</span>
           )}
         </Td>
         <Td>
           <StatusChip kind="user" status={user.status} />
-          {user.mustResetPassword && <div className="mt-1 text-xs text-ink-3">Must set a password</div>}
-          <div className={cn('mt-1 text-xs text-ink-3', SHOW_SIGN_IN)}>Signed in: {signedIn}</div>
+          {user.mustResetPassword && <div className="mt-1 text-xs text-muted">Must set a password</div>}
+          <div className={cn('mt-1 text-xs text-muted', SHOW_SIGN_IN)}>Signed in: {signedIn}</div>
         </Td>
-        <Td className={cn('text-xs text-ink-3', HIDE_SIGN_IN)}>{signedIn}</Td>
+        <Td className={cn('text-xs text-muted', HIDE_SIGN_IN)}>{signedIn}</Td>
         <Td>
           <RowActions
             subject={user.fullName}
@@ -392,7 +392,7 @@ function UserRow({
       )}
       {editing && (
         <tr>
-          <td colSpan={7} className="bg-board p-0">
+          <td colSpan={7} className="bg-ground p-0">
             <EditUserForm user={user} onDone={() => setEditing(false)} />
           </td>
         </tr>
@@ -458,12 +458,12 @@ function UserActivity({ user }: { user: User }) {
       <section>
         <h3 className="gb-label">Units · {units.length}</h3>
         {units.length === 0 ? (
-          <p className="text-ink-3">No Unit at the moment.</p>
+          <p className="text-muted">No Unit at the moment.</p>
         ) : (
           <ul>
             {units.map((unit) => (
               <li key={unit.name}>
-                {unit.name} <span className="text-ink-3">· {unit.via}</span>
+                {unit.name} <span className="text-muted">· {unit.via}</span>
               </li>
             ))}
           </ul>
@@ -491,7 +491,7 @@ function UserActivity({ user }: { user: User }) {
 }
 
 function AssignmentList({ assignments }: { assignments: AuditAssignment[] }) {
-  if (assignments.length === 0) return <p className="text-ink-3">None waiting.</p>;
+  if (assignments.length === 0) return <p className="text-muted">None waiting.</p>;
   return (
     <ul>
       {assignments.map((assignment) => (
@@ -499,7 +499,7 @@ function AssignmentList({ assignments }: { assignments: AuditAssignment[] }) {
           <Link to="/audits" search={{ assignment: assignment.id }}>
             {assignment.unitName}
           </Link>
-          <span className="text-ink-3">
+          <span className="text-muted">
             {' '}· {AUDIT_TYPE_LABEL[assignment.auditType]}
             {assignment.dueAt ? ` · due ${formatDate(assignment.dueAt)}` : ''}
           </span>
@@ -510,7 +510,7 @@ function AssignmentList({ assignments }: { assignments: AuditAssignment[] }) {
 }
 
 function AuditList({ audits, empty }: { audits: Audit[]; empty: string }) {
-  if (audits.length === 0) return <p className="text-ink-3">{empty}</p>;
+  if (audits.length === 0) return <p className="text-muted">{empty}</p>;
   return (
     <ul>
       {audits.slice(0, 12).map((audit) => (
@@ -518,7 +518,7 @@ function AuditList({ audits, empty }: { audits: Audit[]; empty: string }) {
           <Link to="/audits" search={{ audit: audit.id }}>
             {audit.unitName}
           </Link>
-          <span className="text-ink-3">
+          <span className="text-muted">
             {' '}· {AUDIT_STATUS_LABEL[audit.status]} ·{' '}
             {formatDate(audit.completedAt ?? audit.startedAt ?? audit.createdAt)}
           </span>
@@ -529,7 +529,7 @@ function AuditList({ audits, empty }: { audits: Audit[]; empty: string }) {
           ) : null}
         </li>
       ))}
-      {audits.length > 12 && <li className="text-ink-3">…and {audits.length - 12} earlier</li>}
+      {audits.length > 12 && <li className="text-muted">…and {audits.length - 12} earlier</li>}
     </ul>
   );
 }
@@ -664,13 +664,13 @@ function UserUnits({ user }: { user: User }) {
   const addable = (units.data?.data ?? []).filter((unit) => !heldIds.has(unit.id));
 
   return (
-    <div className="border-t border-edge-soft pt-3">
+    <div className="border-t border-rule-soft pt-3">
       <span className="gb-label">Units</span>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {held.map((membership) => (
           <span
             key={membership.id}
-            className="flex items-center gap-2 border border-edge-soft bg-tile px-2 py-1 text-sm"
+            className="flex items-center gap-2 border border-rule-soft bg-surface px-2 py-1 text-sm"
           >
             {membership.unitName}
             {can('unit_membership', 'revoke') && (
@@ -759,7 +759,7 @@ function UserZones({ user }: { user: User }) {
   const list = zones.data?.data ?? [];
 
   return (
-    <div className="border-t border-edge-soft pt-3">
+    <div className="border-t border-rule-soft pt-3">
       <span className="gb-label">Leads Zones · {list.filter((zone) => zone.zoneLeaderId === user.id).length}</span>
       {!unitId ? (
         <p className="mt-2 text-xs text-ink-2">Add them to a Unit first; they lead that Unit’s Zones.</p>
@@ -782,7 +782,7 @@ function UserZones({ user }: { user: User }) {
                 />
                 <span>
                   {zoneDisplayLabel(zone.code, zone.name)}
-                  {other && <span className="text-ink-3"> (now {other})</span>}
+                  {other && <span className="text-muted"> (now {other})</span>}
                 </span>
               </label>
             );
@@ -822,13 +822,13 @@ export function BootstrapNotice({
         <div className="space-y-1 text-sm">
           <p className="font-medium text-ink">
             {issued.user.fullName} can now sign in as{' '}
-            <span className="font-mono">{issued.loginId}</span>
+            <span className="tabular-nums">{issued.loginId}</span>
           </p>
           <p className="text-ink-2">
             Their temporary password is their own registered phone number. They must change
             it on first sign-in, and it stops working {formatDateTime(expires)}.
           </p>
-          <p className="text-xs text-ink-3">
+          <p className="text-xs text-muted">
             No password is shown here or sent by message — that is deliberate.
           </p>
         </div>
@@ -932,7 +932,7 @@ export function CreateUserForm({
         accounts. Choose a narrower role unless they run the whole organization.
       </ConfirmDialog>
       <form
-        className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2"
+        className="grid gap-3 border-b border-rule-soft bg-ground p-4 sm:grid-cols-2"
         onSubmit={handleSubmit((values) =>
           (fixedRole ?? values.role) === 'SUPER_ADMIN' ? setElevating(values) : create.mutate(values),
         )}

@@ -83,7 +83,7 @@ export function ResetPasswordPage({ token }: { token: string }) {
           {reset.isPending ? 'Saving…' : 'Set password'}
         </Button>
       </form>
-      <p className="mt-3 text-xs text-ink-3">
+      <p className="mt-3 text-xs text-muted">
         The link works once. If it has expired, ask for a new one from the sign-in page.
       </p>
     </Shell>

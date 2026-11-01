@@ -90,7 +90,7 @@ function KaizenSheet({ kaizen }: { kaizen: KaizenDetail }) {
         <p className="gb-label">Reviews ({kaizen.reviews.length})</p>
         {kaizen.reviews.length === 0 && <p className="text-sm text-ink-2">Not reviewed yet.</p>}
         {kaizen.reviews.map((review) => (
-          <div key={review.id} className="border border-edge-soft p-3 text-sm">
+          <div key={review.id} className="border border-rule-soft p-3 text-sm">
             <p className="text-ink">
               <b>{KAIZEN_STATUS_LABEL[review.decision]}</b> by {review.reviewerName} ({roleLabel(review.reviewerRole)}) ·{' '}
               <span className="gb-data">{formatDateTime(review.createdAt)}</span>
@@ -170,7 +170,7 @@ function Review({ kaizen }: { kaizen: KaizenDetail }) {
   const needsReason = decision === 'SENT_BACK' || decision === 'REJECTED';
 
   return (
-    <div className="space-y-3 border border-edge-soft p-3">
+    <div className="space-y-3 border border-rule-soft p-3">
       <p className="gb-label">Review</p>
       <div className="flex flex-wrap gap-2">
         {DECISIONS.map((option) => (
@@ -254,7 +254,7 @@ function Sustain({ kaizen }: { kaizen: KaizenDetail }) {
     <div className="space-y-2">
       <p className="gb-label">Still in place? · 30, 60 and 90 days after approval</p>
       {kaizen.sustainChecks.map((check) => (
-        <div key={check.id} className="border border-edge-soft p-3 text-sm">
+        <div key={check.id} className="border border-rule-soft p-3 text-sm">
           <p className="text-ink">
             <b className={check.inPlace ? undefined : 'gb-tone--crit'}>
               {check.dayMark}-day check: {check.inPlace ? 'still in place' : 'not in place'}
@@ -276,7 +276,7 @@ function Sustain({ kaizen }: { kaizen: KaizenDetail }) {
         </p>
       )}
       {next?.due && can('kaizen', 'review') && (
-        <div className="space-y-3 border border-edge-soft p-3">
+        <div className="space-y-3 border border-rule-soft p-3">
           <p className="text-sm text-ink">
             The <b>{next.dayMark}-day check</b> is due. Look at the Zone: is the improvement still in place?
           </p>

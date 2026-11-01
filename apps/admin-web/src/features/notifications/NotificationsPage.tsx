@@ -145,17 +145,17 @@ export function NotificationsPage() {
             </EmptyState>
           )
         ) : null}
-        <ul className="divide-y divide-edge-soft">
+        <ul className="divide-y divide-rule-soft">
           {page.data?.data.map((notification) => {
             const unread = !notification.readAt;
             return (
               <li
                 key={notification.id}
-                className={cn('flex items-start gap-3 px-4 py-3', unread && 'bg-tile-2')}
+                className={cn('flex items-start gap-3 px-4 py-3', unread && 'bg-chip')}
               >
                 {/* Unread is a dot and bold type, not only a background tint: a tint alone
                     disappears on a projector and against a dark theme's own surfaces. */}
-                <span aria-hidden className={cn('mt-1.5 h-2 w-2 shrink-0', unread ? 'bg-crit' : 'bg-transparent')} />
+                <span aria-hidden className={cn('mt-1.5 h-2 w-2 shrink-0', unread ? 'bg-needs-support' : 'bg-transparent')} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                     {/* The title is the link and the only one (N4): a whole-card link reads
@@ -168,7 +168,7 @@ export function NotificationsPage() {
                       {unread ? <span className="sr-only">Unread: </span> : null}
                       {notification.title}
                     </Link>
-                    <span className="shrink-0 font-mono text-xs text-ink-3">
+                    <span className="shrink-0 tabular-nums text-xs text-muted">
                       {formatDateTime(notification.createdAt)}
                     </span>
                   </div>
@@ -211,7 +211,7 @@ function BundleItems({ notification, onOpen }: { notification: Notification; onO
           <Link
             to="/corrective-actions"
             search={{ action: item.actionId, ...(notification.unitId ? { unit: notification.unitId } : {}) }}
-            className="font-mono"
+            className="tabular-nums"
             onClick={onOpen}
           >
             {/* As the Corrective actions list names an item; a walk-by has no number of its own. */}
@@ -221,7 +221,7 @@ function BundleItems({ notification, onOpen }: { notification: Notification; onO
                 ? `Overall action ${item.suggestionNo}`
                 : `Walk-by observation ${index + 1}`}
           </Link>
-          <span className="font-mono text-xs text-ink-3">
+          <span className="tabular-nums text-xs text-muted">
             {' '}
             · {item.daysOverdue} day{item.daysOverdue === 1 ? '' : 's'}
           </span>
@@ -250,10 +250,10 @@ function Preferences() {
             <Th>Event</Th>
             <Th>In-app</Th>
             <Th>
-              WhatsApp <span className="font-normal normal-case tracking-normal text-ink-3">· Not connected</span>
+              WhatsApp <span className="font-normal normal-case tracking-normal text-muted">· Not connected</span>
             </Th>
             <Th>
-              SMS <span className="font-normal normal-case tracking-normal text-ink-3">· Not connected</span>
+              SMS <span className="font-normal normal-case tracking-normal text-muted">· Not connected</span>
             </Th>
           </tr>
         </thead>
@@ -264,13 +264,13 @@ function Preferences() {
               <tr key={eventType}>
                 <td>{event}</td>
                 <td>
-                  <input type="checkbox" className="accent-ink" aria-label={`${event}: in-app, always on`} checked disabled readOnly />
+                  <input type="checkbox" className="accent-primary" aria-label={`${event}: in-app, always on`} checked disabled readOnly />
                 </td>
                 <td>
-                  <input type="checkbox" className="accent-ink" aria-label={`${event}: WhatsApp, not connected`} checked={false} disabled readOnly />
+                  <input type="checkbox" className="accent-primary" aria-label={`${event}: WhatsApp, not connected`} checked={false} disabled readOnly />
                 </td>
                 <td>
-                  <input type="checkbox" className="accent-ink" aria-label={`${event}: SMS, not connected`} checked={false} disabled readOnly />
+                  <input type="checkbox" className="accent-primary" aria-label={`${event}: SMS, not connected`} checked={false} disabled readOnly />
                 </td>
               </tr>
             );

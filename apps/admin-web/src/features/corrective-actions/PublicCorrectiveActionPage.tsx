@@ -189,7 +189,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     // No background of its own: the board's grid (the body's) shows through, as on every
     // other screen. The mark is the portal's (P1), not a stand-in "5S" box.
     <div className="gb-ca">
-      <header className="border-b-2 border-edge bg-tile-2 px-4 py-3">
+      <header className="border-b-2 border-rule bg-chip px-4 py-3">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
           <img src="/audit5s-logo.png" alt="audit5s" width="36" height="36" />
           <div className="min-w-0">
@@ -229,7 +229,7 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
       </dl>
 
       {item.findingRemark ? (
-        <p className="mt-4 border-l-4 border-edge bg-board p-3 text-sm text-ink [overflow-wrap:anywhere]">
+        <p className="mt-4 border-l-4 border-rule bg-ground p-3 text-sm text-ink [overflow-wrap:anywhere]">
           {item.findingRemark}
         </p>
       ) : null}
@@ -239,13 +239,13 @@ function Finding({ item }: { item: PublicCorrectiveAction }) {
           <img
             src={sameOriginWhenSecure(item.beforePhotoUrl)}
             alt="The finding as it was recorded"
-            className="max-h-[70vh] w-full border border-edge-soft bg-board object-contain"
+            className="max-h-[70vh] w-full border border-rule-soft bg-ground object-contain"
             referrerPolicy="no-referrer"
           />
           <figcaption className="mt-1 text-xs text-ink-2">What the auditor saw</figcaption>
         </figure>
       ) : (
-        <p className="mt-3 border border-dashed border-edge p-4 text-center text-sm text-ink-3">
+        <p className="mt-3 border border-dashed border-rule p-4 text-center text-sm text-muted">
           Photo not available
         </p>
       )}

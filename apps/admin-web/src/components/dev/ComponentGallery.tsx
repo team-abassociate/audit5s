@@ -64,7 +64,7 @@ const WORST: DemoZone[] = [
 function applyTheme(mode: 'light' | 'dark') {
   document.documentElement.setAttribute('data-theme', mode);
   try {
-    localStorage.setItem('gemba-theme', mode);
+    localStorage.setItem('audit5s-theme', mode);
   } catch {
     // Not remembered; the page still switches.
   }
@@ -291,7 +291,7 @@ function IndustryFields({
           <Input value={name} onChange={(event) => setName(event.target.value)} />
         </Field>
         <Field label="Code" hint="Capitals and underscores, e.g. HOSPITAL">
-          <Input className="font-mono" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
+          <Input className="tabular-nums" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
         </Field>
       </div>
       <DialogActions reason={missing}>

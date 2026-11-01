@@ -85,7 +85,7 @@ export function CallCrossAuditDialog({ unitId, open, onClose }: { unitId: string
       onConfirm={() => call.mutate()}
       onCancel={onClose}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-edge-soft pb-2">
+      <div className="flex items-center justify-between gap-3 border-b border-rule-soft pb-2">
         <span className="gb-label">Zones</span>
         <label className="flex items-center gap-2 text-sm font-bold">
           Select all
@@ -249,7 +249,7 @@ function RoundCard({
         </span>
       </button>
       {open ? (
-        <div className="space-y-3 border-t border-edge-soft p-3">
+        <div className="space-y-3 border-t border-rule-soft p-3">
           {round.completedAt ? (
             <p className="text-sm">
               Completed {formatDate(round.completedAt)} by {round.completedBy ?? 'the Coordinator'}.

@@ -1,8 +1,8 @@
 import type { AuditStatus, AuditType, CorrectiveActionStatus, Role, UserStatus } from '@audit5s/contracts';
-import type { Band } from './gemba';
+import type { Tone as Status } from './ledger';
 
 /** Words for the enums, in one place, so a status reads the same on every screen. */
-type Tone = Band | 'muted';
+type Tone = Status | 'muted';
 
 export const ROLE_LABELS: Record<Role, string> = {
   SUPER_ADMIN: 'Super Admin',

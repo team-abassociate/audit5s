@@ -26,7 +26,7 @@ export function PhotoPicker({
         <img
           src={photoUrl}
           alt="The photograph you chose"
-          className="w-full border border-edge-soft"
+          className="w-full border border-rule-soft"
           referrerPolicy="no-referrer"
         />
         <button type="button" className="gb-btn gb-btn--block" onClick={onRemove}
@@ -122,7 +122,7 @@ export function LiveCapture({
         ref={videoRef}
         playsInline
         muted
-        className={live ? 'w-full border border-edge bg-ink' : 'hidden'}
+        className={live ? 'w-full border border-rule bg-ink' : 'hidden'}
       />
       {live ? (
         <button type="button" className="gb-btn gb-btn--primary gb-btn--block" onClick={capture}

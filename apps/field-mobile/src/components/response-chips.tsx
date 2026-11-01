@@ -61,7 +61,7 @@ export function ResponseChips({
               pressed && !readOnly && styles.pressed,
             ]}
           >
-            <Text style={[styles.marks, { color: selected ? theme.color.board : color }]}>{marks}</Text>
+            <Text style={[styles.marks, { color: selected ? theme.color.ground : color }]}>{marks}</Text>
           </Pressable>
         );
       })}
@@ -70,9 +70,9 @@ export function ResponseChips({
 }
 
 function responseColor(option: ResponseValue, theme: ReturnType<typeof useTheme>): string {
-  if (option === 'SCORE_2') return theme.color.ok;
-  if (option === 'SCORE_1') return theme.color.warn;
-  if (option === 'SCORE_0') return theme.color.crit;
+  if (option === 'SCORE_2') return theme.color.outstanding;
+  if (option === 'SCORE_1') return theme.color.improving;
+  if (option === 'SCORE_0') return theme.color.needsSupport;
   return theme.color.ink2;
 }
 
@@ -85,9 +85,9 @@ const useStyles = createThemedStyles((theme) => ({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
   },
   chipInert: { opacity: 0.45, borderStyle: 'dashed' },
   pressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
-  marks: { fontFamily: theme.family.black, fontSize: 20, fontVariant: ['tabular-nums'] },
+  marks: { fontFamily: theme.family.semibold, fontSize: 20, fontVariant: ['tabular-nums'] },
 }));

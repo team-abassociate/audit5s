@@ -1,5 +1,9 @@
 # 003 — One press: a --press token of 3px
 
+> **Superseded design (2026-11-01, DECISIONS.md R-76):** the Gemba Board this plan quotes is
+> retired. Design rules are now [`docs/design/LEDGER.md`](../docs/design/LEDGER.md); read Gemba
+> references below as history, not as rules.
+
 - **Status**: DONE (S1, 2026-10-03)
 - **Commit**: ffae30c
 - **Severity**: LOW

@@ -70,7 +70,7 @@ export function AnswerForm({ action, onDone }: { action: CorrectiveActionDetail;
   };
 
   return (
-    <div className="space-y-3 border border-edge-soft p-3">
+    <div className="space-y-3 border border-rule-soft p-3">
       <p className="gb-label">Your answer</p>
       {overall ? null : (
         <Segmented

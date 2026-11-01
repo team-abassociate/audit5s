@@ -2,11 +2,11 @@ import { cubicBezier, Easing, FadeIn, ReduceMotion } from 'react-native-reanimat
 import { themes } from './theme';
 
 /**
- * The one motion of the system, ported from `--motion` in gemba-tokens.css (GEMBA §8): 143 ms,
- * ease-out only. The only file that imports Reanimated's easing, so no screen invents a curve.
+ * The motion of the system, from `--dur-micro` / `--dur-short` in ledger-tokens.css: ease-out
+ * only, transform and opacity only. The only file that imports Reanimated's easing, so no screen invents a curve.
  */
 export const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
-export const timing = { duration: themes.light.motion, easing: EASE_OUT, reduceMotion: ReduceMotion.System } as const;
+export const timing = { duration: themes.light.dur.short, easing: EASE_OUT, reduceMotion: ReduceMotion.System } as const;
 
 /**
  * The same, as a Reanimated CSS transition on a style (`transitionProperty` set beside it).
@@ -14,7 +14,7 @@ export const timing = { duration: themes.light.motion, easing: EASE_OUT, reduceM
  * `useReducedMotion()` itself; colour and opacity keep playing (plan 002).
  */
 export const transition = {
-  transitionDuration: themes.light.motion,
+  transitionDuration: themes.light.dur.micro,
   transitionTimingFunction: cubicBezier(0.23, 1, 0.32, 1),
 } as const;
 

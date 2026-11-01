@@ -195,10 +195,10 @@ export function ImportWizard({
           />
           <label
             className={cn(
-              'flex cursor-pointer flex-col items-start gap-1 border-[1.5px] border-dashed border-edge bg-tile-2 px-4 py-5',
-              'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-[var(--accent)]',
-              dragging && 'border-solid bg-tile',
-              (noIndustryTicked || upload.isPending) && 'cursor-not-allowed border-edge-soft',
+              'flex cursor-pointer flex-col items-start gap-1 border-[1.5px] border-dashed border-rule bg-chip px-4 py-5',
+              'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-[var(--primary-ink)]',
+              dragging && 'border-solid bg-surface',
+              (noIndustryTicked || upload.isPending) && 'cursor-not-allowed border-rule-soft',
             )}
             onDragOver={(event) => {
               event.preventDefault();
@@ -219,7 +219,7 @@ export function ImportWizard({
               onChange={(event) => pick(event.target.files?.[0])}
             />
             <span className="font-semibold text-ink">Choose the workbook (.xlsx)</span>
-            <span className="text-xs text-ink-3">
+            <span className="text-xs text-muted">
               {noIndustryTicked
                 ? 'Tick at least one industry above, or choose Every industry.'
                 : 'or drop it here. Nothing is saved until you commit.'}
@@ -284,7 +284,7 @@ export function Steps({ current, first = '1 · Upload' }: { current: Step; first
   const index = steps.findIndex((step) => step.key === current);
 
   return (
-    <ol className="flex gap-4 border-b border-edge-soft px-4 py-2 text-xs">
+    <ol className="flex gap-4 border-b border-rule-soft px-4 py-2 text-xs">
       {steps.map((step, position) => (
         <li
           key={step.key}
@@ -292,8 +292,8 @@ export function Steps({ current, first = '1 · Upload' }: { current: Step; first
             position === index
               ? 'font-semibold text-ink'
               : position < index
-                ? 'text-ink-3'
-                : 'text-ink-3'
+                ? 'text-muted'
+                : 'text-muted'
           }
         >
           {step.label}
@@ -359,7 +359,7 @@ export function IndustryChoice({
           ))}
         </div>
       )}
-      <p className="text-xs text-ink-3">
+      <p className="text-xs text-muted">
         A sheet updates an existing checklist only if that checklist has the same name and
         exactly these industries; otherwise it becomes a new checklist, so another
         industry&apos;s questions never change.
@@ -403,7 +403,7 @@ function PreviewStep({
         <Badge tone={preview.job.warningCount > 0 ? 'warn' : 'neutral'}>
           {preview.job.warningCount} warning{preview.job.warningCount === 1 ? '' : 's'}
         </Badge>
-        <span className="text-ink-3">
+        <span className="text-muted">
           {preview.job.sheetCount} checklist sheet{preview.job.sheetCount === 1 ? '' : 's'} ·{' '}
           {preview.job.parsedRowCount} rows read
         </span>
@@ -423,11 +423,11 @@ function PreviewStep({
 
       <p className="text-sm text-ink-2">
         For <span className="font-medium text-ink">{industryNames(preview.job.industryIds, industries)}</span>.
-        Sheets marked <span className="text-xs text-ink-3">new</span> become new checklists.
+        Sheets marked <span className="text-xs text-muted">new</span> become new checklists.
       </p>
 
       {preview.skippedSheets.length > 0 && (
-        <p className="text-xs text-ink-3">
+        <p className="text-xs text-muted">
           Skipped: {preview.skippedSheets.map((sheet) => sheet.name).join(', ')} — not checklists.
         </p>
       )}
@@ -463,7 +463,7 @@ function PreviewStep({
                   <Td>
                     {sheet.templateCode}
                     {sheet.templateId === null && (
-                      <span className="ml-2 text-xs text-ink-3">new</span>
+                      <span className="ml-2 text-xs text-muted">new</span>
                     )}
                   </Td>
                   <Td>{sheet.questionCount}</Td>
@@ -493,7 +493,7 @@ function PreviewStep({
                 </tr>
                 {openSheet === sheet.id && diff && (
                   <tr>
-                    <td colSpan={7} className="bg-board p-0">
+                    <td colSpan={7} className="bg-ground p-0">
                       <SideBySideDiff diff={diff} />
                     </td>
                   </tr>
@@ -517,7 +517,7 @@ function PreviewStep({
         >
           Commit as draft
         </Button>
-        <span className="text-xs text-ink-3">
+        <span className="text-xs text-muted">
           {committable.length === 0
             ? 'Nothing to import — every sheet either has errors or matches the published checklist, translations included.'
             : 'Nothing has been written yet.'}
@@ -583,7 +583,7 @@ function SideBySideDiff({ diff }: { diff: ChecklistSheetDiff }) {
   return (
     <div className="space-y-2 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-ink-3">
+        <p className="text-xs text-muted">
           {diff.currentVersionNumber === null
             ? 'No published version yet — every question is new.'
             : `Against published version ${diff.currentVersionNumber}.`}
@@ -609,27 +609,27 @@ function SideBySideDiff({ diff }: { diff: ChecklistSheetDiff }) {
         <tbody>
           {entries.map((entry) => (
             <tr key={`${entry.section}-${entry.orderInSection}`}>
-              <Td className="whitespace-nowrap text-xs text-ink-3">
+              <Td className="whitespace-nowrap text-xs text-muted">
                 {SECTION_LABEL[entry.section]}
               </Td>
               <Td>{entry.orderInSection}</Td>
               <Td
                 className={
                   entry.change === 'CHANGED' || entry.change === 'REMOVED'
-                    ? 'bg-tile-2'
+                    ? 'bg-chip'
                     : undefined
                 }
               >
-                {entry.currentText ?? <span className="text-ink-3">—</span>}
+                {entry.currentText ?? <span className="text-muted">—</span>}
               </Td>
               <Td
                 className={
                   entry.change === 'CHANGED' || entry.change === 'ADDED'
-                    ? 'bg-tile-2'
+                    ? 'bg-chip'
                     : undefined
                 }
               >
-                {entry.incomingText ?? <span className="text-ink-3">—</span>}
+                {entry.incomingText ?? <span className="text-muted">—</span>}
               </Td>
             </tr>
           ))}

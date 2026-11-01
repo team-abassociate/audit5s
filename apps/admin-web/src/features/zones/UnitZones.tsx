@@ -78,7 +78,7 @@ export function UnitZones({ unitId }: { unitId: string }) {
   const codes = (zones.data?.data ?? []).map((zone) => zone.code);
 
   return (
-    <div className="border-t border-edge-soft bg-board">
+    <div className="border-t border-rule-soft bg-ground">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <span className="gb-label">
           Zones{zones.data ? ` · ${list.length}` : ''}
@@ -348,7 +348,7 @@ function ZoneRow({ zone, unitId, codes }: { zone: Zone; unitId: string; codes: r
           </RowToggle>
         </Td>
         <Td className="truncate text-ink-2">{zone.description ?? '—'}</Td>
-        <Td>{zone.zoneLeaderName ?? <span className="text-ink-3">Unassigned</span>}</Td>
+        <Td>{zone.zoneLeaderName ?? <span className="text-muted">Unassigned</span>}</Td>
         <Td>{template?.name ?? '—'}</Td>
         <Td>
           {zone.archivedAt ? (
@@ -395,14 +395,14 @@ function ZoneRow({ zone, unitId, codes }: { zone: Zone; unitId: string; codes: r
       </tr>
       {editing && (
         <tr>
-          <td colSpan={6} className="bg-board p-0">
+          <td colSpan={6} className="bg-ground p-0">
             <EditZoneForm zone={zone} unitId={unitId} codes={codes} onDone={() => setEditing(false)} />
           </td>
         </tr>
       )}
       {history && (
         <tr>
-          <td colSpan={6} className="bg-board p-0">
+          <td colSpan={6} className="bg-ground p-0">
             <ZoneAudits zoneId={zone.id} unitId={unitId} />
           </td>
         </tr>
@@ -454,7 +454,7 @@ function ZoneAudits({ zoneId, unitId }: { zoneId: string; unitId: string }) {
               <Link to="/audits" search={{ audit: audit.id } as never} className="gb-data underline">
                 {formatDate(auditDate(audit))}
               </Link>
-              <span className="block text-xs text-ink-3">{AUDIT_TYPE_LABEL[audit.auditType]}</span>
+              <span className="block text-xs text-muted">{AUDIT_TYPE_LABEL[audit.auditType]}</span>
             </Td>
             <Td>{audit.auditorName}</Td>
             <Td>
@@ -541,7 +541,7 @@ function CreateZoneForm({
   return (
     <>
       <form
-        className="grid gap-3 border-b border-edge-soft bg-board p-4 sm:grid-cols-2"
+        className="grid gap-3 border-b border-rule-soft bg-ground p-4 sm:grid-cols-2"
         onSubmit={handleSubmit((body) => create.mutate(body))}
       >
       <Controller

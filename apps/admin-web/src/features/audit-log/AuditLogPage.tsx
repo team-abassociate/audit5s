@@ -401,12 +401,12 @@ function AuditLogRow({ entry, open, onToggle }: { entry: AuditLogEntry; open: bo
       <tr {...rowToggleProps(onToggle)} className={cn('cursor-pointer align-top', open && 'gb-row--open')}>
         <td>
           <RowToggle open={open} onClick={onToggle}>
-            <span className="font-mono text-xs whitespace-nowrap">{formatDateTime(entry.occurredAt)}</span>
+            <span className="tabular-nums text-xs whitespace-nowrap">{formatDateTime(entry.occurredAt)}</span>
           </RowToggle>
         </td>
         <td>
           {entry.actorLabel}
-          {entry.actorRole ? <div className="text-xs text-ink-3">{roleLabel(entry.actorRole)}</div> : null}
+          {entry.actorRole ? <div className="text-xs text-muted">{roleLabel(entry.actorRole)}</div> : null}
         </td>
         <td>
           <span className="font-medium">{ACTION_LABEL[entry.action] ?? humanize(entry.action)}</span>
@@ -435,7 +435,7 @@ function AuditLogRow({ entry, open, onToggle }: { entry: AuditLogEntry; open: bo
       </tr>
       {open && (
         <tr className="gb-row--open">
-          <td colSpan={3} className="bg-board">
+          <td colSpan={3} className="bg-ground">
             <div className="grid gap-4 py-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <div>
                 <h4 className="gb-label">What changed</h4>
@@ -443,26 +443,26 @@ function AuditLogRow({ entry, open, onToggle }: { entry: AuditLogEntry; open: bo
                   {entry.before || entry.after ? (
                     <Changes before={entry.before} after={entry.after} changedOnly />
                   ) : (
-                    <p className="text-sm text-ink-3">Nothing beyond the action itself was recorded.</p>
+                    <p className="text-sm text-muted">Nothing beyond the action itself was recorded.</p>
                   )}
                 </div>
               </div>
               <div>
                 <h4 className="gb-label">Where it came from</h4>
                 <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
-                  <dt className="text-ink-3">IP address</dt>
-                  <dd className="m-0 font-mono text-xs">{entry.ipAddress ?? '—'}</dd>
-                  <dt className="text-ink-3">Browser or app</dt>
+                  <dt className="text-muted">IP address</dt>
+                  <dd className="m-0 tabular-nums text-xs">{entry.ipAddress ?? '—'}</dd>
+                  <dt className="text-muted">Browser or app</dt>
                   <dd className="m-0 text-xs [overflow-wrap:anywhere]">{entry.userAgent ?? '—'}</dd>
-                  <dt className="text-ink-3">Request</dt>
-                  <dd className="m-0 font-mono text-xs [overflow-wrap:anywhere]">{entry.requestId}</dd>
+                  <dt className="text-muted">Request</dt>
+                  <dd className="m-0 tabular-nums text-xs [overflow-wrap:anywhere]">{entry.requestId}</dd>
                 </dl>
               </div>
             </div>
             {entry.before || entry.after ? (
               <details className="mt-2 text-xs">
                 <summary className="cursor-pointer text-ink-2">Technical details</summary>
-                <pre className="mt-1 overflow-x-auto border border-edge-soft bg-tile p-3 text-xs">
+                <pre className="mt-1 overflow-x-auto border border-rule-soft bg-surface p-3 text-xs">
                   {JSON.stringify({ before: entry.before, after: entry.after, resourceId: entry.resourceId }, null, 2)}
                 </pre>
               </details>

@@ -26,8 +26,8 @@ export { EmptyState } from './EmptyState';
 export { Slip } from './Slip';
 
 /**
- * The shared controls, built from the Gemba Board primitives
- * (`docs/design/GEMBA-BOARD.md` §6, tokens in `docs/design/gemba-tokens.css`).
+ * The shared controls, built from the Ledger system
+ * (`docs/design/LEDGER.md`, tokens in `docs/design/ledger-tokens.css`).
  *
  * Every screen composes from this file, so the design system lives here once rather than
  * in fourteen feature folders. No hex literal, no border radius, no blurred shadow — a
@@ -261,7 +261,7 @@ export function Field({
 
 /**
  * A segmented control: one choice of a few, side by side (5S | Kaizen, Overall · Year ·
- * Month). The selected segment carries the accent, as all selection does (GEMBA §2), and
+ * Month). The selected segment carries the selection colour, and
  * `aria-pressed`, so it reads without colour.
  */
 export function Segmented<T extends string>({
@@ -464,8 +464,7 @@ export function useDialogClose(): () => void {
 }
 
 /**
- * A modal, from the native `<dialog>` (GEMBA-BOARD.md §6 "Dialog"): 2px ink border, 6px hard
- * shadow, label above field, actions right-aligned, secondary then primary. It is
+ * A modal, from the native `<dialog>` : label above field, actions right-aligned, secondary then primary. It is
  * `showModal()` and not a div, so the browser traps focus, makes the page behind inert and
  * hands focus back to whatever opened it.
  *

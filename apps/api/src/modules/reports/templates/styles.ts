@@ -14,8 +14,8 @@ import type { ReportPayload } from '@audit5s/contracts';
  *     the same bytes, and a font that arrives over the network is the classic way that
  *     stops being true.
  *
- * The type scale below deliberately does **not** borrow the product's Archivo / DM Mono
- * pairing (`docs/design/GEMBA-BOARD.md` §4): this pipeline may not fetch fonts at render
+ * The type scale below deliberately does **not** borrow the product's screen typeface
+ * pairing: this pipeline may not fetch fonts at render
  * time (R-14). The existing system font stack is retained by request. The supplied
  * Zone1Press reference sets the maroon masthead, open metadata and warm table rules.
  * Avoid decorative grids, numbered clauses and redundant charts.
@@ -259,7 +259,7 @@ tbody tr.total-row, tbody tr.total-row td {
 .caption { font-size: 7pt; color: ${brand.inkSoft}; margin-top: 3px; }
 
 /* ------------------------------------------------------------- rating-scale key
-   Square outlined chips, as the admin app draws a band (GEMBA-BOARD.md §2.6): the band word
+   Square outlined chips: the band word
    in its colour, and the same shape glyph, so the key reads on a black-only printer too. */
 .pills { display: flex; gap: 6px; margin-top: 8px; margin-bottom: 4px; }
 .pill {

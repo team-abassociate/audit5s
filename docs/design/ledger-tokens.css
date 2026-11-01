@@ -1,0 +1,144 @@
+/* ============================================================================
+   LEDGER — design tokens (docs/design/LEDGER.md)
+   audit5s · admin web, mirrored for the field app in apps/field-mobile/src/lib/ledger.ts
+   This file is the single definition of every colour, radius, shadow, duration and
+   typeface on screen. A value that is not here is a bug. Light values of the four score
+   bands are owned by packages/domain RATING_BANDS; a test fails if they drift.
+   ============================================================================ */
+
+:root{
+  /* --- surfaces --- */
+  --canvas:#E4E7E3;             /* behind the app frame */
+  --ground:#F4F5F2;             /* page ground; cards sit flat on it */
+  --surface:#FFFFFF;            /* cards, sidebar, tables, inputs */
+  --chip:#EEF1EF;               /* neutral chip, recessed row, table head */
+
+  /* --- ink --- */
+  --ink:#14211E;                /* primary text; the ink "Start audit" pill */
+  --on-ink:#FFFFFF;             /* text on an ink fill */
+  --ink-2:#3E4C48;              /* secondary text */
+  --muted:#5E6B67;              /* labels, axes, disabled */
+
+  /* --- rules --- */
+  --rule:#D9DEDB;               /* borders, outlined controls */
+  --rule-soft:#E3E7E4;          /* hairlines inside a card */
+
+  /* --- brand --- */
+  --primary:#882627;            /* FILL: selected nav, headline cards, primary buttons */
+  --primary-hover:#5E1A1B;
+  --on-primary:#FFFFFF;
+  --primary-ink:#882627;        /* TEXT: links, change figures, past-due text */
+  --primary-ink-hover:#5E1A1B;
+  --secondary:#FFB380;          /* apricot fills: avatar, neutral bars, accents on maroon */
+  --on-secondary:#5E1A1B;
+  --secondary-soft:#FFE4D2;     /* soft panels, sidebar notice card */
+  --on-secondary-soft:#5E1A1B;
+  --focus:#882627;              /* the :focus-visible ring */
+
+  /* --- score bands: text and bars / chip tint (packages/domain RATING_BANDS) --- */
+  --band-outstanding:#1B7F4B;    --band-outstanding-tint:#E2F4E9;
+  --band-on-track:#2A7097;       --band-on-track-tint:#E2EEF7;
+  --band-improving:#BE7D0F;      --band-improving-tint:#FDF3DB;
+  --band-needs-support:#B3261E;  --band-needs-support-tint:#FCE7E5;
+
+  /* --- shape --- */
+  --radius-card-lg:22px;        /* big cards */
+  --radius-card:18px;           /* cards */
+  --radius-panel:14px;          /* panels inside a card */
+  --radius-control:10px;        /* buttons, inputs, nav items, bars */
+  --radius-chip:6px;            /* chips */
+  --radius-pill:999px;          /* pills, round icon buttons */
+  --shadow-frame:0 1px 2px rgba(20,33,30,.06),0 12px 32px rgba(20,33,30,.08); /* outer app frame only */
+
+  /* --- motion: transform and opacity only --- */
+  --dur-micro:120ms;            /* press, hover, focus */
+  --dur-short:220ms;            /* panels, sheets, rows opening */
+  --ease-out:cubic-bezier(.23,1,.32,1);
+
+  color-scheme:light;
+}
+
+/* Dark — the same roles with their own values, never an inversion. Maroon stays the fill;
+   maroon as text becomes apricot. A score marker on a maroon card keeps the LIGHT tint, so
+   components reach for --band-*-tint-on-primary there. */
+:root{
+  --band-outstanding-tint-on-primary:#E2F4E9;
+  --band-on-track-tint-on-primary:#E2EEF7;
+  --band-improving-tint-on-primary:#FDF3DB;
+  --band-needs-support-tint-on-primary:#FCE7E5;
+}
+
+/* system dark, when nothing is chosen */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --canvas:#0A0908; --ground:#141110; --surface:#1E1A19; --chip:#2E2826;
+    --ink:#F3EEEC; --on-ink:#1A1412; --ink-2:#CFC6C3; --muted:#A69B97;
+    --rule:#3A322F; --rule-soft:#2E2826;
+    --primary:#882627; --primary-hover:#5E1A1B; --on-primary:#FFFFFF;
+    --primary-ink:#FFB380; --primary-ink-hover:#FFC9A3;
+    --secondary:#FFB380; --on-secondary:#5E1A1B;
+    --secondary-soft:#3A2320; --on-secondary-soft:#FFB380;
+    --focus:#FFB380;
+    --band-outstanding:#5BCB8F;   --band-outstanding-tint:#173326;
+    --band-on-track:#6AB0DA;      --band-on-track-tint:#152B3A;
+    --band-improving:#E7B04A;     --band-improving-tint:#3A2D12;
+    --band-needs-support:#F07A70; --band-needs-support-tint:#3D1A17;
+    --shadow-frame:0 1px 2px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+
+/* an explicit choice wins in both directions */
+:root[data-theme="dark"]{
+  --canvas:#0A0908; --ground:#141110; --surface:#1E1A19; --chip:#2E2826;
+  --ink:#F3EEEC; --on-ink:#1A1412; --ink-2:#CFC6C3; --muted:#A69B97;
+  --rule:#3A322F; --rule-soft:#2E2826;
+  --primary:#882627; --primary-hover:#5E1A1B; --on-primary:#FFFFFF;
+  --primary-ink:#FFB380; --primary-ink-hover:#FFC9A3;
+  --secondary:#FFB380; --on-secondary:#5E1A1B;
+  --secondary-soft:#3A2320; --on-secondary-soft:#FFB380;
+  --focus:#FFB380;
+  --band-outstanding:#5BCB8F;   --band-outstanding-tint:#173326;
+  --band-on-track:#6AB0DA;      --band-on-track-tint:#152B3A;
+  --band-improving:#E7B04A;     --band-improving-tint:#3A2D12;
+  --band-needs-support:#F07A70; --band-needs-support-tint:#3D1A17;
+  --shadow-frame:0 1px 2px rgba(0,0,0,.4),0 12px 32px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+
+/* ============================================================================
+   TYPE — Manrope only (400/500/600/700/800), tabular numerals for every figure.
+   Noto Sans Devanagari renders Devanagari (Hindi, Marathi) and nothing else (R-45 c):
+   Manrope has no Devanagari glyphs, so only those characters fall through to it.
+   <link rel="stylesheet"
+     href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&family=Noto+Sans+Devanagari:wght@400..700&display=swap">
+   ============================================================================ */
+:root{
+  --font-ui:"Manrope","Noto Sans Devanagari","Helvetica Neue",Arial,sans-serif;
+}
+
+:lang(hi),:lang(mr){line-height:1.6}
+
+body{
+  background:var(--ground);
+  color:var(--ink);
+  font-family:var(--font-ui);
+  font-size:15px;
+  line-height:1.5;
+  font-variant-numeric:tabular-nums;
+  margin:0;
+}
+
+/* Focus — instant, one treatment everywhere. */
+:where(a,button,select,input,textarea,summary,[tabindex]):focus-visible{
+  outline:2px solid var(--focus);outline-offset:2px;
+}
+
+:where(input[type="checkbox"],input[type="radio"]){accent-color:var(--primary)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:1ms !important;animation-iteration-count:1 !important;animation-delay:0s !important;
+    transition-duration:1ms !important;
+  }
+}

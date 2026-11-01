@@ -1,5 +1,9 @@
 # Plan — Add the Kaizen module to Leanstack (audit5s monorepo)
 
+> **Superseded design (2026-11-01, DECISIONS.md R-76):** the Gemba Board this plan quotes is
+> retired. Design rules are now [`docs/design/LEDGER.md`](../docs/design/LEDGER.md); read Gemba
+> references below as history, not as rules.
+
 > The plan the Kaizen module was built from (released to `main` 2026-10-09).
 
 ---
