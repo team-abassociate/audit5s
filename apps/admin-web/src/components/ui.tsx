@@ -545,9 +545,17 @@ export function Dialog({
           event.preventDefault();
           requestClose();
         }}
-        // A press on the scrim lands on the dialog element itself, never on its content.
+        // Only a press outside the box is a press on the scrim. Testing the target instead
+        // also closed it on the box's own scrollbar, which belongs to the dialog element.
         onMouseDown={(event) => {
-          if (event.target === event.currentTarget) requestClose();
+          if (event.target !== event.currentTarget) return;
+          const box = event.currentTarget.getBoundingClientRect();
+          const inside =
+            event.clientX >= box.left &&
+            event.clientX <= box.right &&
+            event.clientY >= box.top &&
+            event.clientY <= box.bottom;
+          if (!inside) requestClose();
         }}
       >
         {present ? (
