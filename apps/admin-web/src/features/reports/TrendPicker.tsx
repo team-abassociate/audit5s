@@ -3,6 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { formatDate, formatDateTime, formatScore, isAuditCompleted, zoneDisplayLabel } from '@audit5s/domain';
 import type { Audit, AuditDetail, Page, ReportSnapshot, Zone } from '@audit5s/contracts';
 import { api, fetchAll } from '@/lib/api';
+import { auditTypeLabel } from '@/lib/labels';
 import { Badge, Button, ErrorNotice, Field, Select, Spinner } from '@/components/ui';
 import { PreviewButton } from './SummaryZonePicker';
 
@@ -113,7 +114,7 @@ function ZoneAuditsPicker({ unitId, onQueued }: { unitId: string; onQueued?: (sn
           items={rows.map((row) => ({
             id: row.auditZoneId,
             label: formatDateTime(row.audit.completedAt!),
-            detail: row.audit.auditorName,
+            detail: `${auditTypeLabel(row.audit.auditType)} · ${row.audit.auditorName}`,
             pct: row.pct,
           }))}
           empty="No finished, scored audit of this Zone yet."
