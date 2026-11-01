@@ -140,7 +140,7 @@ export default function ReviewScreen() {
       const unapproved = isUnapprovedClosure(item.status, item.verifiedByUserId);
       return (
         <Card
-          rail={late ? 'crit' : reviewing ? 'warn' : 'none'}
+          rail={late ? 'late' : reviewing ? 'warn' : 'none'}
           accessibilityRole="button"
           onPress={() => router.push({ pathname: '/manage/action/[actionId]', params: { actionId: item.id } })}
         >
@@ -158,7 +158,7 @@ export default function ReviewScreen() {
           <Data>
             {item.status === 'VERIFIED' && item.resolvedAt
               ? `Closed by ${item.closedByName ?? 'unknown'}, ${formatDateTime(item.resolvedAt)}`
-              : `${item.dueAt ? `Due ${formatDate(item.dueAt)}${late ? ', overdue' : ''}` : 'No due date'}, ${item.assignedZoneLeaderName ?? 'no owner'}`}
+              : `${item.dueAt ? `Due ${formatDate(item.dueAt)}${late ? ', past due' : ''}` : 'No due date'}, ${item.assignedZoneLeaderName ?? 'no owner'}`}
           </Data>
           {item.status === 'VERIFIED' ? (
             <Data>{unapproved ? 'Not reviewed' : `✓ Approved by ${item.verifiedByName ?? 'a reviewer'}`}</Data>

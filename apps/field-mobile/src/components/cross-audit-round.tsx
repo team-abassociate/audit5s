@@ -62,10 +62,10 @@ export function roundsOnBoard(rounds: readonly CrossAuditRound[], board: RoundBo
   return rounds.filter((round) => board === 'DONE' || !roundClosed(round));
 }
 
-/** "Due 18 Oct", or "Overdue since 18 Oct". */
+/** "Due 18 Oct", or "Past due since 18 Oct". */
 export function roundDue(round: CrossAuditRound): string {
   const late = !roundClosed(round) && isOverdue(round);
-  return `${late ? 'Overdue since' : 'Due'} ${formatDayMonth(`${round.dueOn}T12:00:00+05:30`)}`;
+  return `${late ? 'Past due since' : 'Due'} ${formatDayMonth(`${round.dueOn}T12:00:00+05:30`)}`;
 }
 
 function count(round: CrossAuditRound, state: CrossAuditZoneState): number {
@@ -83,7 +83,7 @@ export function CrossAuditRoundCard({ round, board }: { round: CrossAuditRound; 
   const done = count(round, 'COMPLETED');
   return (
     <Card
-      rail={late ? 'crit' : closed ? 'none' : 'warn'}
+      rail={late ? 'late' : closed ? 'none' : 'warn'}
       accessibilityRole="button"
       onPress={() => router.push({ pathname: '/cross-audit/[roundId]', params: { roundId: round.id, board } })}
     >
@@ -91,7 +91,7 @@ export function CrossAuditRoundCard({ round, board }: { round: CrossAuditRound; 
         title="Cross-zonal audit"
         description={`${zones} Zone${zones === 1 ? '' : 's'} · called ${formatDayMonth(round.createdAt)} by ${round.calledBy}`}
         action={
-          round.completedAt ? <Chip>Completed</Chip> : late ? <Chip tone="crit">Overdue</Chip> : closed ? <Chip>All done</Chip> : undefined
+          round.completedAt ? <Chip>Completed</Chip> : late ? <Chip tone="late">Past due</Chip> : closed ? <Chip>All done</Chip> : undefined
         }
       />
       <Data>{`${waiting} not started · ${running} under way · ${done} done`}</Data>
@@ -240,7 +240,7 @@ const useStyles = createThemedStyles((theme) => ({
     right: 0,
     bottom: 0,
     backgroundColor: theme.color.surface,
-    borderTopWidth: 2,
+    borderTopWidth: 1,
     borderTopColor: theme.color.rule,
     padding: theme.space.md,
     gap: theme.space.md,
@@ -251,8 +251,6 @@ const useStyles = createThemedStyles((theme) => ({
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
     color: theme.color.ink,
-    textTransform: 'uppercase',
-    letterSpacing: 0.32,
   },
   selectAll: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 48 },
   selectAllText: { fontFamily: theme.family.bold, fontSize: theme.font.sm, color: theme.color.ink },

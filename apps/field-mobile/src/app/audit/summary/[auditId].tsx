@@ -223,10 +223,11 @@ const useStyles = createThemedStyles((theme) => ({
   band: { marginTop: 10, marginBottom: theme.space.md },
   auditee: { marginTop: theme.space.md },
   auditeePhoto: {
+    borderRadius: theme.radius.control,
     width: 120,
     aspectRatio: 1,
     marginTop: theme.space.sm,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
     backgroundColor: theme.color.chip,
   },

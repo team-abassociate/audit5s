@@ -167,5 +167,5 @@ const useStyles = createThemedStyles((theme) => ({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   text: { flex: 1, gap: 1 },
   chips: { alignItems: 'flex-end', gap: 4 },
-  name: { fontFamily: theme.family.bold, fontSize: theme.font.base, color: theme.color.ink, textTransform: 'uppercase' },
+  name: { fontFamily: theme.family.bold, fontSize: theme.font.base, color: theme.color.ink },
 }));

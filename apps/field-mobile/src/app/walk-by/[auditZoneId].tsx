@@ -419,19 +419,21 @@ const useStyles = createThemedStyles((theme) => ({
   lastField: { marginBottom: 0 },
   choices: { flexDirection: 'row', gap: theme.space.xs },
   choice: {
+    borderRadius: theme.radius.control,
     flex: 1,
     minHeight: 48,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
     backgroundColor: theme.color.surface,
     padding: theme.space.sm,
   },
   // Selection: primary-ink edge on the soft apricot panel (LEDGER.md rule 2).
-  choiceSelected: { borderColor: theme.color.primaryInk, borderLeftWidth: 6, backgroundColor: theme.color.secondarySoft },
+  choiceSelected: { borderColor: theme.color.primaryInk, borderWidth: 2, backgroundColor: theme.color.secondarySoft },
   choiceText: { fontFamily: theme.family.semibold, fontSize: theme.font.sm },
   photo: {
+    borderRadius: theme.radius.control,
     width: '100%',
     aspectRatio: 4 / 3,
     backgroundColor: theme.color.chip,
@@ -440,6 +442,7 @@ const useStyles = createThemedStyles((theme) => ({
     marginBottom: theme.space.sm,
   },
   placeholder: {
+    borderRadius: theme.radius.control,
     height: 96,
     alignItems: 'center',
     justifyContent: 'center',

@@ -190,7 +190,7 @@ function ManagementOverview() {
         {oldest ? (
           <Slip
             accessibilityRole="button"
-            title={`${late.length} corrective action${late.length === 1 ? '' : 's'} overdue`}
+            title={`${late.length} corrective action${late.length === 1 ? '' : 's'} past due`}
             onPress={() => router.push('/review')}
           >
             <SlipText>
@@ -347,19 +347,18 @@ const LIFT = 5;
 const KPI_PAD = 10;
 
 /**
- * One label size for all three tiles, fitted to the longest line of a label ("ZONE LEADERS",
+ * One label size for all three tiles, fitted to the longest line of a label ("Zone leaders",
  * which wraps before "/ AUDITORS") in a third of the screen, so no tile's label shrinks on its
  * own and makes it look smaller.
- * ponytail: 0.72em is an average uppercase glyph width; measure with onTextLayout if a
+ * ponytail: 0.6em is an average sentence-case glyph width; measure with onTextLayout if a
  * longer label or another font ever clips.
  */
 function kpiLabelSize(screenWidth: number): number {
   // Screen padding 14 each side, two 8dp gaps, each tile's 5dp shadow margin, 2dp border, padding.
   const inner = (screenWidth - 28 - 16 - 3 * LIFT) / 3 - 4 - 2 * KPI_PAD;
-  const perGlyph = inner / 'ZONE LEADERS'.length - KPI_TRACKING;
-  return Math.max(8, Math.min(11, perGlyph / 0.72));
+  const perGlyph = inner / 'Zone leaders'.length;
+  return Math.max(9, Math.min(12, perGlyph / 0.6));
 }
-const KPI_TRACKING = 0.6;
 
 const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.xl },
@@ -367,26 +366,26 @@ const useStyles = createThemedStyles((theme) => ({
   kpis: { flexDirection: 'row', alignItems: 'stretch', gap: theme.space.sm, marginBottom: theme.space.lg },
   kpi: { flex: 1 },
   kpiFace: {
+    borderRadius: theme.radius.card,
+    overflow: 'hidden',
     flex: 1,
     minHeight: 112,
     justifyContent: 'space-between',
     backgroundColor: theme.color.surface,
-    borderWidth: 2,
-    borderColor: theme.color.rule,
+    borderWidth: 1,
+    borderColor: theme.color.ruleSoft,
     padding: KPI_PAD,
     paddingBottom: KPI_PAD + 6,
   },
-  kpiPressed: { transform: [{ scale: 0.98 }] },
+  kpiPressed: { transform: [{ scale: 0.97 }], opacity: 0.88 },
   kpiText: { marginTop: theme.space.sm },
   kpiLabel: {
     fontFamily: theme.family.semibold,
     color: theme.color.muted,
     marginBottom: theme.space.xs,
-    textTransform: 'uppercase',
-    letterSpacing: KPI_TRACKING,
   },
   kpiDetail: { fontFamily: theme.family.semibold, fontSize: theme.font.label, color: theme.color.ink, marginTop: theme.space.xs },
-  kpiBand: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 5, backgroundColor: theme.color.ink },
+  kpiBand: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 5, backgroundColor: theme.color.primary },
   section: { marginTop: theme.space.lg },
   scoreRow: {
     flexDirection: 'row',
@@ -402,6 +401,5 @@ const useStyles = createThemedStyles((theme) => ({
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
     color: theme.color.ink,
-    textTransform: 'uppercase',
   },
 }));

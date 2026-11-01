@@ -106,7 +106,7 @@ export default function ReviewActionScreen() {
     <Screen>
       <Stack.Screen options={{ title: `Zone ${zoneLabelFromCode(action.zoneCode) ?? action.zoneCode}` }} />
       <ScrollView ref={required.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Card rail={late ? 'crit' : reviewing ? 'warn' : 'none'}>
+        <Card rail={late ? 'late' : reviewing ? 'warn' : 'none'}>
           <CardHeader
             title={zoneDisplayLabel(action.zoneCode, action.zoneName)}
             description={
@@ -138,7 +138,7 @@ export default function ReviewActionScreen() {
           )}
           <Data>
             {[
-              action.dueAt ? `Due ${formatDate(action.dueAt)}${late ? ', overdue' : ''}` : 'No due date',
+              action.dueAt ? `Due ${formatDate(action.dueAt)}${late ? ', past due' : ''}` : 'No due date',
               action.assignedZoneLeaderName ? `owner ${action.assignedZoneLeaderName}` : 'no owner',
               action.reopenCount > 0 ? `reopened ×${action.reopenCount}` : null,
               // R-39: who closed it and when.
@@ -310,6 +310,7 @@ const useStyles = createThemedStyles((theme) => ({
   block: { marginBottom: theme.space.md },
   body: { fontFamily: theme.family.regular, fontSize: theme.font.base, lineHeight: 22, color: theme.color.ink },
   photo: {
+    borderRadius: theme.radius.control,
     width: '100%',
     aspectRatio: 4 / 3,
     marginBottom: theme.space.sm,
@@ -318,6 +319,7 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.color.chip,
   },
   placeholder: {
+    borderRadius: theme.radius.control,
     height: 96,
     alignItems: 'center',
     justifyContent: 'center',

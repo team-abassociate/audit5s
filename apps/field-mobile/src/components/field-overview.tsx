@@ -152,7 +152,7 @@ export function FieldOverview() {
                       tone: 'crossAudit' as const,
                       title: `${crossAuditCalls.length} cross audits called`,
                       detail: crossAuditCalls.some((call) => isOverdue(call))
-                        ? `${crossAuditCalls.filter((call) => isOverdue(call)).length} overdue. Each Zone needs its own audit.`
+                        ? `${crossAuditCalls.filter((call) => isOverdue(call)).length} past due. Each Zone needs its own audit.`
                         : 'Each Zone needs its own audit.',
                       onPress: () => router.push('/cross-audits'),
                     },

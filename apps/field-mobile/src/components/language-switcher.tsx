@@ -56,8 +56,10 @@ export function LanguageSwitcher() {
 
 const useStyles = createThemedStyles((theme) => ({
   strip: {
+    borderRadius: theme.radius.control,
+    overflow: 'hidden',
     flexDirection: 'row',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
     backgroundColor: theme.color.surface,
   },
@@ -68,9 +70,9 @@ const useStyles = createThemedStyles((theme) => ({
     justifyContent: 'center',
     paddingHorizontal: 6,
   },
-  divider: { borderLeftWidth: 1.5, borderLeftColor: theme.color.rule },
-  selected: { backgroundColor: theme.color.ink },
+  divider: { borderLeftWidth: 1, borderLeftColor: theme.color.rule },
+  selected: { backgroundColor: theme.color.primary },
   pressed: { backgroundColor: theme.color.chip },
   text: { fontFamily: theme.family.semibold, fontSize: 14, color: theme.color.ink2 },
-  textSelected: { color: theme.color.ground },
+  textSelected: { color: theme.color.onPrimary },
 }));

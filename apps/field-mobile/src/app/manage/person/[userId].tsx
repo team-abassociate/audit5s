@@ -437,7 +437,7 @@ const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.xl },
   who: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   whoText: { flex: 1, gap: 2 },
-  name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
+  name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
   item: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.color.ruleSoft, gap: 2 },
   itemTitle: { flexShrink: 1, fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink },

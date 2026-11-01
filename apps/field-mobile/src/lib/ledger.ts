@@ -90,10 +90,18 @@ export type Palette = (typeof ledger)[keyof typeof ledger];
 /** A score's band, from `packages/domain` (R-6b, 90 / 75 / 60). `none` is N/A, never a zero. */
 export type Band = 'outstanding' | 'on-track' | 'improving' | 'needs-support' | 'none';
 
-/** A status that is not a score (approved, sent back, failed …), drawn in a band's colour. */
-export type Tone = 'ok' | 'warn' | 'crit' | 'none';
+/**
+ * A status that is not a score (approved, sent back, failed …), drawn in a band's colour.
+ * `late` is past due: maroon and the words, never red, because red is a score (LEDGER.md rule 4).
+ */
+export type Tone = 'ok' | 'warn' | 'crit' | 'late' | 'none';
 
-const TONE_BAND: Record<Tone, Band> = { ok: 'outstanding', warn: 'improving', crit: 'needs-support', none: 'none' };
+const TONE_BAND: Record<Exclude<Tone, 'late'>, Band> = {
+  ok: 'outstanding',
+  warn: 'improving',
+  crit: 'needs-support',
+  none: 'none',
+};
 
 export function bandOf(percentage: number | null): Band {
   const band = bandFor(percentage);
@@ -107,24 +115,27 @@ const KEY = {
   'needs-support': ['needsSupport', 'needsSupportTint'],
 } as const;
 
-function band(of: Band | Tone): Band {
-  return of in TONE_BAND ? TONE_BAND[of as Tone] : (of as Band);
+function band(of: Exclude<Band | Tone, 'late'>): Band {
+  return of in TONE_BAND ? TONE_BAND[of as Exclude<Tone, 'late'>] : (of as Band);
 }
 
 /** The solid colour of a band: its bars, rails and figures. */
 export function bandFill(of: Band | Tone, palette: Palette): string {
+  if (of === 'late') return palette.primaryInk;
   const b = band(of);
   return b === 'none' ? palette.ruleSoft : palette[KEY[b][0]];
 }
 
 /** The text colour of a figure or chip in that band. */
 export function bandInk(of: Band | Tone, palette: Palette): string {
+  if (of === 'late') return palette.primaryInk;
   const b = band(of);
   return b === 'none' ? palette.muted : palette[KEY[b][0]];
 }
 
 /** The chip ground of a band. On a maroon card use `ledger.light`'s tint (LEDGER.md rule 3). */
 export function bandTint(of: Band | Tone, palette: Palette): string {
+  if (of === 'late') return palette.secondarySoft;
   const b = band(of);
   return b === 'none' ? palette.chip : palette[KEY[b][1]];
 }

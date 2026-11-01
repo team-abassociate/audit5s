@@ -216,7 +216,7 @@ export function TopDepartmentsCard({
   const look = (index: number) => {
     const fill = fills[index] ?? theme.color.muted;
     return index % 3 === 2
-      ? { style: { backgroundColor: theme.color.surface, borderWidth: 1.5, borderColor: fill }, hatch: false }
+      ? { style: { backgroundColor: theme.color.surface, borderWidth: 1, borderColor: fill }, hatch: false }
       : { style: { backgroundColor: fill }, hatch: index % 3 === 1 };
   };
   const name = (line: KaizenDepartmentSeries) => line.label ?? t.noDepartment;
@@ -491,8 +491,6 @@ const useStyles = createThemedStyles((theme) => ({
   cellLabel: {
     fontFamily: theme.family.regular,
     fontSize: 11,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
     color: theme.color.ink2,
   },
   funnel: { marginTop: theme.space.md, gap: 3 },
@@ -504,7 +502,6 @@ const useStyles = createThemedStyles((theme) => ({
   titleWord: {
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
-    textTransform: 'uppercase',
     color: theme.color.ink,
   },
   pickedTile: { minHeight: 22, marginTop: theme.space.sm, alignItems: 'flex-start' },
@@ -531,7 +528,7 @@ const useStyles = createThemedStyles((theme) => ({
   empty: { paddingVertical: theme.space.lg },
   tableRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: theme.color.ruleSoft, paddingVertical: 8 },
   tableHead: { borderTopWidth: 0, marginTop: theme.space.md },
-  th: { fontFamily: theme.family.regular, fontSize: 10.5, letterSpacing: 0.6, textTransform: 'uppercase', color: theme.color.ink2 },
+  th: { fontFamily: theme.family.regular, fontSize: 10.5, color: theme.color.ink2 },
   td: { fontFamily: theme.family.semibold, fontSize: theme.font.sm, color: theme.color.ink },
   tdNum: { fontFamily: theme.family.regular, fontSize: theme.font.sm, color: theme.color.ink, textAlign: 'right', fontVariant: ['tabular-nums'] },
   firstCol: { width: 150, paddingRight: theme.space.sm },

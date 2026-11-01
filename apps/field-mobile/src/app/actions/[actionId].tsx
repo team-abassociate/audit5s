@@ -368,6 +368,7 @@ const useStyles = createThemedStyles((theme) => ({
   block: { marginBottom: theme.space.md },
   remark: { fontFamily: theme.family.regular, fontSize: theme.font.base, lineHeight: 22, color: theme.color.ink },
   photo: {
+    borderRadius: theme.radius.control,
     width: '100%',
     aspectRatio: 4 / 3,
     marginBottom: theme.space.sm,
@@ -376,6 +377,7 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.color.chip,
   },
   placeholder: {
+    borderRadius: theme.radius.control,
     height: 96,
     alignItems: 'center',
     justifyContent: 'center',

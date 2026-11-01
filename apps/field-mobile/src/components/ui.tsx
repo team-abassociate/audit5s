@@ -28,12 +28,14 @@ import {
   bandFill,
   bandInk,
   bandOf,
+  bandTint,
   createThemedStyles,
   useTheme,
   type Band,
   type Tone,
 } from '../lib/theme';
 import { EASE_OUT, fadeIn, transition } from '../lib/motion';
+import { haptic } from '../lib/haptics';
 
 /** A Material icon's name: the one icon set, so a symbol means the same thing on every screen. */
 export type IconName = ComponentProps<typeof MaterialIcons>['name'];
@@ -115,7 +117,8 @@ export function useSheetInset(): ViewStyle {
 export function Screen({
   children,
   style,
-  bare,
+  // Kept so callers need no change; Ledger has no ruled top edge to leave off.
+  bare: _bare,
   ...rest
 }: ViewProps & { children: ReactNode; bare?: boolean }) {
   const styles = useStyles();
@@ -124,7 +127,7 @@ export function Screen({
   // the content shrinks to the space above it, and the focused field scrolls into view.
   const keyboard = useKeyboardHeight(ref);
   return (
-    <View ref={ref} style={[styles.screen, !bare && styles.screenRuled, style, keyboard > 0 && { paddingBottom: keyboard }]} {...rest}>
+    <View ref={ref} style={[styles.screen, style, keyboard > 0 && { paddingBottom: keyboard }]} {...rest}>
       {children}
     </View>
   );
@@ -145,12 +148,14 @@ function usePress(rest: Pick<PressableProps, 'onPressIn' | 'onPressOut'>, held =
   const [down, setPressed] = useState(false);
   const pressed = down || held;
   const reduced = useReducedMotion();
-  const scale = pressed && !reduced ? 0.98 : 1;
+  const scale = pressed && !reduced ? 0.97 : 1;
   return {
     pressed,
     sink: {
       transform: [{ scale }],
-      transitionProperty: 'transform',
+      // Opacity still answers the touch under reduced motion: feedback stays, movement goes.
+      opacity: pressed ? 0.88 : 1,
+      transitionProperty: ['transform', 'opacity'],
       ...transition,
     },
     handlers: {
@@ -214,24 +219,26 @@ export function Card({
         {...(tappable ? press.handlers : null)}
         style={[
           styles.card,
-          rail && rail !== 'none' && { borderLeftWidth: 4, borderLeftColor: bandFill(rail, theme.color) },
           style,
           tappable && press.sink,
           arrived && {
             backgroundColor: lit ? theme.color.secondarySoft : theme.color.surface,
-            transitionProperty: ['transform', 'backgroundColor'],
-            transitionDuration: [theme.dur.micro, 700],
-            transitionDelay: [0, lit ? 0 : 900],
+            transitionProperty: ['transform', 'opacity', 'backgroundColor'],
+            transitionDuration: [theme.dur.micro, theme.dur.micro, 700],
+            transitionDelay: [0, 0, lit ? 0 : 900],
           },
         ]}
       >
+        {rail && rail !== 'none' ? (
+          <View pointerEvents="none" style={[styles.rail, { backgroundColor: bandFill(rail, theme.color) }]} />
+        ) : null}
         {children}
       </AnimatedPressable>
     </Magnet>
   );
 }
 
-/** `gb-panel-head`: the title block across the top of a card, ruled off in 2px ink. */
+/** `gb-panel-head`: the title block across the top of a card. */
 export function CardHeader({
   title,
   description,
@@ -331,7 +338,7 @@ export function Figure({
   );
 }
 
-/** `gb-chip`: an outlined status word. The colour is the outline and the text, never a fill. */
+/** `gb-chip`: a status word on its tint — the band's text on the band's pale ground. */
 export function Chip({
   tone = 'muted',
   icon,
@@ -344,9 +351,12 @@ export function Chip({
 }) {
   const styles = useStyles();
   const theme = useTheme();
-  const color = tone === 'muted' ? theme.color.ink2 : tone === 'accent' ? theme.color.primaryInk : bandInk(tone, theme.color);
+  const color =
+    tone === 'muted' ? theme.color.ink2 : tone === 'accent' ? theme.color.onSecondarySoft : bandInk(tone, theme.color);
+  const ground =
+    tone === 'muted' ? theme.color.chip : tone === 'accent' ? theme.color.secondarySoft : bandTint(tone, theme.color);
   return (
-    <View style={[styles.chip, icon && styles.chipWithIcon, { borderColor: color }]}>
+    <View style={[styles.chip, icon && styles.chipWithIcon, { backgroundColor: ground }]}>
       {icon ? <Icon name={icon} color={color} size={13} /> : null}
       <Text style={[styles.chipText, { color }]}>{children}</Text>
     </View>
@@ -483,7 +493,7 @@ export function StatGrid({
     <View style={styles.stats}>
       {items.map((item) => (
         <View key={item.label} style={styles.stat} accessible accessibilityLabel={`${item.label}: ${item.value}`}>
-          {/* Four cells leave too little width for a tracked uppercase label: shrink, never break mid-word. */}
+          {/* Four cells leave little width for a label: shrink, never break mid-word. */}
           <Label fit>{item.label}</Label>
           <Figure size={27} band={item.band}>
             {item.value}
@@ -494,7 +504,7 @@ export function StatGrid({
   );
 }
 
-/** The navigator title, set like the web topbar's h1: heavy and uppercase. */
+/** The navigator title, set like the web topbar's h1: bold, sentence case. */
 export function HeaderTitle({ children }: { children: string }) {
   const styles = useStyles();
   return (
@@ -669,9 +679,15 @@ export function Button({
   compact,
   icon,
   tone,
+  quiet,
 }: {
   title: string;
   onPress: () => void;
+  /**
+   * No press haptic: for a primary button whose outcome already plays one of the module's
+   * own haptics (lib/haptics.ts), so a submit does not buzz twice.
+   */
+  quiet?: boolean;
   /** A tap on the disabled button, to say why it is disabled. It still looks and reads disabled. */
   onDisabledPress?: () => void;
   busy?: boolean;
@@ -680,7 +696,7 @@ export function Button({
   icon?: IconName;
   /** An outline in a decision's colour: Approve `ok`, Send back `warn`, Reject `crit`. */
   tone?: Exclude<Band | Tone, 'none'>;
-  /** 26dp tall on screen, still a 48dp target (hitSlop), for a bar that must stay slim. */
+  /** 30dp tall on screen, still a 48dp target (hitSlop), for a bar that must stay slim. */
   compact?: boolean;
   /** `danger` is an outline, never a red fill: red is a score band (LEDGER.md rule 4). */
   variant?: 'primary' | 'secondary' | 'danger';
@@ -696,7 +712,7 @@ export function Button({
     : variant === 'danger'
       ? theme.color.needsSupport
       : isPrimary
-        ? theme.color.ground
+        ? theme.color.onPrimary
         : theme.color.ink;
   // A busy button stays down, so the press reads as taken while it works.
   const press = usePress({}, Boolean(busy));
@@ -708,7 +724,16 @@ export function Button({
         accessibilityLabel={accessibilityLabel ?? title}
         accessibilityState={{ disabled: Boolean(inert), busy: Boolean(busy) }}
         disabled={busy || (disabled && !onDisabledPress)}
-        onPress={disabled && onDisabledPress ? onDisabledPress : onPress}
+        onPress={
+          disabled && onDisabledPress
+            ? onDisabledPress
+            : isPrimary && !quiet
+              ? () => {
+                  haptic.press();
+                  onPress();
+                }
+              : onPress
+        }
         hitSlop={compact ? 11 : undefined}
         {...press.handlers}
         style={[
@@ -757,7 +782,7 @@ export function ErrorBanner({ message }: { message: string | null }) {
   );
 }
 
-/** `gb-slip`: the yellow note. At most one per screen (a `SlipStack` counts as the one), and only when someone must act. */
+/** `gb-slip`: the pale-apricot note. At most one per screen (a `SlipStack` counts as the one), and only when someone must act. */
 export function Slip({
   title,
   children,
@@ -948,7 +973,7 @@ export function Segmented<T extends string>({
   const styles = useStyles();
   const strip = (
     <View style={[styles.segmented, scrolls && styles.segmentedScrolls]} accessibilityRole="tablist">
-      {options.map((option, index) => {
+      {options.map((option) => {
         const selected = option.value === value;
         return (
           <Pressable
@@ -959,7 +984,6 @@ export function Segmented<T extends string>({
             style={[
               styles.segment,
               scrolls && styles.segmentScrolls,
-              index > 0 && styles.segmentDivider,
               selected && styles.segmentSelected,
             ]}
           >
@@ -1008,13 +1032,16 @@ export function ChoiceList<T extends string>({
             style={[
               styles.choice,
               selected && styles.choiceSelected,
-              option.tone && { borderLeftWidth: 6, borderLeftColor: bandFill(option.tone, theme.color) },
+
               // The band's fill at ~15% over the tile: the chosen decision tinted in its own colour.
               option.tone && selected && { borderColor: bandInk(option.tone, theme.color), backgroundColor: `${bandFill(option.tone, theme.color)}26` },
             ]}
           >
             <View style={styles.buttonRow}>
-              {option.icon ? <Icon name={option.icon} color={option.tone ? bandInk(option.tone, theme.color) : theme.color.ink} /> : null}
+              {option.tone ? (
+              <View pointerEvents="none" style={[styles.rail, { backgroundColor: bandFill(option.tone, theme.color) }]} />
+            ) : null}
+            {option.icon ? <Icon name={option.icon} color={option.tone ? bandInk(option.tone, theme.color) : theme.color.ink} /> : null}
               <Text style={[styles.choiceLabel, styles.flexText, option.tone && { color: bandInk(option.tone, theme.color) }]}>{option.label}</Text>
             </View>
             {option.detail ? <Text style={styles.choiceDetail}>{option.detail}</Text> : null}
@@ -1208,7 +1235,7 @@ export function ActionSheet({
 }
 
 /**
- * A blocking notice: a card with the needs-support rail of `gb-notice` because it reports something the auditor must fix before going
+ * A blocking notice: a card on the needs-support tint, like `gb-notice` because it reports something the auditor must fix before going
  * on. One action, right-aligned — it is a stop sign, not a question.
  */
 export function NoticeDialog({
@@ -1316,32 +1343,30 @@ export function Avatar({ name, size = 44 }: { name: string | undefined; size?: n
 
 const useStyles = createThemedStyles((theme) => ({
   screen: { flex: 1, backgroundColor: theme.color.ground, padding: theme.space.md },
-  screenRuled: { borderTopWidth: 2, borderTopColor: theme.color.rule },
-  cardGap: { marginBottom: theme.space.sm + 3 },
+  cardGap: { marginBottom: theme.space.sm + 4 },
+  // A card: flat on the ground, a soft rule, radius 18 (LEDGER.md rule 6).
   card: {
     backgroundColor: theme.color.surface,
-    borderWidth: 1.5,
-    borderColor: theme.color.rule,
-    padding: theme.space.md,
+    borderWidth: 1,
+    borderColor: theme.color.ruleSoft,
+    borderRadius: theme.radius.card,
+    padding: theme.space.md + 2,
+    overflow: 'hidden',
   },
-  pressed: { transform: [{ translateX: 3 }, { translateY: 3 }], shadowOpacity: 0 },
+  pressed: { transform: [{ scale: 0.97 }] },
+  // A status rail: 4dp inside the card's left edge, clipped by its radius.
+  rail: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: theme.space.md,
-    marginHorizontal: -theme.space.md,
-    marginTop: -theme.space.md,
     marginBottom: theme.space.md,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: theme.color.rule,
   },
   headText: { flex: 1 },
   headDescription: {
     fontFamily: theme.family.regular,
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 19,
     color: theme.color.ink2,
     marginTop: 3,
   },
@@ -1349,37 +1374,33 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: theme.space.md,
-    borderBottomWidth: 2,
-    borderBottomColor: theme.color.rule,
-    paddingBottom: theme.space.sm,
-    marginBottom: theme.space.md,
+    paddingBottom: theme.space.xs,
+    marginBottom: theme.space.sm,
   },
+  // Sentence case, untracked (LEDGER.md rule 5).
   heading: {
     fontFamily: theme.family.bold,
-    fontSize: theme.font.heading,
+    fontSize: theme.font.heading + 1,
+    lineHeight: 26,
     color: theme.color.ink,
-    textTransform: 'uppercase',
-    letterSpacing: 0.38,
+    letterSpacing: -0.3,
   },
   h2: {
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
+    lineHeight: 22,
     color: theme.color.ink,
-    textTransform: 'uppercase',
-    letterSpacing: 0.32,
   },
   muted: { fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 20, color: theme.color.ink2 },
   label: {
     fontFamily: theme.family.semibold,
-    fontSize: 10.5,
+    fontSize: 12.5,
     color: theme.color.muted,
     marginBottom: theme.space.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 1.37,
   },
   data: {
     fontFamily: theme.family.regular,
-    fontSize: 12.5,
+    fontSize: 13,
     color: theme.color.ink2,
     fontVariant: ['tabular-nums'],
   },
@@ -1388,86 +1409,94 @@ const useStyles = createThemedStyles((theme) => ({
     color: theme.color.ink,
     fontVariant: ['tabular-nums'],
   },
-  chip: { borderWidth: 1.5, paddingHorizontal: 7, paddingVertical: 2, alignSelf: 'flex-start' },
+  chip: {
+    borderRadius: theme.radius.chip,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
   chipWithIcon: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   chipText: {
-    fontFamily: theme.family.bold,
-    fontSize: 10.5,
-    letterSpacing: 0.95,
-    textTransform: 'uppercase',
+    fontFamily: theme.family.semibold,
+    fontSize: 12,
   },
-  tape: { backgroundColor: theme.color.secondarySoft, paddingHorizontal: 12, paddingVertical: 4, alignSelf: 'flex-start' },
+  tape: {
+    backgroundColor: theme.color.secondarySoft,
+    borderRadius: theme.radius.chip,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
   tapeText: {
-    fontFamily: theme.family.bold,
-    fontSize: 10.5,
-    letterSpacing: 1.47,
-    textTransform: 'uppercase',
+    fontFamily: theme.family.semibold,
+    fontSize: 12,
     color: theme.color.onSecondarySoft,
   },
-  band: { height: 6, alignSelf: 'stretch' },
+  band: { height: 6, alignSelf: 'stretch', borderRadius: theme.radius.pill },
   bandDashed: { flexDirection: 'row', overflow: 'hidden', gap: 6 },
-  bandDash: { width: 6, height: 6 },
-  srows: { gap: 9 },
+  bandDash: { width: 6, height: 6, borderRadius: theme.radius.pill },
+  srows: { gap: 10 },
   srow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   srowLabel: {
     width: 104,
     fontFamily: theme.family.semibold,
-    fontSize: 11,
+    fontSize: 12,
     color: theme.color.ink2,
-    textTransform: 'uppercase',
   },
   track: {
     flex: 1,
     height: 12,
     backgroundColor: theme.color.chip,
-    borderWidth: 1,
-    borderColor: theme.color.ruleSoft,
+    borderRadius: theme.radius.pill,
     overflow: 'hidden',
   },
-  trackFill: { height: '100%' },
+  trackFill: { height: '100%', borderRadius: theme.radius.pill },
   srowValue: {
     width: 46,
     textAlign: 'right',
-    fontFamily: theme.family.medium,
-    fontSize: 12.5,
+    fontFamily: theme.family.semibold,
+    fontSize: 13,
     color: theme.color.ink,
     fontVariant: ['tabular-nums'],
   },
-  srowNa: { fontSize: 11, color: theme.color.muted },
+  srowNa: { fontSize: 11.5, color: theme.color.muted },
   srowMarks: {
     width: 44,
     textAlign: 'right',
     fontFamily: theme.family.regular,
-    fontSize: 11.5,
+    fontSize: 12,
     color: theme.color.muted,
     fontVariant: ['tabular-nums'],
   },
   ticks: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: -5 },
-  tick: { fontFamily: theme.family.regular, fontSize: 9.5, color: theme.color.muted },
+  tick: { fontFamily: theme.family.regular, fontSize: 10, color: theme.color.muted },
   stats: {
     flexDirection: 'row',
-    gap: 1.5,
+    gap: 1,
     backgroundColor: theme.color.rule,
-    borderWidth: 1.5,
-    borderColor: theme.color.rule,
+    borderRadius: theme.radius.panel,
+    overflow: 'hidden',
   },
   stat: { flex: 1, backgroundColor: theme.color.chip, paddingVertical: 10, paddingHorizontal: 12 },
   headerTitle: {
     fontFamily: theme.family.bold,
-    fontSize: theme.font.panel,
+    fontSize: theme.font.panel + 1,
     color: theme.color.ink,
-    textTransform: 'uppercase',
-    letterSpacing: 0.16,
+    letterSpacing: -0.2,
   },
+  // A round 40dp outlined button in the header, 48dp to the thumb (hitSlop).
   headerAction: {
     minHeight: 40,
+    minWidth: 40,
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderWidth: 1.5,
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    borderWidth: 1,
     borderColor: theme.color.rule,
+    borderRadius: theme.radius.pill,
     backgroundColor: theme.color.surface,
   },
-  headerActionPressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
+  headerActionPressed: { transform: [{ scale: 0.96 }], opacity: 0.88 },
   headerActionDanger: { borderColor: theme.color.needsSupport },
   headerActionDangerText: { color: theme.color.needsSupport },
   headerActionDisabled: { borderColor: theme.color.ruleSoft },
@@ -1481,149 +1510,143 @@ const useStyles = createThemedStyles((theme) => ({
     paddingHorizontal: theme.space.md,
     paddingTop: theme.space.md,
     gap: theme.space.sm,
-    backgroundColor: theme.color.chip,
-    borderTopWidth: 2,
-    borderTopColor: theme.color.rule,
+    backgroundColor: theme.color.surface,
+    borderTopWidth: 1,
+    borderTopColor: theme.color.ruleSoft,
   },
-  actionBarRow: { flexDirection: 'row', alignItems: 'stretch', gap: theme.space.xs },
+  actionBarRow: { flexDirection: 'row', alignItems: 'stretch', gap: theme.space.sm },
   // Equal shares, and `minWidth: 0` so a long label wraps inside its cell instead of
   // pushing the others off the screen.
   actionBarCell: { flex: 1, minWidth: 0 },
   field: { marginBottom: theme.space.md },
-  focusRing: { margin: -4, padding: 2, borderWidth: 2, borderColor: 'transparent' },
+  focusRing: { margin: -4, padding: 2, borderWidth: 2, borderColor: 'transparent', borderRadius: theme.radius.control + 4 },
   input: {
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
+    borderRadius: theme.radius.control,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.space.sm + 2,
     minHeight: 48,
     fontFamily: theme.family.regular,
     fontSize: theme.font.base,
     color: theme.color.ink,
-    backgroundColor: theme.color.chip,
+    backgroundColor: theme.color.surface,
   },
   inputMultiline: { minHeight: 88, textAlignVertical: 'top' },
-  inputError: { borderColor: theme.color.needsSupport },
+  inputError: { borderColor: theme.color.needsSupport, borderWidth: 2 },
   inputRow: { flexDirection: 'row' },
-  inputRevealable: { flex: 1, borderRightWidth: 0 },
-  // The Show / Hide toggle: a square tile sharing the input's ink edge.
+  inputRevealable: { flex: 1, borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 },
+  // The Show / Hide toggle: the input's right end.
   reveal: {
     minWidth: 64,
     minHeight: 48,
     paddingHorizontal: theme.space.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
+    borderTopRightRadius: theme.radius.control,
+    borderBottomRightRadius: theme.radius.control,
     backgroundColor: theme.color.surface,
   },
   revealPressed: { backgroundColor: theme.color.chip },
   revealText: {
-    fontFamily: theme.family.bold,
-    fontSize: 10.5,
-    letterSpacing: 0.95,
-    textTransform: 'uppercase',
+    fontFamily: theme.family.semibold,
+    fontSize: 13,
     color: theme.color.ink,
   },
-  hint: { fontFamily: theme.family.regular, fontSize: 12.5, lineHeight: 18, color: theme.color.ink2, marginTop: theme.space.xs },
+  hint: { fontFamily: theme.family.regular, fontSize: 13, lineHeight: 18, color: theme.color.ink2, marginTop: theme.space.xs },
+  // An error reads as words and weight as well as colour (LEDGER.md rule 3).
   error: {
-    fontFamily: theme.family.regular,
+    fontFamily: theme.family.semibold,
     color: theme.color.needsSupport,
-    fontSize: 12.5,
+    fontSize: 13,
     marginTop: 5,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.color.needsSupport,
-    paddingLeft: 7,
   },
   inert: { opacity: 0.55 },
+  // One primary style (maroon fill) and an outlined secondary; radius 10, 48dp tall.
   button: {
     paddingVertical: theme.space.sm,
     paddingHorizontal: theme.space.md,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
+    borderRadius: theme.radius.control,
   },
-  buttonCompact: { minHeight: 26, paddingVertical: 2, paddingHorizontal: 10 },
-  buttonCompactText: { fontSize: 12 },
-  buttonPrimary: { backgroundColor: theme.color.ink },
+  buttonCompact: { minHeight: 30, paddingVertical: 4, paddingHorizontal: 12 },
+  buttonCompactText: { fontSize: 12.5 },
+  buttonPrimary: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
   buttonSecondary: { backgroundColor: theme.color.surface },
   buttonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  buttonPrimaryText: { color: theme.color.ground, fontFamily: theme.family.semibold, fontSize: theme.font.sm },
-  buttonSecondaryText: { color: theme.color.ink, fontFamily: theme.family.semibold, fontSize: theme.font.sm },
+  buttonPrimaryText: { color: theme.color.onPrimary, fontFamily: theme.family.semibold, fontSize: theme.font.base - 1 },
+  buttonSecondaryText: { color: theme.color.ink, fontFamily: theme.family.semibold, fontSize: theme.font.base - 1 },
   notice: {
-    backgroundColor: theme.color.chip,
-    borderWidth: 1.5,
-    borderColor: theme.color.rule,
-    borderLeftWidth: 4,
-    borderLeftColor: theme.color.needsSupport,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    backgroundColor: theme.color.needsSupportTint,
+    borderRadius: theme.radius.panel,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     marginBottom: theme.space.md,
   },
   noticeText: { color: theme.color.ink, fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 19 },
+  // The one thing someone must act on: the pale-apricot panel (LEDGER.md rule 2).
   slip: {
     backgroundColor: theme.color.secondarySoft,
-    borderWidth: 1.5,
-    borderColor: theme.color.rule,
+    borderRadius: theme.radius.panel,
     paddingVertical: 12,
     paddingHorizontal: theme.space.md,
     gap: 6,
   },
   slipTitle: {
     fontFamily: theme.family.bold,
-    fontSize: 10.5,
-    letterSpacing: 1.47,
-    textTransform: 'uppercase',
+    fontSize: 14,
     color: theme.color.onSecondarySoft,
   },
-  slipText: { fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.onSecondarySoft },
-  slipStack: { borderWidth: 1.5, borderColor: theme.color.rule },
+  slipText: { fontFamily: theme.family.regular, fontSize: theme.font.sm, lineHeight: 19, color: theme.color.onSecondarySoft },
+  slipStack: { borderRadius: theme.radius.panel, overflow: 'hidden', backgroundColor: theme.color.secondarySoft },
   slipRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.sm,
+    minHeight: 48,
     paddingVertical: 9,
     paddingHorizontal: theme.space.md,
   },
-  slipRowDivider: { borderTopWidth: 1, borderTopColor: theme.color.rule },
+  slipRowDivider: { borderTopWidth: 1, borderTopColor: theme.color.ruleSoft },
   slipRowText: { flex: 1, gap: 2 },
   slipRowTitle: { fontFamily: theme.family.bold, fontSize: theme.font.sm, lineHeight: 18 },
   slipRowChevron: { fontFamily: theme.family.bold, fontSize: 20 },
   empty: {
-    backgroundColor: theme.color.chip,
-    borderWidth: 1.5,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: theme.color.rule,
-    padding: theme.space.md,
+    padding: theme.space.md + 2,
     gap: theme.space.xs,
   },
-  emptyTitle: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink, textTransform: 'uppercase' },
+  emptyTitle: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink },
   gateShell: { alignSelf: 'center', width: '100%', maxWidth: 400 },
   gate: {
     backgroundColor: theme.color.surface,
-    borderWidth: 2,
-    borderColor: theme.color.rule,
-    paddingTop: 20,
+    borderRadius: theme.radius.cardLg,
+    paddingTop: 22,
     paddingHorizontal: theme.space.lg,
     paddingBottom: theme.space.lg,
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: theme.space.lg },
-  brandLogo: { width: 42, height: 42 },
+  brandLogo: { width: 42, height: 42, borderRadius: theme.radius.control },
   brandName: {
-    fontFamily: theme.family.semibold,
+    fontFamily: theme.family.extraBold,
     fontSize: 24,
-    lineHeight: 26,
-    letterSpacing: -0.48,
-    textTransform: 'uppercase',
+    lineHeight: 28,
+    letterSpacing: -0.72,
     color: theme.color.ink,
   },
   brandLine: {
-    fontFamily: theme.family.semibold,
-    fontSize: 11,
-    letterSpacing: 1.43,
-    textTransform: 'uppercase',
+    fontFamily: theme.family.medium,
+    fontSize: 12.5,
     color: theme.color.muted,
     marginTop: 3,
   },
@@ -1631,7 +1654,7 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 11,
     gap: theme.space.md,
     borderBottomWidth: 1,
     borderBottomColor: theme.color.ruleSoft,
@@ -1639,10 +1662,8 @@ const useStyles = createThemedStyles((theme) => ({
   ledgerLast: { borderBottomWidth: 0, paddingBottom: 0 },
   ledgerLabel: {
     fontFamily: theme.family.semibold,
-    fontSize: 10.5,
+    fontSize: 12.5,
     color: theme.color.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 1.37,
   },
   ledgerValue: {
     fontFamily: theme.family.regular,
@@ -1655,8 +1676,9 @@ const useStyles = createThemedStyles((theme) => ({
   search: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
+    borderRadius: theme.radius.control,
     backgroundColor: theme.color.surface,
     marginBottom: theme.space.md,
   },
@@ -1670,35 +1692,48 @@ const useStyles = createThemedStyles((theme) => ({
   },
   searchClear: { minHeight: 48, justifyContent: 'center', paddingHorizontal: theme.space.md },
   searchClearText: { fontFamily: theme.family.semibold, fontSize: theme.font.sm, color: theme.color.ink2 },
+  // Segments sit in a pill track; the chosen one is filled maroon.
   segmented: {
     flexDirection: 'row',
-    borderWidth: 1.5,
+    gap: 2,
+    padding: 3,
+    borderWidth: 1,
     borderColor: theme.color.rule,
+    borderRadius: theme.radius.control + 3,
     backgroundColor: theme.color.surface,
     marginBottom: theme.space.md,
   },
-  segment: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  segment: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    borderRadius: theme.radius.control,
+  },
   segmentScroller: { flexGrow: 1 },
   segmentedScrolls: { flexGrow: 1 },
   segmentScrolls: { flex: 0, flexGrow: 1, flexBasis: 'auto', minWidth: 88, paddingHorizontal: 12 },
-  segmentDivider: { borderLeftWidth: 1.5, borderLeftColor: theme.color.rule },
-  segmentSelected: { backgroundColor: theme.color.ink },
-  segmentText: { fontFamily: theme.family.semibold, fontSize: 12.5, color: theme.color.ink2 },
-  segmentTextSelected: { color: theme.color.ground },
+  segmentSelected: { backgroundColor: theme.color.primary },
+  segmentText: { fontFamily: theme.family.semibold, fontSize: 13, color: theme.color.ink2 },
+  segmentTextSelected: { color: theme.color.onPrimary },
   choices: { gap: theme.space.sm, marginBottom: theme.space.md },
   choice: {
     minHeight: 48,
+    overflow: 'hidden',
     justifyContent: 'center',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
+    borderRadius: theme.radius.control,
     backgroundColor: theme.color.surface,
     paddingVertical: 10,
     paddingHorizontal: theme.space.md,
   },
-  choiceSelected: { borderColor: theme.color.primaryInk, borderLeftWidth: 6, backgroundColor: theme.color.secondarySoft },
+  // Chosen: the soft apricot panel and a 2px maroon edge, so the edge's weight reads without colour.
+  choiceSelected: { borderColor: theme.color.primaryInk, borderWidth: 2, backgroundColor: theme.color.secondarySoft },
   flexText: { flex: 1 },
   choiceLabel: { fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink },
-  choiceDetail: { fontFamily: theme.family.regular, fontSize: 12.5, color: theme.color.ink2, marginTop: 2 },
+  choiceDetail: { fontFamily: theme.family.regular, fontSize: 13, color: theme.color.ink2, marginTop: 2 },
   select: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   selectText: { flex: 1, minWidth: 0 },
   selectPlaceholder: { fontFamily: theme.family.regular, fontSize: theme.font.base, color: theme.color.muted },
@@ -1708,12 +1743,9 @@ const useStyles = createThemedStyles((theme) => ({
   checkLabel: { flexShrink: 1 },
   dialogShell: { flex: 1, justifyContent: 'center', padding: theme.space.md },
   dialog: {
-    backgroundColor: theme.color.surface,
-    borderWidth: 2,
-    borderColor: theme.color.rule,
-    borderLeftWidth: 6,
-    borderLeftColor: theme.color.needsSupport,
-    padding: theme.space.md,
+    backgroundColor: theme.color.needsSupportTint,
+    borderRadius: theme.radius.cardLg,
+    padding: theme.space.lg,
     gap: theme.space.sm,
   },
   dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: theme.space.sm },
@@ -1724,38 +1756,39 @@ const useStyles = createThemedStyles((theme) => ({
     right: 0,
     bottom: 0,
     backgroundColor: theme.color.surface,
-    borderTopWidth: 2,
-    borderTopColor: theme.color.rule,
+    borderTopLeftRadius: theme.radius.cardLg,
+    borderTopRightRadius: theme.radius.cardLg,
     padding: theme.space.md,
+    paddingTop: theme.space.lg,
     gap: theme.space.sm,
   },
   sheetRow: {
     minHeight: 52,
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: theme.color.rule,
+    borderWidth: 1,
+    borderColor: theme.color.ruleSoft,
+    borderRadius: theme.radius.control,
     backgroundColor: theme.color.surface,
     paddingVertical: 8,
     paddingHorizontal: theme.space.md,
   },
   sheetLabel: { fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink },
   confirm: {
-    backgroundColor: theme.color.chip,
-    borderWidth: 1.5,
-    borderColor: theme.color.rule,
-    borderLeftWidth: 4,
-    borderLeftColor: theme.color.needsSupport,
+    backgroundColor: theme.color.needsSupportTint,
+    borderRadius: theme.radius.panel,
     padding: 12,
     gap: theme.space.sm,
   },
   confirmRow: { flexDirection: 'row', gap: theme.space.sm },
   confirmItem: { flex: 1 },
+  // Initials on apricot, round (the board's avatar).
   avatar: {
     width: 44,
     height: 44,
-    backgroundColor: theme.color.ink,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.secondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontFamily: theme.family.bold, fontSize: 15, color: theme.color.ground, letterSpacing: 0.3 },
+  avatarText: { fontFamily: theme.family.bold, fontSize: 15, color: theme.color.onSecondary },
 }));

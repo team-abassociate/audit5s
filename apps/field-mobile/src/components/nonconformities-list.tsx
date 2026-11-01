@@ -59,7 +59,7 @@ export function NonconformitiesScreen() {
       const open = awaitsResponse(item.effectiveStatus) && !item.pendingSubmissionId;
       return (
         <Link href={{ pathname: '/actions/[actionId]', params: { actionId: item.id } }} asChild>
-          <Card rail={late ? 'crit' : open ? 'warn' : 'none'} accessibilityRole="button">
+          <Card rail={late ? 'late' : open ? 'warn' : 'none'} accessibilityRole="button">
             <View style={styles.row}>
               <Text style={styles.zone}>
                 {zoneDisplayLabel(item.zoneCode, item.zoneName)}
@@ -76,7 +76,7 @@ export function NonconformitiesScreen() {
             {item.dueAt ? (
               <Text style={[styles.due, late && styles.late]}>
                 Due {formatDate(item.dueAt)}
-                {late ? ', overdue' : ''}
+                {late ? ', past due' : ''}
               </Text>
             ) : null}
           </Card>
@@ -112,7 +112,7 @@ export function NonconformitiesScreen() {
               <SectionHead
                 title={waiting > 0 ? `${waiting} waiting for you` : 'All answered'}
                 description="Stored on this device. Answered items say so until they sync. Pull down to refresh."
-                action={overdue > 0 ? <Tape>{overdue} overdue</Tape> : null}
+                action={overdue > 0 ? <Tape>{overdue} past due</Tape> : null}
               />
             ) : null}
           </>

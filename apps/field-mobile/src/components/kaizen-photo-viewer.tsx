@@ -224,10 +224,11 @@ const useStyles = createThemedStyles((theme) => ({
   root: { flex: 1 },
   viewer: { flex: 1, backgroundColor: theme.color.ground, paddingHorizontal: theme.space.md, gap: theme.space.md },
   frame: {
+    borderRadius: theme.radius.panel,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.rule,
     backgroundColor: theme.color.chip,
     overflow: 'hidden',
