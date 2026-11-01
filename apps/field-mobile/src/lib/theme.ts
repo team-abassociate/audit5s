@@ -1,8 +1,8 @@
 import { createContext, useContext, useMemo } from 'react';
-import { Platform, StyleSheet, useColorScheme, type ViewStyle } from 'react-native';
-import { gemba, gembaFonts } from './gemba';
+import { StyleSheet, useColorScheme, type ViewStyle } from 'react-native';
+import { ledger, ledgerDuration, ledgerFonts, ledgerRadius } from './ledger';
 import { DEFAULT_THEME_PREFERENCE, resolveTheme, type ThemePreference } from './theme-choice';
-export { bandFill, bandInk, bandOf, type Band } from './gemba';
+export { bandFill, bandInk, bandOf, bandTint, type Band, type Tone } from './ledger';
 // The choice itself is pure and lives next door, so it can be tested; every screen still
 // imports it from here.
 export {
@@ -16,20 +16,19 @@ export {
 
 const shared = {
   space: { xs: 4, sm: 8, md: 14, lg: 22, xl: 28 },
-  font: { label: 11, sm: 13, base: 15, panel: 16, heading: 19, figure: 29 },
-  family: gembaFonts,
-  /** `--motion` in gemba-tokens.css: the one duration, always ease-out (GEMBA §8 ports it). */
-  motion: 143,
-  /** `--press`: how far a pressed magnet sinks onto its shadow; 0 under reduced motion. */
-  press: 3,
+  font: { label: 11, sm: 13, base: 15, panel: 16, heading: 19, figure: 29, hero: 52 },
+  family: ledgerFonts,
+  radius: ledgerRadius,
+  /** `--dur-micro` / `--dur-short`: transform and opacity only, ease-out. */
+  dur: ledgerDuration,
 } as const;
 
 export const themes = {
-  light: { color: gemba.light, ...shared },
-  dark: { color: gemba.dark, ...shared },
+  light: { color: ledger.light, ...shared },
+  dark: { color: ledger.dark, ...shared },
 } as const;
 
-export type GembaTheme = (typeof themes)[keyof typeof themes];
+export type LedgerTheme = (typeof themes)[keyof typeof themes];
 
 export interface ThemeChoice {
   /** What the person chose, which is what the Profile screen ticks. */
@@ -61,12 +60,12 @@ export function useThemeChoice(): ThemeChoice {
   );
 }
 
-export function useTheme(): GembaTheme {
+export function useTheme(): LedgerTheme {
   return themes[useThemeChoice().scheme];
 }
 
 export function createThemedStyles<T extends StyleSheet.NamedStyles<T>>(
-  factory: (theme: GembaTheme) => T,
+  factory: (theme: LedgerTheme) => T,
 ): () => T {
   return function useStyles() {
     const theme = useTheme();
@@ -74,24 +73,13 @@ export function createThemedStyles<T extends StyleSheet.NamedStyles<T>>(
   };
 }
 
-/** The 5S and Kaizen tab bar: tile-2 ground, a 2px ink rule. */
-export function tabBarStyle(theme: GembaTheme): ViewStyle {
+/** The 5S and Kaizen tab bar: a surface bar over a soft rule. */
+export function tabBarStyle(theme: LedgerTheme): ViewStyle {
   return {
     minHeight: 64,
-    backgroundColor: theme.color.tile2,
-    borderTopWidth: 2,
-    borderTopColor: theme.color.edge,
+    backgroundColor: theme.color.surface,
+    borderTopWidth: 1,
+    borderTopColor: theme.color.rule,
     elevation: 0,
   };
-}
-
-export function iosHardShadow(color: string, offset = 3): ViewStyle {
-  return Platform.OS === 'ios'
-    ? {
-        shadowOffset: { width: offset, height: offset },
-        shadowRadius: 0,
-        shadowOpacity: 1,
-        shadowColor: color,
-      }
-    : {};
 }

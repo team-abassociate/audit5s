@@ -37,7 +37,7 @@ import { AuditCard, ResumeSlip } from '../../components/audit-card';
 import { CallCrossAuditSheet } from '../../components/cross-audit-round';
 import { FieldOverview } from '../../components/field-overview';
 import { managesOnPhone, useSession } from '../../lib/session';
-import { bandOf, createThemedStyles, iosHardShadow, useTheme } from '../../lib/theme';
+import { bandOf, createThemedStyles, useTheme } from '../../lib/theme';
 
 /**
  * The Overview tab, which is two screens wearing one route.
@@ -317,14 +317,14 @@ function Kpi({
   const theme = useTheme();
   const { width } = useWindowDimensions();
   return (
-    <Magnet offset={LIFT} style={styles.kpi}>
+    <Magnet style={styles.kpi}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${label}: ${value}${detail ? `. ${detail}` : ''}`}
         onPress={onPress}
         style={({ pressed }) => [styles.kpiFace, pressed && styles.kpiPressed]}
       >
-        <Icon name={icon} color={theme.color.ink3} size={20} />
+        <Icon name={icon} color={theme.color.muted} size={20} />
         <View style={styles.kpiText}>
           <Text style={[styles.kpiLabel, { fontSize: kpiLabelSize(width) }]} numberOfLines={2}>
             {label}
@@ -342,7 +342,7 @@ function Kpi({
   );
 }
 
-/** GEMBA §2.2's hover / selected offset, as the module picker's tiles. */
+/** The gap the tile layout reserves beside each KPI tile. */
 const LIFT = 5;
 const KPI_PAD = 10;
 
@@ -370,23 +370,22 @@ const useStyles = createThemedStyles((theme) => ({
     flex: 1,
     minHeight: 112,
     justifyContent: 'space-between',
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
     borderWidth: 2,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     padding: KPI_PAD,
     paddingBottom: KPI_PAD + 6,
-    ...iosHardShadow(theme.color.hard, LIFT),
   },
-  kpiPressed: { transform: [{ translateX: LIFT }, { translateY: LIFT }], shadowOpacity: 0 },
+  kpiPressed: { transform: [{ scale: 0.98 }] },
   kpiText: { marginTop: theme.space.sm },
   kpiLabel: {
-    fontFamily: theme.family.medium,
-    color: theme.color.ink3,
+    fontFamily: theme.family.semibold,
+    color: theme.color.muted,
     marginBottom: theme.space.xs,
     textTransform: 'uppercase',
     letterSpacing: KPI_TRACKING,
   },
-  kpiDetail: { fontFamily: theme.family.medium, fontSize: theme.font.label, color: theme.color.ink, marginTop: theme.space.xs },
+  kpiDetail: { fontFamily: theme.family.semibold, fontSize: theme.font.label, color: theme.color.ink, marginTop: theme.space.xs },
   kpiBand: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 5, backgroundColor: theme.color.ink },
   section: { marginTop: theme.space.lg },
   scoreRow: {

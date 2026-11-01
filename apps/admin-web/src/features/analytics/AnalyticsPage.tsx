@@ -25,7 +25,7 @@ import type {
   User,
 } from '@audit5s/contracts';
 import { UNIT_CHANGE_SPAN } from '@audit5s/contracts';
-import { bandLabel, bandOf } from '@/lib/bands';
+import { bandLabel, bandOf, bandToken } from '@/lib/bands';
 import { useToken } from '@/lib/tokens';
 import { Button, Card, CardHeader, ErrorNotice, Field, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { BandLabel } from '@/components/Status';
@@ -37,9 +37,6 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatDayMonth, formatScore, zoneDisplayLabel } from '@audit5s/domain';
 import { Trend } from '@/features/dashboard/DashboardPage';
 import { TARGET } from '@/features/dashboard/board';
-
-/** Score-band tokens, resolved from the document so both themes work (§8). */
-const BAND_TOKEN = { ok: '--ok-band', warn: '--warn-band', crit: '--crit-band', none: '--edge-soft' } as const;
 
 /** The server's analytics window when no range is sent (`toRange` in the API). */
 const WINDOW = 'last 12 months';
@@ -260,7 +257,7 @@ function sparkScale(units: UnitScoreTrend[]): SparkScale {
 }
 
 function Spark({ unit, scale, label }: { unit: UnitScoreTrend; scale: SparkScale; label: string }) {
-  if (unit.points.length === 0) return <span className="gb-urow-spark text-sm text-ink-3">No scored audit in the {WINDOW}.</span>;
+  if (unit.points.length === 0) return <span className="gb-urow-spark text-sm text-muted">No scored audit in the {WINDOW}.</span>;
   const { height, pad, inset } = SPARK;
   const x = (at: string) =>
     `${scale.to === scale.from ? 50 : inset + ((Date.parse(at) - scale.from) / (scale.to - scale.from)) * (100 - 2 * inset)}%`;
@@ -498,7 +495,7 @@ function AuditPanel({ row, zoneCode }: { row: NumberedAudit; zoneCode: string })
   );
 }
 
-/** The board's trend chart (GEMBA §6), for whichever of the Unit's audits the reader ticks. */
+/** The trend chart, for whichever of the Unit's audits the reader ticks. */
 function ScoreTrendCard({ audits }: { audits: NumberedAudit[] }) {
   const [chosen, setChosen] = useState<string[]>([]);
   const everything = chosen.length === 0;
@@ -594,21 +591,21 @@ function UnitContext({ unitId, latestShown }: { unitId: string; latestShown: boo
               so it takes no band colour — told apart by weight and by the legend. */}
           <div className="gb-legend">
             <span><i style={{ background: 'var(--ink)' }} /> Latest audit</span>
-            {hasPrevious ? <span><i style={{ background: 'var(--ink-3)' }} /> Previous audit</span> : null}
+            {hasPrevious ? <span><i style={{ background: 'var(--muted)' }} /> Previous audit</span> : null}
           </div>
           <ResponsiveContainer width="100%" height={height(pairs.length * (hasPrevious ? 2 : 1))}>
             <BarChart data={pairs} layout="vertical" accessibilityLayer={false} margin={{ top: 18, right: 4, left: 4, bottom: 0 }}>
-              <CartesianGrid horizontal={false} stroke={token('--edge-soft')} />
-              <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--ink-3')} />
-              <YAxis dataKey="section" type="category" width={110} interval={0} stroke={token('--ink-3')} />
+              <CartesianGrid horizontal={false} stroke={token('--rule-soft')} />
+              <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--muted')} />
+              <YAxis dataKey="section" type="category" width={110} interval={0} stroke={token('--muted')} />
               <Tooltip contentStyle={TOOLTIP} formatter={(value) => pct(asScore(value), '')} />
-              <ReferenceLine x={TARGET} stroke={token('--crit-band')} strokeDasharray="4 4" label={targetLabel(token)} />
+              <ReferenceLine x={TARGET} stroke={token('--band-needs-support')} strokeDasharray="4 4" label={targetLabel(token)} />
               {valueAxis(token, 84, (index) => {
                 const row = pairs[index];
                 return row ? (hasPrevious ? `${pct(row.latest, '')} · ${pct(row.previous, '')}` : pct(row.latest, '')) : '';
               })}
               <Bar isAnimationActive={false} dataKey="latest" name="Latest audit" fill={token('--ink')} barSize={12} />
-              {hasPrevious ? <Bar isAnimationActive={false} dataKey="previous" name="Previous audit" fill={token('--ink-3')} barSize={12} /> : null}
+              {hasPrevious ? <Bar isAnimationActive={false} dataKey="previous" name="Previous audit" fill={token('--muted')} barSize={12} /> : null}
             </BarChart>
           </ResponsiveContainer>
         </DatasetCard>
@@ -623,12 +620,12 @@ function UnitContext({ unitId, latestShown }: { unitId: string; latestShown: boo
       >
         <ResponsiveContainer width="100%" height={height(stages.length)}>
           <BarChart data={stages} layout="vertical" accessibilityLayer={false} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-            <CartesianGrid horizontal={false} stroke={token('--edge-soft')} />
-            <XAxis type="number" allowDecimals={false} stroke={token('--ink-3')} />
-            <YAxis dataKey="stage" type="category" width={110} interval={0} stroke={token('--ink-3')} />
+            <CartesianGrid horizontal={false} stroke={token('--rule-soft')} />
+            <XAxis type="number" allowDecimals={false} stroke={token('--muted')} />
+            <YAxis dataKey="stage" type="category" width={110} interval={0} stroke={token('--muted')} />
             <Tooltip contentStyle={TOOLTIP} />
             {valueAxis(token, 56, (index) => COUNT.format(stages[index]?.count ?? 0))}
-            <Bar isAnimationActive={false} dataKey="count" name="Corrective actions" fill={token('--ink-3')} barSize={16} />
+            <Bar isAnimationActive={false} dataKey="count" name="Corrective actions" fill={token('--muted')} barSize={16} />
           </BarChart>
         </ResponsiveContainer>
       </DatasetCard>
@@ -648,19 +645,19 @@ function ScoreBars({ rows }: { rows: Array<{ name: string; score: number | null;
   return (
     <ResponsiveContainer width="100%" height={rows.length * 48 + 56}>
       <BarChart data={rows} layout="vertical" accessibilityLayer={false} margin={{ top: 18, right: 4, left: 4, bottom: 0 }}>
-        <CartesianGrid horizontal={false} stroke={token('--edge-soft')} />
-        <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--ink-3')} />
-        <YAxis dataKey="name" type="category" width={170} interval={0} tick={NameTick} stroke={token('--ink-3')} />
+        <CartesianGrid horizontal={false} stroke={token('--rule-soft')} />
+        <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--muted')} />
+        <YAxis dataKey="name" type="category" width={170} interval={0} tick={NameTick} stroke={token('--muted')} />
         {valueAxis(token, 48, (index) => pct(rows[index]?.score ?? null, ''))}
         <Tooltip contentStyle={TOOLTIP} formatter={(value) => [pct(asScore(value)), 'Score']} />
-        <ReferenceLine x={TARGET} stroke={token('--crit-band')} strokeDasharray="4 4" label={targetLabel(token)} />
+        <ReferenceLine x={TARGET} stroke={token('--band-needs-support')} strokeDasharray="4 4" label={targetLabel(token)} />
         <Bar isAnimationActive={false} dataKey="score" name="Score" barSize={16}>
           {/* A highlighted row keeps its band colour — the band is what the colour means —
               and is marked by an ink outline instead, so it reads without colour. */}
           {rows.map((row, index) => (
             <Cell
               key={index}
-              fill={token(BAND_TOKEN[bandOf(row.score)])}
+              fill={token(bandToken(bandOf(row.score)))}
               stroke={row.highlighted ? token('--ink') : undefined}
               strokeWidth={row.highlighted ? 2 : 0}
             />
@@ -710,8 +707,8 @@ function rankingAlt(what: string, rows: Array<{ name: string; score: number | nu
 
 /** A tooltip on the board is a small magnet: tile ground, hard ink edge, no radius. */
 const TOOLTIP = {
-  background: 'var(--tile)',
-  border: '1.5px solid var(--edge)',
+  background: 'var(--surface)',
+  border: '1.5px solid var(--rule)',
   borderRadius: 0,
   color: 'var(--ink)',
   fontSize: 12.5,
@@ -766,12 +763,12 @@ function DatasetCard({ title, note, rows, filename, alt, tools, children }: {
       </div>} />
       {table ? <Table><thead><tr>{headers.map((header) => <Th key={header}>{label(header)}</Th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{headers.map((header) => <Td key={header}>{display(row[header])}</Td>)}</tr>)}</tbody></Table>
         : <div className="p-3" role={alt ? 'img' : undefined} aria-label={alt}>{children}</div>}
-      {rows.length === 0 ? <p className="p-4 text-sm text-ink-3">No data in this period.</p> : null}
+      {rows.length === 0 ? <p className="p-4 text-sm text-muted">No data in this period.</p> : null}
     </Card>
   );
 }
 
-/** One decimal in tiles and charts (GEMBA §3); `null` is N/A, never 0. */
+/** One decimal in tiles and charts (R-45); `null` is N/A, never 0. */
 function pct(value: number | null, unit = '%'): string { return value === null ? 'N/A' : `${formatScore(value)}${unit}`; }
 function asScore(value: unknown): number | null { return typeof value === 'number' ? value : null; }
 /** A bar's name on the axis: up to three lines, then an ellipsis; the whole name on hover (AN4). */

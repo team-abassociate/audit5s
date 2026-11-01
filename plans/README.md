@@ -1,5 +1,9 @@
 # Motion plans — UX audit 2026-10-03 (report §10.2, M1–M5)
 
+> **Superseded design (2026-11-01, DECISIONS.md R-76):** the Gemba Board this plan quotes is
+> retired. Design rules are now [`docs/design/LEDGER.md`](../docs/design/LEDGER.md); read Gemba
+> references below as history, not as rules.
+
 > **Branch rule (owner, 2026-10-31):** one team, one flow. Cut a short branch from
 > `origin/main` for each change and open its PR straight into `main`. There is no device split:
 > no per-person branches, no folder ownership, anyone works on any part of the repo. `main`

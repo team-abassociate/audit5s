@@ -15,23 +15,24 @@ only what is specific to the field mobile app.
 
 ## UI is built from the design system
 
-[`docs/design/GEMBA-BOARD.md`](../../docs/design/GEMBA-BOARD.md) is binding, including §8
-"Porting the tokens", which is the only sanctioned way to get these values into React Native.
+[`DESIGN.md`](../../DESIGN.md) locks the system; [`docs/design/LEDGER.md`](../../docs/design/LEDGER.md)
+is binding. `src/lib/ledger.ts` is the React Native port of `docs/design/ledger-tokens.css`
+(same roles, camelCase), read through `useTheme()` in `src/lib/theme.ts`.
 
-- Import the exported token object. **Never retype a hex value into a StyleSheet.**
-- **No `borderRadius`.** Zero is the only value in this product.
-- **The hard shadow, by platform.** iOS: `shadowOffset:{width:3,height:3}`, `shadowRadius:0`,
-  `shadowOpacity:1`, `shadowColor:"rgba(29,27,22,0.22)"`. Android: `elevation` is always
-  blurred and is therefore banned — use a second absolutely-positioned `View` offset 3px
-  behind the tile.
-- **Two families only**, loaded through `expo-font`: Archivo (display figures at weight 900)
-  and DM Mono (small data). Load the static weights on mobile; the variable width axis is a
-  web-only signature.
-- **Touch targets are 48px minimum**, and the primary action sits within thumb reach at the
+- **Never retype a hex value, radius or duration into a StyleSheet.** Use `theme.color.*`,
+  `theme.radius.*`, `theme.dur.*`, `theme.family.*`.
+- **Shape from the scale:** 22 big cards · 18 cards · 14 panels · 10 controls · 6 chips ·
+  999 pills. Cards are flat; no shadows, no `elevation`.
+- **Manrope only** (`@expo-google-fonts/manrope`, loaded in `app/_layout.tsx`); figures
+  tabular, headline numbers 600.
+- **Four score bands, four colours:** `bandOf()` returns the band, `bandInk` / `bandFill` /
+  `bandTint` its colours; a status that is not a score passes a tone (`ok` / `warn` / `crit`).
+  The band label is always shown. Past-due is `primaryInk` plus the words, never red.
+- **Press feedback** is a short scale/opacity change (Reanimated), never a translate.
+- **Touch targets are 48dp minimum**, and the primary action sits within thumb reach at the
   bottom of the screen, not in a header.
-- **Status reads without colour** — band, rail, chip or hatch — because the phone will be used
-  in direct sunlight on a shop floor.
 - **An all-`NA` section is `N/A` on a hatch and excluded from the average**, never 0.
-- Theme follows the OS via `useColorScheme()`; both palettes come from the same exported object.
+- The theme follows the phone's setting; Profile → Theme overrides it (`theme-choice.ts`).
+  Both palettes come from `ledger.ts`.
 
-Definition of done for a UI task is the acceptance checklist in `GEMBA-BOARD.md`.
+Definition of done for a UI task is the "Done means" list in `LEDGER.md`.

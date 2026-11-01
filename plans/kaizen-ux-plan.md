@@ -1,5 +1,9 @@
 # Kaizen field app — UX plan (2026-10-10)
 
+> **Superseded design (2026-11-01, DECISIONS.md R-76):** the Gemba Board this plan quotes is
+> retired. Design rules are now [`docs/design/LEDGER.md`](../docs/design/LEDGER.md); read Gemba
+> references below as history, not as rules.
+
 > **Branch rule:** see the top of [`CLAUDE.md`](../CLAUDE.md).
 
 This file is

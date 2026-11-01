@@ -55,6 +55,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-62 | A photo survives the app being removed, and may join a finished audit | Settled |
 | R-61 | A Zone Leader may correct their own completed audit | Settled |
 | R-63 | An imported Zone list makes its leaders' accounts; two leaders make subzones | Settled |
+| R-76 | The Gemba Board is retired; Ledger is the design system | Settled |
 
 ---
 
@@ -2865,3 +2866,33 @@ board at each Zone and for management reviewing months of audits at once.
   table carries every figure. The selection is stored on the snapshot
   (`selected_audit_zone_ids` or the new `selected_snapshot_ids`), so a regeneration is the
   same document. Super Admin only, as every report (N5).
+
+## R-76 — The Gemba Board is retired; Ledger is the design system
+
+**Ruled 2026-11-01 by the owner, final.** The Gemba Board (`docs/design/GEMBA-BOARD.md`,
+`gemba-tokens.css`, `reference-dashboard.html`, `apps/field-mobile/src/lib/gemba.ts`) is
+retired in full and deleted. None of its rules survive: not the square corners, the hard
+offset shadows, the press-translate, Archivo + DM Mono, the teal focus accent, the yellow
+slip, the board grid, "colour only for score bands" as worded there, or its dark palette.
+
+- **The system is Ledger**, drawn on the owner's design board ("M · Maroon #882627 + Orange
+  #FFB380", light and dark): maroon primary, apricot secondary, pale-apricot soft panels,
+  Manrope only, radius scale 22 / 18 / 14 / 10 / 6 / 999, flat cards, one soft shadow on the
+  app frame, 16px 1.5-stroke icons. Rules: `docs/design/LEDGER.md`; tokens:
+  `docs/design/ledger-tokens.css` and `apps/field-mobile/src/lib/ledger.ts`; locked in
+  `DESIGN.md`.
+- **Four score bands, four colours.** Outstanding and On Track no longer share a green:
+  On Track is blue. `packages/domain` `RATING_BANDS` stays the single definition of the light
+  values; a test fails if the token files drift from it or a dark pair falls below 4.5:1
+  (3:1 for bars). The band label is still shown wherever a score is.
+- **Light and dark both ship**, as Ledger palettes; dark is its own palette, never an
+  inversion. The theme now **follows the device setting** by default (web and phone), and
+  the existing manual override (the web shell's switch; Profile → Theme on the phone) wins.
+  This replaces the light-by-default rule of 2026-09-20.
+- **Past-due text is maroon** (`--primary-ink`, apricot in dark) plus the words "past due",
+  not red, because red is a score colour. Open for the owner: the board draws it red.
+- **Carried over unchanged:** R-45 (a), (b), (c) — one-decimal tiles, 12-hour times, Noto Sans
+  Devanagari for Devanagari text only — and R-45 (h), green means Approved in Kaizen (now the
+  Outstanding green). Earlier resolutions that cite `GEMBA-BOARD.md` sections are historical.
+- **Not changed:** the printed report's palette (`BRAND_TOKENS` in `packages/domain`) and its
+  fonts.

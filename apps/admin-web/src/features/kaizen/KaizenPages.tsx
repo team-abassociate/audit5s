@@ -206,24 +206,24 @@ function KaizenRows({
               <button type="button" className="gb-rowtoggle" aria-current={openId === kaizen.id ? 'true' : undefined} onClick={() => onOpen(kaizen.id)}>
                 {kaizen.theme ?? '—'}
               </button>
-              <div className="gb-data text-xs text-ink-3">{kaizen.kaizenNo}</div>
+              <div className="gb-data text-xs text-muted">{kaizen.kaizenNo}</div>
             </Td>
             <Td>
               <StatusChip kind="kaizen" status={kaizen.status} />
             </Td>
             <Td>
               {kaizen.authorName}
-              <div className="text-xs text-ink-3">{zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName)}</div>
+              <div className="text-xs text-muted">{zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName)}</div>
             </Td>
             <Td className="gb-data text-right">{kaizen.annualSaving === null ? '—' : formatRupees(kaizen.annualSaving)}</Td>
             <Td className="gb-data">
               {kaizen.submittedAt ? formatDate(kaizen.submittedAt) : '—'}
               {/* R-69: how long it has waited, and an approved one whose check is due. */}
               {kaizen.status === 'SUBMITTED' && (
-                <div className="text-xs text-ink-3">{waitedFor(kaizen.updatedAt)}</div>
+                <div className="text-xs text-muted">{waitedFor(kaizen.updatedAt)}</div>
               )}
               {kaizen.nextSustainCheck?.due && (
-                <div className="text-xs text-ink-3">{kaizen.nextSustainCheck.dayMark}-day check due</div>
+                <div className="text-xs text-muted">{kaizen.nextSustainCheck.dayMark}-day check due</div>
               )}
             </Td>
           </tr>
@@ -341,7 +341,7 @@ function LeaderOverview() {
   );
 }
 
-/** Label, figure (Archivo 900), one line of context, then the band: the board's KPI tile. */
+/** Label, figure (Manrope 600), one line of context, then the band: the board's KPI tile. */
 function LeaderTile({ label, value, context, band }: { label: string; value: number; context: string; band: 'ok' | 'warn' | 'crit' | 'none' }) {
   return (
     <div className={`gb-tile gb-kpi gb-${band}`}>

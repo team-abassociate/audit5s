@@ -8,13 +8,13 @@ import type {
 import { bandOf, type Band } from '@/lib/bands';
 import { formatScore } from '@audit5s/domain';
 
-export { bandLabel, bandOf, type Band } from '@/lib/bands';
+export { bandLabel, bandOf, type Band, type Tone } from '@/lib/bands';
 
 /**
  * The board's pure part: everything that turns server payloads into the shapes
  * `DashboardPage` renders. Kept out of the component so it can be checked without a DOM
  * (board.test.ts), and so that nothing here can be tempted to compute a score — the
- * server owns those (GEMBA-BOARD.md §3, ARCHITECTURE.md §8.6).
+ * server owns those (ARCHITECTURE.md §8.6).
  */
 
 /** One decimal in tiles and charts (§3). `null` is `N/A`, never `0`. */
@@ -167,10 +167,8 @@ export function worstIndex(board: BoardZone[]): number {
 }
 
 /**
- * The Outstanding boundary (R-6b, ≥ 90) is the target rule on the trend. GEMBA-BOARD.md §6
- * draws that rule at 85, a number this product's rating scale does not contain; the scale
- * wins on behaviour (R-1) and the design system on how the rule is drawn — dashed,
- * `--crit-band`, labelled.
+ * The Outstanding boundary (R-6b, ≥ 90) is the target rule on the trend: the rating scale
+ * sets where it is (R-1), the design system how it is drawn — dashed and labelled.
  */
 export const TARGET = 90;
 

@@ -100,7 +100,7 @@ export function FieldOverview() {
               void crossAudit.standing.refetch();
             }}
             colors={[theme.color.ink]}
-            progressBackgroundColor={theme.color.tile}
+            progressBackgroundColor={theme.color.surface}
           />
         }
       >

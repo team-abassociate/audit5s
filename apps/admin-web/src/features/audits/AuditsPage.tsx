@@ -275,7 +275,7 @@ export function AuditsPage() {
             </span>
           </div>
 
-          <details className="border-b border-edge-soft px-4 py-2 text-sm">
+          <details className="border-b border-rule-soft px-4 py-2 text-sm">
             <summary className="cursor-pointer text-ink-2">What the statuses mean</summary>
             <dl className="mt-2 grid gap-x-4 gap-y-2 pb-2 sm:grid-cols-[auto_1fr]">
               {STATUS_MEANING.map(([value, meaning]) => (
@@ -363,14 +363,14 @@ export function AuditsPage() {
                         {audit.zoneCodes?.length ? (
                           <span className="block text-sm font-medium">{zonesLine(audit.zoneCodes)}</span>
                         ) : null}
-                        <span className="block text-xs text-ink-3">
+                        <span className="block text-xs text-muted">
                           {AUDIT_TYPE_LABEL[audit.auditType]}
                           <span className={SHOW_AUDITOR}> · {audit.auditorName}</span>
                         </span>
                       </Td>
                       <Td className={HIDE_AUDITOR}>
                         {audit.auditorName}
-                        {size > 1 && <span className="block text-xs text-ink-3">team of {size}</span>}
+                        {size > 1 && <span className="block text-xs text-muted">team of {size}</span>}
                       </Td>
                       <Td>
                         <StatusChip kind="audit" status={audit.status} />
@@ -516,10 +516,10 @@ export function rowToggleProps(onToggle: () => void) {
  */
 export function ScoreCell({ audit }: { audit: Audit }) {
   if (!audit.scored) {
-    return <span className="text-ink-3">Not scored</span>;
+    return <span className="text-muted">Not scored</span>;
   }
   if (audit.status === 'CANCELLED' || (audit.status !== 'COMPLETED' && audit.totals.maxScore === 0)) {
-    return <span className="text-ink-3">—</span>;
+    return <span className="text-muted">—</span>;
   }
   const percentage = audit.totals.scorePercentage;
   return (
@@ -560,20 +560,20 @@ function AssignmentRow({
       <tr
         ref={targeted ? scrollIntoViewOnce : undefined}
         onClick={rowToggleProps(onToggle).onClick}
-        className={cn('cursor-pointer border-t border-edge-soft', targeted && 'gb-row--target', open && 'gb-row--open')}
+        className={cn('cursor-pointer border-t border-rule-soft', targeted && 'gb-row--target', open && 'gb-row--open')}
       >
         <Td>
           <RowToggle open={open} onClick={onToggle}>
             {assignment.unitName}
           </RowToggle>
-          <span className="block text-xs text-ink-3">{AUDIT_TYPE_LABEL[assignment.auditType]}</span>
+          <span className="block text-xs text-muted">{AUDIT_TYPE_LABEL[assignment.auditType]}</span>
         </Td>
         <Td>
           <div className="flex flex-wrap items-center gap-2">
             {assignment.auditorName}
             {others.length > 0 && (
               <span
-                className="text-xs text-ink-3"
+                className="text-xs text-muted"
                 title={`Same audit as ${others.map((member) => member.auditorName).join(', ')}`}
               >
                 + {others.map((member) => member.auditorName).join(', ')}

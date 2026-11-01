@@ -176,8 +176,8 @@ function dayKey(iso: string): string {
 
 const useStyles = createThemedStyles((theme) => ({
   picker: { gap: theme.space.sm },
-  group: { gap: theme.space.sm, paddingTop: theme.space.sm, borderTopWidth: 1, borderTopColor: theme.color.edgeSoft },
+  group: { gap: theme.space.sm, paddingTop: theme.space.sm, borderTopWidth: 1, borderTopColor: theme.color.ruleSoft },
   groupHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.space.sm },
   groupText: { flexShrink: 1 },
-  groupTitle: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
+  groupTitle: { fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink },
 }));

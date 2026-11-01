@@ -89,7 +89,7 @@ function ForgotPassword() {
 
   if (sent) {
     return (
-      <p className="mt-4 border-t border-edge-soft pt-3 text-sm text-ink-2">
+      <p className="mt-4 border-t border-rule-soft pt-3 text-sm text-ink-2">
         If that login ID has an email address on file, a reset link is on its way. It works once
         and expires within the hour.
       </p>
@@ -100,7 +100,7 @@ function ForgotPassword() {
     return (
       <button
         type="button"
-        className="mt-4 border-t border-edge-soft pt-3 text-sm text-ink-2 underline"
+        className="mt-4 border-t border-rule-soft pt-3 text-sm text-ink-2 underline"
         onClick={() => setOpen(true)}
       >
         Forgot your password?
@@ -110,7 +110,7 @@ function ForgotPassword() {
 
   return (
     <form
-      className="mt-4 space-y-2 border-t border-edge-soft pt-3"
+      className="mt-4 space-y-2 border-t border-rule-soft pt-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (loginId.trim()) request.mutate(loginId.trim());

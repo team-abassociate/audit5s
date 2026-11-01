@@ -141,10 +141,10 @@ export function IndustriesPage() {
                           </span>
                         )}
                         {industry.description && (
-                          <div className="text-xs text-ink-3">{industry.description}</div>
+                          <div className="text-xs text-muted">{industry.description}</div>
                         )}
                       </Td>
-                      <Td className="font-mono text-xs">{industry.code}</Td>
+                      <Td className="tabular-nums text-xs">{industry.code}</Td>
                       <Td className="gb-data">{industry.templateCount}</Td>
                       <Td className="gb-data">
                         {industry.unitCount > 0 ? (
@@ -195,7 +195,7 @@ export function IndustriesPage() {
                     </tr>
                     {choosing === industry.id && (
                       <tr>
-                        <td colSpan={5} className="bg-board p-0">
+                        <td colSpan={5} className="bg-ground p-0">
                           <ChooseChecklists
                             industry={industry}
                             onSaved={async () => {
@@ -286,8 +286,8 @@ function ChooseChecklists({
               />
               <span>
                 <span className="text-ink">{template.name}</span>{' '}
-                <span className="font-mono text-xs text-ink-3">{template.code}</span>
-                <span className="block text-xs text-ink-3">
+                <span className="tabular-nums text-xs text-muted">{template.code}</span>
+                <span className="block text-xs text-muted">
                   {others.length > 0
                     ? `Also: ${others.map((row) => row.name).join(', ')}`
                     : template.industries.length === 0
@@ -353,7 +353,7 @@ function AddIndustry({ onAdded }: { onAdded: () => Promise<void> }) {
           />
         </Field>
         <Field label="Code" hint="Made from the name; edit it if you like." error={fieldErrors.code}>
-          <Input className="font-mono" {...register('code')} />
+          <Input className="tabular-nums" {...register('code')} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Description" error={fieldErrors.description}>

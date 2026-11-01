@@ -311,10 +311,10 @@ const useStyles = createThemedStyles((theme) => ({
   centered: { alignItems: 'center', justifyContent: 'center' },
   content: { paddingBottom: theme.space.xl },
   band: { marginTop: 10, marginBottom: theme.space.md },
-  item: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.color.edgeSoft, gap: 2 },
+  item: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.color.ruleSoft, gap: 2 },
   itemLast: { borderBottomWidth: 0, paddingBottom: 0 },
   itemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.space.sm },
-  itemTitle: { flexShrink: 1, fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
+  itemTitle: { flexShrink: 1, fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink },
   itemAction: { marginTop: theme.space.sm },
   actions: { gap: theme.space.sm, marginTop: theme.space.sm },
 }));

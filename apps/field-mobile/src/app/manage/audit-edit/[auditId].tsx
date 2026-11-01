@@ -196,12 +196,12 @@ const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.lg },
   questionHead: { flexDirection: 'row', gap: 10, marginBottom: theme.space.md },
   questionNumber: {
-    fontFamily: theme.family.monoMedium,
+    fontFamily: theme.family.medium,
     fontSize: 13,
     lineHeight: 22,
-    color: theme.color.ink3,
+    color: theme.color.muted,
     fontVariant: ['tabular-nums'],
   },
-  question: { flex: 1, fontFamily: theme.family.medium, fontSize: theme.font.base, lineHeight: 22, color: theme.color.ink },
+  question: { flex: 1, fontFamily: theme.family.semibold, fontSize: theme.font.base, lineHeight: 22, color: theme.color.ink },
   lastField: { marginBottom: 0 },
 }));

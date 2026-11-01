@@ -6,12 +6,11 @@ import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Alert, AppState, LogBox, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as Updates from 'expo-updates';
-import { Archivo_400Regular } from '@expo-google-fonts/archivo/400Regular';
-import { Archivo_600SemiBold } from '@expo-google-fonts/archivo/600SemiBold';
-import { Archivo_800ExtraBold } from '@expo-google-fonts/archivo/800ExtraBold';
-import { Archivo_900Black } from '@expo-google-fonts/archivo/900Black';
-import { DMMono_400Regular } from '@expo-google-fonts/dm-mono/400Regular';
-import { DMMono_500Medium } from '@expo-google-fonts/dm-mono/500Medium';
+import { Manrope_400Regular } from '@expo-google-fonts/manrope/400Regular';
+import { Manrope_500Medium } from '@expo-google-fonts/manrope/500Medium';
+import { Manrope_600SemiBold } from '@expo-google-fonts/manrope/600SemiBold';
+import { Manrope_700Bold } from '@expo-google-fonts/manrope/700Bold';
+import { Manrope_800ExtraBold } from '@expo-google-fonts/manrope/800ExtraBold';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack, useGlobalSearchParams, useRouter, useSegments, type Href } from 'expo-router';
 import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -205,7 +204,7 @@ function AuthGate() {
 
   if (status === 'loading') {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.board }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.color.ground }}>
         <ActivityIndicator color={theme.color.ink} />
       </View>
     );
@@ -228,7 +227,7 @@ function AuthGate() {
       <SafeAreaInsetsContext.Provider value={showBar ? { ...insets, top: 0 } : insets}>
         <Stack
           screenOptions={{
-            headerStyle: { backgroundColor: theme.color.tile2 },
+            headerStyle: { backgroundColor: theme.color.chip },
             headerTintColor: theme.color.ink,
             headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
             headerShadowVisible: false,
@@ -236,7 +235,7 @@ function AuthGate() {
             // reads the window inset itself, ignoring the zeroed context above, so without
             // this every pushed screen carried a second status-bar-high band over its title.
             unstable_nativeProps: { headerConfig: { disableTopInsetApplication: showBar } },
-            contentStyle: { backgroundColor: theme.color.board },
+            contentStyle: { backgroundColor: theme.color.ground },
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -256,12 +255,11 @@ export default function RootLayout() {
   }, []);
 
   const [fontsLoaded, fontError] = useFonts({
-    Archivo_400Regular,
-    Archivo_600SemiBold,
-    Archivo_800ExtraBold,
-    Archivo_900Black,
-    DMMono_400Regular,
-    DMMono_500Medium,
+    Manrope_400Regular,
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
   });
 
   if (!fontsLoaded && !fontError) return null;

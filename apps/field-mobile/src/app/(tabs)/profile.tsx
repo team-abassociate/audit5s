@@ -240,9 +240,9 @@ const useStyles = createThemedStyles((theme) => ({
   cardAction: { marginTop: theme.space.md },
   linkRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   version: {
-    fontFamily: theme.family.mono,
+    fontFamily: theme.family.regular,
     fontSize: 11.5,
-    color: theme.color.ink3,
+    color: theme.color.muted,
     textAlign: 'center',
     marginTop: theme.space.lg,
   },

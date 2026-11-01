@@ -24,15 +24,15 @@ export default function KaizenTabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: theme.color.tile2 },
+        headerStyle: { backgroundColor: theme.color.chip },
         headerTintColor: theme.color.ink,
         headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
         headerShadowVisible: false,
-        sceneStyle: { backgroundColor: theme.color.board },
+        sceneStyle: { backgroundColor: theme.color.ground },
         tabBarStyle: tabBarStyle(theme),
         tabBarLabelStyle: { fontFamily: theme.family.bold, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase' },
         tabBarActiveTintColor: theme.color.ink,
-        tabBarInactiveTintColor: theme.color.ink3,
+        tabBarInactiveTintColor: theme.color.muted,
       }}
     >
       <Tabs.Screen name="overview" options={{ title: t.overview, tabBarIcon: tabIcon('overview') }} />

@@ -247,12 +247,9 @@ importers:
       '@audit5s/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@expo-google-fonts/archivo':
-        specifier: ^0.4.2
-        version: 0.4.2
-      '@expo-google-fonts/dm-mono':
-        specifier: ^0.4.2
-        version: 0.4.2
+      '@expo-google-fonts/manrope':
+        specifier: ^0.4.3
+        version: 0.4.3
       '@expo/vector-icons':
         specifier: ^15.1.1
         version: 15.1.1(expo-font@57.0.4)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.2.3))(react@19.2.3)
@@ -1385,11 +1382,8 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@expo-google-fonts/archivo@0.4.2':
-    resolution: {integrity: sha512-FLhI4/ZVIFSHHxx15Z7Rr4QX/4ZrJozEebBEFSdHSRRwULGCuSIpbb3dz56Hslux6LZEnJ1mVpZ6CyVpUzLwIg==}
-
-  '@expo-google-fonts/dm-mono@0.4.2':
-    resolution: {integrity: sha512-loMaZOkQRs1r7yt4rN39zcr9e0J+smwnSx929yuODkuiPfsY4PaW18C9SEZ0BvXfcBKoRhatGoIBl8V2MOYVPQ==}
+  '@expo-google-fonts/manrope@0.4.3':
+    resolution: {integrity: sha512-Jvu9AYoSfjum1maq5JT01OLj1xlr90/tmb+6beHRhL1bC/lYzXMrieH6PzACP7YcE03PT9/Ks9l0WphoLEV/wg==}
 
   '@expo-google-fonts/material-symbols@0.4.46':
     resolution: {integrity: sha512-iUs7THR195BR5MT8n07cOVSEjAGKqAT5pUX07Li4Am8qYBJBNAJh49ejTTB3cSyvpKWl9+mwrBqKkirzlBtZmQ==}
@@ -7407,9 +7401,7 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@expo-google-fonts/archivo@0.4.2': {}
-
-  '@expo-google-fonts/dm-mono@0.4.2': {}
+  '@expo-google-fonts/manrope@0.4.3': {}
 
   '@expo-google-fonts/material-symbols@0.4.46': {}
 
@@ -9089,9 +9081,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.86.3': {}
 

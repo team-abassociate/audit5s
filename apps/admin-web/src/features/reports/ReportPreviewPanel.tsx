@@ -16,7 +16,7 @@ import {
   savePdf,
 } from './report-pdf';
 
-const ZOOM_KEY = 'gemba-report-zoom';
+const ZOOM_KEY = 'audit5s-report-zoom';
 
 /** The fixed scales on offer, `1` = 100%. − and + step between them from wherever the view is. */
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3] as const;

@@ -19,15 +19,10 @@ export const THEME_LABELS: Record<ThemePreference, string> = {
 };
 
 /**
- * The default, and it is **light** rather than the OS setting.
- *
- * GEMBA-BOARD §7 makes light the default on the web for the reason it is the default here
- * too: this is a document, and a document is white. A phone left on the system's dark mode
- * — many are, for battery — would otherwise open a 5S audit in dark grey, and §9 is
- * explicit that the field app's high-contrast values are a sunlight-and-gloves
- * requirement. Someone who wants dark still says so, and is then followed everywhere.
+ * The default follows the phone's setting (owner ruling 2026-11-01, R-76): Ledger ships a
+ * light and a dark palette, and Profile → Theme overrides it either way.
  */
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'light';
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'system';
 
 export function isThemePreference(value: unknown): value is ThemePreference {
   return THEME_PREFERENCES.includes(value as ThemePreference);

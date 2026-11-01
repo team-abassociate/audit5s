@@ -303,10 +303,10 @@ function Stepper({
             </li>
           </ul>
           {created.coordinator?.issued && (
-            <div className="border border-edge-soft bg-board p-3">
+            <div className="border border-rule-soft bg-ground p-3">
               <p className="font-medium">
                 {created.coordinator.fullName} signs in as{' '}
-                <span className="font-mono">{created.coordinator.issued.loginId}</span>
+                <span className="tabular-nums">{created.coordinator.issued.loginId}</span>
               </p>
               <p className="text-ink-2">
                 Their temporary password is their own mobile number. They must change it on first
@@ -330,7 +330,7 @@ function Stepper({
 
   return (
     <form onSubmit={next} noValidate>
-      <ol className="flex flex-wrap gap-x-4 gap-y-1 border-b border-edge-soft px-[18px] py-2 text-xs">
+      <ol className="flex flex-wrap gap-x-4 gap-y-1 border-b border-rule-soft px-[18px] py-2 text-xs">
         {STEPS.map((label, position) => (
           <li
             key={label}

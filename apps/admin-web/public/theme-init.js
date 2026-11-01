@@ -1,7 +1,8 @@
-// Apply the saved theme before the first paint. Kept external for a script-src 'self' CSP.
+// Apply a saved theme choice before the first paint; with none, the CSS follows the device
+// (docs/design/LEDGER.md, Themes). Kept external for a script-src 'self' CSP.
 try {
-  const mode = globalThis.localStorage.getItem('gemba-theme');
-  globalThis.document.documentElement.setAttribute('data-theme', mode === 'dark' ? 'dark' : 'light');
+  const mode = globalThis.localStorage.getItem('audit5s-theme');
+  if (mode === 'light' || mode === 'dark') globalThis.document.documentElement.setAttribute('data-theme', mode);
 } catch {
-  globalThis.document.documentElement.setAttribute('data-theme', 'light');
+  // No storage: the device setting decides.
 }

@@ -136,7 +136,7 @@ function resolve(props: StatusChipProps): { shape: StatusShape; label: ReactNode
 
 /**
  * A workflow status: an outlined chip in **ink**, with a shape glyph before the word (G12).
- * Never a band colour — green, amber and red mean a score band and nothing else (GEMBA §2.6),
+ * Never a band colour — green, amber and red mean a score band and nothing else (LEDGER.md rule 4),
  * so "Completed" is not green and "Cancelled" is not red. The word comes from
  * `lib/labels.ts`, so a status reads the same on every screen.
  *
@@ -194,9 +194,9 @@ function StatusGlyph({ shape }: { shape: StatusShape }) {
 }
 
 /**
- * A score's band, readable three ways at once (B2, GEMBA §2.8 and §3): the R-6b word, the band
- * colour, and a shape — ▲ Outstanding, ● On Track, ◆ Improving, ▼ Needs Support. The two upper
- * bands share `--ok`, so the word and the shape are what tell them apart. A fully-`NA` score
+ * A score's band, readable three ways at once (B2, LEDGER.md rule 3): the R-6b word, the band
+ * colour, and a shape — ▲ Outstanding, ● On Track, ◆ Improving, ▼ Needs Support. Each band has its
+ * own colour, and the word and the shape tell them apart without it. A fully-`NA` score
  * (`null`) is not a band: it reads `N/A` on the hatch, never "Needs Support".
  *
  * Plain text, not a bordered chip: a label is not a button (B10). The band is always computed

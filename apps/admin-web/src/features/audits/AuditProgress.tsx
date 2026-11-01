@@ -71,7 +71,7 @@ export function AuditProgress({ auditId, compact = false }: { auditId: string; c
                 <span className="min-w-0 flex-1 truncate">
                   {zone.zoneNameSnapshot}
                   {zone.zoneLeaderNameSnapshot ? (
-                    <span className="text-ink-3"> · {zone.zoneLeaderNameSnapshot}</span>
+                    <span className="text-muted"> · {zone.zoneLeaderNameSnapshot}</span>
                   ) : null}
                 </span>
                 <Badge tone={ZONE_STATUS_TONE[zone.status]}>{ZONE_STATUS_LABEL[zone.status]}</Badge>
@@ -140,7 +140,7 @@ export function CombinedSummaryButton({
   if (!can('report', 'generate')) return null;
 
   return (
-    <div className="space-y-3 border-t border-edge-soft pt-3">
+    <div className="space-y-3 border-t border-rule-soft pt-3">
       <div className="flex flex-wrap items-center gap-3">
         <Button
           variant={open ? 'secondary' : 'primary'}

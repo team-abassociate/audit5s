@@ -109,7 +109,7 @@ export function ChecklistsPage() {
 
         {/* Only worth showing once there is more than one sector to choose between. */}
         {(industries.data?.length ?? 0) > 1 && (
-          <div className="flex flex-wrap items-end gap-3 border-b border-edge-soft px-4 py-3">
+          <div className="flex flex-wrap items-end gap-3 border-b border-rule-soft px-4 py-3">
             <div className="w-64">
               <Field
                 label="Industry"
@@ -136,7 +136,7 @@ export function ChecklistsPage() {
         )}
 
         {templates.data && templates.data.data.length === 0 && (
-          <p className="px-4 py-6 text-sm text-ink-3">
+          <p className="px-4 py-6 text-sm text-muted">
             No checklists yet.
             {can('checklist_import', 'upload')
               ? ' Write one with New checklist, or import the department workbook.'
@@ -175,10 +175,10 @@ export function ChecklistsPage() {
                         {template.industries.length > 0 ? (
                           template.industries.map((industry) => industry.name).join(', ')
                         ) : (
-                          <span className="text-xs text-ink-3">Every industry</span>
+                          <span className="text-xs text-muted">Every industry</span>
                         )}
                       </Td>
-                      <Td className="font-mono text-xs [overflow-wrap:anywhere]">{template.code}</Td>
+                      <Td className="tabular-nums text-xs [overflow-wrap:anywhere]">{template.code}</Td>
                       <Td>
                         {template.publishedVersionNumber
                           ? `v${template.publishedVersionNumber}`
@@ -349,14 +349,14 @@ function QuestionList({ versionId }: { versionId: string }) {
     <div className="space-y-3">
       <div>
         <h3 className="gb-h2">Questions — v{detail.data.versionNumber}</h3>
-        <p className="text-xs text-ink-3">
+        <p className="text-xs text-muted">
           The English of a published version never changes. Hindi and Marathi can be corrected
           here.
         </p>
       </div>
       {S_SECTION_ORDER.map((section) => (
         <div key={section}>
-          <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">
+          <p className="text-xs font-semibold tracking-wide text-muted uppercase">
             {SECTION_LABEL[section]}
           </p>
           <ol className="mt-1 space-y-0.5">
@@ -408,19 +408,19 @@ function QuestionRow({ question }: { question: ChecklistQuestion }) {
   });
 
   return (
-    <li className="border-b border-edge-soft py-1.5 text-sm text-ink-2">
+    <li className="border-b border-rule-soft py-1.5 text-sm text-ink-2">
       <div className="flex items-start gap-2">
-        <span className="font-mono text-xs text-ink-3">{question.globalOrder}</span>
+        <span className="tabular-nums text-xs text-muted">{question.globalOrder}</span>
         <div className="flex-1 space-y-0.5">
           <div className="text-ink">{question.text}</div>
           {!editing &&
             LANGUAGES.map(({ key, label }) => (
               <div key={key} className="text-sm">
-                <span className="mr-1 text-xs text-ink-3">{label}:</span>
+                <span className="mr-1 text-xs text-muted">{label}:</span>
                 {question.translations?.[key] ? (
                   <span lang={key}>{question.translations[key]}</span>
                 ) : (
-                  <span className="text-xs text-ink-3">not translated</span>
+                  <span className="text-xs text-muted">not translated</span>
                 )}
               </div>
             ))}

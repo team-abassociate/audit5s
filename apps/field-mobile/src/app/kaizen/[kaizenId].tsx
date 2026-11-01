@@ -427,9 +427,9 @@ const useStyles = createThemedStyles((theme) => ({
   theme: { fontFamily: theme.family.bold, fontSize: theme.font.heading, lineHeight: 24, color: theme.color.ink, marginBottom: theme.space.xs },
   pair: { flexDirection: 'row', gap: theme.space.sm, marginVertical: theme.space.md },
   photoBox: { flex: 1 },
-  photo: { aspectRatio: 1, borderWidth: 1.5, borderColor: theme.color.edge, backgroundColor: theme.color.tile2, overflow: 'hidden' },
+  photo: { aspectRatio: 1, borderWidth: 1.5, borderColor: theme.color.rule, backgroundColor: theme.color.chip, overflow: 'hidden' },
   image: { width: '100%', height: '100%' },
   photoPressed: { borderColor: theme.color.ink, opacity: 0.85 },
-  row: { paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.color.edgeSoft },
+  row: { paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.color.ruleSoft },
   value: { fontFamily: theme.family.regular, fontSize: theme.font.base, lineHeight: 22, color: theme.color.ink },
 }));

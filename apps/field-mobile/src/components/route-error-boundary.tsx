@@ -1,6 +1,6 @@
 import { ScrollView, Text, View } from 'react-native';
 import type { ErrorBoundaryProps } from 'expo-router';
-import { gemba, gembaFonts } from '../lib/gemba';
+import { ledger, ledgerFonts, ledgerRadius } from '../lib/ledger';
 
 /**
  * What a render crash looks like instead of a white screen.
@@ -17,36 +17,36 @@ import { gemba, gembaFonts } from '../lib/gemba';
  *
  * It deliberately uses the token object directly rather than `useTheme()`. The boundary has
  * to render when the tree below it — theme provider included — is the thing that failed, so
- * it cannot depend on context. Values still come from the design system: `gemba.ts` is the
- * React Native port of `gemba-tokens.css` (GEMBA-BOARD.md §8), so there is no literal here.
+ * it cannot depend on context. Values still come from the design system: `ledger.ts` is the
+ * React Native port of `ledger-tokens.css` (docs/design/LEDGER.md), so there is no literal here.
  */
 export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
-  const t = gemba.light;
+  const t = ledger.light;
 
   // Same text logcat gets, so a device that cannot be read over someone's shoulder can be
   // read over adb.
   console.error('[audit5s] render failed:', error?.message, error?.stack);
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.board, padding: 16, justifyContent: 'center' }}>
-      <View style={{ backgroundColor: t.tile, borderWidth: 1.5, borderColor: t.edge, padding: 14 }}>
-        <Text style={{ fontFamily: gembaFonts.bold, fontSize: 10.5, letterSpacing: 1.4, color: t.ink3 }}>
-          SOMETHING BROKE
+    <View style={{ flex: 1, backgroundColor: t.ground, padding: 16, justifyContent: 'center' }}>
+      <View style={{ backgroundColor: t.surface, borderWidth: 1, borderColor: t.rule, borderRadius: ledgerRadius.card, padding: 14 }}>
+        <Text style={{ fontFamily: ledgerFonts.semibold, fontSize: 12, color: t.muted }}>
+          Something broke
         </Text>
-        <Text style={{ fontFamily: gembaFonts.bold, fontSize: 17, color: t.ink, marginTop: 6 }}>
+        <Text style={{ fontFamily: ledgerFonts.bold, fontSize: 17, color: t.ink, marginTop: 6 }}>
           This screen could not open
         </Text>
-        <Text style={{ fontFamily: gembaFonts.regular, fontSize: 13, color: t.ink2, marginTop: 8, lineHeight: 19 }}>
+        <Text style={{ fontFamily: ledgerFonts.regular, fontSize: 13, color: t.ink2, marginTop: 8, lineHeight: 19 }}>
           Nothing you saved has been lost — audits stay on this device until they sync. Show
           this message to whoever supports the app.
         </Text>
 
-        <ScrollView style={{ maxHeight: 220, marginTop: 12, backgroundColor: t.tile2, padding: 10 }}>
-          <Text selectable style={{ fontFamily: gembaFonts.mono, fontSize: 11, color: t.crit }}>
+        <ScrollView style={{ maxHeight: 220, marginTop: 12, backgroundColor: t.chip, borderRadius: ledgerRadius.control, padding: 10 }}>
+          <Text selectable style={{ fontFamily: ledgerFonts.regular, fontSize: 11, color: t.needsSupport }}>
             {error?.message ?? 'Unknown error'}
           </Text>
           {error?.stack ? (
-            <Text selectable style={{ fontFamily: gembaFonts.mono, fontSize: 10, color: t.ink3, marginTop: 8 }}>
+            <Text selectable style={{ fontFamily: ledgerFonts.regular, fontSize: 10, color: t.muted, marginTop: 8 }}>
               {error.stack}
             </Text>
           ) : null}
@@ -58,13 +58,14 @@ export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
           style={{
             marginTop: 14,
             textAlign: 'center',
-            fontFamily: gembaFonts.bold,
+            fontFamily: ledgerFonts.bold,
             fontSize: 12.5,
             color: t.ink,
-            borderWidth: 1.5,
-            borderColor: t.edge,
-            backgroundColor: t.tile,
-            paddingVertical: 9,
+            borderWidth: 1,
+            borderColor: t.rule,
+            borderRadius: ledgerRadius.control,
+            backgroundColor: t.surface,
+            paddingVertical: 12,
           }}
         >
           Try again

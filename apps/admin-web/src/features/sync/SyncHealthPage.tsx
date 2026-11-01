@@ -364,14 +364,14 @@ function AwaitingSelfie({ phoneName }: { phoneName: (id: string | null) => strin
                   <Link to="/audits" search={{ audit: row.auditId } as never}>
                     {auditTypeLabel(row.auditType)} · {row.unitName}
                   </Link>
-                  <div className="text-xs text-ink-3">
+                  <div className="text-xs text-muted">
                     {row.zonesReceived} Zone{row.zonesReceived === 1 ? '' : 's'} received
                   </div>
                 </td>
                 <td>{row.auditorName}</td>
                 <td>
                   {phoneName(row.deviceId)}
-                  <div className="text-xs text-ink-3">
+                  <div className="text-xs text-muted">
                     {lastSynced(row.deviceLastSyncAt)}
                   </div>
                 </td>
@@ -438,7 +438,7 @@ function ConflictRow({
     <>
       <tr {...rowToggleProps(onToggle)} className={cn('cursor-pointer align-top', expanded && 'gb-row--open')}>
         <td>
-          <span className="font-mono text-xs whitespace-nowrap">{formatDateTime(conflict.createdAt)}</span>
+          <span className="tabular-nums text-xs whitespace-nowrap">{formatDateTime(conflict.createdAt)}</span>
         </td>
         <td>
           <span className="font-medium">{syncEntityLabel(conflict.entityType)}</span>
@@ -471,7 +471,7 @@ function ConflictRow({
         </td>
         <td>
           {conflict.userName ?? 'Unknown person'}
-          <div className="text-xs text-ink-3">{phoneName}</div>
+          <div className="text-xs text-muted">{phoneName}</div>
         </td>
         <td>
           {conflict.resolvedAt ? (
@@ -483,7 +483,7 @@ function ConflictRow({
           ) : (
             <button
               type="button"
-              className="cursor-pointer text-xs text-ink underline decoration-edge-soft underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--accent)"
+              className="cursor-pointer text-xs text-ink underline decoration-rule-soft underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--primary-ink)"
               aria-expanded={expanded}
               aria-controls={detailId}
               onClick={onToggle}
@@ -496,7 +496,7 @@ function ConflictRow({
 
       {expanded && (
         <tr id={detailId} className="gb-row--open">
-          <td colSpan={5} className="bg-board px-4 py-4">
+          <td colSpan={5} className="bg-ground px-4 py-4">
             <div className="space-y-4">
               <div>
                 <h4 className="gb-label">Why it was held</h4>
@@ -506,7 +506,7 @@ function ConflictRow({
               <div>
                 <h4 className="gb-label">What the phone sent</h4>
                 {conflict.existingPayload ? (
-                  <p className="mt-1 text-xs text-ink-3">
+                  <p className="mt-1 text-xs text-muted">
                     Where the server holds something different, both are shown: the server’s value first, then the phone’s.
                   </p>
                 ) : null}
@@ -554,7 +554,7 @@ function ConflictRow({
                     </Button>
                   </div>
 
-                  <p className="text-xs text-ink-3">
+                  <p className="text-xs text-muted">
                     Setting aside keeps what the phone sent — it records that you decided not to act on it, not that
                     it should be deleted.
                   </p>
@@ -569,13 +569,13 @@ function ConflictRow({
                   <summary className="cursor-pointer text-ink-2">Technical details</summary>
                   <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-ink-2">
                     <dt>Reason code</dt>
-                    <dd className="m-0 font-mono text-ink">{conflict.reason}</dd>
+                    <dd className="m-0 tabular-nums text-ink">{conflict.reason}</dd>
                     <dt>Item</dt>
-                    <dd className="m-0 font-mono text-ink [overflow-wrap:anywhere]">{conflict.entityId}</dd>
+                    <dd className="m-0 tabular-nums text-ink [overflow-wrap:anywhere]">{conflict.entityId}</dd>
                     <dt>Phone</dt>
-                    <dd className="m-0 font-mono text-ink [overflow-wrap:anywhere]">{conflict.deviceId ?? '—'}</dd>
+                    <dd className="m-0 tabular-nums text-ink [overflow-wrap:anywhere]">{conflict.deviceId ?? '—'}</dd>
                   </dl>
-                  <pre className="mt-2 overflow-x-auto border border-edge-soft bg-tile p-3 text-xs">
+                  <pre className="mt-2 overflow-x-auto border border-rule-soft bg-surface p-3 text-xs">
                     {JSON.stringify(
                       { sent: conflict.incomingPayload, onServer: conflict.existingPayload },
                       null,
@@ -643,9 +643,9 @@ function DeviceTable({ devices, heldByDevice }: { devices: Device[]; heldByDevic
                 <td>
                   {/* A phone is shared: everybody who signed in on it, newest first. */}
                   {device.people.map((person) => (
-                    <div key={person.userId} className={person.revokedAt ? 'text-ink-3 line-through' : ''}>
+                    <div key={person.userId} className={person.revokedAt ? 'text-muted line-through' : ''}>
                       {person.fullName}
-                      <span className="ml-1 text-xs text-ink-3">{relative(person.lastSignedInAt)}</span>
+                      <span className="ml-1 text-xs text-muted">{relative(person.lastSignedInAt)}</span>
                     </div>
                   ))}
                 </td>
@@ -653,7 +653,7 @@ function DeviceTable({ devices, heldByDevice }: { devices: Device[]; heldByDevic
                 <td>
                   <SyncAge iso={device.lastSyncAt} held={heldByDevice.get(device.id) ?? 0} />
                 </td>
-                <td className="font-mono text-xs">{device.appVersion ?? '—'}</td>
+                <td className="tabular-nums text-xs">{device.appVersion ?? '—'}</td>
                 <td>
                   <RowActions
                     subject={name}
@@ -705,7 +705,7 @@ function DeviceTable({ devices, heldByDevice }: { devices: Device[]; heldByDevic
  * (S6x). A phone that is simply idle is not an alarm, and "never" is a fact, not a warning.
  */
 function SyncAge({ iso, held }: { iso: string | null; held: number }) {
-  if (!iso) return <span className="text-ink-3">Never</span>;
+  if (!iso) return <span className="text-muted">Never</span>;
   const stale = held > 0 && Date.now() - Date.parse(iso) > 48 * 3_600_000;
   return (
     <>

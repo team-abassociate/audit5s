@@ -252,7 +252,7 @@ export function ChecklistEditor({
               <fieldset key={section} className="min-w-0">
                 <legend className="flex w-full items-baseline justify-between gap-3 border-b-2 border-ink pb-1">
                   <span className="gb-h2">{SECTION_LABEL[section]}</span>
-                  <span className="font-mono text-xs text-ink-3 tabular-nums">
+                  <span className="tabular-nums text-xs text-muted tabular-nums">
                     {written}/{QUESTIONS_PER_SECTION} written
                   </span>
                 </legend>
@@ -276,9 +276,9 @@ export function ChecklistEditor({
                     return (
                       <li
                         key={sr}
-                        className="grid gap-2 border-b border-edge-soft py-2 md:grid-cols-[2rem_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-3"
+                        className="grid gap-2 border-b border-rule-soft py-2 md:grid-cols-[2rem_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-3"
                       >
-                        <span className="pt-2 font-mono text-xs text-ink-3 tabular-nums">{sr}</span>
+                        <span className="pt-2 tabular-nums text-xs text-muted tabular-nums">{sr}</span>
                         <QuestionField
                           id={`question-${sr}-en`}
                           label="English"
@@ -317,7 +317,7 @@ export function ChecklistEditor({
 
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={review}>Review changes</Button>
-            <span className="text-xs text-ink-3" role="status">
+            <span className="text-xs text-muted" role="status">
               {showErrors && (invalid || noIndustryTicked)
                 ? `Fix the ${[
                     check.name !== null && 'department name',

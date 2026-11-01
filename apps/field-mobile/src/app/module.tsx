@@ -14,7 +14,7 @@ import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { ROLE_LABELS } from '../lib/labels';
 import { useLanguage } from '../lib/language-provider';
 import { useSession } from '../lib/session';
-import { createThemedStyles, iosHardShadow } from '../lib/theme';
+import { createThemedStyles } from '../lib/theme';
 import { useOpenModule } from '../components/module-switch';
 import { Figure, Label, Magnet, Muted, Screen } from '../components/ui';
 
@@ -120,7 +120,7 @@ function Tile({
   const styles = useStyles();
   const waiting = count && (count.figure > 0 || !!count.sub);
   return (
-    <Magnet offset={LIFT}>
+    <Magnet>
       <Pressable
         testID={testID}
         accessibilityRole="button"
@@ -161,9 +161,6 @@ function initials(fullName: string): string {
     .join('');
 }
 
-/** GEMBA §2.2's hover / selected offset: the most a magnet lifts off the board. */
-const LIFT = 5;
-
 const useStyles = createThemedStyles((theme) => ({
   body: { flex: 1, gap: theme.space.lg },
   name: { fontFamily: theme.family.bold, fontSize: theme.font.panel, color: theme.color.ink },
@@ -172,22 +169,21 @@ const useStyles = createThemedStyles((theme) => ({
     height: 40,
     paddingHorizontal: 6,
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chipText: { fontFamily: theme.family.bold, fontSize: theme.font.sm, color: theme.color.ink },
   tile: {
-    backgroundColor: theme.color.tile,
+    backgroundColor: theme.color.surface,
     borderWidth: 2,
-    borderColor: theme.color.edge,
+    borderColor: theme.color.rule,
     padding: theme.space.md,
     paddingBottom: theme.space.md + 6,
-    ...iosHardShadow(theme.color.hard, LIFT),
   },
-  pressed: { transform: [{ translateX: LIFT }, { translateY: LIFT }], shadowOpacity: 0 },
+  pressed: { transform: [{ scale: 0.98 }] },
   tileName: {
-    fontFamily: theme.family.black,
+    fontFamily: theme.family.semibold,
     fontSize: 28,
     lineHeight: 32,
     letterSpacing: 0.5,
@@ -198,6 +194,6 @@ const useStyles = createThemedStyles((theme) => ({
   spacer: { height: theme.space.sm },
   count: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md },
   countText: { flex: 1 },
-  countLabel: { fontFamily: theme.family.medium, fontSize: theme.font.base, color: theme.color.ink },
+  countLabel: { fontFamily: theme.family.semibold, fontSize: theme.font.base, color: theme.color.ink },
   band: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 6, backgroundColor: theme.color.ink },
 }));

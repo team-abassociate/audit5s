@@ -7,13 +7,13 @@ import {
 } from './theme-choice';
 
 /**
- * The rule the product owner settled on 2026-09-20: the app opens light, whatever the
- * phone is set to, and follows the OS only when somebody asks it to.
+ * The owner's ruling of 2026-11-01 (R-76), replacing the light default of 2026-09-20: the
+ * app follows the phone's setting until somebody picks light or dark.
  */
 describe('the chosen theme', () => {
-  it('defaults to light, not to the system setting', () => {
-    expect(DEFAULT_THEME_PREFERENCE).toBe('light');
-    expect(resolveTheme(DEFAULT_THEME_PREFERENCE, 'dark')).toBe('light');
+  it('defaults to the system setting', () => {
+    expect(DEFAULT_THEME_PREFERENCE).toBe('system');
+    expect(resolveTheme(DEFAULT_THEME_PREFERENCE, 'dark')).toBe('dark');
     expect(resolveTheme(DEFAULT_THEME_PREFERENCE, 'light')).toBe('light');
   });
 

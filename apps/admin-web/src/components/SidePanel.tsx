@@ -4,7 +4,7 @@ import { useLocation, useRouter } from '@tanstack/react-router';
 
 /** How long the panel takes to leave (matches `.gb-sidepanel[data-state='closing']`). */
 const PANEL_EXIT_MS = 160;
-/** Below this the panel is a full-width sheet over the list (GEMBA §5, detail panels). */
+/** Below this the panel is a full-width sheet over the list (detail panels). */
 const SHEET_QUERY = '(max-width: 1180px)';
 /** Marks a history entry the panel itself pushed, so closing it can go Back instead. */
 const PANEL_STATE = '__gbPanel';
@@ -63,8 +63,8 @@ export function useRoutedPanel(key: string): {
 }
 
 /**
- * A detail beside its list: an audit, a corrective action, a Unit (GEMBA §6 "Detail panel",
- * generalised from the report preview). Put it as the last child of a `.gb-withpanel`
+ * A detail beside its list: an audit, a corrective action, a Unit (generalised from the report
+ * preview). Put it as the last child of a `.gb-withpanel`
  * element and the list makes room for it; below 1180px it is a full-width sheet over the list.
  *
  * - **Routed.** Drive `open` from the URL with `useRoutedPanel`, so Back closes it.

@@ -269,7 +269,7 @@ try {
     refreshToken: 'smoke-refresh',
   })));
   await page.goto(`${base}/reports`);
-  // The shell's topbar carries the page's h1 (GEMBA-BOARD.md §5) and the section below it
+  // The shell's topbar carries the page's h1 and the section below it
   // has its own heading, so the level is what makes this unambiguous.
   await page.getByRole('heading', { name: 'Reports', level: 1 }).waitFor();
   // The library names a report by what it covers, filed under the audit it came from.

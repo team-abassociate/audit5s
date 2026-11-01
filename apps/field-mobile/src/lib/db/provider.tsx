@@ -140,10 +140,10 @@ const useStyles = createThemedStyles((theme) => ({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.color.board,
+    backgroundColor: theme.color.ground,
   },
   error: {
-    color: theme.color.crit,
+    color: theme.color.needsSupport,
     fontFamily: theme.family.regular,
     textAlign: 'center',
     padding: theme.space.lg,

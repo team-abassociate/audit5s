@@ -74,7 +74,7 @@ export function UnitsPage() {
           />
         )}
 
-        <div className="border-b border-edge-soft bg-board p-4">
+        <div className="border-b border-rule-soft bg-ground p-4">
           <Field label="Search units">
             <Input
               type="search"
@@ -158,14 +158,14 @@ function UnitRow({
             aria-expanded={expanded}
             onClick={onToggle}
           >
-            <span className="text-ink-3" aria-hidden="true">
+            <span className="text-muted" aria-hidden="true">
               {expanded ? '▾' : '▸'}
             </span>
             <span className="min-w-0 break-words">{unit.name}</span>
           </button>
         </Td>
         <Td>{unit.city ?? '—'}</Td>
-        <Td>{coordinators.length ? coordinators.join(', ') : <span className="text-ink-3">None</span>}</Td>
+        <Td>{coordinators.length ? coordinators.join(', ') : <span className="text-muted">None</span>}</Td>
         <Td className="gb-data">{zoneCount ?? '—'}</Td>
         <Td>
           <RowActions

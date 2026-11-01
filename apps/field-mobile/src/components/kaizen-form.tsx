@@ -750,8 +750,8 @@ const useStyles = createThemedStyles((theme) => ({
   stepCard: { paddingVertical: 0 },
   stepHead: { flexDirection: 'row', alignItems: 'center', minHeight: 52, gap: theme.space.sm },
   // Colour only: headers are tapped tens of times a Kaizen, so the press is barely there (S5).
-  stepHeadPressed: { backgroundColor: theme.color.tile2 },
-  stepNo: { width: 24, fontFamily: theme.family.mono, fontSize: 12.5, color: theme.color.ink2 },
+  stepHeadPressed: { backgroundColor: theme.color.chip },
+  stepNo: { width: 24, fontFamily: theme.family.regular, fontSize: 12.5, color: theme.color.ink2 },
   stepTitle: {
     flex: 1,
     fontFamily: theme.family.bold,
@@ -760,34 +760,34 @@ const useStyles = createThemedStyles((theme) => ({
     textTransform: 'uppercase',
     color: theme.color.ink,
   },
-  stepState: { fontFamily: theme.family.medium, fontSize: theme.font.label, letterSpacing: 0.8, textTransform: 'uppercase', color: theme.color.ink3 },
+  stepState: { fontFamily: theme.family.semibold, fontSize: theme.font.label, letterSpacing: 0.8, textTransform: 'uppercase', color: theme.color.muted },
   // Required reads as more than Optional before anything is tried (#8).
   stepRequired: { color: theme.color.ink },
-  // After a refused Submit: the crit rail on the card is the shape, this the word (GEMBA §2.8).
-  stepMissing: { color: theme.color.crit, fontFamily: theme.family.bold },
+  // After a refused Submit: the crit rail on the card is the shape, this the word (LEDGER.md rule 3).
+  stepMissing: { color: theme.color.needsSupport, fontFamily: theme.family.bold },
   // Ink, not green: green is Approved and nothing else in Kaizen (owner, 2026-10-07).
   stepDone: { color: theme.color.ink },
   stepBody: { paddingBottom: theme.space.md, gap: theme.space.sm },
   photoStep: { gap: theme.space.sm },
-  photo: { width: '100%', aspectRatio: 4 / 3, borderWidth: 1.5, borderColor: theme.color.edge, backgroundColor: theme.color.tile2 },
+  photo: { width: '100%', aspectRatio: 4 / 3, borderWidth: 1.5, borderColor: theme.color.rule, backgroundColor: theme.color.chip },
   placeholder: {
     height: 96,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile2,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.chip,
   },
   photoHint: { fontFamily: theme.family.regular, fontSize: 12.5, lineHeight: 18, color: theme.color.ink2 },
-  missingNote: { fontFamily: theme.family.medium, fontSize: 12.5, lineHeight: 18, color: theme.color.crit },
+  missingNote: { fontFamily: theme.family.semibold, fontSize: 12.5, lineHeight: 18, color: theme.color.needsSupport },
   buttons: { flexDirection: 'row', gap: theme.space.sm },
   flex: { flex: 1 },
   discard: { marginTop: theme.space.lg },
   submit: { marginTop: theme.space.lg },
-  progressStrip: { gap: 6, paddingBottom: theme.space.sm, marginBottom: theme.space.sm, borderBottomWidth: 1.5, borderBottomColor: theme.color.edge },
-  progressText: { fontFamily: theme.family.medium, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.ink },
-  meter: { height: 4, backgroundColor: theme.color.edgeSoft, overflow: 'hidden' },
+  progressStrip: { gap: 6, paddingBottom: theme.space.sm, marginBottom: theme.space.sm, borderBottomWidth: 1.5, borderBottomColor: theme.color.rule },
+  progressText: { fontFamily: theme.family.semibold, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.ink },
+  meter: { height: 4, backgroundColor: theme.color.ruleSoft, overflow: 'hidden' },
   // scaleX from the left edge, never width (plans/001-meter-scalex.md).
   meterFill: { height: 4, width: '100%', backgroundColor: theme.color.ink, transformOrigin: 'left' },
 }));

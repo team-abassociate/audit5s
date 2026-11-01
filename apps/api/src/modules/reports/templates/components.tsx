@@ -264,7 +264,7 @@ export function RadarWeb({
         stroke={brand.ink ?? '#101112'}
         strokeWidth={1}
       />
-      {/* The 85% target line (GEMBA-BOARD.md §6 "Trend chart"), drawn on the shape itself. */}
+      {/* The target line, drawn on the shape itself. */}
       <polygon points={ring(0.85)} fill="none" stroke={target} strokeWidth={1} strokeDasharray="3 3" />
       {points.map((p) => (
         <line

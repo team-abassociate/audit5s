@@ -51,7 +51,7 @@ export function SyncStatusBar() {
 
   const data = status.data;
   // Keep the status-bar inset until the first read: the navigator below has had its top inset zeroed.
-  if (!data) return <View style={{ paddingTop: insets.top, backgroundColor: theme.color.tile2 }} />;
+  if (!data) return <View style={{ paddingTop: insets.top, backgroundColor: theme.color.chip }} />;
 
   const label = describe(data);
   // §9.9's offline banner, in the words it prescribes: the work is not at risk.
@@ -209,10 +209,10 @@ function ModuleToggle({ current }: { current: AppModule }) {
 }
 
 function dotColour(dot: SyncDot, theme: ReturnType<typeof useTheme>): string {
-  if (dot === 'synced') return theme.color.okBand;
-  if (dot === 'pending') return theme.color.warnBand;
-  if (dot === 'failed') return theme.color.critBand;
-  return theme.color.accent;
+  if (dot === 'synced') return theme.color.outstanding;
+  if (dot === 'pending') return theme.color.improving;
+  if (dot === 'failed') return theme.color.needsSupport;
+  return theme.color.primaryInk;
 }
 
 function describe(status: {
@@ -257,26 +257,26 @@ const useStyles = createThemedStyles((theme) => ({
     gap: 12,
     paddingHorizontal: theme.space.md,
     paddingBottom: 6,
-    backgroundColor: theme.color.tile2,
+    backgroundColor: theme.color.chip,
     borderBottomWidth: 2,
-    borderBottomColor: theme.color.edge,
+    borderBottomColor: theme.color.rule,
   },
   pressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
-  toggle: { flexDirection: 'row', borderWidth: 2, borderColor: theme.color.edge },
-  half: { height: 32, paddingHorizontal: 10, justifyContent: 'center', backgroundColor: theme.color.tile },
+  toggle: { flexDirection: 'row', borderWidth: 2, borderColor: theme.color.rule },
+  half: { height: 32, paddingHorizontal: 10, justifyContent: 'center', backgroundColor: theme.color.surface },
   halfSelected: { backgroundColor: theme.color.ink },
   halfText: {
-    fontFamily: theme.family.black,
+    fontFamily: theme.family.semibold,
     fontSize: 12,
     letterSpacing: 1,
     textTransform: 'uppercase',
-    color: theme.color.ink3,
+    color: theme.color.muted,
   },
-  halfTextSelected: { color: theme.color.tile },
+  halfTextSelected: { color: theme.color.surface },
   side: { flex: 1, alignItems: 'flex-end', gap: 2 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: '100%' },
   dot: { width: 9, height: 9 },
-  label: { flexShrink: 1, fontFamily: theme.family.medium, fontSize: 12.5, lineHeight: 16, color: theme.color.ink },
+  label: { flexShrink: 1, fontFamily: theme.family.semibold, fontSize: 12.5, lineHeight: 16, color: theme.color.ink },
   actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 },
   detail: {
     flexShrink: 1,

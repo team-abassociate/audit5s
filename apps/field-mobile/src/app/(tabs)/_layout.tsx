@@ -64,16 +64,16 @@ export default function TabsLayout() {
     <Tabs
       initialRouteName="overview"
       screenOptions={{
-        headerStyle: { backgroundColor: theme.color.tile2 },
+        headerStyle: { backgroundColor: theme.color.chip },
         headerTintColor: theme.color.ink,
         headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
         headerShadowVisible: false,
-        sceneStyle: { backgroundColor: theme.color.board },
+        sceneStyle: { backgroundColor: theme.color.ground },
         tabBarStyle: tabBarStyle(theme),
         // Selected is ink with a 2px underline — shape as well as colour — never a filled box.
         tabBarLabel: ({ children, color, focused }) => tabLabel(children, color, focused),
         tabBarActiveTintColor: theme.color.ink,
-        tabBarInactiveTintColor: theme.color.ink3,
+        tabBarInactiveTintColor: theme.color.muted,
       }}
     >
       {/* The one tab every role gets; the screen behind it differs (see `overview.tsx`). */}

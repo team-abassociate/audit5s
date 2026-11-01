@@ -222,14 +222,14 @@ function Zoomable({
 
 const useStyles = createThemedStyles((theme) => ({
   root: { flex: 1 },
-  viewer: { flex: 1, backgroundColor: theme.color.board, paddingHorizontal: theme.space.md, gap: theme.space.md },
+  viewer: { flex: 1, backgroundColor: theme.color.ground, paddingHorizontal: theme.space.md, gap: theme.space.md },
   frame: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: theme.color.edge,
-    backgroundColor: theme.color.tile2,
+    borderColor: theme.color.rule,
+    backgroundColor: theme.color.chip,
     overflow: 'hidden',
   },
   stage: { width: '100%', height: '100%' },

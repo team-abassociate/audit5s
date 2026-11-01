@@ -52,7 +52,7 @@ export function Changes({
   const now = asRecord(after);
   const main = now ?? was;
   if (!main) {
-    return <p className="text-sm text-ink-3">{readable(after ?? before)}</p>;
+    return <p className="text-sm text-muted">{readable(after ?? before)}</p>;
   }
 
   const rows = Object.keys(main)
@@ -65,17 +65,17 @@ export function Changes({
     })
     .filter((row) => !changedOnly || row.moved || !was || !now);
 
-  if (rows.length === 0) return <p className="text-sm text-ink-3">No field changed.</p>;
+  if (rows.length === 0) return <p className="text-sm text-muted">No field changed.</p>;
 
   return (
     <dl className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
       {rows.map((row) => (
         <div key={row.key} className="contents">
-          <dt className="text-ink-3">{fieldLabel(row.key)}</dt>
+          <dt className="text-muted">{fieldLabel(row.key)}</dt>
           <dd className="m-0 min-w-0 [overflow-wrap:anywhere]">
             {row.moved ? (
               <>
-                <span className="text-ink-3">{readable(row.old)}</span>
+                <span className="text-muted">{readable(row.old)}</span>
                 <span aria-hidden> → </span>
                 <span className="sr-only"> changed to </span>
                 {readable(row.value)}
