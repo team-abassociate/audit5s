@@ -119,7 +119,7 @@ export default function CrossAuditRoundScreen() {
 
   const head = round ? (
     <>
-      <Card rail={!roundClosed(round) && isOverdue(round) ? 'crit' : 'none'}>
+      <Card rail={!roundClosed(round) && isOverdue(round) ? 'late' : 'none'}>
         <CardHeader
           title={`${round.zones.length} Zone${round.zones.length === 1 ? '' : 's'}`}
           description={`Called ${formatDayMonth(round.createdAt)} by ${round.calledBy}`}
@@ -227,7 +227,6 @@ const useStyles = createThemedStyles((theme) => ({
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
     color: theme.color.ink,
-    textTransform: 'uppercase',
     marginBottom: 2,
   },
   row: { flexDirection: 'row', gap: theme.space.sm },

@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { Text } from 'react-native';
 import { HeaderTitle, tabIcon } from '../../../components/ui';
 import { KAIZEN_STRINGS } from '../../../lib/kaizen-strings';
 import { useLanguage } from '../../../lib/language-provider';
@@ -24,14 +25,19 @@ export default function KaizenTabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: theme.color.chip },
+        headerStyle: { backgroundColor: theme.color.ground },
         headerTintColor: theme.color.ink,
         headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
         headerShadowVisible: false,
         sceneStyle: { backgroundColor: theme.color.ground },
         tabBarStyle: tabBarStyle(theme),
-        tabBarLabelStyle: { fontFamily: theme.family.bold, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase' },
-        tabBarActiveTintColor: theme.color.ink,
+        // Selected is maroon and bold — weight as well as colour, as on the 5S bar.
+        tabBarLabel: ({ children, color, focused }) => (
+          <Text numberOfLines={1} style={{ color, fontSize: 11, fontFamily: focused ? theme.family.bold : theme.family.medium }}>
+            {children}
+          </Text>
+        ),
+        tabBarActiveTintColor: theme.color.primaryInk,
         tabBarInactiveTintColor: theme.color.muted,
       }}
     >

@@ -49,6 +49,9 @@ describe('Ledger score bands', () => {
     expect(bandTint('crit', p)).toBe(p.needsSupportTint);
     expect(bandFill('on-track', p)).toBe(p.onTrack);
     expect(bandInk('none', p)).toBe(p.muted);
+    // Past due is maroon on the soft apricot, never a band's red.
+    expect(bandInk('late', p)).toBe(p.primaryInk);
+    expect(bandTint('late', p)).toBe(p.secondarySoft);
   });
 });
 

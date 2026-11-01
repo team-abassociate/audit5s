@@ -31,8 +31,8 @@ import { tabBarStyle, useTheme } from '../../lib/theme';
  * Icons are `TAB_ICON`'s Material symbols, shared with Kaizen's bar: a destination has one
  * symbol whichever role holds it (Audits and a Zone Leader's Audit; Actions and NCs; Units
  * and My Unit), and two destinations never share one. The bar is the web rail turned
- * sideways: tile-2 ground, a 2px ink rule, and the current item in ink with an underline —
- * shape as well as colour, and no Android elevation blur.
+ * sideways: a surface bar over a soft rule, the current item in maroon and in the semibold
+ * face, and no Android elevation blur.
  */
 export default function TabsLayout() {
   const theme = useTheme();
@@ -47,13 +47,9 @@ export default function TabsLayout() {
       numberOfLines={1}
       style={{
         color,
-        fontFamily: theme.family.bold,
-        fontSize: 10,
-        letterSpacing: 0.8,
-        textTransform: 'uppercase',
+        fontFamily: focused ? theme.family.bold : theme.family.medium,
+        fontSize: 11,
         paddingBottom: 2,
-        borderBottomWidth: 2,
-        borderBottomColor: focused ? theme.color.ink : 'transparent',
       }}
     >
       {text}
@@ -64,15 +60,15 @@ export default function TabsLayout() {
     <Tabs
       initialRouteName="overview"
       screenOptions={{
-        headerStyle: { backgroundColor: theme.color.chip },
+        headerStyle: { backgroundColor: theme.color.ground },
         headerTintColor: theme.color.ink,
         headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
         headerShadowVisible: false,
         sceneStyle: { backgroundColor: theme.color.ground },
         tabBarStyle: tabBarStyle(theme),
-        // Selected is ink with a 2px underline — shape as well as colour — never a filled box.
+        // Selected is maroon and bold — weight as well as colour.
         tabBarLabel: ({ children, color, focused }) => tabLabel(children, color, focused),
-        tabBarActiveTintColor: theme.color.ink,
+        tabBarActiveTintColor: theme.color.primaryInk,
         tabBarInactiveTintColor: theme.color.muted,
       }}
     >

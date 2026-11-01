@@ -227,7 +227,7 @@ function AuthGate() {
       <SafeAreaInsetsContext.Provider value={showBar ? { ...insets, top: 0 } : insets}>
         <Stack
           screenOptions={{
-            headerStyle: { backgroundColor: theme.color.chip },
+            headerStyle: { backgroundColor: theme.color.ground },
             headerTintColor: theme.color.ink,
             headerTitle: ({ children }) => <HeaderTitle>{children}</HeaderTitle>,
             headerShadowVisible: false,

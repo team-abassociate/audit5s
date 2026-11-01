@@ -35,7 +35,7 @@ export default function CrossAuditsScreen() {
           const assignee = crossAuditAssignee(item, user?.id);
           return (
             <Card
-              rail={late ? 'crit' : 'none'}
+              rail={late ? 'late' : 'none'}
               onPress={() => router.push(crossAuditStart(item))}
               accessibilityRole="button"
               accessibilityLabel={`Cross audit of ${zone} at ${item.unitName}, called by ${item.calledBy}. ${due}. Starts the audit.`}
@@ -43,7 +43,7 @@ export default function CrossAuditsScreen() {
               <CardHeader
                 title={zone}
                 description={[item.unitName, `called by ${item.calledBy}`, assignee].filter(Boolean).join(' · ')}
-                action={late ? <Chip tone="crit">Overdue</Chip> : undefined}
+                action={late ? <Chip tone="late">Past due</Chip> : undefined}
               />
               <Data>{due}</Data>
             </Card>

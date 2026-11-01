@@ -139,7 +139,7 @@ function Photo({ photo, tag, none }: { photo: KaizenCardData['before']; tag: str
 
 const useStyles = createThemedStyles((theme) => ({
   card: { padding: 0 },
-  pair: { flexDirection: 'row', height: 118, borderBottomWidth: 1.5, borderBottomColor: theme.color.rule },
+  pair: { flexDirection: 'row', height: 118, borderBottomWidth: 1, borderBottomColor: theme.color.rule },
   divider: { width: 1.5, backgroundColor: theme.color.rule },
   photo: { flex: 1, overflow: 'hidden', backgroundColor: theme.color.chip },
   image: { width: '100%', height: '100%' },
@@ -154,8 +154,6 @@ const useStyles = createThemedStyles((theme) => ({
   tagText: {
     fontFamily: theme.family.bold,
     fontSize: theme.font.label,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
     color: theme.color.onSecondarySoft,
   },
   body: { padding: theme.space.md, gap: 6 },
@@ -167,7 +165,7 @@ const useStyles = createThemedStyles((theme) => ({
   meta: { flex: 1 },
   slip: {
     backgroundColor: theme.color.secondarySoft,
-    borderTopWidth: 1.5,
+    borderTopWidth: 1,
     borderTopColor: theme.color.rule,
     paddingHorizontal: theme.space.md,
     paddingVertical: 10,
@@ -178,8 +176,6 @@ const useStyles = createThemedStyles((theme) => ({
   slipTitle: {
     fontFamily: theme.family.bold,
     fontSize: 10.5,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
     color: theme.color.onSecondarySoft,
     marginBottom: 2,
   },

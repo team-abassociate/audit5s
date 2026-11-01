@@ -30,9 +30,9 @@ export function crossAuditCallZone(call: CrossAuditCall): string {
   return zoneDisplayLabel(call.zoneCode, call.zoneName);
 }
 
-/** "Due 18 Oct", or "Overdue since 18 Oct" once the day has passed. */
+/** "Due 18 Oct", or "Past due since 18 Oct" once the day has passed. */
 export function crossAuditDue(call: CrossAuditCall): string {
-  return `${isOverdue(call) ? 'Overdue since' : 'Due'} ${formatDayMonth(`${call.dueOn}T12:00:00+05:30`)}`;
+  return `${isOverdue(call) ? 'Past due since' : 'Due'} ${formatDayMonth(`${call.dueOn}T12:00:00+05:30`)}`;
 }
 
 /** R-73: "Assigned to you", "Assigned to Asha Rao", or null for a call to every Zone Leader. */

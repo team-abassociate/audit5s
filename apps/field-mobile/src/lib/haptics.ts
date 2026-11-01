@@ -25,4 +25,9 @@ export const haptic = {
   destroyed: feel(AndroidHaptics.Long_Press),
   /** A review decision recorded; pairs with the "Approved KZ-…" slip. */
   reviewed: feel(AndroidHaptics.Confirm),
+  /**
+   * A primary button pressed (owner's Ledger brief, R-76): light, primary actions only. A
+   * button whose outcome plays one of the five above passes `quiet`, so it never buzzes twice.
+   */
+  press: feel(AndroidHaptics.Virtual_Key),
 } as const;

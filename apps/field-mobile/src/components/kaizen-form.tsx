@@ -727,7 +727,7 @@ export function KaizenForm({
         ) : null}
         <ErrorBanner message={error?.message ?? null} />
         <View style={styles.submit}>
-          <Button testID="kaizen-submit" title={submitTitle} icon="send" busy={submit.isPending} onPress={() => submit.mutate()} />
+          <Button testID="kaizen-submit" quiet title={submitTitle} icon="send" busy={submit.isPending} onPress={() => submit.mutate()} />
         </View>
       </ScrollView>
       <KaizenPhotoViewer
@@ -756,11 +756,9 @@ const useStyles = createThemedStyles((theme) => ({
     flex: 1,
     fontFamily: theme.family.bold,
     fontSize: theme.font.base,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
     color: theme.color.ink,
   },
-  stepState: { fontFamily: theme.family.semibold, fontSize: theme.font.label, letterSpacing: 0.8, textTransform: 'uppercase', color: theme.color.muted },
+  stepState: { fontFamily: theme.family.semibold, fontSize: theme.font.label, color: theme.color.muted },
   // Required reads as more than Optional before anything is tried (#8).
   stepRequired: { color: theme.color.ink },
   // After a refused Submit: the crit rail on the card is the shape, this the word (LEDGER.md rule 3).
@@ -769,8 +767,9 @@ const useStyles = createThemedStyles((theme) => ({
   stepDone: { color: theme.color.ink },
   stepBody: { paddingBottom: theme.space.md, gap: theme.space.sm },
   photoStep: { gap: theme.space.sm },
-  photo: { width: '100%', aspectRatio: 4 / 3, borderWidth: 1.5, borderColor: theme.color.rule, backgroundColor: theme.color.chip },
+  photo: { borderRadius: theme.radius.control, width: '100%', aspectRatio: 4 / 3, borderWidth: 1, borderColor: theme.color.rule, backgroundColor: theme.color.chip },
   placeholder: {
+    borderRadius: theme.radius.control,
     height: 96,
     alignItems: 'center',
     justifyContent: 'center',
@@ -785,7 +784,7 @@ const useStyles = createThemedStyles((theme) => ({
   flex: { flex: 1 },
   discard: { marginTop: theme.space.lg },
   submit: { marginTop: theme.space.lg },
-  progressStrip: { gap: 6, paddingBottom: theme.space.sm, marginBottom: theme.space.sm, borderBottomWidth: 1.5, borderBottomColor: theme.color.rule },
+  progressStrip: { gap: 6, paddingBottom: theme.space.sm, marginBottom: theme.space.sm, borderBottomWidth: 1, borderBottomColor: theme.color.rule },
   progressText: { fontFamily: theme.family.semibold, fontSize: theme.font.sm, lineHeight: 18, color: theme.color.ink },
   meter: { height: 4, backgroundColor: theme.color.ruleSoft, overflow: 'hidden' },
   // scaleX from the left edge, never width (plans/001-meter-scalex.md).

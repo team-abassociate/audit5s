@@ -9,7 +9,8 @@ import { createThemedStyles, useTheme } from '../lib/theme';
  *
  * Marks only on the face — the page's marking scheme says what each means, and the full
  * label (§4.1, from `RESPONSE_TOKENS`, the same table the report prints) is the accessible
- * name. Selected is a filled tile, unselected an outline: shape as well as colour.
+ * name. Unselected is the band's tint, selected its solid colour with a 2px edge: weight as
+ * well as colour (LEDGER.md rule 3).
  *
  * `NA` is hidden when the question forbids it: a question with `allows_na = false` has no
  * "not applicable" answer, and offering one only to refuse it later is the kind of small
@@ -53,15 +54,15 @@ export function ResponseChips({
             onPress={() => onChange(option)}
             style={({ pressed }) => [
               styles.chip,
-              { borderColor: color },
-              selected && { backgroundColor: color },
+              { borderColor: color, backgroundColor: selected ? color : responseTint(option, theme) },
+              selected && styles.chipSelected,
               // Unselected marks fade out; the one that was given stays at full strength,
               // because reading it back is the whole purpose of the read-only screen.
               readOnly && !selected && styles.chipInert,
               pressed && !readOnly && styles.pressed,
             ]}
           >
-            <Text style={[styles.marks, { color: selected ? theme.color.ground : color }]}>{marks}</Text>
+            <Text style={[styles.marks, { color: selected ? theme.color.surface : color }]}>{marks}</Text>
           </Pressable>
         );
       })}
@@ -76,18 +77,26 @@ function responseColor(option: ResponseValue, theme: ReturnType<typeof useTheme>
   return theme.color.ink2;
 }
 
+function responseTint(option: ResponseValue, theme: ReturnType<typeof useTheme>): string {
+  if (option === 'SCORE_2') return theme.color.outstandingTint;
+  if (option === 'SCORE_1') return theme.color.improvingTint;
+  if (option === 'SCORE_0') return theme.color.needsSupportTint;
+  return theme.color.chip;
+}
+
 const useStyles = createThemedStyles((theme) => ({
   row: { flexDirection: 'row', gap: theme.space.sm },
   chip: {
     flex: 1,
     // Gloves on, in sunlight: bigger than the 48dp floor.
     minHeight: 52,
-    borderWidth: 1.5,
+    borderWidth: 1,
+    borderRadius: theme.radius.control,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.color.surface,
   },
+  chipSelected: { borderWidth: 2 },
   chipInert: { opacity: 0.45, borderStyle: 'dashed' },
-  pressed: { transform: [{ translateX: 2 }, { translateY: 2 }] },
+  pressed: { transform: [{ scale: 0.97 }], opacity: 0.88 },
   marks: { fontFamily: theme.family.semibold, fontSize: 20, fontVariant: ['tabular-nums'] },
 }));

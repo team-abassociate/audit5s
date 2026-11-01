@@ -234,7 +234,6 @@ const useStyles = createThemedStyles((theme) => ({
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
     color: theme.color.ink,
-    textTransform: 'uppercase',
   },
   unit: { fontFamily: theme.family.bold, fontSize: 13, color: theme.color.ink2, marginTop: 2 },
   cardAction: { marginTop: theme.space.md },

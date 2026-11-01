@@ -307,7 +307,6 @@ const useStyles = createThemedStyles((theme) => ({
     fontFamily: theme.family.bold,
     fontSize: theme.font.panel,
     color: theme.color.ink,
-    textTransform: 'uppercase',
     marginBottom: 2,
   },
 }));

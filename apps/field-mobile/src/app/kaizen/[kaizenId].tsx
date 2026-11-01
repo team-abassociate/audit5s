@@ -347,6 +347,7 @@ function SustainCard({ kaizen, canRecord }: { kaizen: KaizenDetail; canRecord: b
               <ErrorBanner message={problemMessage(record.error)} />
               <Button
                 testID="kaizen-sustain-confirm"
+                quiet
                 title={t.recordCheck(next.dayMark)}
                 {...(inPlace ? {} : { tone: 'crit' as const })}
                 busy={record.isPending}
@@ -427,7 +428,7 @@ const useStyles = createThemedStyles((theme) => ({
   theme: { fontFamily: theme.family.bold, fontSize: theme.font.heading, lineHeight: 24, color: theme.color.ink, marginBottom: theme.space.xs },
   pair: { flexDirection: 'row', gap: theme.space.sm, marginVertical: theme.space.md },
   photoBox: { flex: 1 },
-  photo: { aspectRatio: 1, borderWidth: 1.5, borderColor: theme.color.rule, backgroundColor: theme.color.chip, overflow: 'hidden' },
+  photo: { borderRadius: theme.radius.control, aspectRatio: 1, borderWidth: 1, borderColor: theme.color.rule, backgroundColor: theme.color.chip, overflow: 'hidden' },
   image: { width: '100%', height: '100%' },
   photoPressed: { borderColor: theme.color.ink, opacity: 0.85 },
   row: { paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.color.ruleSoft },
