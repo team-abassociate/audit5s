@@ -379,7 +379,7 @@ export function Td({
   );
 }
 
-export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good' | 'warn' | 'bad'; children: ReactNode }) {
+export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'late'; children: ReactNode }) {
   return (
     <span
       className={cn(
@@ -388,6 +388,7 @@ export function Badge({ tone = 'neutral', children }: { tone?: 'neutral' | 'good
         tone === 'good' && 'gb-chip--ok',
         tone === 'warn' && 'gb-chip--warn',
         tone === 'bad' && 'gb-chip--crit',
+        tone === 'late' && 'gb-chip--late',
       )}
     >
       {children}

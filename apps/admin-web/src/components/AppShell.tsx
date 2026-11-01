@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { LogOut, Monitor, Moon, Sun } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { NotificationPage } from '@audit5s/contracts';
@@ -23,7 +24,7 @@ interface NavItem {
   /** The permission that makes this item visible, from the server-resolved scope. */
   resource: string;
   action: string;
-  /** Rail section (§5): 1 daily work, 2 setup, 3 records. A rule is drawn between them. */
+  /** Rail section: 1 daily work, 2 setup, 3 records, each under its name (`GROUP_LABEL`). */
   group: 1 | 2 | 3;
   /** Names a screen for the title without a rail entry of its own. */
   hidden?: boolean;
@@ -88,6 +89,9 @@ const KAIZEN_AUTHOR_NAV: NavItem[] = [
   { to: '/kaizen/list', label: 'My Kaizens', resource: 'kaizen', action: 'read', group: 1 },
 ];
 
+/** The rail's group names, sentence case (LEDGER.md rule 5). */
+const GROUP_LABEL = { 1: 'Main menu', 2: 'Setup', 3: 'Records' } as const;
+
 const TOPBAR_SLOT_ID = 'gb-topbar-tools';
 const MAIN_ID = 'gb-main-content';
 const PRODUCT = 'audit5s';
@@ -104,7 +108,7 @@ export function useDocumentTitle(...parts: Array<string | undefined>): void {
 }
 
 /**
- * The shell: a fixed 216px rail (a horizontal strip below 860px) and
+ * The shell: a fixed 216px rail (a strip with a menu below 60rem) and
  * a topbar. Only the title row is sticky; the scope row under it scrolls away with the page,
  * so a laptop keeps its height for the board (G15).
  */
@@ -150,8 +154,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
       <div className="gb-rail">
         <div className="gb-brand">
-          <img className="gb-brand-logo" src="/audit5s-logo.png" alt="audit5s" width="42" height="42" />
-          <span>audit5s · portal</span>
+          <img className="gb-brand-logo" src="/audit5s-logo.png" alt="" width="36" height="36" />
+          <span>audit5s</span>
         </div>
         {can('kaizen', 'read') ? <ModuleSwitch kaizen={kaizen} /> : null}
         <Nav items={items} current={current} />
@@ -164,7 +168,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="gb-main">
         <header className="gb-top">
           <div className="gb-top-row">
-            <h1 className="gb-h1">{title}</h1>
+            <div className="gb-top-title">
+              <h1 className="gb-h1">{title}</h1>
+              <p className="gb-top-context">{scopeName(unitScope) ?? roleLabel(scope?.role)}</p>
+            </div>
             <div className="gb-shell-tools">
               <ThemeSwitch />
               {/* The identity chip opens Profile, as the initials do on the phone. */}
@@ -175,8 +182,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <span>{user?.loginId}</span>
                 </div>
               </Link>
-              <button className="gb-btn" type="button" onClick={() => void signOut()}>
-                Sign out
+              <button className="gb-iconbtn" type="button" aria-label="Sign out" title="Sign out" onClick={() => void signOut()}>
+                <LogOut strokeWidth={1.5} aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -232,7 +239,7 @@ function NoKaizenAccess({ open, onClose }: { open: boolean; onClose: () => void 
 }
 
 /**
- * The rail's links. Below 860px the rail is a strip: the daily-work group stays in it, the
+ * The rail's links. Below 60rem the rail is a strip: the daily-work group stays in it, the
  * rest move into "More" (G13), and the strip fades at whichever edge has more to scroll to.
  */
 function Nav({ items, current }: { items: NavItem[]; current: NavItem | undefined }) {
@@ -264,7 +271,11 @@ function Nav({ items, current }: { items: NavItem[]; current: NavItem | undefine
       <nav ref={strip} className="gb-nav" aria-label="Main" data-fade={fade}>
         {items.map((item, i) => (
           <Fragment key={item.to}>
-            {i > 0 && items[i - 1]!.group !== item.group ? <hr /> : null}
+            {i === 0 || items[i - 1]!.group !== item.group ? (
+              <p className={item.group === 1 ? 'gb-nav-group' : 'gb-nav-group gb-nav-more-item'} aria-hidden="true">
+                {GROUP_LABEL[item.group]}
+              </p>
+            ) : null}
             <Link
               to={item.to}
               className={item.group === 1 ? undefined : 'gb-nav-more-item'}
@@ -443,6 +454,8 @@ export function TopbarTools({ children }: { children: ReactNode }) {
  */
 const MODES = ['system', 'light', 'dark'] as const;
 const THEME_KEY = 'audit5s-theme';
+const THEME_LABEL = { system: 'follows this device', light: 'light', dark: 'dark' } as const;
+const THEME_ICON = { system: Monitor, light: Sun, dark: Moon } as const;
 
 function ThemeSwitch() {
   const [mode, setMode] = useState<(typeof MODES)[number]>(() => {
@@ -466,15 +479,16 @@ function ThemeSwitch() {
     }
   }, [mode]);
 
+  const Icon = THEME_ICON[mode];
   return (
     <button
-      className="gb-btn"
+      className="gb-iconbtn"
       type="button"
-      aria-live="polite"
-      title={`Theme: ${mode} — click to change`}
+      aria-label={`Theme: ${THEME_LABEL[mode]}. Change theme`}
+      title={`Theme: ${THEME_LABEL[mode]} — click to change`}
       onClick={() => setMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]!)}
     >
-      {mode[0]!.toUpperCase() + mode.slice(1)}
+      <Icon strokeWidth={1.5} aria-hidden="true" />
     </button>
   );
 }

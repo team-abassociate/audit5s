@@ -22,7 +22,7 @@ import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL, nameLang } from '@/lib/labels';
-import { daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime, formatScore, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
+import { RATING_BANDS, daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime, formatScore, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
 import {
   TARGET,
   awaitingRollup,
@@ -207,9 +207,9 @@ export function DashboardPage() {
    * or more away (B4). Focus moves to the panel's heading, which brings it into view and
    * tells a screen reader what changed.
    */
-  const selectZone = (code: string) => {
+  const selectZone = (code: string, always = false) => {
     setSelectedCode(code);
-    if (window.matchMedia(STACKED).matches) requestAnimationFrame(() => panelHeading.current?.focus());
+    if (always || window.matchMedia(STACKED).matches) requestAnimationFrame(() => panelHeading.current?.focus());
   };
 
   const now = Date.now();
@@ -227,7 +227,7 @@ export function DashboardPage() {
   const dueThisWeek = totals?.dueWithinWeek ?? 0;
   const zeroScored = totals?.openNeedsImprovement ?? 0;
   // The register is in due order with the overdue first, so its first row is the oldest overdue.
-  const oldestOverdue = register[0] && actionState(register[0], now).band === 'crit' ? register[0] : undefined;
+  const oldestOverdue = register[0] && actionState(register[0], now).band === 'late' ? register[0] : undefined;
   /** The chosen Zone's findings, all of them, for its panel. */
   const zoneActions = useQuery({
     queryKey: ['dashboard', unit, 'corrective-actions', 'zone', selected?.zoneId],
@@ -431,7 +431,7 @@ export function DashboardPage() {
       {loading ? null : overdue > 0 && oldestOverdue ? (
         <div className="gb-slip">
           <b>
-            {count(overdue)} corrective {overdue === 1 ? 'action' : 'actions'} overdue
+            {count(overdue)} corrective {overdue === 1 ? 'action' : 'actions'} past due
           </b>
           <p>
             Oldest is “{findingTitle(oldestOverdue!)}” in {oldestOverdue!.zoneName}, due{' '}
@@ -447,7 +447,7 @@ export function DashboardPage() {
               Open the action
             </Link>
             <Link className="gb-btn gb-btn--sm" to="/corrective-actions" search={{ overdue: true }}>
-              All overdue actions
+              All past-due actions
             </Link>
           </div>
         </div>
@@ -471,20 +471,13 @@ export function DashboardPage() {
         </>
       ) : unit === '' ? null : (
         <>
-          {/* ---------------------------------------------------------------- KPIs */}
-          <section>
-            <div className="gb-head">
-              <div>
-                <h2 className="gb-h1">{unitName?.name ?? 'Unit'}</h2>
-                <p>
-                  {PERIODS.find((period) => period.months === months)?.label} ·{' '}
-                  {count(overview.data?.completedCount ?? 0)} completed{' '}
-                  {overview.data?.completedCount === 1 ? 'audit' : 'audits'} in the analytics rollup ·
-                  every score below is the server&apos;s recomputation, not a device&apos;s
-                </p>
+          {/* ------------------------------------------------------------ overview */}
+          <section aria-label="Unit overview">
+            {chosenAudit || lagging > 0 ? (
+              <div className="gb-overview-notes">
                 {chosenAudit ? (
                   <p>
-                    The first tile shows {chosenZone ? `${chosenZone.zoneName} in ` : ''}one audit, of{' '}
+                    The headline shows {chosenZone ? `${chosenZone.zoneName} in ` : ''}one audit, of{' '}
                     {formatDate(chosenAudit.completedAt)}; everything else on the board is the
                     period.{' '}
                     <Link to="/audits" search={{ audit: chosenAudit.id }}>
@@ -500,74 +493,168 @@ export function DashboardPage() {
                   </p>
                 ) : null}
               </div>
-              <span className="gb-label">Outstanding ≥ {TARGET}</span>
-            </div>
-            <div className="gb-kpis" style={{ marginTop: 14 }}>
-              {/* The score alone. The tile used to append "N scored zones", which read as a
-                  second, unrelated figure sitting inside the score — the zone count already has
-                  its own tile beside this one. Only the band word stays, because it is what the
-                  tile's colour means. */}
-              {/* One decimal, like every tile (D1). The weighted figure says which
-                  number it is and names the latest audit's, which the trajectory ends on (B3). */}
-              <Kpi
-                label={chosenZone ? 'Zone score' : chosenAudit ? 'Audit score' : 'Unit score'}
-                value={score1(unitScore)}
-                context={
-                  chosenZone
-                    ? `${bandLabel(unitScore)} · ${chosenZone.zoneName} · ${formatDayMonth(chosenAudit!.completedAt)}`
-                    : chosenAudit
-                      ? `${bandLabel(unitScore)} · ${chosenAudit.auditorName} · ${formatDayMonth(chosenAudit.completedAt)}`
-                      : `${bandLabel(unitScore)} · weighted across ${count(overview.data?.completedCount ?? 0)} ${
-                          overview.data?.completedCount === 1 ? 'audit' : 'audits'
-                        }${latestAudit ? ` · latest audit ${score1(latestAudit.totals.scorePercentage)}` : ''}`
-                }
-                band={bandOf(unitScore)}
-              />
-              <Kpi
-                label="Zones audited"
-                value={`${audited}/${board.length}`}
-                context={
-                  notStarted.length === 0
-                    ? 'every zone covered'
-                    : `${notStarted.map((zone) => zone.name).slice(0, 2).join(', ')} pending`
-                }
-                band={notStarted.length === 0 ? 'ok' : 'warn'}
-              />
+            ) : null}
+            <div className="gb-overview">
+              {/* The headline: the server's score, its band in words, and where it sits on the
+                  scale. One decimal, like every tile (D1). */}
+              <div className="gb-hero">
+                <span className="gb-hero-label">
+                  {chosenZone ? 'Zone score' : chosenAudit ? 'Audit score' : 'Unit score'}
+                </span>
+                <div className="gb-hero-row">
+                  <b className="gb-hero-figure">{score1(unitScore)}</b>
+                  <span className={`gb-hero-band gb-${bandOf(unitScore)}`}>{bandLabel(unitScore)}</span>
+                </div>
+                <ScoreScale score={unitScore} />
+                <p className="gb-hero-context">
+                  {chosenZone ? (
+                    <>
+                      <span lang={nameLang(chosenZone.zoneName)}>{chosenZone.zoneName}</span>
+                      <span>{formatDayMonth(chosenAudit!.completedAt)}</span>
+                    </>
+                  ) : chosenAudit ? (
+                    <>
+                      <span>{chosenAudit.auditorName}</span>
+                      <span>{formatDayMonth(chosenAudit.completedAt)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        Weighted across {count(overview.data?.completedCount ?? 0)}{' '}
+                        {overview.data?.completedCount === 1 ? 'audit' : 'audits'}
+                      </span>
+                      {latestAudit ? <span>Latest audit {score1(latestAudit.totals.scorePercentage)}</span> : null}
+                    </>
+                  )}
+                </p>
+              </div>
+
+              <div className="gb-tile gb-ov">
+                <h2 className="gb-h2" lang={nameLang(unitName?.name ?? '')}>
+                  {unitName?.name ?? 'Unit'}
+                </h2>
+                <p className="gb-ov-sub">{PERIODS.find((period) => period.months === months)?.label}</p>
+                <dl className="gb-ov-stats">
+                  <div>
+                    <dt>Zones audited</dt>
+                    <dd className="gb-figure">
+                      {audited}
+                      <small>/{board.length}</small>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Completed audits</dt>
+                    <dd className="gb-figure">{count(overview.data?.completedCount ?? 0)}</dd>
+                  </div>
+                </dl>
+                <p className="gb-ov-foot">
+                  {notStarted.length === 0
+                    ? 'Every zone covered'
+                    : `${notStarted
+                        .map((zone) => zone.name)
+                        .slice(0, 2)
+                        .join(', ')} pending`}
+                </p>
+              </div>
+
               {/* From the corrective-action list, one per nonconformity photograph: the same
-                  source as the rows below, and not waiting on the nightly rollup. */}
-              <Kpi
-                label="Open actions"
-                value={count(open)}
-                context={`${count(zeroScored)} marked “Needs improvement”`}
-                band={open === 0 ? 'ok' : 'warn'}
-              />
-              <Kpi
-                label="Overdue actions"
-                value={count(overdue)}
-                context={
-                  oldestOverdue
-                    ? `oldest: ${daysBetween(oldestOverdue.openedAt, now)} d open · ${daysBetween(oldestOverdue.dueAt, now)} d overdue`
-                    : 'nothing past its due date'
-                }
-                band={overdue === 0 ? 'ok' : 'crit'}
-              />
-              {/* Closed out of raised, not a percentage: "2/5" is the sentence a Coordinator
-                  actually says, and at this Unit's volume a percentage turns five findings into
-                  a figure like 40.0 that reads more precise than it is. The band still comes
-                  from the server's rate, so the colour is unchanged. */}
-              <Kpi
-                label="Closure"
-                value={raised === 0 ? '—' : `${closed}/${raised}`}
-                context={
-                  raised === 0
-                    ? 'nothing raised in this period'
-                    : closureHours === null
-                      ? 'nothing closed yet'
-                      : `${closureHours.toFixed(1)} h average to close`
-                }
-                band={bandOf(overview.data?.closureRatePercentage ?? null)}
-              />
+                  source as the register below, and not waiting on the nightly rollup. */}
+              <div className="gb-tile gb-ov">
+                <h2 className="gb-h2">Findings</h2>
+                <p className="gb-ov-sub">{count(zeroScored)} marked “Needs improvement”</p>
+                <dl className="gb-ov-stats">
+                  <div>
+                    <dt>Open</dt>
+                    <dd className="gb-figure">{count(open)}</dd>
+                  </div>
+                  <div>
+                    <dt>Past due</dt>
+                    <dd className={`gb-figure${overdue > 0 ? ' gb-pastdue' : ''}`}>{count(overdue)}</dd>
+                  </div>
+                  <div>
+                    <dt>Closed</dt>
+                    <dd className="gb-figure">
+                      {raised === 0 ? '—' : closed}
+                      {raised === 0 ? null : <small>/{raised}</small>}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="gb-ov-foot">
+                  {oldestOverdue ? (
+                    <span className="gb-pastdue">Oldest {daysBetween(oldestOverdue.dueAt, now)} d past due</span>
+                  ) : raised === 0 ? (
+                    'Nothing raised in this period'
+                  ) : closureHours === null ? (
+                    'Nothing closed yet'
+                  ) : (
+                    `${closureHours.toFixed(1)} h average to close`
+                  )}
+                </p>
+              </div>
             </div>
+          </section>
+
+          {/* ------------------------------------------- recent audits + zone scores */}
+          <section className="gb-duo">
+            <div className="gb-panel">
+              <div className="gb-panel-head">
+                <div>
+                  <h2 className="gb-h2">Recent audits</h2>
+                  <p>
+                    {recent.length === RECENT
+                      ? `The last ${RECENT} completed audits in this Unit.`
+                      : `All ${recent.length} completed ${recent.length === 1 ? 'audit' : 'audits'} in this Unit for the period.`}{' '}
+                    Scores show two decimals, because this table is the record. Walk-by audits carry no score.
+                  </p>
+                </div>
+              </div>
+              <div className="gb-tablewrap gb-tablewrap--flush">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Completed</th>
+                      <th>Auditor</th>
+                      <th>Type</th>
+                      <th>Zones</th>
+                      <th>Score</th>
+                      <th>Band</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.map((audit, index) => {
+                      const summary = summaries[index]?.data;
+                      const pct = summary?.audit.totals.scorePercentage ?? null;
+                      return (
+                        <tr key={audit.id}>
+                          <td className={rail(pct !== null && pct < TARGET ? 'warn' : 'none')}>
+                            <Link to="/audits" search={{ audit: audit.id }}>
+                              {formatDateTime(audit.completedAt)}
+                            </Link>
+                          </td>
+                          <td>{audit.auditorName}</td>
+                          <td>{AUDIT_TYPE_LABEL[audit.auditType]}</td>
+                          <td className="gb-data">{summary?.zones.length ?? '—'}</td>
+                          <td className="gb-data">{score2(pct)}</td>
+                          <td>
+                            <BandLabel score={pct} />
+                          </td>
+                          <td>{AUDIT_STATUS_LABEL[audit.status]}</td>
+                        </tr>
+                      );
+                    })}
+                    {recent.length === 0 ? (
+                      <tr>
+                        <td className={rail('none')} colSpan={7}>
+                          No completed audits in the selected period.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <ZoneScores board={board} selected={selected?.code} onSelect={(code) => selectZone(code, true)} />
           </section>
 
           {/* -------------------------------------------------- board + detail panel */}
@@ -699,11 +786,11 @@ export function DashboardPage() {
               <h3 className="gb-h2">Open corrective actions · {count(open)}</h3>
               <p>One per nonconformity photograph, raised automatically when an audit completes.</p>
               <div className="gb-stats3">
-                <div className="gb-crit">
+                <div className={overdue > 0 ? 'gb-late' : undefined}>
                   <b className="gb-figure">{count(overdue)}</b>
-                  <span className="gb-label">Overdue</span>
+                  <span className="gb-label">Past due</span>
                 </div>
-                <div className="gb-warn">
+                <div>
                   <b className="gb-figure">{count(zeroScored)}</b>
                   <span className="gb-label">Needs improvement</span>
                 </div>
@@ -812,67 +899,6 @@ export function DashboardPage() {
             </div>
           </section>
 
-          {/* ------------------------------------------------------ recent audits */}
-          <section>
-            <div className="gb-head">
-              <div>
-                <h2 className="gb-h1">Recent audits</h2>
-                <p>
-                  {recent.length === RECENT
-                    ? `The last ${RECENT} completed audits in this Unit.`
-                    : `All ${recent.length} completed ${recent.length === 1 ? 'audit' : 'audits'} in this Unit for the period.`}{' '}
-                  Scores show two decimals, because this table is the record.
-                </p>
-              </div>
-              <span className="gb-label">Walk-by audits carry no score</span>
-            </div>
-            <div className="gb-tablewrap" style={{ marginTop: 14 }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Completed</th>
-                    <th>Auditor</th>
-                    <th>Type</th>
-                    <th>Zones</th>
-                    <th>Score</th>
-                    <th>Band</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recent.map((audit, index) => {
-                    const summary = summaries[index]?.data;
-                    const pct = summary?.audit.totals.scorePercentage ?? null;
-                    return (
-                      <tr key={audit.id}>
-                        <td className={rail(pct !== null && pct < TARGET ? 'warn' : 'none')}>
-                          <Link to="/audits" search={{ audit: audit.id }}>
-                            {formatDateTime(audit.completedAt)}
-                          </Link>
-                        </td>
-                        <td>{audit.auditorName}</td>
-                        <td>{AUDIT_TYPE_LABEL[audit.auditType]}</td>
-                        <td className="gb-data">{summary?.zones.length ?? '—'}</td>
-                        <td className="gb-data">{score2(pct)}</td>
-                        <td>
-                          <BandLabel score={pct} />
-                        </td>
-                        <td>{AUDIT_STATUS_LABEL[audit.status]}</td>
-                      </tr>
-                    );
-                  })}
-                  {recent.length === 0 ? (
-                    <tr>
-                      <td className={rail('none')} colSpan={7}>
-                        No completed audits in the selected period.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
         </>
       )}
 
@@ -885,23 +911,104 @@ export function DashboardPage() {
   );
 }
 
-function Kpi({
-  label,
-  value,
-  context,
-  band,
+/** The R-6b scale on the maroon card, read from `RATING_BANDS`: lowest band first, to 100. */
+const SCALE: Array<{ band: Band; from: number; to: number }> = [...RATING_BANDS]
+  .sort((a, b) => a.minPercentage - b.minPercentage)
+  .map((band, index, sorted) => ({
+    band: bandOf(band.minPercentage),
+    from: band.minPercentage,
+    to: sorted[index + 1]?.minPercentage ?? 100,
+  }));
+
+function ScoreScale({ score }: { score: number | null }) {
+  const current = bandOf(score);
+  return (
+    <div className="gb-scale" aria-hidden="true">
+      <div className="gb-scale-track">
+        {SCALE.map((step) => (
+          <i
+            key={step.band}
+            className={`gb-scale-step gb-scale-step--${step.band}`}
+            data-current={step.band === current ? '' : undefined}
+            style={{ flexGrow: step.to - step.from }}
+          />
+        ))}
+        {score === null ? null : <b className="gb-scale-mark" style={{ left: `${Math.min(100, Math.max(0, score))}%` }} />}
+      </div>
+      <div className="gb-scale-ticks">
+        {SCALE.map((step) => (
+          <span key={step.band} style={{ left: `${step.from}%` }}>
+            {step.from}
+          </span>
+        ))}
+        <span style={{ left: '100%' }}>100</span>
+      </div>
+    </div>
+  );
+}
+
+/** A Zone with no score in the period, in the words the tile and the bar list both use. */
+function pendingWord(zone: BoardZone): string {
+  return awaitingRollup(zone) ? 'awaiting rollup' : 'not started';
+}
+
+/** A Zone's state for a screen reader, the same on its tile and its bar. */
+function zoneStatus(zone: BoardZone): string {
+  if (zone.score !== null) return `${zone.name}: ${score1(zone.score)} percent, ${bandLabel(zone.score)}`;
+  return `${zone.name}: ${awaitingRollup(zone) ? 'audited, score not yet in the analytics rollup' : 'not audited in this period'}`;
+}
+
+/**
+ * Every Zone's period score as a bar in its band's colour, in the board's order. Horizontal,
+ * because Zone names are long; the value and the band word sit beside the bar, so it reads
+ * without colour. A Zone with no score in the period has no bar, only its reason.
+ */
+function ZoneScores({
+  board,
+  selected,
+  onSelect,
 }: {
-  label: string;
-  value: string;
-  context: string;
-  band: Band | Tone;
+  board: BoardZone[];
+  selected: string | undefined;
+  onSelect: (code: string) => void;
 }) {
   return (
-    <div className={`gb-tile gb-kpi gb-${band}`}>
-      <span className="gb-label">{label}</span>
-      <b className="gb-figure">{value}</b>
-      <small>{context}</small>
-      <div className={`gb-band gb-band--${band}`} />
+    <div className="gb-panel">
+      <div className="gb-panel-head">
+        <div>
+          <h2 className="gb-h2">Zone scores</h2>
+          <p>Each zone&apos;s period score. Select one to open its breakdown below.</p>
+        </div>
+      </div>
+      {board.length === 0 ? (
+        <p className="gb-zscores-empty">No zones in this Unit yet.</p>
+      ) : (
+        <ol className="gb-zscores">
+          {board.map((zone) => {
+            const pending = zone.score === null;
+            return (
+              <li key={zone.zoneId}>
+                <button
+                  type="button"
+                  className={`gb-zscore gb-${zone.band}`}
+                  aria-pressed={zone.code === selected}
+                  onClick={() => onSelect(zone.code)}
+                  aria-label={zoneStatus(zone)}
+                  title={pending ? pendingWord(zone) : bandLabel(zone.score)}
+                >
+                  <span className="gb-zscore-name" lang={nameLang(zone.name)}>
+                    {zone.name}
+                  </span>
+                  <span className="gb-zscore-track">
+                    {pending ? null : <i style={{ width: `${Math.min(100, Math.max(0, zone.score!))}%` }} />}
+                  </span>
+                  <span className="gb-zscore-value">{pending ? pendingWord(zone) : score1(zone.score)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }
@@ -926,19 +1033,13 @@ function ZoneTile({
       aria-pressed={selected}
       onClick={onSelect}
       className={`gb-tile gb-tile--interactive gb-zone gb-${zone.band}${pending ? ' gb-tile--pending' : ''}`}
-      aria-label={`${zone.name}: ${
-        pending
-          ? awaitingRollup(zone)
-            ? 'audited, score not yet in the analytics rollup'
-            : 'not audited in this period'
-          : `${score1(zone.score)} percent, ${bandLabel(zone.score)}`
-      }`}
+      aria-label={zoneStatus(zone)}
     >
       <span className="gb-label" lang={nameLang(zone.name)}>{zone.name}</span>
       <span className="gb-row">
         <span className="gb-figure">{pending ? '—' : score1(zone.score)}</span>
         <span className="gb-delta">
-          {pending ? (awaitingRollup(zone) ? 'awaiting rollup' : 'not started') : delta1(zone.delta)}
+          {pending ? pendingWord(zone) : delta1(zone.delta)}
         </span>
       </span>
       {/* The band in words and shape, not colour alone: On Track and Outstanding share a green (B2). */}
@@ -1206,7 +1307,7 @@ function MatrixCell({ section }: { section?: SectionScorePayload }) {
 
 /** The 4px severity rail on the first cell of a row (§6 "Table"). */
 function rail(band: Band | Tone): string {
-  return band === 'crit' ? 'gb-row-crit' : band === 'warn' ? 'gb-row-warn' : 'gb-row-none';
+  return band === 'late' ? 'gb-row-late' : band === 'crit' ? 'gb-row-crit' : band === 'warn' ? 'gb-row-warn' : 'gb-row-none';
 }
 
 function chipTone(band: Band | Tone): string {
@@ -1229,7 +1330,7 @@ function shareRows(board: BoardZone[]) {
 function actionState(action: CorrectiveAction, now: number): { band: Tone; label: string } {
   const live = action.status === 'OPEN' || action.status === 'REOPENED';
   const due = action.dueAt === null ? null : Date.parse(action.dueAt);
-  if (live && due !== null && due < now) return { band: 'crit', label: 'Overdue' };
+  if (live && due !== null && due < now) return { band: 'late', label: 'Past due' };
   if (live && due !== null && due < now + 7 * DAY) {
     return { band: 'warn', label: `Due in ${Math.max(0, Math.ceil((due - now) / DAY))} d` };
   }

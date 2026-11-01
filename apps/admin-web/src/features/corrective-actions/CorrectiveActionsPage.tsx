@@ -281,7 +281,7 @@ export function CorrectiveActionsPage() {
               checked={overdue}
               onChange={(event) => setSearch({ overdue: event.target.checked ? true : undefined })}
             />
-            Overdue only
+            Past due only
           </label>
         </div>
 
@@ -379,7 +379,7 @@ export function CorrectiveActionsPage() {
                                 : `${entry.zone} · ${entry.leader ?? 'No Zone Leader on record'}`}
                             </span>
                             {entry.overdue > 0 && (
-                              <span className="ml-2 text-xs font-semibold gb-text-needs-support">{entry.overdue} overdue</span>
+                              <span className="ml-2 text-xs font-semibold gb-text-late">{entry.overdue} past due</span>
                             )}
                             {/* The rest of a group is on the next page; it continues under this header. */}
                             {entry.list.length < entry.total && (
@@ -468,9 +468,9 @@ function ActionRow({
         {action.dueAt ? (
           // The word as well as the colour: an overdue row has to survive a projector and a
           // colour-blind reader.
-          <span className={late ? 'gb-text-needs-support' : ''}>
+          <span className={late ? 'gb-text-late' : ''}>
             {formatDate(action.dueAt)}
-            {late && <b className="ml-1">Overdue</b>}
+            {late && <b className="ml-1">Past due</b>}
           </span>
         ) : (
           '—'

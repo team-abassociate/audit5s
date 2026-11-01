@@ -587,11 +587,11 @@ function UnitContext({ unitId, latestShown }: { unitId: string; latestShown: boo
             .map((row) => `${row.section} ${pct(row.latest, '')}${hasPrevious ? ` (previous ${pct(row.previous, '')})` : ''}`)
             .join(', ')}.`}
         >
-          {/* Paired bars, not a radar (AN4): both series in ink — a score series is not a band,
-              so it takes no band colour — told apart by weight and by the legend. */}
+          {/* Paired bars, not a radar (AN4): a score series is not a band, so it takes no band
+              colour — latest in maroon, previous in apricot, named by the legend. */}
           <div className="gb-legend">
-            <span><i style={{ background: 'var(--ink)' }} /> Latest audit</span>
-            {hasPrevious ? <span><i style={{ background: 'var(--muted)' }} /> Previous audit</span> : null}
+            <span><i style={{ background: 'var(--primary-ink)' }} /> Latest audit</span>
+            {hasPrevious ? <span><i style={{ background: 'var(--secondary)' }} /> Previous audit</span> : null}
           </div>
           <ResponsiveContainer width="100%" height={height(pairs.length * (hasPrevious ? 2 : 1))}>
             <BarChart data={pairs} layout="vertical" accessibilityLayer={false} margin={{ top: 18, right: 4, left: 4, bottom: 0 }}>
@@ -599,13 +599,13 @@ function UnitContext({ unitId, latestShown }: { unitId: string; latestShown: boo
               <XAxis type="number" domain={[0, 100]} ticks={[0, 20, 40, 60, 80, 100]} stroke={token('--muted')} />
               <YAxis dataKey="section" type="category" width={110} interval={0} stroke={token('--muted')} />
               <Tooltip contentStyle={TOOLTIP} formatter={(value) => pct(asScore(value), '')} />
-              <ReferenceLine x={TARGET} stroke={token('--band-needs-support')} strokeDasharray="4 4" label={targetLabel(token)} />
+              <ReferenceLine x={TARGET} stroke={token('--muted')} strokeDasharray="4 4" label={targetLabel(token)} />
               {valueAxis(token, 84, (index) => {
                 const row = pairs[index];
                 return row ? (hasPrevious ? `${pct(row.latest, '')} · ${pct(row.previous, '')}` : pct(row.latest, '')) : '';
               })}
-              <Bar isAnimationActive={false} dataKey="latest" name="Latest audit" fill={token('--ink')} barSize={12} />
-              {hasPrevious ? <Bar isAnimationActive={false} dataKey="previous" name="Previous audit" fill={token('--muted')} barSize={12} /> : null}
+              <Bar isAnimationActive={false} dataKey="latest" name="Latest audit" fill={token('--primary-ink')} barSize={12} radius={barEnd(token)} />
+              {hasPrevious ? <Bar isAnimationActive={false} dataKey="previous" name="Previous audit" fill={token('--secondary')} barSize={12} radius={barEnd(token)} /> : null}
             </BarChart>
           </ResponsiveContainer>
         </DatasetCard>
@@ -625,7 +625,7 @@ function UnitContext({ unitId, latestShown }: { unitId: string; latestShown: boo
             <YAxis dataKey="stage" type="category" width={110} interval={0} stroke={token('--muted')} />
             <Tooltip contentStyle={TOOLTIP} />
             {valueAxis(token, 56, (index) => COUNT.format(stages[index]?.count ?? 0))}
-            <Bar isAnimationActive={false} dataKey="count" name="Corrective actions" fill={token('--muted')} barSize={16} />
+            <Bar isAnimationActive={false} dataKey="count" name="Corrective actions" fill={token('--secondary')} barSize={16} radius={barEnd(token)} />
           </BarChart>
         </ResponsiveContainer>
       </DatasetCard>
@@ -650,8 +650,8 @@ function ScoreBars({ rows }: { rows: Array<{ name: string; score: number | null;
         <YAxis dataKey="name" type="category" width={170} interval={0} tick={NameTick} stroke={token('--muted')} />
         {valueAxis(token, 48, (index) => pct(rows[index]?.score ?? null, ''))}
         <Tooltip contentStyle={TOOLTIP} formatter={(value) => [pct(asScore(value)), 'Score']} />
-        <ReferenceLine x={TARGET} stroke={token('--band-needs-support')} strokeDasharray="4 4" label={targetLabel(token)} />
-        <Bar isAnimationActive={false} dataKey="score" name="Score" barSize={16}>
+        <ReferenceLine x={TARGET} stroke={token('--muted')} strokeDasharray="4 4" label={targetLabel(token)} />
+        <Bar isAnimationActive={false} dataKey="score" name="Score" barSize={16} radius={barEnd(token)}>
           {/* A highlighted row keeps its band colour — the band is what the colour means —
               and is marked by an ink outline instead, so it reads without colour. */}
           {rows.map((row, index) => (
@@ -690,7 +690,7 @@ function valueAxis(token: (name: string) => string, width: number, value: (index
 
 /** The target's label sits above the plot, so its own dashed line never strikes it through. */
 function targetLabel(token: (name: string) => string) {
-  return { value: `OUTSTANDING ${TARGET}`, position: 'top' as const, fill: token('--ink-2'), fontSize: 10.5 };
+  return { value: `Outstanding ${TARGET}`, position: 'top' as const, fill: token('--ink-2'), fontSize: 10.5 };
 }
 
 /** One sentence a screen reader can use in place of a ranking chart (AN3). */
@@ -705,11 +705,17 @@ function rankingAlt(what: string, rows: Array<{ name: string; score: number | nu
   return `${what}, ${rows.length} bars. Highest ${top.name} at ${pct(top.score, '')}, lowest ${low.name} at ${pct(low.score, '')}. ${clear} of ${scored.length} at or above the Outstanding line of ${TARGET}.`;
 }
 
-/** A tooltip on the board is a small magnet: tile ground, hard ink edge, no radius. */
+/** A horizontal bar's end, from `--radius-control` (LEDGER.md rule 6); square at the baseline. */
+function barEnd(token: (name: string) => string): [number, number, number, number] {
+  const r = Number.parseFloat(token('--radius-control')) || 0;
+  return [0, r, r, 0];
+}
+
+/** A chart tooltip: a small surface panel (LEDGER.md radius 14). */
 const TOOLTIP = {
   background: 'var(--surface)',
-  border: '1.5px solid var(--rule)',
-  borderRadius: 0,
+  border: '1px solid var(--rule)',
+  borderRadius: 'var(--radius-panel)',
   color: 'var(--ink)',
   fontSize: 12.5,
 } as const;

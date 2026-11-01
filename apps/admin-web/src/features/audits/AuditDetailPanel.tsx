@@ -428,7 +428,7 @@ function EvidenceTile({
   return (
     <button
       type="button"
-      className="min-w-0 overflow-hidden border border-rule-soft bg-surface text-left hover:border-rule focus:ring-2 focus:ring-accent focus:outline-none"
+      className="min-w-0 overflow-hidden border border-rule-soft bg-surface text-left rounded-control hover:border-rule"
       aria-label={`Open photo: ${where}, ${label}`}
       onClick={onOpen}
     >
