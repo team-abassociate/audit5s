@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatDate, formatDateTime, formatScore, isAuditCompleted, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDateTime, formatScore, isAuditCompleted, zoneDisplayLabel } from '@audit5s/domain';
 import type { Audit, AuditDetail, Page, ReportSnapshot, Zone } from '@audit5s/contracts';
 import { api, fetchAll } from '@/lib/api';
 import { auditTypeLabel } from '@/lib/labels';
@@ -9,9 +9,9 @@ import { PreviewButton } from './SummaryZonePicker';
 
 /**
  * R-75: the summary of summaries' selection — any number of finished audits of one Zone
- * (zone-wise), or any number of issued Summary reports of the Unit (unit-wise). There is no
- * cap: how many to compare is the Super Admin's call, and the PDF lays out as many as are
- * ticked.
+ * (zone-wise), or any number of finished audits of the Unit, Cross and External alike
+ * (unit-wise). There is no cap: how many to compare is the Super Admin's call, and the PDF
+ * lays out as many as are ticked.
  */
 export function TrendPicker({
   unitId,
@@ -35,14 +35,14 @@ export function TrendPicker({
           <label>
             <input type="radio" name="trend-scope" checked={scope === 'UNIT'} onChange={() => setScope('UNIT')} />
             <b>Unit-wise</b>
-            <span>Summary reports already issued for the Unit, side by side.</span>
+            <span>Audits of the Unit, Cross and External, side by side.</span>
           </label>
         </div>
       </fieldset>
       {scope === 'ZONE' ? (
         <ZoneAuditsPicker unitId={unitId} onQueued={onQueued} />
       ) : (
-        <SummariesPicker unitId={unitId} onQueued={onQueued} />
+        <UnitAuditsPicker unitId={unitId} onQueued={onQueued} />
       )}
     </div>
   );
@@ -127,33 +127,52 @@ function ZoneAuditsPicker({ unitId, onQueued }: { unitId: string; onQueued?: (sn
   );
 }
 
-function SummariesPicker({ unitId, onQueued }: { unitId: string; onQueued?: (snapshot: ReportSnapshot) => void }) {
-  const reports = useQuery({
-    queryKey: ['reports', 'summaries', unitId],
-    queryFn: () => fetchAll<ReportSnapshot>(`/reports?limit=200&unitId=${unitId}&kind=MULTI_ZONE_SUMMARY`),
+function UnitAuditsPicker({ unitId, onQueued }: { unitId: string; onQueued?: (snapshot: ReportSnapshot) => void }) {
+  const audits = useQuery({
+    queryKey: ['audits', 'unit', unitId],
+    queryFn: () => fetchAll<Audit>(`/audits?limit=200&unitId=${unitId}`),
   });
-  // Issued summaries only: a queued or failed one has printed nothing to compare.
-  const issued = (reports.data ?? [])
-    .filter((report) => report.status === 'READY')
-    .sort((a, b) => (b.subject.auditedTo ?? b.generatedAt).localeCompare(a.subject.auditedTo ?? a.generatedAt));
+  // Finished, scored audits of the Unit — Cross and External alike; a walk-by has no score.
+  const finished = (audits.data ?? [])
+    .filter((audit) => audit.unitId === unitId && audit.scored && isAuditCompleted(audit.status) && audit.completedAt)
+    .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!));
 
-  if (reports.isLoading) return <Spinner label="Loading Summary reports…" />;
-  if (reports.error) return <ErrorNotice error={reports.error} />;
+  // Each audit's finished Zones, which are what the request names.
+  const details = useQueries({
+    queries: finished.map((audit) => ({
+      queryKey: ['audit-detail', audit.id],
+      queryFn: () => api.get<AuditDetail>(`/audits/${audit.id}`),
+      staleTime: 60_000,
+    })),
+  });
+  const zonesOf = new Map(
+    finished.map((audit, index) => [
+      audit.id,
+      (details[index]?.data?.zones ?? []).filter((zone) => zone.status === 'COMPLETED').map((zone) => zone.id),
+    ]),
+  );
+
+  if (audits.isLoading || details.some((query) => query.isLoading)) return <Spinner label="Loading audits…" />;
+  if (audits.error) return <ErrorNotice error={audits.error} />;
+  const rows = finished.filter((audit) => (zonesOf.get(audit.id) ?? []).length > 0);
   return (
     <Checklist
-      items={issued.map((report) => {
-        const from = formatDate(report.subject.auditedFrom);
-        const to = formatDate(report.subject.auditedTo);
+      items={rows.map((audit) => {
+        const count = zonesOf.get(audit.id)!.length;
         return {
-          id: report.id,
-          label: from === to ? from : `${from} – ${to}`,
-          detail: `${report.subject.zoneCount} Zone${report.subject.zoneCount === 1 ? '' : 's'} · v${report.version}`,
-          pct: null,
+          id: audit.id,
+          label: formatDateTime(audit.completedAt!),
+          detail: `${auditTypeLabel(audit.auditType)} · ${audit.auditorName} · ${count} Zone${count === 1 ? '' : 's'}`,
+          pct: audit.totals.scorePercentage,
         };
       })}
-      empty="No Summary report has been issued for this Unit yet. Issue one from Unit summary first."
-      noun={['summary', 'summaries']}
-      body={(ids) => ({ kind: 'TREND_SUMMARY' as const, unitId, selectedSnapshotIds: ids })}
+      empty="No finished, scored audit of this Unit yet."
+      noun={['audit', 'audits']}
+      body={(ids) => ({
+        kind: 'TREND_SUMMARY' as const,
+        unitId,
+        selectedAuditZoneIds: ids.flatMap((id) => zonesOf.get(id) ?? []),
+      })}
       onQueued={onQueued}
     />
   );

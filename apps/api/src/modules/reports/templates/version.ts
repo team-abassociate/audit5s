@@ -37,7 +37,8 @@
 // 1.11.0 — the Zone report shows the Zone's last six scores with a trend chart, and ends
 // with display-board pages: Before & After (after-evidence only) and the Zone score board.
 // 1.12.0 — R-75: the summary of summaries (TREND_SUMMARY), zone-wise or unit-wise.
-export const TEMPLATE_VERSION = '1.12.0';
+// 1.13.0 — R-75: unit-wise from audits, Cross and External; each audit row names its type.
+export const TEMPLATE_VERSION = '1.13.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

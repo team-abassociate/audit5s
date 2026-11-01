@@ -14,6 +14,8 @@ import {
   ratingLabel,
 } from './components';
 
+const AUDIT_TYPE_SHORT = { EXTERNAL_5S: 'External', CROSS_5S: 'Cross', WALK_BY: 'Walk-by' } as const;
+
 /**
  * R-75: the summary of summaries — the overall score, each S and the 5S web of every chosen
  * audit of a Zone, or of every chosen Summary report of a Unit, side by side.
@@ -35,7 +37,12 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
   }
 
   const zoneWise = trend.scope === 'ZONE';
+  // Unit-wise from audits rather than from Summary reports: each point is one audit.
+  const byAudit = zoneWise || trend.points.some((point) => point.auditType);
   const label = (point: ReportTrend['points'][number]) => spanLabel(point.from, point.to);
+  // The table and the webs say which audit; the bars keep to the date, for room.
+  const named = (point: ReportTrend['points'][number]) =>
+    point.auditType ? `${label(point)} · ${AUDIT_TYPE_SHORT[point.auditType]}` : label(point);
 
   return (
     <>
@@ -53,7 +60,7 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
           value={payload.auditDateRange ? spanLabel(payload.auditDateRange.from, payload.auditDateRange.to) : '—'}
         />
         <MetaCell
-          label={zoneWise ? 'Audits compared' : 'Summary reports compared'}
+          label={byAudit ? 'Audits compared' : 'Summary reports compared'}
           value={String(trend.points.length)}
         />
         <MetaCell
@@ -92,11 +99,11 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
         ))}
       </div>
 
-      <h2 className="section-title">Scores by {zoneWise ? 'audit' : 'summary report'}</h2>
+      <h2 className="section-title">Scores by {byAudit ? 'audit' : 'summary report'}</h2>
       <table>
         <thead>
           <tr>
-            <th>{zoneWise ? 'Audit date' : 'Period'}</th>
+            <th>{byAudit ? 'Audit' : 'Period'}</th>
             {zoneWise ? null : <th className="centre">Zones</th>}
             {S_SECTION_ORDER.map((section) => (
               <th key={section} className="centre">
@@ -110,7 +117,7 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
         <tbody>
           {trend.points.map((point) => (
             <tr key={point.id}>
-              <td>{label(point)}</td>
+              <td>{named(point)}</td>
               {zoneWise ? null : <td className="centre">{point.zoneCount}</td>}
               {S_SECTION_ORDER.map((section) => {
                 const score = point.sections.find((entry) => entry.section === section);
@@ -150,7 +157,7 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
           <div className="web-cell" key={`web-${point.id}`}>
             <RadarWeb sections={point.sections} bands={payload.bands} brand={payload.brand} size={190} />
             <div className="photo-caption">
-              {label(point)} · {formatPercentage(point.totals.scorePercentage)}
+              {named(point)} · {formatPercentage(point.totals.scorePercentage)}
             </div>
           </div>
         ))}
