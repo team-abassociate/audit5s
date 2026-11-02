@@ -2896,3 +2896,16 @@ slip, the board grid, "colour only for score bands" as worded there, or its dark
   Outstanding green). Earlier resolutions that cite `GEMBA-BOARD.md` sections are historical.
 - **Not changed:** the printed report's palette (`BRAND_TOKENS` in `packages/domain`) and its
   fonts.
+
+## R-77 — A password is anything but empty
+
+**Ruled 2026-11-02 by the owner.** *"I want the password condition to be removed, it can be
+anything the user wants — name, number, whatever the user wants."* Withdraws §12.1's policy:
+the 10-character minimum, the phone/name/login-ID checks and the common-password list.
+
+- `checkPassword` (`packages/domain`) refuses only an empty password and one over
+  `PASSWORD_MAX_LENGTH` (256, kept so Argon2 is never handed megabytes).
+  `PASSWORD_MIN_LENGTH` is 1. The forced reset, change-password and the e-mailed reset link
+  all go through it.
+- The phone number may be kept as the password. The forced reset after a first sign-in still
+  happens; the user may type the same number back.
