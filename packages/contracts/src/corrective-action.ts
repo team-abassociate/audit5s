@@ -287,3 +287,32 @@ export const reassignCorrectiveActionRequestSchema = z.object({
 export type ReassignCorrectiveActionRequest = z.infer<
   typeof reassignCorrectiveActionRequestSchema
 >;
+
+/**
+ * R-79: one nonconformity of a Zone's last finished audit, as the next auditor of the Zone
+ * sees it — the finding, and once closed, the fix. Photo URLs are short-lived presigned GETs.
+ */
+export const previousNonconformitySchema = z.object({
+  id: uuidSchema,
+  status: correctiveActionStatusSchema,
+  questionNo: z.number().int().nullable(),
+  /** The question for a finding, the suggestion for an overall action (R-38). */
+  text: z.string(),
+  beforePhotoUrl: z.string().nullable(),
+  afterPhotoUrl: z.string().nullable(),
+  closedByName: z.string().nullable(),
+  closedAt: isoDateTimeSchema.nullable(),
+});
+export type PreviousNonconformity = z.infer<typeof previousNonconformitySchema>;
+
+/** R-79: `GET /zones/{zoneId}/previous-nonconformities`. Counts leave withdrawn items out. */
+export const previousNonconformitiesSchema = z.object({
+  /** The Zone's last finished audit, of any type; null when it has none. */
+  auditId: uuidSchema.nullable(),
+  auditDate: isoDateTimeSchema.nullable(),
+  raised: z.number().int().nonnegative(),
+  closed: z.number().int().nonnegative(),
+  open: z.number().int().nonnegative(),
+  items: z.array(previousNonconformitySchema),
+});
+export type PreviousNonconformities = z.infer<typeof previousNonconformitiesSchema>;

@@ -189,6 +189,8 @@ export const reportZoneSchema = z.object({
   totals: scoreTotalsSchema,
   sections: z.array(sectionScoreSchema),
   zoneRemark: z.string().nullable(),
+  /** R-79: absent on a payload frozen before it, which renders as issued. */
+  previousNcsAnswer: z.string().nullable().optional(),
   questions: z.array(reportQuestionSchema),
   good: z.array(reportPhotoSchema),
   nonconformities: z.array(reportNonconformitySchema),

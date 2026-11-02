@@ -335,6 +335,12 @@ export const localAuditZoneAuditees = sqliteTable('audit_zone_auditee', {
   auditeeName: text('auditee_name'),
 });
 
+/** R-79 (local v16): the auditor's answer to "Are the earlier NCs closed by the Zone Leader?". */
+export const localAuditZonePreviousNcs = sqliteTable('audit_zone_previous_ncs', {
+  auditZoneId: text('audit_zone_id').primaryKey(),
+  answer: text('answer'),
+});
+
 export const localZoneActionSuggestions = sqliteTable('zone_action_suggestion', {
   auditZoneId: text('audit_zone_id').primaryKey(),
   suggestions: text('suggestions').notNull().default('[]'),

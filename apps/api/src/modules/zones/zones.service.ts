@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type {
   AssignZoneLeaderRequest,
   CreateZoneRequest,
   ListZonesQuery,
   Page,
+  PreviousNonconformities,
   UpdateZoneRequest,
   Zone,
   ZoneListImportResult,
@@ -12,6 +13,9 @@ import { zoneLabelFromCode, type ScopeContext } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { isUniqueViolation } from '../../common/pg-errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
+import { CONFIG, type AppConfig } from '../../config/env';
+import { ObjectStorage } from '../../infrastructure/storage/object-storage';
+import { CorrectiveActionsRepository } from '../corrective-actions/corrective-actions.repository';
 import { UnitsRepository } from '../units/units.repository';
 import { ZonesRepository, type ZonePatch, type ZoneRow } from './zones.repository';
 import { readZoneList, ZoneListRejected } from './zone-list-reader';
@@ -22,6 +26,9 @@ export class ZonesService {
     private readonly repository: ZonesRepository,
     private readonly units: UnitsRepository,
     private readonly auditLog: AuditLogService,
+    private readonly actions: CorrectiveActionsRepository,
+    private readonly storage: ObjectStorage,
+    @Inject(CONFIG) private readonly config: AppConfig,
   ) {}
 
   async create(scope: ScopeContext, unitId: string, request: CreateZoneRequest): Promise<Zone> {
@@ -75,6 +82,41 @@ export class ZonesService {
 
   async get(scope: ScopeContext, zoneId: string): Promise<Zone> {
     return toZone(await this.mustFind(scope, zoneId));
+  }
+
+  /**
+   * R-79: the NCs of the Zone's last finished audit — raised, closed, still open — with
+   * their before and after photos, for whoever is about to audit it (a Consultant on an
+   * external audit, a Zone Leader on a cross audit). Read under `zone:read`.
+   */
+  async previousNonconformities(scope: ScopeContext, zoneId: string): Promise<PreviousNonconformities> {
+    await this.mustFind(scope, zoneId);
+    const last = await this.actions.previousForZone(scope, zoneId);
+    if (!last) return { auditId: null, auditDate: null, raised: 0, closed: 0, open: 0, items: [] };
+
+    const url = async (key: string | null) =>
+      key ? (await this.storage.presignGet(key, { expiresInSeconds: this.config.EVIDENCE_GET_URL_TTL_SECONDS })).url : null;
+    const items = await Promise.all(
+      last.items.map(async (item) => ({
+        id: item.id,
+        status: item.status,
+        questionNo: item.questionNo,
+        text: item.questionText ?? item.suggestion ?? '',
+        beforePhotoUrl: await url(item.beforeKey),
+        afterPhotoUrl: item.status === 'VERIFIED' ? await url(item.afterKey) : null,
+        closedByName: item.closedByName,
+        closedAt: item.status === 'VERIFIED' ? (item.resolvedAt?.toISOString() ?? null) : null,
+      })),
+    );
+    const closed = items.filter((item) => item.status === 'VERIFIED').length;
+    return {
+      auditId: last.auditId,
+      auditDate: last.auditDate?.toISOString() ?? null,
+      raised: items.length,
+      closed,
+      open: items.length - closed,
+      items,
+    };
   }
 
   async update(scope: ScopeContext, zoneId: string, request: UpdateZoneRequest): Promise<Zone> {

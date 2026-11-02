@@ -10,11 +10,12 @@ import {
   type CorrectiveActionDetail,
   type CorrectiveActionSubmission,
   type Page,
+  type PreviousNonconformities,
   type SyncBatchResponse,
   type SyncCatalogue,
 } from '@audit5s/contracts';
 import { captureEvidence, loginFromDevice, sha256Hex, startWorld, stopWorld, TINY_JPEG, type TestActor, type TestWorld } from './harness';
-import { afterPhoto, completedWalkBy, submit, submitOptionA } from './corrective-fixtures';
+import { afterPhoto, completedWalkBy, makeZone, submit, submitOptionA } from './corrective-fixtures';
 import { isReviewable, zoneLabelFromCode } from '@audit5s/domain';
 import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
 import { CorrectiveActionsService } from '../src/modules/corrective-actions/corrective-actions.service';
@@ -934,5 +935,34 @@ describe('R-60 — a Zone renamed by an import leaves its audits and actions alo
       token: superAdmin,
     });
     expect((action.body as CorrectiveActionDetail).zoneName).toBe(name);
+  });
+});
+
+describe('R-79 — the next auditor sees the Zone’s earlier NCs', () => {
+  it('counts the last finished audit’s NCs, raised, closed and open, with the fix’s photo', async () => {
+    const { actions, auditId, zoneId } = await walkBy(2);
+    expect((await submitOptionA(world, leaderToken, actions[0]!)).status).toBe(201);
+
+    // A Zone Leader of the Unit, auditing across: not this Zone's leader, and still sees it.
+    const response = await world.request('GET', `${base}/zones/${zoneId}/previous-nonconformities`, {
+      token: secondLeader.accessToken,
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const body = response.body as PreviousNonconformities;
+    expect(body.auditId).toBe(auditId);
+    expect({ raised: body.raised, closed: body.closed, open: body.open }).toEqual({ raised: 2, closed: 1, open: 1 });
+    const closed = body.items.find((item) => item.id === actions[0]!.id)!;
+    expect(closed.beforePhotoUrl).toContain('http');
+    expect(closed.afterPhotoUrl).toContain('http');
+    expect(closed.closedAt).not.toBeNull();
+    expect(body.items.find((item) => item.id === actions[1]!.id)!.afterPhotoUrl).toBeNull();
+  });
+
+  it('answers zeros for a Zone never audited', async () => {
+    const zoneId = await makeZone(world, world.unitA, null);
+    const response = await world.request('GET', `${base}/zones/${zoneId}/previous-nonconformities`, {
+      token: consultantToken,
+    });
+    expect(response.body).toMatchObject({ auditId: null, raised: 0, closed: 0, open: 0, items: [] });
   });
 });
