@@ -2500,7 +2500,7 @@ describe('R-80 — the score card, downloadable from the app', () => {
     world.request('GET', `${base}/audits/${auditId}/scorecard/${exportId}`, { token });
 
   it('QUEUED → printed → READY: a PDF named for the Unit and the Zone, for the auditor and the Unit', async () => {
-    const { auditId } = await completedAudit('Z-81', 'Paint shop');
+    const { auditId } = await completedAudit('Z-88', 'Paint shop');
     const queued = await request(consultantToken, auditId);
     expect(queued.status, JSON.stringify(queued.body)).toBe(202);
     const job = queued.body as ScorecardExport;
