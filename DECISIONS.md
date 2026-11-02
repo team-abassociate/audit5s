@@ -2896,3 +2896,26 @@ slip, the board grid, "colour only for score bands" as worded there, or its dark
   Outstanding green). Earlier resolutions that cite `GEMBA-BOARD.md` sections are historical.
 - **Not changed:** the printed report's palette (`BRAND_TOKENS` in `packages/domain`) and its
   fonts.
+
+## R-81 — Reviewing a finished audit, the auditor changes its photos and summary picks
+
+**Ruled 2026-11-02 by the owner.** *"When the auditor wants to review his audit then he
+should also be able to change the photos taken, add/delete them, and also while reviewing
+he should be able to select for summary photos as well."* Narrows E-4 (a finished audit's
+photos are never removed) for the auditor's own correction; widens R-62's 24 hours.
+
+- **Review is R-30's correction:** the auditor opens their finished audit, gives the reason
+  (≥10 characters) and corrects. Photos join that correction: **delete** a photo, or **pick
+  / unpick it as the Zone's Good or Nonconformity summary photo**, from the photo preview.
+  Picking one unpicks the Zone's other photo of that kind.
+- **Server:** `PATCH /audits/{id}/post-completion` takes `changes.evidence`
+  (`evidenceId`, `deleted: true` and/or `isSummaryFlagged`), applied on the correction's own
+  transaction inside A-2's carve-out (0022's trigger already allowed it there), with each
+  photo's before and after in the audit log. A deleted photo is soft-deleted, never
+  removed (R-5). A removed nonconformity photo **withdraws** its open corrective action in
+  R-31's cascade; a closed one is left alone. Only question and walk-by photos qualify.
+- **Adding:** the auditor may add a photo to their own finished audit at any time, not only
+  within R-62's 24 hours; a late problem photo raises its action as R-62 says. A photo's
+  remark is not edited in review.
+- **Phone:** in correction mode the camera and gallery stay open and the preview's Delete
+  and summary buttons ride the queued correction, merged with any corrected marks.

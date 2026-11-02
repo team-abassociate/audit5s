@@ -472,6 +472,43 @@ export class EvidenceRepository extends BaseRepository {
    * land outside the carve-out and be refused by the freeze trigger, which is exactly the
    * bug this shape prevents.
    */
+  /**
+   * R-81: a photo removed, or picked for the summary, while the auditor reviews a finished
+   * audit — on the correction's own transaction, where A-2's carve-out is open. Picking one
+   * unpicks the Zone's other photo of its kind first, since each Zone has one of each (E-3).
+   */
+  async applyReviewChangeOn(
+    tx: Transaction,
+    auditId: string,
+    change: { evidenceId: string; deleted?: true; isSummaryFlagged?: boolean },
+  ): Promise<void> {
+    const [row] = await tx
+      .select({ auditZoneId: evidence.auditZoneId, classification: evidence.classification })
+      .from(evidence)
+      .where(and(eq(evidence.id, change.evidenceId), eq(evidence.auditId, auditId), isNull(evidence.deletedAt)))
+      .limit(1);
+    if (!row) return;
+    if (change.deleted) {
+      await tx.update(evidence).set({ deletedAt: new Date(), isSummaryFlagged: false }).where(eq(evidence.id, change.evidenceId));
+      return;
+    }
+    if (change.isSummaryFlagged === true && row.auditZoneId) {
+      await tx
+        .update(evidence)
+        .set({ isSummaryFlagged: false })
+        .where(
+          and(
+            eq(evidence.auditZoneId, row.auditZoneId),
+            eq(evidence.classification, row.classification),
+            eq(evidence.isSummaryFlagged, true),
+          ),
+        );
+    }
+    if (change.isSummaryFlagged !== undefined) {
+      await tx.update(evidence).set({ isSummaryFlagged: change.isSummaryFlagged }).where(eq(evidence.id, change.evidenceId));
+    }
+  }
+
   async reclassifyForResponseOn(
     tx: Transaction,
     responseId: string,

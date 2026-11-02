@@ -459,7 +459,9 @@ export default function QuestionnaireScreen() {
   const finished = audit.data ? isFinished(audit.data.status) && zone.data.status !== 'WITHDRAWN' : false;
   const latePhotosUntil =
     finished && audit.data?.startedAt ? latePhotoWindowEndsAt(audit.data.startedAt) : null;
-  const photosOpen = auditOpen || (latePhotosUntil !== null && Date.now() < latePhotosUntil.getTime());
+  // R-81: reviewing (correcting) a finished audit, the auditor may add photos at any time.
+  const photosOpen =
+    auditOpen || correcting !== null || (latePhotosUntil !== null && Date.now() < latePhotosUntil.getTime());
   const reasonGiven = reasonDraft.trim().length >= MIN_JUSTIFICATION;
   const reviewingFinishedZone = auditOpen && zone.data.status === 'COMPLETED';
 
@@ -764,7 +766,12 @@ export default function QuestionnaireScreen() {
         onClose={() => setBlockedOn(null)}
       />
 
-      <PhotoPreview photo={previewPhoto} editable={auditOpen} onClose={() => setPreviewId(null)} />
+      <PhotoPreview
+        photo={previewPhoto}
+        editable={auditOpen || correcting !== null}
+        correction={correcting !== null && audit.data ? { auditId: audit.data.id, justification: correcting } : null}
+        onClose={() => setPreviewId(null)}
+      />
 
       {/* Over the questions, not instead of them. Swapping the list out for the camera
           unmounted it and threw its scroll position away, so coming back from a photograph

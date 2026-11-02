@@ -18,6 +18,7 @@ import {
   canBeSummaryFlagged,
   classifyEvidence,
   evidenceObjectKey,
+  grantFor,
   isAuditCompleted,
   photoMayJoinFinishedAudit,
   sniffImageType,
@@ -112,14 +113,20 @@ export class EvidenceService {
     }
     // R-62: a photo may still join a finished audit — taken before Finish, or within 24 hours
     // of the start — and its arrival is written to the audit log.
+    // R-81: the auditor reviewing their own finished audit may add a photo at any time.
+    const reviewing =
+      audit.auditorUserId === scope.actor.userId &&
+      audit.status !== 'CANCELLED' &&
+      grantFor(scope.actor.role, 'audit:edit_after_completion') !== null;
     const late =
       isAuditCompleted(audit.status) &&
-      photoMayJoinFinishedAudit({
-        kind: request.kind,
-        capturedAt: request.capturedAt,
-        startedAt: audit.startedAt,
-        completedAt: audit.completedAt,
-      });
+      (reviewing ||
+        photoMayJoinFinishedAudit({
+          kind: request.kind,
+          capturedAt: request.capturedAt,
+          startedAt: audit.startedAt,
+          completedAt: audit.completedAt,
+        }));
     if (!late) this.assertWritable(audit.status, scope, audit.owningDeviceId);
 
     const auditZoneId = await this.resolveZone(scope, request, audit.id);
@@ -632,6 +639,15 @@ export class EvidenceService {
     value: Parameters<EvidenceRepository['reclassifyForResponseOn']>[2],
   ): Promise<number> {
     return this.repository.reclassifyForResponseOn(tx, responseId, value);
+  }
+
+  /** R-81, on the correction's transaction: see `EvidenceRepository.applyReviewChangeOn`. */
+  async applyReviewChangeOn(
+    tx: Transaction,
+    auditId: string,
+    change: Parameters<EvidenceRepository['applyReviewChangeOn']>[2],
+  ): Promise<void> {
+    await this.repository.applyReviewChangeOn(tx, auditId, change);
   }
 
   /** The §7.2 walk-by guard: "≥1 non-deleted evidence row". */

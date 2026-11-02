@@ -434,6 +434,17 @@ export const postCompletionOverrideRequestSchema = z.object({
         )
         .max(50)
         .optional(),
+      /** R-81: photos changed while reviewing — removed, or picked for the summary or not. */
+      evidence: z
+        .array(
+          z.object({
+            evidenceId: uuidSchema,
+            deleted: z.literal(true).optional(),
+            isSummaryFlagged: z.boolean().optional(),
+          }),
+        )
+        .max(50)
+        .optional(),
     })
     .refine((changes) => Object.values(changes).some((value) => value !== undefined), {
       message: 'An override must change something',

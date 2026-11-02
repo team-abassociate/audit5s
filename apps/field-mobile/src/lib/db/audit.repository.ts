@@ -791,23 +791,82 @@ export async function applyLocalOverride(
     .limit(1);
 
   const queued = readOverridePayload(pending?.payload);
-  const merged = queued.filter((change) => change.responseId !== input.responseId);
+  const merged = queued.responses.filter((change) => change.responseId !== input.responseId);
   merged.push({
     responseId: input.responseId,
     value: input.value,
     ...(input.remark === undefined ? {} : { remark: input.remark }),
   });
 
-  await enqueue(database, 'audit', input.auditId, 'override', {
-    justification: input.justification,
-    changes: { responses: merged },
+  await enqueue(database, 'audit', input.auditId, 'override', overridePayload(input.justification, merged, queued.evidence));
+}
+
+/**
+ * R-81: a photo removed, or picked for the summary, while the auditor reviews a finished
+ * audit. Rides the same logged correction as a changed mark, merged into its pending row.
+ */
+export async function applyLocalPhotoOverride(
+  database: LocalDatabase,
+  input: { auditId: string; evidenceId: string; deleted?: true; isSummaryFlagged?: boolean; justification: string },
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  const [photo] = await database.select().from(localEvidence).where(eq(localEvidence.id, input.evidenceId)).limit(1);
+  if (!photo) return;
+  if (input.isSummaryFlagged === true) {
+    // One summary photo of each kind per Zone (E-3): picking this one unpicks the other.
+    await database
+      .update(localEvidence)
+      .set({ isSummaryFlagged: 0, clientUpdatedAt: now })
+      .where(
+        and(
+          eq(localEvidence.auditZoneId, photo.auditZoneId ?? ''),
+          eq(localEvidence.classification, photo.classification),
+        ),
+      );
+  }
+  await database
+    .update(localEvidence)
+    .set({
+      ...(input.deleted ? { deletedAt: now, isSummaryFlagged: 0 } : {}),
+      ...(input.isSummaryFlagged !== undefined ? { isSummaryFlagged: input.isSummaryFlagged ? 1 : 0 } : {}),
+      clientUpdatedAt: now,
+    })
+    .where(eq(localEvidence.id, input.evidenceId));
+
+  const [pending] = await database
+    .select({ payload: outbox.payload })
+    .from(outbox)
+    .where(and(eq(outbox.entityType, 'audit'), eq(outbox.entityId, input.auditId), eq(outbox.operation, 'override')))
+    .limit(1);
+  const queued = readOverridePayload(pending?.payload);
+  const earlier = queued.evidence.find((change) => change.evidenceId === input.evidenceId);
+  const photos = queued.evidence.filter((change) => change.evidenceId !== input.evidenceId);
+  photos.push({
+    evidenceId: input.evidenceId,
+    ...(input.deleted || earlier?.deleted ? { deleted: true as const } : {}),
+    ...(input.isSummaryFlagged !== undefined
+      ? { isSummaryFlagged: input.isSummaryFlagged }
+      : earlier?.isSummaryFlagged !== undefined
+        ? { isSummaryFlagged: earlier.isSummaryFlagged }
+        : {}),
   });
+  await enqueue(database, 'audit', input.auditId, 'override', overridePayload(input.justification, queued.responses, photos));
+}
+
+function overridePayload(justification: string, responses: OverrideChange[], evidence: PhotoOverrideChange[]) {
+  return { justification, changes: { responses, ...(evidence.length > 0 ? { evidence } : {}) } };
 }
 
 interface OverrideChange {
   responseId: string;
   value: ResponseValue;
   remark?: string | null;
+}
+
+interface PhotoOverrideChange {
+  evidenceId: string;
+  deleted?: true;
+  isSummaryFlagged?: boolean;
 }
 
 /**
@@ -818,13 +877,18 @@ interface OverrideChange {
  * older build wrote a shape this one cannot understand would be a correction lost for good
  * — and the merge below rewrites the row completely anyway.
  */
-function readOverridePayload(payload: string | undefined): OverrideChange[] {
-  if (!payload) return [];
+function readOverridePayload(payload: string | undefined): {
+  responses: OverrideChange[];
+  evidence: PhotoOverrideChange[];
+} {
+  if (!payload) return { responses: [], evidence: [] };
   try {
-    const parsed = JSON.parse(payload) as { changes?: { responses?: OverrideChange[] } };
-    return parsed.changes?.responses ?? [];
+    const parsed = JSON.parse(payload) as {
+      changes?: { responses?: OverrideChange[]; evidence?: PhotoOverrideChange[] };
+    };
+    return { responses: parsed.changes?.responses ?? [], evidence: parsed.changes?.evidence ?? [] };
   } catch {
-    return [];
+    return { responses: [], evidence: [] };
   }
 }
 

@@ -1103,7 +1103,7 @@ describe('R-62 — a photo joining a finished audit', () => {
     expect(log.rows).toEqual([{ after: expect.objectContaining({ evidenceId }) }]);
   });
 
-  it('takes a new photo within 24 hours of the start, and refuses one after', async () => {
+  it('takes a new photo within 24 hours of the start, and after it from the auditor reviewing (R-81)', async () => {
     const fresh = await finishedWalkBy();
     await expect(
       captureEvidence(world, {
@@ -1128,7 +1128,7 @@ describe('R-62 — a photo joining a finished audit', () => {
         classification: 'GOOD',
         deviceId: DEVICE_ID,
       }),
-    ).rejects.toThrow(/AUDIT_ALREADY_COMPLETED/);
+    ).resolves.toBeDefined();
   });
 
   it('raises the corrective action of a late problem photo and reopens the audit', async () => {
