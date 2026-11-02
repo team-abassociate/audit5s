@@ -587,7 +587,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     action: 'create',
     description: 'Create an upload intent',
     grants: {
-      CONSULTANT: ownAudits,
+      CONSULTANT: { resolver: 'own_audits', condition: 'or assigned_actions, for CORRECTIVE_AFTER evidence (R-78)' },
       COORDINATOR: {
         resolver: 'own_audits',
         condition: 'or own_unit actions, for CORRECTIVE_AFTER evidence',
@@ -654,7 +654,8 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
       SUPER_ADMIN: org,
       CONSULTANT: { resolver: 'own_audits', condition: 'items raised by their audit' },
       COORDINATOR: ownUnit,
-      ZONE_LEADER: ownUnit,
+      // R-78: a Zone Leader sees only their own Zone's, and those of a Zone with no leader.
+      ZONE_LEADER: { resolver: 'assigned_actions', condition: "their Zone's, or a leaderless Zone's" },
     },
   },
   {
@@ -662,9 +663,10 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     action: 'submit',
     description: 'Submit option A (completed) or B (not possible)',
     grants: {
-      // R-3b: `assigned_actions` widens deliberately to any Zone Leader of the Unit, so a
-      // corrective action does not stall while its assignee is on leave. Do not narrow.
-      ZONE_LEADER: { resolver: 'assigned_actions', condition: 'or via a valid signed token' },
+      // R-78: the Zone's own leader closes it; a Zone with no leader account, any Zone
+      // Leader or Consultant of the Unit. Withdraws R-3b's widening and the signed link.
+      ZONE_LEADER: { resolver: 'assigned_actions', condition: "their Zone's, or a leaderless Zone's" },
+      CONSULTANT: { resolver: 'assigned_actions', condition: "a leaderless Zone's, in their Units" },
       // Owner, 2026-10-13: a Coordinator records a fix in their own Unit as a Zone Leader does.
       COORDINATOR: ownUnit,
     },

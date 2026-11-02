@@ -166,7 +166,9 @@ export function PublicCorrectiveActionPage({ token }: { token: string }) {
         <p className="gb-panel p-4 text-ink-2">
           {state.item.status === 'VERIFIED'
             ? 'This item has been answered and is closed. Nothing further is needed.'
-            : 'A response to this item has been received and is waiting for review. Nothing more is needed unless it is reopened.'}
+            : state.item.status === 'OPEN' || state.item.status === 'REOPENED'
+              ? "The Zone's leader closes this in the Leanstack app. This page only shows it."
+              : 'A response to this item has been received and is waiting for review. Nothing more is needed unless it is reopened.'}
         </p>
       )}
     </Shell>

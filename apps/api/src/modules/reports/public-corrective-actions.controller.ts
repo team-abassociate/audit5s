@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Get,
   HttpCode,
@@ -8,12 +7,8 @@ import {
   Req,
 } from '@nestjs/common';
 import {
-  submitCorrectiveActionRequestSchema,
-  uploadIntentRequestSchema,
   type CorrectiveActionSubmission,
   type PublicCorrectiveAction,
-  type SubmitCorrectiveActionRequest,
-  type UploadIntentRequest,
   type UploadIntentResponse,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
@@ -25,7 +20,6 @@ import {
   type RequestWithSignedToken,
 } from '../../common/auth/signed-token.guard';
 import { AppError } from '../../common/errors';
-import { ZodValidationPipe } from '../auth/zod.pipe';
 import { PublicCorrectiveActionsService } from './public-corrective-actions.service';
 
 /**
@@ -72,27 +66,18 @@ export class PublicCorrectiveActionsController {
   @Scope({ intent: 'write' })
   @Post(':token/upload-intent')
   @HttpCode(HttpStatus.CREATED)
-  uploadIntent(
-    @CurrentScope() scope: ScopeContext,
-    @Req() request: RequestWithSignedToken,
-    @Body(new ZodValidationPipe(uploadIntentRequestSchema)) body: UploadIntentRequest,
-  ): Promise<UploadIntentResponse> {
-    return this.publicActions.createUploadIntent(scope, tokenOf(request), body);
+  uploadIntent(): Promise<UploadIntentResponse> {
+    return this.publicActions.createUploadIntent();
   }
 
-  /** "Same domain service as the authenticated route — one implementation" (§8.8). */
+  /** R-78: refused — the Zone's leader answers in the app. Kept so an old page is told why. */
   @SignedTokenRoute()
   @RequirePermission('corrective_action', 'submit')
   @Scope({ intent: 'write' })
   @Post(':token/submissions')
   @HttpCode(HttpStatus.CREATED)
-  submit(
-    @CurrentScope() scope: ScopeContext,
-    @Req() request: RequestWithSignedToken,
-    @Body(new ZodValidationPipe(submitCorrectiveActionRequestSchema))
-    body: SubmitCorrectiveActionRequest,
-  ): Promise<CorrectiveActionSubmission> {
-    return this.publicActions.submit(scope, tokenOf(request), body);
+  submit(): Promise<CorrectiveActionSubmission> {
+    return this.publicActions.submit();
   }
 }
 

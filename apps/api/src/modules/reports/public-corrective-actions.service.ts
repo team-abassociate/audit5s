@@ -2,11 +2,9 @@ import { Injectable } from '@nestjs/common';
 import type {
   CorrectiveActionSubmission,
   PublicCorrectiveAction,
-  SubmitCorrectiveActionRequest,
-  UploadIntentRequest,
   UploadIntentResponse,
 } from '@audit5s/contracts';
-import { awaitsResponse, type ScopeContext, type SignedTokenScope } from '@audit5s/domain';
+import { type ScopeContext, type SignedTokenScope } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { scopeFor } from '../../common/auth/scope-for';
 import { CorrectiveActionsService } from '../corrective-actions/corrective-actions.service';
@@ -71,7 +69,8 @@ export class PublicCorrectiveActionsService {
       // verified item) is shown read-only, rather than as a form whose photo upload the
       // evidence service refuses a moment later — which the page reported as "could not
       // reach the server".
-      submittable: awaitsResponse(detail.status),
+      // R-78: a link reads the item but no longer answers it — the Zone's leader does, in the app.
+      submittable: false,
       issuedToName: token.issuedToName,
       alreadySubmitted: latest
         ? { option: latest.option, submittedAt: latest.createdAt }
@@ -79,92 +78,13 @@ export class PublicCorrectiveActionsService {
     };
   }
 
-  /**
-   * The after-photo's presigned PUT.
-   *
-   * Three fields are **overwritten from the token**, not taken from the body: the kind,
-   * the corrective action and the audit. A public page that could name its own action
-   * would make the single-item audience a suggestion.
-   */
-  async createUploadIntent(
-    scope: ScopeContext,
-    token: ResolvedToken,
-    request: UploadIntentRequest,
-  ): Promise<UploadIntentResponse> {
-    const action = await this.repository.findById(scope, token.correctiveActionId);
-    if (!action) throw AppError.notFound('No such corrective action');
-
-    // Any after-photo may come from the camera or the gallery (R-38, widened to findings
-    // by R-40); `isLiveCapture` is recorded as the page declared it, not enforced.
-
-    // Re-derived for `evidence`, not reused from the link. `signed_token`'s predicate is
-    // written against `corrective_action`, which `evidence` is not — and PART 6 has its own
-    // cell for this resource anyway. `scopeFor` is the one way that question is asked.
-    return this.evidence.createUploadIntent(scopeFor(scope, 'evidence:create'), {
-      ...request,
-      kind: 'CORRECTIVE_AFTER',
-      auditId: action.auditId,
-      auditZoneId: action.auditZoneId,
-      correctiveActionId: token.correctiveActionId,
-      questionResponseId: undefined,
-      classification: undefined,
-    });
+  /** R-78: a link reads the item and answers nothing; the routes stay so old pages are told why. */
+  createUploadIntent(): Promise<UploadIntentResponse> {
+    return Promise.reject(linkAnswersNothing());
   }
 
-  /**
-   * The same service the authenticated route calls, with the link recorded on the row.
-   *
-   * One thing happens here that does not happen on the authenticated route: the after-photo
-   * is **committed on the way in**.
-   *
-   * §9.4's second phase is an authenticated call, and this page has no session — while
-   * §10.4 is explicit that the link authorizes read-and-submit and grants no other API
-   * access. Adding a fourth public route to carry the commit would widen exactly the
-   * surface that is meant to be narrow, for no gain: the commit's own work — HEAD the
-   * object, verify the size and the checksum, sniff the magic bytes (§12.8) — is server
-   * work, and the server is already here.
-   *
-   * So the two calls become one act: `commit` runs first, and only then does the attempt
-   * exist. It is idempotent (§9.6), so a retried submission after a network failure
-   * commits nothing twice and finds its own attempt rather than making a second.
-   */
-  async submit(
-    scope: ScopeContext,
-    token: ResolvedToken,
-    request: SubmitCorrectiveActionRequest,
-  ): Promise<CorrectiveActionSubmission> {
-    // Anyone may hold the link (R-22), so the typed name is the only record of who answered.
-    // Without it the attempt would carry the name of the account the link acts as.
-    if (!request.submittedByName) {
-      throw AppError.validation('Your name is required', [
-        { field: 'submittedByName', message: 'Enter the name of the person answering' },
-      ]);
-    }
-    // An overall action may be answered without a photograph (R-38); the shared service
-    // refuses a finding answered without one.
-    if (request.option === 'COMPLETED' && request.afterEvidenceId) {
-      await this.commitAfterPhoto(scope, request.afterEvidenceId);
-    }
-    return this.actions.submit(scope, token.correctiveActionId, request, 'WEB_TOKEN', token.tokenId);
-  }
-
-  /**
-   * Commits the photograph, unless it is already committed.
-   *
-   * A failure here is deliberately *not* swallowed: if the object is missing or its
-   * checksum does not match, the submission must not proceed to record an attempt citing
-   * a photograph that is not there. The one case that is not a failure is a photograph
-   * already committed — a retry — which `commit` answers with the same body rather than
-   * an error.
-   */
-  private async commitAfterPhoto(scope: ScopeContext, evidenceId: string): Promise<void> {
-    const evidenceScope = scopeFor(scope, 'evidence:create');
-    const photo = await this.evidence.get(evidenceScope, evidenceId);
-    if (photo.syncState === 'SYNCED' && photo.uploadedAt) return;
-
-    await this.evidence.commit(evidenceScope, evidenceId, {
-      checksumSha256: photo.checksumSha256,
-    });
+  submit(): Promise<CorrectiveActionSubmission> {
+    return Promise.reject(linkAnswersNothing());
   }
 
   private async presignBeforePhoto(
@@ -184,4 +104,12 @@ export class PublicCorrectiveActionsService {
       return null;
     }
   }
+}
+
+/** R-78: only the Zone's leader (or the Coordinator, or a Super Admin) closes it, in the app. */
+function linkAnswersNothing(): AppError {
+  return AppError.forbidden(
+    'FORBIDDEN',
+    "A link no longer answers a nonconformity. The Zone's leader closes it in the Leanstack app.",
+  );
 }

@@ -55,6 +55,8 @@ export const correctiveActionSchema = z.object({
    * chase when the item was not reassigned. Optional so a response from an older API parses.
    */
   zoneLeaderName: z.string().nullable().optional(),
+  /** R-78: the Zone's leader account, who alone of its Zone Leaders closes it; null for typed names. */
+  zoneLeaderUserId: uuidSchema.nullable().optional(),
   dueAt: isoDateTimeSchema.nullable(),
   openedAt: isoDateTimeSchema,
   lastSubmittedAt: isoDateTimeSchema.nullable(),

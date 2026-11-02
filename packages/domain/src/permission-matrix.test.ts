@@ -92,7 +92,9 @@ describe('the cells ARCHITECTURE.md §6.4 and §15.2 call out by name', () => {
     expect(grantFor('CONSULTANT', 'corrective_action:verify')).toBeNull();
     // Owner, 2026-10-13: a Coordinator also records a fix in their own Unit.
     expect(grantFor('COORDINATOR', 'corrective_action:submit')?.resolver).toBe('own_unit');
-    expect(grantFor('CONSULTANT', 'corrective_action:submit')).toBeNull();
+    // R-78: a Consultant closes a leaderless Zone's, as a Zone Leader does.
+    expect(grantFor('CONSULTANT', 'corrective_action:submit')?.resolver).toBe('assigned_actions');
+    expect(grantFor('ZONE_LEADER', 'corrective_action:read')?.resolver).toBe('assigned_actions');
   });
 
   it('allows a Zone Leader to cross-audit any Zone of their Unit, their own included (D9)', () => {
