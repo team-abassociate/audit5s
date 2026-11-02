@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { Button } from './ui';
 import { MAX_LONG_EDGE_PX, processCapturedPhoto, type ProcessedImage } from '../lib/capture/media';
 import { ZONE_PHOTO_LIMIT_MESSAGE } from '../lib/db/photo-limit';
-import { ledger, ledgerFonts } from '../lib/ledger';
+import { ledger, ledgerFonts, ledgerRadius } from '../lib/ledger';
 import { whilePrompting } from '../lib/permission-prompt';
 
 /**
@@ -191,11 +191,12 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderWidth: 4,
+    borderRadius: ledgerRadius.pill,
     borderColor: ledger.dark.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shutterBusy: { opacity: 0.6 },
   error: { color: ledger.dark.needsSupport, fontFamily: ledgerFonts.semibold, fontSize: 13, textAlign: 'center' },
-  shutterInner: { width: 58, height: 58, backgroundColor: ledger.dark.ink },
+  shutterInner: { width: 58, height: 58, borderRadius: ledgerRadius.pill, backgroundColor: ledger.dark.ink },
 });
