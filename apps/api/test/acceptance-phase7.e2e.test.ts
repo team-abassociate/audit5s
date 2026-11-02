@@ -9,6 +9,7 @@ import {
   type ReportDownloadUrl,
   type ReportPayload,
   type ReportSnapshot,
+  type UploadIntentResponse,
 } from '@audit5s/contracts';
 import { ReportRenderer } from '../src/modules/reports/report-renderer';
 import { ReportWorker } from '../src/modules/reports/report.worker';
@@ -18,9 +19,10 @@ import {
   sha256Hex,
   startWorld,
   stopWorld,
+  TINY_JPEG,
   type TestWorld,
 } from './harness';
-import { afterPhoto, completedWalkBy, submit } from './corrective-fixtures';
+import { completedWalkBy } from './corrective-fixtures';
 
 /**
  * Phase 7 acceptance, literally:
@@ -126,31 +128,68 @@ describe('Phase 7 acceptance', () => {
       const v1Bytes = await downloadBytes(v1.id);
       expect(v1Bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
 
-      // ------------- 2. The link reads the item; the Zone's leader answers in the app (R-78)
+      // ---------------------------- 2. A Zone Leader opens the link on a phone and submits
       const link = v1Payload.zones[0]!.nonconformities[0]!;
       const token = link.correctiveActionUrl!.split('/ca/')[1]!;
 
-      // No session: the link is the credential, and it only reads.
+      // No session, from here to the end of the submission.
       const page = await world.request('GET', `${base}/public/corrective-actions/${token}`, {
         token: null,
       });
       expect(page.status).toBe(200);
       const item = page.body as PublicCorrectiveAction;
       expect(item.correctiveActionId).toBe(link.correctiveActionId);
-      expect(item.submittable).toBe(false);
+      expect(item.submittable).toBe(true);
       expect(item.beforePhotoUrl).toContain('http');
 
-      const leader = world.actors.ZONE_LEADER.accessToken;
       const submissionId = randomUUID();
-      const action = { id: link.correctiveActionId, auditId: walkBy.auditId };
-      const evidenceId = await afterPhoto(world, { token: leader, action, submissionId });
-      const submitted = await submit(world, leader, link.correctiveActionId, {
-        option: 'COMPLETED',
-        id: submissionId,
-        submittedByName: 'R. Deshmukh',
-        description: 'Spillage cleared and a drip tray fitted.',
-        afterEvidenceId: evidenceId,
+      const evidenceId = randomUUID();
+
+      const intent = await world.request(
+        'POST',
+        `${base}/public/corrective-actions/${token}/upload-intent`,
+        {
+          token: null,
+          headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+          body: {
+            id: evidenceId,
+            kind: 'CORRECTIVE_AFTER',
+            auditId: randomUUID(),
+            correctiveActionSubmissionId: submissionId,
+            contentType: 'image/jpeg',
+            byteSize: TINY_JPEG.byteLength,
+            checksumSha256: sha256Hex(TINY_JPEG),
+            capturedAt: new Date().toISOString(),
+            // The capture component sets this and nothing else does (§12.10).
+            isLiveCapture: true,
+          },
+        },
+      );
+      expect(intent.status, JSON.stringify(intent.body)).toBe(201);
+
+      const put = await world.app.inject({
+        method: 'PUT',
+        url: (intent.body as UploadIntentResponse).uploadUrl.replace(/^https?:\/\/[^/]+/, ''),
+        headers: { 'content-type': 'image/jpeg' },
+        payload: TINY_JPEG,
       });
+      expect(put.statusCode, put.body).toBe(200);
+
+      const submitted = await world.request(
+        'POST',
+        `${base}/public/corrective-actions/${token}/submissions`,
+        {
+          token: null,
+          headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+          body: {
+            option: 'COMPLETED',
+            id: submissionId,
+            submittedByName: 'R. Deshmukh',
+            description: 'Spillage cleared and a drip tray fitted.',
+            afterEvidenceId: evidenceId,
+          },
+        },
+      );
       expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
 
       // --------------------------------- 3. …which closed it, with nobody verifying

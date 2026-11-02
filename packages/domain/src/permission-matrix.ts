@@ -664,7 +664,7 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
     description: 'Submit option A (completed) or B (not possible)',
     grants: {
       // R-78: the Zone's own leader closes it; a Zone with no leader account, any Zone
-      // Leader or Consultant of the Unit. Withdraws R-3b's widening and the signed link.
+      // Leader or Consultant of the Unit. Withdraws R-3b's widening; the PDF link still answers.
       ZONE_LEADER: { resolver: 'assigned_actions', condition: "their Zone's, or a leaderless Zone's" },
       CONSULTANT: { resolver: 'assigned_actions', condition: "a leaderless Zone's, in their Units" },
       // Owner, 2026-10-13: a Coordinator records a fix in their own Unit as a Zone Leader does.

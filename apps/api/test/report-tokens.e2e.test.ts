@@ -101,8 +101,7 @@ describe('GET /public/corrective-actions/{token}', () => {
     expect(response.status).toBe(200);
     const item = response.body as PublicCorrectiveAction;
     expect(item.correctiveActionId).toBe(links[0]!.correctiveActionId);
-    // R-78: a link reads the item and answers nothing.
-    expect(item.submittable).toBe(false);
+    expect(item.submittable).toBe(true);
     expect(item.unitName).not.toBe('');
     expect(item.auditorName).not.toBe('');
     expect(item.beforePhotoUrl).toContain('http');
@@ -241,27 +240,103 @@ describe('the link is not a session', () => {
 });
 
 describe('submitting through the link', () => {
-  it("answers nothing: the Zone's leader closes it in the app (R-78)", async () => {
+  it('accepts Option B and moves the action, through the same domain service', async () => {
     const { links } = await reportWithLinks({ nonconformities: 1 });
-    const { secret, correctiveActionId } = links[0]!;
+    const secret = links[0]!.secret;
 
-    const submitted = await world.request('POST', `${base}/public/corrective-actions/${secret}/submissions`, {
-      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
-      body: { option: 'NOT_POSSIBLE', submittedByName: 'R. Deshmukh', explanation: 'Needs a PO.' },
-    });
-    expect(submitted.status).toBe(403);
+    const response = await world.request(
+      'POST',
+      `${base}/public/corrective-actions/${secret}/submissions`,
+      {
+        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+        // R-22: through a signed link the answerer may have no account, so the route
+        // requires them to say who they are. Omitting it is the 422 this once asserted 201 for.
+        body: {
+          option: 'NOT_POSSIBLE',
+          submittedByName: 'R. Deshmukh',
+          explanation: 'Requires vendor approval; PO raised.',
+        },
+      },
+    );
 
-    const intent = await world.request('POST', `${base}/public/corrective-actions/${secret}/upload-intent`, {
-      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
-      body: intentBody(randomUUID(), randomUUID(), correctiveActionId, false),
-    });
-    expect(intent.status).toBe(403);
+    expect(response.status).toBe(201);
 
     const detail = (
-      await world.request('GET', `${base}/corrective-actions/${correctiveActionId}`, { token: superAdmin })
+      await world.request('GET', `${base}/corrective-actions/${links[0]!.correctiveActionId}`, {
+        token: superAdmin,
+      })
     ).body as CorrectiveActionDetail;
-    expect(detail.status).toBe('OPEN');
+
+    expect(detail.status).toBe('NOT_POSSIBLE');
+    expect(detail.submissions.length).toBe(1);
+    expect(detail.submissions[0]!.submittedVia).toBe('WEB_TOKEN');
+
+    // §10.4's "auditable": the attempt names the link it arrived on.
+    const { rows } = await world.owner.query(
+      `SELECT access_token_id FROM corrective_action_submission WHERE id = $1`,
+      [detail.submissions[0]!.id],
+    );
+    expect(rows[0].access_token_id).not.toBeNull();
   }, 120_000);
+
+  it('accepts Option A on a finding with a photo from the gallery (R-40)', async () => {
+    const { links } = await reportWithLinks({ nonconformities: 1 });
+    const secret = links[0]!.secret;
+    const submissionId = randomUUID();
+
+    // Not a live capture: the page's *Choose from gallery*. A link in a PDF issued before
+    // R-40 is the same link, so this is also what an old PDF's reader now gets.
+    const evidenceId = randomUUID();
+    const intent = await world.request(
+      'POST',
+      `${base}/public/corrective-actions/${secret}/upload-intent`,
+      {
+        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+        body: intentBody(evidenceId, submissionId, links[0]!.correctiveActionId, false),
+      },
+    );
+    expect(intent.status, JSON.stringify(intent.body)).toBe(201);
+
+    const { uploadUrl } = intent.body as { uploadUrl: string };
+    // Straight to the presigned URL, carrying no session — exactly as the page would.
+    const put = await world.app.inject({
+      method: 'PUT',
+      url: uploadUrl.replace(/^https?:\/\/[^/]+/, ''),
+      headers: { 'content-type': 'image/jpeg' },
+      payload: TINY_JPEG,
+    });
+    expect(put.statusCode, put.body).toBe(200);
+
+    // The commit is authenticated: it is not one of the two operations a link authorizes.
+    const committed = await world.request('POST', `${base}/evidence/${evidenceId}/commit`, {
+      token: world.actors.ZONE_LEADER.accessToken,
+      headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+      body: { checksumSha256: sha256Hex(TINY_JPEG) },
+    });
+    expect(committed.status, JSON.stringify(committed.body)).toBe(200);
+
+    const submitted = await world.request(
+      'POST',
+      `${base}/public/corrective-actions/${secret}/submissions`,
+      {
+        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+        body: {
+          option: 'COMPLETED',
+          id: submissionId,
+          submittedByName: 'R. Deshmukh',
+          description: 'Spillage cleared and a drip tray fitted.',
+          afterEvidenceId: evidenceId,
+        },
+      },
+    );
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+
+    // The record says honestly where the photograph came from.
+    const { rows } = await world.owner.query(`SELECT is_live_capture FROM evidence WHERE id = $1`, [
+      evidenceId,
+    ]);
+    expect(rows[0].is_live_capture).toBe(false);
+  }, 180_000);
 
   it('refuses to submit through an expired link, as it refuses to read through one', async () => {
     const { links } = await reportWithLinks({ nonconformities: 1 });

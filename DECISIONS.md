@@ -2904,7 +2904,7 @@ coordinator is able to add zone leaders and that can't be edited by anyone else 
 super admin or the coordinator himself, so the zone leader allocation is streamlined, so the
 NC should be closed by that zone leader only and it should be visible to him only."*
 Withdraws R-3b's widening and R-39(b)'s "any zone leader can resolve nonconformities";
-narrows R-22 / R-47.
+leaves R-22 / R-47 (the PDF link) as they were.
 
 - **A Zone with a leader account** (the Zone form's leader, set only by a Super Admin or the
   Coordinator, R-74): its NCs are seen and closed, among Zone Leaders, by that leader alone.
@@ -2914,9 +2914,11 @@ narrows R-22 / R-47.
   **Consultant** of the Unit closes them, as well as the Coordinator and the Super Admin.
   A Consultant gets the field app's NCs tab for this; on the web, the answer form shows to
   a Consultant only on a leaderless Zone's item.
-- **The PDF link reads, and answers nothing.** `submittable` is always false; its
-  upload-intent and submissions routes answer `403`. The page tells the reader the Zone's
-  leader closes it in the app. Coordinator-made links (R-47) read the same way.
+- **The PDF link still answers, for every Zone** (owner, same day: *"the pdfs will be
+  shared by the coordinator to their respective zone leaders, so keep the pdf links working
+  for each and every zone"*). The link acts as the Super Admin or Coordinator who made it
+  (R-47), both of whom may close any NC of their scope, so R-78 does not narrow it. Whoever
+  holds the Coordinator's PDF answers through it, as R-22 says.
 - `assigned_actions` is now "the Zone's leader is me, or the Zone has none, inside my
   Units"; it is the Zone Leader's `corrective_action:read` and `:submit` and the
   Consultant's `:submit`. A device's catalogue carries what its user may *close*.

@@ -9,8 +9,8 @@ import {
   type ReportSnapshot,
   type SyncCatalogue,
 } from '@audit5s/contracts';
-import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
-import { afterPhoto, completedWalkBy, submit } from './corrective-fixtures';
+import { loginFromDevice, sha256Hex, startWorld, stopWorld, TINY_JPEG, type TestWorld } from './harness';
+import { completedWalkBy } from './corrective-fixtures';
 
 /**
  * R-38 — overall corrective-action suggestions, through the real endpoints.
@@ -163,7 +163,7 @@ describe('the report and the link', () => {
     const item = response.body as PublicCorrectiveAction;
     expect(item.suggestion).toBe(SUGGESTIONS[0]);
     expect(item.beforePhotoUrl).toBeNull();
-    expect(item.submittable).toBe(false); // R-78: the leader answers in the app
+    expect(item.submittable).toBe(true);
   }, 120_000);
 
   it('is answered in words alone, closes, and the regenerated report carries the answer', async () => {
@@ -171,12 +171,19 @@ describe('the report and the link', () => {
     const { payload } = await generate(auditZoneId);
     const target = payload.zones[0]!.overallActions[0]!;
 
-    const submitted = await submit(world, world.actors.ZONE_LEADER.accessToken, target.correctiveActionId, {
-      option: 'COMPLETED',
-      id: randomUUID(),
-      submittedByName: 'R. Deshmukh',
-      description: 'Sealed the leaking drain; exhaust fan in bay 2 repaired.',
-    });
+    const submitted = await world.request(
+      'POST',
+      `${base}/public/corrective-actions/${secretOf(target.correctiveActionUrl)}/submissions`,
+      {
+        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+        body: {
+          option: 'COMPLETED',
+          id: randomUUID(),
+          submittedByName: 'R. Deshmukh',
+          description: 'Sealed the leaking drain; exhaust fan in bay 2 repaired.',
+        },
+      },
+    );
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
 
     const detail = (
@@ -204,21 +211,57 @@ describe('the report and the link', () => {
   }, 120_000);
 
   it('takes a photograph from the gallery for a suggestion, and records it as not live', async () => {
-    const { auditId, auditZoneId } = await walkBy(SUGGESTIONS);
+    const { auditZoneId } = await walkBy(SUGGESTIONS);
     const { payload } = await generate(auditZoneId);
     const target = payload.zones[0]!.overallActions[1]!;
-    const leader = world.actors.ZONE_LEADER.accessToken;
+    const secret = secretOf(target.correctiveActionUrl);
     const submissionId = randomUUID();
-    const action = { id: target.correctiveActionId, auditId };
-    const evidenceId = await afterPhoto(world, { token: leader, action, submissionId, isLiveCapture: false });
+    const evidenceId = randomUUID();
 
-    const submitted = await submit(world, leader, target.correctiveActionId, {
-      option: 'COMPLETED',
-      id: submissionId,
-      submittedByName: 'R. Deshmukh',
-      description: 'Clean-up sheet posted at the bay entrance.',
-      afterEvidenceId: evidenceId,
+    const intent = await world.request(
+      'POST',
+      `${base}/public/corrective-actions/${secret}/upload-intent`,
+      {
+        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+        body: {
+          id: evidenceId,
+          kind: 'CORRECTIVE_AFTER',
+          auditId: randomUUID(),
+          correctiveActionId: target.correctiveActionId,
+          correctiveActionSubmissionId: submissionId,
+          contentType: 'image/jpeg',
+          byteSize: TINY_JPEG.byteLength,
+          checksumSha256: sha256Hex(TINY_JPEG),
+          capturedAt: new Date().toISOString(),
+          isLiveCapture: false,
+        },
+      },
+    );
+    expect(intent.status, JSON.stringify(intent.body)).toBe(201);
+
+    const { uploadUrl } = intent.body as { uploadUrl: string };
+    const put = await world.app.inject({
+      method: 'PUT',
+      url: uploadUrl.replace(/^https?:\/\/[^/]+/, ''),
+      headers: { 'content-type': 'image/jpeg' },
+      payload: TINY_JPEG,
     });
+    expect(put.statusCode, put.body).toBe(200);
+
+    const submitted = await world.request(
+      'POST',
+      `${base}/public/corrective-actions/${secret}/submissions`,
+      {
+        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+        body: {
+          option: 'COMPLETED',
+          id: submissionId,
+          submittedByName: 'R. Deshmukh',
+          description: 'Clean-up sheet posted at the bay entrance.',
+          afterEvidenceId: evidenceId,
+        },
+      },
+    );
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
 
     const { rows } = await world.owner.query(
@@ -233,12 +276,19 @@ describe('the report and the link', () => {
     const { payload } = await generate(auditZoneId);
     const finding = payload.zones[0]!.nonconformities[0]!;
 
-    const submitted = await submit(world, world.actors.ZONE_LEADER.accessToken, finding.correctiveActionId, {
-      option: 'COMPLETED',
-      id: randomUUID(),
-      submittedByName: 'R. Deshmukh',
-      description: 'Cleaned.',
-    });
+    const submitted = await world.request(
+      'POST',
+      `${base}/public/corrective-actions/${secretOf(finding.correctiveActionUrl)}/submissions`,
+      {
+        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+        body: {
+          option: 'COMPLETED',
+          id: randomUUID(),
+          submittedByName: 'R. Deshmukh',
+          description: 'Cleaned.',
+        },
+      },
+    );
     expect(submitted.status).toBe(422);
     expect(JSON.stringify(submitted.body)).toMatch(/after-photo/);
   }, 120_000);
