@@ -7,11 +7,11 @@ import { tabBarStyle, useTheme } from '../../lib/theme';
 /**
  * The bottom tabs, by role.
  *
- * - **Consultant:** Overview · Units · History · Profile. Overview is where
+ * - **Consultant:** Overview · Units · History. Overview is where
  *   the phone opens: an auditor who paused in Zone 3 yesterday wants the way back into it,
- *   not a list of Units to search. The other three stay exactly as N1 has them, and an
+ *   not a list of Units to search. The other two stay exactly as N1 has them, and an
  *   auditor holding a phone in a plant is still not browsing.
- * - **Zone Leader:** Overview · Audit · NCs · History · Profile. They belong to one Unit, so
+ * - **Zone Leader:** Overview · Audit · NCs · History. They belong to one Unit, so
  *   Audit opens that Unit's audit start directly instead of a Units list of one row — the
  *   same reasoning as a Coordinator's My Unit. Nonconformities (R-39) sit between Audit and
  *   History — the work they owe, one tap away rather than behind a slip that only shows while something waits.
@@ -24,6 +24,9 @@ import { tabBarStyle, useTheme } from '../../lib/theme';
  * - **Coordinator (R-42):** Overview · Audits · Actions · People · My Unit. They hold one Unit
  *   (M-1), so the last tab is that Unit's page itself rather than a list of one. Each screen
  *   hides the actions the role does not hold.
+ *
+ * No role has a Profile tab: the avatar at the top left opens it, on every screen, as Kaizen's
+ * bar already did. The route stays (`href: null`) because the avatar links to it.
  *
  * Every screen is a route in this group; a tab the role does not get is `href: null`, hidden
  * from the bar rather than absent, so a link to it still resolves.
@@ -101,7 +104,7 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: tabIcon('history'), ...shownTo(!admin) }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: tabIcon('profile'), ...shownTo(!admin) }} />
+      <Tabs.Screen name="profile" options={{ title: 'Profile', href: null }} />
     </Tabs>
   );
 }
