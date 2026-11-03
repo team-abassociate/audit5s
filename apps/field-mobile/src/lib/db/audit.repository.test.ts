@@ -5,6 +5,7 @@ import {
   abortLocalAudit,
   addLocalZone,
   applyLocalOverride,
+  applyLocalPhotoOverride,
   completeLocalAudit,
   completeLocalZone,
   createLocalAudit,
@@ -29,6 +30,7 @@ import {
   withdrawLocalZone,
 } from './audit.repository';
 import { replaceCatalogue } from './catalogue.repository';
+import { captureLocalEvidence, listLocalEvidenceForZone } from './evidence.repository';
 import { createLocalDatabase, migrateLocalDatabase, type LocalDatabase } from './local-database';
 import { LOCAL_SCHEMA_VERSION } from './migrations';
 import { createNodeExecutor } from './node-executor';
@@ -660,6 +662,56 @@ describe('reviewing a finished Zone', () => {
 });
 
 describe('correcting a finished audit (R-30)', () => {
+  it('carries a photo removed or picked while reviewing on the same override, losing no mark (R-81)', async () => {
+    const { auditId, auditZoneId } = await startAudit();
+    await answerAll(auditId, auditZoneId, fiftyAnswers());
+    const photo = (kind: 'GOOD' | 'NONCONFORMITY', file: string) =>
+      captureLocalEvidence(database, {
+        auditId,
+        auditZoneId,
+        kind: 'WALK_BY_PHOTO',
+        classification: kind,
+        localFileUri: file,
+        byteSize: 1000,
+        width: 10,
+        height: 10,
+        checksumSha256: 'b'.repeat(64),
+      });
+    const good = await photo('GOOD', 'file:///a.jpg');
+    const otherGood = await photo('GOOD', 'file:///b.jpg');
+    const finding = await photo('NONCONFORMITY', 'file:///c.jpg');
+    await completeLocalZone(database, auditZoneId);
+    await completeLocalAudit(database, auditId);
+    const responseId = (await listQuestionsWithAnswers(database, auditZoneId, VERSION))[0]!.responseId!;
+    const why = 'Reviewed on site; wrong photos were kept.';
+
+    await applyLocalOverride(database, { auditId, responseId, value: 'SCORE_2', justification: why });
+    await applyLocalPhotoOverride(database, { auditId, evidenceId: otherGood, isSummaryFlagged: true, justification: why });
+    await applyLocalPhotoOverride(database, { auditId, evidenceId: good, isSummaryFlagged: true, justification: why });
+    await applyLocalPhotoOverride(database, { auditId, evidenceId: finding, deleted: true, justification: why });
+
+    const overrides = (await listOutbox(database)).filter((item) => item.operation === 'override');
+    expect(overrides).toHaveLength(1);
+    const payload = JSON.parse(overrides[0]!.payload) as {
+      changes: { responses: unknown[]; evidence: Array<{ evidenceId: string; deleted?: true; isSummaryFlagged?: boolean }> };
+    };
+    expect(payload.changes.responses).toHaveLength(1);
+    expect(payload.changes.evidence).toEqual(
+      expect.arrayContaining([
+        { evidenceId: otherGood, isSummaryFlagged: true },
+        { evidenceId: good, isSummaryFlagged: true },
+        { evidenceId: finding, deleted: true },
+      ]),
+    );
+    // Locally, one Good summary photo: picking the second unpicked the first.
+    const flags = Object.fromEntries(
+      (await listLocalEvidenceForZone(database, auditZoneId)).map((row) => [row.id, row.isSummaryFlagged]),
+    );
+    expect(flags[good]).toBe(1);
+    expect(flags[otherGood]).toBe(0);
+    expect(flags[finding]).toBeUndefined();
+  });
+
   it('queues one override per audit, merging every correction and the reason', async () => {
     const { auditId, auditZoneId } = await startAudit();
     await answerAll(auditId, auditZoneId, fiftyAnswers());

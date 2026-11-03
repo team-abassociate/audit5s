@@ -24,6 +24,7 @@ import {
   assertTransition,
   auditTypeRequiresZonePhoto,
   auditTypeUsesChecklist,
+  canBeSummaryFlagged,
   isAuditCompleted,
   isScoredAuditType,
   restartsRemaining,
@@ -818,6 +819,29 @@ export class AuditsService {
       after.responses = afterValues;
     }
 
+    // R-81: photos removed, or picked for the summary, while the auditor reviews.
+    const evidenceChanges = request.changes.evidence ?? [];
+    if (evidenceChanges.length > 0) {
+      const beforePhotos: Record<string, unknown> = {};
+      const afterPhotos: Record<string, unknown> = {};
+      for (const change of evidenceChanges) {
+        const photo = await this.evidence.get(scopeFor(scope, 'evidence:read'), change.evidenceId);
+        if (photo.auditId !== auditId || (photo.kind !== 'QUESTION_EVIDENCE' && photo.kind !== 'WALK_BY_PHOTO')) {
+          throw AppError.notFound('No such photo on this audit');
+        }
+        if (change.isSummaryFlagged === true && !canBeSummaryFlagged(photo.classification)) {
+          throw AppError.conflict('CONFLICT', 'Only a GOOD or NONCONFORMITY photo can be the Zone summary');
+        }
+        beforePhotos[change.evidenceId] = { deleted: photo.deletedAt !== null, isSummaryFlagged: photo.isSummaryFlagged };
+        afterPhotos[change.evidenceId] = {
+          deleted: change.deleted ?? photo.deletedAt !== null,
+          isSummaryFlagged: change.deleted ? false : (change.isSummaryFlagged ?? photo.isSummaryFlagged),
+        };
+      }
+      before.evidence = beforePhotos;
+      after.evidence = afterPhotos;
+    }
+
     /**
      * R-31: a corrected mark does not stop at the response row.
      *
@@ -845,9 +869,13 @@ export class AuditsService {
         after: { ...after, justification: request.justification },
         requestId: getRequestContext()?.requestId ?? 'post-completion-override',
       },
-      responseChanges.length === 0
+      responseChanges.length === 0 && evidenceChanges.length === 0
         ? undefined
         : async (tx) => {
+            // A removed nonconformity photo withdraws its corrective action in the cascade.
+            for (const change of evidenceChanges) {
+              await this.evidence.applyReviewChangeOn(tx, auditId, change);
+            }
             for (const change of responseChanges) {
               await this.evidence.reclassifyForResponseOn(tx, change.responseId, change.value);
             }

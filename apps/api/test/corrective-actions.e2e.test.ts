@@ -982,3 +982,39 @@ describe('R-79 — the next auditor sees the Zone’s earlier NCs', () => {
     expect(response.body).toMatchObject({ auditId: null, raised: 0, closed: 0, open: 0, items: [] });
   });
 });
+
+describe('R-81 — reviewing a finished audit changes its photos, through the logged correction', () => {
+  it('removes a finding’s photo (withdrawing its action) and picks a summary photo', async () => {
+    const { auditId, actions } = await walkBy(1, { good: 1 });
+    const { rows: photos } = await world.owner.query(
+      `SELECT id, classification FROM evidence WHERE audit_id = $1 AND deleted_at IS NULL ORDER BY classification`,
+      [auditId],
+    );
+    const good = photos.find((row) => row.classification === 'GOOD')!.id as string;
+    const finding = photos.find((row) => row.classification === 'NONCONFORMITY')!.id as string;
+
+    const corrected = await world.request('PATCH', `${base}/audits/${auditId}/post-completion`, {
+      token: consultantToken,
+      body: {
+        justification: 'Reviewed on site; the finding photo was of the wrong rack.',
+        changes: { evidence: [{ evidenceId: finding, deleted: true }, { evidenceId: good, isSummaryFlagged: true }] },
+      },
+    });
+    expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
+
+    const { rows } = await world.owner.query(
+      `SELECT id, deleted_at IS NOT NULL AS deleted, is_summary_flagged FROM evidence WHERE id = ANY($1)`,
+      [[good, finding]],
+    );
+    expect(rows.find((row) => row.id === finding)).toMatchObject({ deleted: true });
+    expect(rows.find((row) => row.id === good)).toMatchObject({ deleted: false, is_summary_flagged: true });
+    expect((await detail(actions[0]!.id)).status).toBe('WITHDRAWN');
+
+    // Someone else's audit is not theirs to review.
+    const refused = await world.request('PATCH', `${base}/audits/${auditId}/post-completion`, {
+      token: leaderToken,
+      body: { justification: 'Not my audit, but trying anyway.', changes: { evidence: [{ evidenceId: good, isSummaryFlagged: false }] } },
+    });
+    expect(refused.status).toBeGreaterThanOrEqual(403);
+  });
+});

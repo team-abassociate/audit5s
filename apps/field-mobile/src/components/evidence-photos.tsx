@@ -9,6 +9,7 @@ import {
   setLocalSummaryFlag,
   type listLocalEvidenceForZone,
 } from '../lib/db/evidence.repository';
+import { applyLocalPhotoOverride } from '../lib/db/audit.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import { createThemedStyles, type Tone } from '../lib/theme';
 import { Button, Card, CardHeader, Chip, ConfirmAction, ErrorBanner, Field, Label, Muted } from './ui';
@@ -153,10 +154,16 @@ export function AuditeeCard({ auditZoneId, name, title }: { auditZoneId: string;
 export function PhotoPreview({
   photo,
   editable,
+  correction = null,
   onClose,
 }: {
   photo: LocalPhoto | null;
   editable: boolean;
+  /**
+   * R-81: reviewing a finished audit. Delete and the summary pick then ride the logged
+   * correction (A-2), with this reason; the photo's remark is not changed here.
+   */
+  correction?: { auditId: string; justification: string } | null;
   onClose: () => void;
 }) {
   const styles = useStyles();
@@ -172,7 +179,14 @@ export function PhotoPreview({
   const label = classificationLabel(photo?.classification ?? 'NEUTRAL');
 
   const flag = useMutation({
-    mutationFn: (flagged: boolean) => setLocalSummaryFlag(database, photo!.id, flagged),
+    mutationFn: async (flagged: boolean) => {
+      if (!correction) return setLocalSummaryFlag(database, photo!.id, flagged);
+      if (flagged && photo!.classification !== 'GOOD' && photo!.classification !== 'NONCONFORMITY') {
+        return { ok: false as const, reason: 'NEUTRAL' as const };
+      }
+      await applyLocalPhotoOverride(database, { ...correction, evidenceId: photo!.id, isSummaryFlagged: flagged });
+      return { ok: true as const };
+    },
     onSuccess: async (result) => {
       if (!result.ok) {
         setError(
@@ -193,7 +207,10 @@ export function PhotoPreview({
   });
 
   const remove = useMutation({
-    mutationFn: () => deleteLocalEvidence(database, photo!.id),
+    mutationFn: () =>
+      correction && photo!.objectKey
+        ? applyLocalPhotoOverride(database, { ...correction, evidenceId: photo!.id, deleted: true })
+        : deleteLocalEvidence(database, photo!.id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['local'] });
       setError(null);
@@ -207,7 +224,7 @@ export function PhotoPreview({
   const flaggable = photo.classification === 'GOOD' || photo.classification === 'NONCONFORMITY';
   const close = () => {
     const next = remark.trim() || null;
-    if (editable && next !== (photo.remark ?? null)) saveRemark.mutate(next);
+    if (editable && !correction && next !== (photo.remark ?? null)) saveRemark.mutate(next);
     setError(null);
     onClose();
   };
@@ -237,7 +254,7 @@ export function PhotoPreview({
             {flagged ? <Chip>Summary photo</Chip> : null}
           </View>
 
-          {editable ? (
+          {editable && !correction ? (
             <Field
               label="Remark"
               multiline
