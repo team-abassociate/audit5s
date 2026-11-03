@@ -68,6 +68,9 @@ export interface FreezeInput {
   auditeePhotoKeys: ReadonlyMap<string, string>;
   /** A Zone report's trend, newest first; empty on a summary. */
   history: Rows<'readZoneHistory'>;
+  /** The S-wise scores and NC counts of each `history` audit Zone; absent in older callers. */
+  historySections?: Rows<'readSectionScores'>;
+  historyNcs?: Rows<'readNcCountsBySection'>;
   /** `correctiveActionId → /ca/{token}`. Minted before the render, frozen here (R-14). */
   actionUrls: ReadonlyMap<string, string>;
 }
@@ -243,6 +246,13 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
             rawScore: point.rawScore,
             maxScore: point.maxScore,
             scorePercentage: point.scorePercentage === null ? null : Number(point.scorePercentage),
+            sections: sectionsOf(point.auditZoneId, input.historySections ?? []),
+            ncs: S_SECTION_ORDER.map((section) => {
+              const row = input.historyNcs?.find(
+                (count) => count.auditZoneId === point.auditZoneId && count.section === section,
+              );
+              return { section, raised: row?.raised ?? 0, closed: row?.closed ?? 0 };
+            }),
           })),
         }
       : {}),

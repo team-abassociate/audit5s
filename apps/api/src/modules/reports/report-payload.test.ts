@@ -109,7 +109,7 @@ describe('freezePayload', () => {
       { auditZoneId: 'zone-0', auditDate: new Date('2026-08-20T06:00:00Z'), rawScore: 50, maxScore: 80, scorePercentage: '62.500' },
     ];
     const [zone] = freezePayload({ ...input(), history }).zones;
-    expect(zone!.history).toEqual([
+    expect(zone!.history).toMatchObject([
       { auditZoneId: 'zone-0', auditDate: '2026-08-20T06:00:00.000Z', rawScore: 50, maxScore: 80, scorePercentage: 62.5 },
       { auditZoneId: 'zone-1', auditDate: '2026-09-23T06:00:00.000Z', rawScore: 70, maxScore: 80, scorePercentage: 87.5 },
     ]);

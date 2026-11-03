@@ -478,6 +478,11 @@ export class ReportsService {
       target.kind === 'MULTI_ZONE_SUMMARY' || !target.auditZoneIds[0]
         ? []
         : await this.repository.readZoneHistory(tx, target.auditZoneIds[0], ZONE_HISTORY_LENGTH);
+    const historyIds = history.map((point) => point.auditZoneId);
+    const [historySections, historyNcs] = await Promise.all([
+      this.repository.readSectionScores(tx, historyIds),
+      this.repository.readNcCountsBySection(tx, historyIds),
+    ]);
 
     // A verified finding needs no button: the right half of its row already carries the
     // outcome. Minting a link for it would put a live door on a closed item.
@@ -513,6 +518,8 @@ export class ReportsService {
       selfieObjectKey,
       auditeePhotoKeys,
       history,
+      historySections,
+      historyNcs,
       actionUrls: tokens?.urls ?? new Map<string, string>(),
     });
 

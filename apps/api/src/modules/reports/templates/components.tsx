@@ -409,23 +409,27 @@ export function TrendBars({
   brand,
   width = 480,
   height = 150,
+  axes,
 }: {
   points: readonly { label: string; pct: number | null }[];
   bands: readonly ReportBand[];
   brand: Record<string, string>;
   width?: number;
   height?: number;
+  /** Axis titles; given, the chart also draws a 0–100 score scale down its left side. */
+  axes?: { x: string; y: string };
 }) {
   const top = 14;
-  const bottom = 18;
+  const bottom = axes ? 32 : 18;
   // Room for half a date label either side, so the first and last are not clipped.
   const side = 22;
+  const left = axes ? 46 : side;
   const plot = height - top - bottom;
-  const slot = (width - side * 2) / Math.max(points.length, 1);
+  const slot = (width - left - side) / Math.max(points.length, 1);
   const bar = Math.min(slot * 0.6, 56);
   const big = height >= 240;
   const valueSize = big ? 11 : 7;
-  const dateSize = big ? 9 : 6.5;
+  const dateSize = big || axes ? 9 : 6.5;
   // "100.0%" and "05 Sept 2026" are about 3.4 and 6.2 characters' width of their font size.
   const showValues = slot >= valueSize * 3.4;
   const every = Math.max(1, Math.ceil((dateSize * 6.2) / slot));
@@ -434,11 +438,38 @@ export function TrendBars({
 
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} xmlns="http://www.w3.org/2000/svg" role="img">
-      <line x1={0} y1={top + plot} x2={width} y2={top + plot} stroke={brand.ink ?? '#101112'} strokeWidth={0.75} />
-      <line x1={0} y1={y(85)} x2={width} y2={y(85)} stroke={target} strokeWidth={1} strokeDasharray="3 3" />
+      {axes ? (
+        <>
+          {[0, 25, 50, 75, 100].map((tick) => (
+            <g key={`tick-${tick}`}>
+              <line x1={left} y1={y(tick)} x2={width} y2={y(tick)} stroke="#E4E0DA" strokeWidth={0.5} />
+              <text x={left - 4} y={y(tick) + 3} textAnchor="end" fontSize={dateSize} fill={brand.ink ?? '#101112'}>
+                {tick}%
+              </text>
+            </g>
+          ))}
+          <line x1={left} y1={top} x2={left} y2={top + plot} stroke={brand.ink ?? '#101112'} strokeWidth={0.75} />
+          <text
+            x={10}
+            y={round(top + plot / 2)}
+            transform={`rotate(-90 10 ${round(top + plot / 2)})`}
+            textAnchor="middle"
+            fontSize={dateSize}
+            fontWeight={700}
+            fill={brand.ink ?? '#101112'}
+          >
+            {axes.y}
+          </text>
+          <text x={round((left + width) / 2)} y={height - 3} textAnchor="middle" fontSize={dateSize} fontWeight={700} fill={brand.ink ?? '#101112'}>
+            {axes.x}
+          </text>
+        </>
+      ) : null}
+      <line x1={axes ? left : 0} y1={top + plot} x2={width} y2={top + plot} stroke={brand.ink ?? '#101112'} strokeWidth={0.75} />
+      <line x1={axes ? left : 0} y1={y(85)} x2={width} y2={y(85)} stroke={target} strokeWidth={1} strokeDasharray="3 3" />
       {points.map((point, index) => {
         const band = bandOf(bands, point.pct);
-        const x = round(side + index * slot + (slot - bar) / 2);
+        const x = round(left + index * slot + (slot - bar) / 2);
         const colour = band?.color ?? (brand.inkSoft ?? '#5B5B57');
         return (
           <g key={`trend-${index}`}>
@@ -464,7 +495,7 @@ export function TrendBars({
             {index % every === 0 ? (
               <text
                 x={round(x + bar / 2)}
-                y={height - 5}
+                y={axes ? top + plot + 12 : height - 5}
                 textAnchor="middle"
                 fontSize={dateSize}
                 fill={brand.ink ?? '#101112'}

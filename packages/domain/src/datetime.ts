@@ -94,6 +94,12 @@ export function formatDayMonth(value: DateInput): string {
   return parts ? dayMonth(parts) : NO_DATE;
 }
 
+/** "Sept 2026" — a chart's month axis. */
+export function formatMonthYear(value: DateInput): string {
+  const parts = istParts(value);
+  return parts ? `${MONTHS[parts.month]} ${parts.year}` : NO_DATE;
+}
+
 /** "2:05 PM" */
 export function formatTime(value: DateInput): string {
   const parts = istParts(value);

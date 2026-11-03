@@ -160,6 +160,17 @@ export const reportScorePointSchema = z.object({
   rawScore: z.number(),
   maxScore: z.number(),
   scorePercentage: z.number().nullable(),
+  /** S-wise scores and NCs of that audit, for the score board's table. Absent before it. */
+  sections: z.array(sectionScoreSchema).optional(),
+  ncs: z
+    .array(
+      z.object({
+        section: sSectionSchema,
+        raised: z.number().int().nonnegative(),
+        closed: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
 });
 export type ReportScorePoint = z.infer<typeof reportScorePointSchema>;
 

@@ -476,8 +476,29 @@ describe('the Zone trend and the display-board pages', () => {
   });
 
   it('ends every scored Zone report with the score board page', () => {
-    expect(initial).toContain('LEAN 5S — ZONE SCORE BOARD');
-    expect(after).toContain('LEAN 5S — ZONE SCORE BOARD');
+    expect(initial).toContain('S-wise histogram');
+    expect(after).toContain('S-wise histogram');
+    // The board page carries no banner, and its trend reads by month.
+    expect(initial).not.toContain('ZONE SCORE BOARD');
+    expect(initial).toContain('>Jan 2026</text>');
+  });
+
+  it('ends with the S-wise table of the last audits and their NCs, raised and closed', () => {
+    const payload = fixtureZonePayload();
+    const zone = payload.zones[0]!;
+    const history = zone.history!.map((point, index) => ({
+      ...point,
+      sections: zone.sections,
+      ncs: zone.sections.map(({ section }) => ({ section, raised: section === 'S1_SORT' ? 2 : 0, closed: index === 0 && section === 'S1_SORT' ? 1 : 0 })),
+    }));
+    const html = renderReportHtml({ ...payload, zones: [{ ...zone, history }] }, resolve);
+    const table = html.slice(html.indexOf('S-wise score — last 3 audits'));
+    expect(table.indexOf('10 Jan 2026')).toBeLessThan(table.indexOf('04 Mar 2026'));
+    expect(table).toContain('>Raised</th>');
+    // 1S: two NCs in each of three audits, one closed.
+    expect(table).toMatch(/>6<\/td><td class="centre">1<\/td>/);
+    // Without S-wise history (an older payload), no table.
+    expect(initial).not.toContain('S-wise score — last');
   });
 
   it('adds Before & After only to the after-evidence report, closed findings with an after photo only', () => {
@@ -488,7 +509,7 @@ describe('the Zone trend and the display-board pages', () => {
   });
 
   it('prints no question number on the Before & After page', () => {
-    const board = after.slice(after.indexOf('LEAN 5S — BEFORE &amp; AFTER'), after.indexOf('LEAN 5S — ZONE SCORE BOARD'));
+    const board = after.slice(after.indexOf('LEAN 5S — BEFORE &amp; AFTER'), after.indexOf('S-wise histogram'));
     // Text nodes only: the embedded logo's base64 contains "Q" and digits.
     expect(board).not.toMatch(/>[^<]*\bQ\d/);
   });
@@ -498,7 +519,7 @@ describe('the Zone trend and the display-board pages', () => {
     const { history: _history, ...zone } = payload.zones[0]!;
     const html = renderReportHtml({ ...payload, zones: [zone] }, resolve);
     expect(html).not.toContain('Score trend');
-    expect(html).toContain('LEAN 5S — ZONE SCORE BOARD');
+    expect(html).toContain('S-wise histogram');
   });
 });
 
