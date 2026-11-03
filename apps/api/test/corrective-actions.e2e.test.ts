@@ -980,6 +980,8 @@ describe('R-79 — the next auditor sees the Zone’s earlier NCs', () => {
       token: consultantToken,
     });
     expect(response.body).toMatchObject({ auditId: null, raised: 0, closed: 0, open: 0, items: [] });
+  });
+});
 
 describe('R-81 — reviewing a finished audit changes its photos, through the logged correction', () => {
   it('removes a finding’s photo (withdrawing its action) and picks a summary photo', async () => {
