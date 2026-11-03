@@ -168,7 +168,18 @@ export async function captureLocalEvidence(
     { queue: 'media', priority: input.kind === 'AUDITOR_SELFIE' ? 100 : 200 },
   );
 
+  photoSaved?.();
   return id;
+}
+
+/**
+ * Told after every photo is saved, so the sync provider copies it to the phone's gallery at
+ * once (R-62) — a question's photo is then in the gallery picker for the next question
+ * (the owner, 2026-11-03), not only after the next sync cycle.
+ */
+let photoSaved: (() => void) | null = null;
+export function onPhotoSaved(listener: (() => void) | null): void {
+  photoSaved = listener;
 }
 
 /**

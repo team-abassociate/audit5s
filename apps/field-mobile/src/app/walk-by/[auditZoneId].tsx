@@ -32,7 +32,7 @@ import { useSelfieCheck } from '../../components/selfie-check';
 import { AuditeeCard } from '../../components/evidence-photos';
 import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import type { ProcessedImage } from '../../lib/capture/media';
-import { pickFromGallery } from '../../lib/capture/gallery';
+import { pickPhotosFromGallery } from '../../lib/capture/gallery';
 import {
   completeLocalZone,
   getLocalAuditZone,
@@ -116,8 +116,9 @@ export default function WalkByScreen() {
     mutationFn: async () => {
       // Refused before the picker opens, not after a photo was chosen.
       await assertZonePhotoCapacity(database, auditZoneId);
-      const image = await pickFromGallery();
-      if (image) await capture.mutateAsync({ image, live: false });
+      const taken = (await listLocalEvidenceForZone(database, auditZoneId)).filter((photo) => isZoneAuditPhoto(photo.kind));
+      const images = await pickPhotosFromGallery(ZONE_PHOTO_LIMIT - taken.length);
+      for (const image of images) await capture.mutateAsync({ image, live: false });
     },
   });
 

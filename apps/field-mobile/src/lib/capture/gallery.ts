@@ -14,7 +14,7 @@ import { processCapturedPhoto, type ProcessedImage } from './media';
  *
  * This file is the only importer of `expo-image-picker`, so a grep for it finds the whole
  * of the gallery path. It opens Android's system photo picker, which needs no permission: the
- * app receives the one photograph the person chose and never reads the library itself.
+ * app receives only the photographs the person chose and never reads the library itself.
  *
  * The chosen file goes through `processCapturedPhoto` exactly as a camera frame does —
  * ≤1920 px, JPEG, EXIF (GPS included) gone, hashed after re-encoding — so it uploads, commits
@@ -24,26 +24,40 @@ import { processCapturedPhoto, type ProcessedImage } from './media';
  * Null when the person closes the picker without choosing.
  */
 export async function pickFromGallery(): Promise<ProcessedImage | null> {
+  return (await pickPhotosFromGallery(1))[0] ?? null;
+}
+
+/**
+ * Up to `limit` photographs at once (the owner, 2026-11-03: several shots for one question).
+ * Empty when the person closes the picker. Android before 13 may ignore the limit; the
+ * Zone's photo cap is still checked on every save.
+ */
+export async function pickPhotosFromGallery(limit: number): Promise<ProcessedImage[]> {
   // The picker is its own activity, so the app reads as backgrounded while it is open. Held
   // like a permission dialog, or the root layout pauses the audit and returns to Overview.
   const result = await whilePrompting(() =>
     ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: false,
-      allowsMultipleSelection: false,
+      allowsMultipleSelection: limit > 1,
+      selectionLimit: Math.max(1, limit),
+      orderedSelection: true,
       // The original: the re-encode below is the one compression step, as for the camera.
       quality: 1,
       exif: false,
     }),
   );
-  const asset = result.canceled ? undefined : result.assets[0];
-  if (!asset) return null;
+  if (result.canceled) return [];
 
-  // Measured by the manipulator that will resize it, not taken from the picker: for an
-  // image the picker reports the stored size, before EXIF rotation, so a portrait photo
-  // could read as landscape and be resized on the wrong edge — over §9.4's 1920 px.
-  const decoded = await ImageManipulator.manipulate(asset.uri).renderAsync();
-  const size = { width: decoded.width, height: decoded.height };
-  decoded.release();
-  return processCapturedPhoto(asset.uri, size);
+  const images: ProcessedImage[] = [];
+  for (const asset of result.assets.slice(0, Math.max(1, limit))) {
+    // Measured by the manipulator that will resize it, not taken from the picker: for an
+    // image the picker reports the stored size, before EXIF rotation, so a portrait photo
+    // could read as landscape and be resized on the wrong edge — over §9.4's 1920 px.
+    const decoded = await ImageManipulator.manipulate(asset.uri).renderAsync();
+    const size = { width: decoded.width, height: decoded.height };
+    decoded.release();
+    images.push(await processCapturedPhoto(asset.uri, size));
+  }
+  return images;
 }

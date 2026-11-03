@@ -12,6 +12,7 @@ import {
 import { applyLocalPhotoOverride } from '../lib/db/audit.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import { createThemedStyles, type Tone } from '../lib/theme';
+import { PhotoZoomViewer } from './kaizen-photo-viewer';
 import { Button, Card, CardHeader, Chip, ConfirmAction, ErrorBanner, Field, Label, Muted } from './ui';
 
 /**
@@ -172,9 +173,13 @@ export function PhotoPreview({
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [remark, setRemark] = useState('');
+  const [zoomed, setZoomed] = useState(false);
 
   // Each photograph opens on its own saved remark.
-  useEffect(() => setRemark(photo?.remark ?? ''), [photo?.id]);
+  useEffect(() => {
+    setRemark(photo?.remark ?? '');
+    setZoomed(false);
+  }, [photo?.id]);
 
   const label = classificationLabel(photo?.classification ?? 'NEUTRAL');
 
@@ -237,12 +242,19 @@ export function PhotoPreview({
             Photograph
           </Text>
           {photo.localFileUri ? (
-            <Image
-              source={{ uri: photo.localFileUri }}
-              style={styles.previewImage}
-              resizeMode="contain"
-              accessibilityLabel={`${label} photograph`}
-            />
+            <Pressable
+              onPress={() => setZoomed(true)}
+              accessibilityRole="imagebutton"
+              accessibilityHint="Opens the photograph full screen to zoom"
+            >
+              <Image
+                source={{ uri: photo.localFileUri }}
+                style={styles.previewImage}
+                resizeMode="contain"
+                accessibilityLabel={`${label} photograph`}
+              />
+              <Muted>Tap the photo to zoom in.</Muted>
+            </Pressable>
           ) : (
             <View style={styles.thumbMissing}>
               <Text style={styles.thumbMissingText}>The file is no longer stored on this device</Text>
@@ -298,6 +310,11 @@ export function PhotoPreview({
         </ScrollView>
         <Button icon="arrow-forward" title="Continue" variant="secondary" onPress={close} />
       </View>
+      <PhotoZoomViewer
+        uri={zoomed ? photo.localFileUri : null}
+        label={`${label} photograph`}
+        onClose={() => setZoomed(false)}
+      />
     </Modal>
   );
 }
