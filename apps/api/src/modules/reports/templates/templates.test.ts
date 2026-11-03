@@ -593,22 +593,34 @@ describe('§4.3 — the multi-Zone summary', () => {
     expect(html).toContain('NA answers are excluded from the applicable maximum.');
   });
 
-  it('adds the §10.3-C blocks: rankings, histogram, recurrence, flagged photos', () => {
+  it('adds the §10.3-C blocks: rankings and flagged photos — no NC summary, no score cards', () => {
     expect(html).toContain('Highest performing');
     expect(html).toContain('Lowest performing');
     expect(html).toContain('Weakest: 1S');
-    expect(html).toContain('Score band distribution');
-    expect(html).toContain('Recurrent check point');
     expect(html).toContain('Flagged photographs');
+    expect(html).not.toContain('Nonconformity summary');
+    expect(html).not.toContain('Recurrent check point');
+    expect(html).not.toContain('Score band distribution');
+    expect(html).not.toContain('SCORE CARDS');
   });
 
-  it('ends with the score card of every Zone and the band histogram', () => {
-    const end = html.slice(html.indexOf('LEAN 5S — ZONE SCORE CARDS'));
-    expect(end).toContain('Score band distribution');
-    expect(end).toContain('All selected zones');
-    expect(end).toContain('1 — Press');
-    expect(end).toContain('2 — Assembly');
-    expect(end.indexOf('Score band distribution')).toBeLessThan(end.indexOf('All selected zones'));
+  it('after the photographs: each Zone’s last six scores with NCs raised and closed', () => {
+    const end = html.slice(html.indexOf('LEAN 5S — LAST SIX AUDITS'));
+    expect(html.indexOf('Flagged photographs')).toBeLessThan(html.indexOf('LEAN 5S — LAST SIX AUDITS'));
+    expect(end).toContain('Raised');
+    expect(end).toContain('Closed');
+    const row = (label: string) => end.slice(end.indexOf(label), end.indexOf('</tr>', end.indexOf(label)));
+    expect(row('1 — Press')).toMatch(/>5<\/td><td class="centre">3<\/td>$/);
+    // Two audits: four blank slots before them, latest in the last column.
+    expect((row('2 — Assembly').match(/>—</g) ?? []).length).toBe(4);
+  });
+
+  it('ends with the Unit’s month-wise score on its own last page', () => {
+    const last = html.slice(html.indexOf('LEAN 5S — MONTH-WISE UNIT SCORE'));
+    expect(html.indexOf('LEAN 5S — LAST SIX AUDITS')).toBeLessThan(html.indexOf('LEAN 5S — MONTH-WISE UNIT SCORE'));
+    expect(last).toContain('<svg');
+    expect(last).toContain('Apr 2026');
+    expect(last).toContain('Sept 2026');
   });
 
   it('shows only the flagged photographs, not every photo in the Zone', () => {
