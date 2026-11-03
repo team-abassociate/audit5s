@@ -2919,3 +2919,6 @@ photos are never removed) for the auditor's own correction; widens R-62's 24 hou
   remark is not edited in review.
 - **Phone:** in correction mode the camera and gallery stay open and the preview's Delete
   and summary buttons ride the queued correction, merged with any corrected marks.
+- **Web** (R-51, owner 2026-11-03): on a finished audit's panel, opening a photo gives its
+  auditor (or a Super Admin) *Delete photo* and *Use as the summary photo*, with a reason;
+  *Correct a completed audit* lets the auditor add a photo to the chosen question.

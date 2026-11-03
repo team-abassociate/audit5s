@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Audit,
@@ -32,6 +32,7 @@ import {
   Th,
 } from '@/components/ui';
 import { useSession } from '@/lib/session';
+import { uploadEvidence } from '@/lib/evidence';
 import { EVIDENCE_KIND_LABEL, SECTION_LABEL } from '@/lib/labels';
 import { TeamProgress } from './AuditProgress';
 import { read } from './data';
@@ -61,7 +62,7 @@ export function AuditDetailPanel({
   /** Set when this audit is one auditor's share of a Unit audit done together. */
   team?: { unitId: string; audits: Audit[]; pending: string[] };
 }) {
-  const { can } = useSession();
+  const { can, user, scope } = useSession();
   const queryClient = useQueryClient();
   const [cancelReason, setCancelReason] = useState('');
 
@@ -207,7 +208,18 @@ export function AuditDetailPanel({
         })}
       </section>
 
-      <EvidenceGallery auditId={auditId} zones={audit.zones} questions={questions} />
+      <EvidenceGallery
+        auditId={auditId}
+        zones={audit.zones}
+        questions={questions}
+        // R-81: the auditor (or a Super Admin) reviewing a finished audit changes its photos.
+        correctable={
+          can('audit', 'edit_after_completion') &&
+          audit.completedAt !== null &&
+          audit.status !== 'CANCELLED' &&
+          (audit.auditorUserId === user?.id || scope?.role === 'SUPER_ADMIN')
+        }
+      />
 
       {can('audit', 'cancel') && cancellable && (
         <div className="border-t border-rule-soft pt-4">
@@ -234,7 +246,7 @@ export function AuditDetailPanel({
       )}
 
       {audit.scored && can('audit', 'edit_after_completion') && audit.status === 'COMPLETED' && (
-        <OverrideForm auditId={auditId} audit={audit} />
+        <OverrideForm auditId={auditId} audit={audit} mayAddPhoto={audit.auditorUserId === user?.id} />
       )}
     </div>
   );
@@ -310,10 +322,12 @@ function EvidenceGallery({
   auditId,
   zones,
   questions,
+  correctable = false,
 }: {
   auditId: string;
   zones: AuditDetail['zones'];
   questions: Questions;
+  correctable?: boolean;
 }) {
   const [zoneId, setZoneId] = useState('');
   const [classification, setClassification] = useState<'' | EvidenceClassification>('');
@@ -402,7 +416,11 @@ function EvidenceGallery({
           evidence={selected}
           caption={evidenceCaption(selected, zones, questions)}
           onClose={() => setSelected(null)}
-        />
+        >
+          {correctable && (selected.kind === 'QUESTION_EVIDENCE' || selected.kind === 'WALK_BY_PHOTO') ? (
+            <PhotoCorrection auditId={auditId} evidence={selected} onDone={() => setSelected(null)} />
+          ) : null}
+        </EvidenceViewer>
       )}
     </section>
   );
@@ -482,11 +500,14 @@ export function EvidenceViewer({
   evidence,
   caption,
   onClose,
+  children,
 }: {
   evidence: Pick<Evidence, 'id' | 'remark'>;
   /** Where the photo was taken, when the caller knows. */
   caption?: string;
   onClose: () => void;
+  /** Actions under the photo: R-81's review changes. */
+  children?: ReactNode;
 }) {
   const [opener] = useState(() =>
     document.activeElement instanceof HTMLElement ? document.activeElement : null,
@@ -529,6 +550,7 @@ export function EvidenceViewer({
           />
         )}
       </div>
+      {children}
     </Dialog>
   );
 }
@@ -577,7 +599,49 @@ function SectionTable({ sections }: { sections: SectionScorePayload[] }) {
  * endpoint is the `AuditLog` entry it writes, and an override with no stated reason is the
  * case the invariant exists to prevent.
  */
-function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail }) {
+/**
+ * R-81: while reviewing a finished audit, remove this photo or pick it for the Zone's summary.
+ * It rides the logged correction (A-2), so it needs a reason; a removed finding photo
+ * withdraws its open corrective action.
+ */
+function PhotoCorrection({ auditId, evidence, onDone }: { auditId: string; evidence: Evidence; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const [reason, setReason] = useState('');
+  const flaggable = evidence.classification === 'GOOD' || evidence.classification === 'NONCONFORMITY';
+  const change = useMutation({
+    mutationFn: (photo: { deleted?: true; isSummaryFlagged?: boolean }) =>
+      api.patch(`/audits/${auditId}/post-completion`, {
+        justification: reason.trim(),
+        changes: { evidence: [{ evidenceId: evidence.id, ...photo }] },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['audit-evidence', auditId] });
+      await queryClient.invalidateQueries({ queryKey: ['audit', auditId] });
+      onDone();
+    },
+  });
+  const ready = reason.trim().length >= 10 && !change.isPending;
+  return (
+    <div className="gb-dialog-section space-y-3">
+      <Field label="Why are you changing this photo?" hint="At least ten characters; it is stored with the change">
+        <Input value={reason} onChange={(event) => setReason(event.target.value)} />
+      </Field>
+      {change.error && <ErrorNotice error={change.error} />}
+      <div className="flex flex-wrap gap-2">
+        {flaggable ? (
+          <Button variant="secondary" disabled={!ready} onClick={() => change.mutate({ isSummaryFlagged: !evidence.isSummaryFlagged })}>
+            {evidence.isSummaryFlagged ? 'Remove from summary' : 'Use as the summary photo'}
+          </Button>
+        ) : null}
+        <Button variant="danger" disabled={!ready} onClick={() => change.mutate({ deleted: true })}>
+          Delete photo
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function OverrideForm({ auditId, audit, mayAddPhoto }: { auditId: string; audit: AuditDetail; mayAddPhoto: boolean }) {
   const queryClient = useQueryClient();
   const [responseId, setResponseId] = useState('');
   const [value, setValue] = useState('SCORE_2');
@@ -599,6 +663,20 @@ function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail 
   const responses = audit.zones.flatMap((zone) =>
     zone.responses.map((response) => ({ zone: zone.zoneCodeSnapshot, response })),
   );
+
+  const addPhoto = useMutation({
+    mutationFn: (file: File) => {
+      const zone = audit.zones.find((candidate) => candidate.responses.some((response) => response.id === responseId))!;
+      return uploadEvidence(file, {
+        kind: 'QUESTION_EVIDENCE',
+        auditId,
+        auditZoneId: zone.id,
+        questionResponseId: responseId,
+        isLiveCapture: false,
+      });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['audit-evidence', auditId] }),
+  });
 
   return (
     <form
@@ -660,6 +738,24 @@ function OverrideForm({ auditId, audit }: { auditId: string; audit: AuditDetail 
       >
         {override.isPending ? 'Applying…' : 'Apply override'}
       </Button>
+
+      {/* R-81: the auditor reviewing adds a photo to the chosen question, at any time. */}
+      {mayAddPhoto ? (
+        <Field label="Add a photo to the chosen question" hint="Choose the response above first">
+          <input
+            type="file"
+            accept="image/jpeg,image/png"
+            disabled={!responseId || addPhoto.isPending}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) addPhoto.mutate(file);
+              event.target.value = '';
+            }}
+          />
+        </Field>
+      ) : null}
+      {addPhoto.error && <ErrorNotice error={addPhoto.error} />}
+      {addPhoto.isSuccess && <p className="text-xs text-ink-2">Photo added.</p>}
     </form>
   );
 }
