@@ -27,6 +27,7 @@ import { LiveCapture } from '@/lib/photo';
 import { uploadEvidence } from '@/lib/evidence';
 import { ZoneNumberInput } from '@/features/zones/ZoneNumberInput';
 import { AUDIT_TYPE_LABEL, useAuditDetail, useCatalogue, versionsForUnit, withdrawZone } from './shared';
+import { PreviousNcs } from './PreviousNcs';
 
 type AuditZone = AuditDetail['zones'][number];
 
@@ -334,6 +335,8 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
                 ) : null}
               </Field>
             )}
+            {/* R-79: what the Zone's last audit found, and what its leader has closed since. */}
+            {zoneCode && !newZone && !walkBy && byCode.get(zoneCode) ? <PreviousNcs zoneId={byCode.get(zoneCode)!.id} /> : null}
             <Field
               label="Zone Leader’s name"
               {...(showErrors && errors.leader ? { error: errors.leader } : {})}

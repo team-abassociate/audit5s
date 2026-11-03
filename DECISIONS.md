@@ -2919,4 +2919,6 @@ the report."*
   nothing to ask about). `audit_zone.previous_ncs_answer` (migration 0064), sent on the
   Zone's upsert while the audit is open; phone local schema v16. The Zone report prints it
   after the overall remark (template 1.14.0); a report issued before keeps its bytes (R-35).
-- **Not yet on the web conduct screen** (R-51): the API takes the field from any client.
+- **On the web too** (R-51, owner 2026-11-03): the conduct screen shows *Earlier NCs* under
+  the Zone picker (figures, then each NC with its photos, opening full size), asks the
+  closing question above the overall remark, and an audit's panel prints the answer.
