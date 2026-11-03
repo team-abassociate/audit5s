@@ -3,13 +3,13 @@ import { loginIdSchema, isoDateTimeSchema, phoneE164Schema, uuidSchema } from '.
 import { roleSchema, userStatusSchema, locationProviderSchema } from './enums';
 import { permissionKeySchema } from './permission';
 
-/** Minimum password length on reset (ARCHITECTURE.md §12.1). */
-export const PASSWORD_MIN_LENGTH = 10;
+/** R-77: a password may be anything the user wants — a name, a number — only not empty. */
+export const PASSWORD_MIN_LENGTH = 1;
 export const PASSWORD_MAX_LENGTH = 256;
 
 export const newPasswordSchema = z
   .string()
-  .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
+  .min(PASSWORD_MIN_LENGTH, 'Enter a password')
   .max(PASSWORD_MAX_LENGTH);
 
 /**
