@@ -44,6 +44,8 @@ export default function TabsLayout() {
   const admin = managesOnPhone(scope?.role);
   const coordinator = scope?.role === 'COORDINATOR';
   const zoneLeader = scope?.role === 'ZONE_LEADER';
+  // R-78: a Consultant closes the NCs of a Zone with no leader account, so gets the tab too.
+  const consultant = scope?.role === 'CONSULTANT';
   const shownTo = (show: boolean) => (show ? {} : { href: null });
   const tabLabel = (text: string, color: ColorValue, focused: boolean) => (
     <Text
@@ -100,7 +102,7 @@ export default function TabsLayout() {
           title: 'Nonconformities',
           tabBarLabel: ({ color, focused }) => tabLabel('NCs', color, focused),
           tabBarIcon: tabIcon('actions'),
-          ...shownTo(zoneLeader),
+          ...shownTo(zoneLeader || consultant),
         }}
       />
       <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: tabIcon('history'), ...shownTo(!admin) }} />

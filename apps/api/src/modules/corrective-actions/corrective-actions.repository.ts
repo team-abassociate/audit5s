@@ -35,12 +35,12 @@ import { setActorContext } from '../users/users.repository';
  *
  * Every read joins the audit, so all three resolvers PART 6 names for this resource have a
  * column to work on: `own_unit` the action's Unit, `own_audits` the audit's auditor (a
- * Consultant reads what their audit raised), `assigned_actions` the assignee or the Unit.
+ * Consultant reads what their audit raised), `assigned_actions` the Zone's leader (R-78).
  */
 const scopeColumns = {
   unitId: correctiveActions.unitId,
   ownerUserId: audits.auditorUserId,
-  assignedUserId: correctiveActions.assignedZoneLeaderUserId,
+  zoneId: correctiveActions.zoneId,
   // Phase 7: `signed_token`'s single-item audience is this column (§6.2). Supplied here
   // rather than only where the public surface reads, so every query through this
   // repository narrows the same way when a signed link is the authority.
@@ -66,6 +66,7 @@ const actionColumns = {
   // correlated read rather than a join, so every query built on `selectActions` keeps its rows.
   zoneLeaderName: sql<string | null>`(SELECT COALESCE(app_zone_leader_name(z.unit_id, z.zone_leader_id), z.zone_leader_name)
     FROM zone z WHERE z.id = ${correctiveActions.zoneId})`,
+  zoneLeaderUserId: sql<string | null>`(SELECT z.zone_leader_id FROM zone z WHERE z.id = ${correctiveActions.zoneId})`,
   dueAt: correctiveActions.dueAt,
   openedAt: correctiveActions.openedAt,
   lastSubmittedAt: correctiveActions.lastSubmittedAt,

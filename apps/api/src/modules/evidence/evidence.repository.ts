@@ -168,13 +168,17 @@ export class EvidenceRepository extends BaseRepository {
   private writablePredicate(scope: ScopeContext): SQL {
     const base = this.scoped(scope, evidenceScopeColumns);
     const answers =
-      scope.actor.role === 'ZONE_LEADER' ? 'assigned_actions' : scope.actor.role === 'COORDINATOR' ? 'own_unit' : null;
+      scope.actor.role === 'ZONE_LEADER' || scope.actor.role === 'CONSULTANT'
+        ? 'assigned_actions'
+        : scope.actor.role === 'COORDINATOR'
+          ? 'own_unit'
+          : null;
     if (scope.resolver !== 'own_audits' || answers === null) {
       return base;
     }
     const answerable = this.scoped(
       { ...scope, resolver: answers },
-      { assignedUserId: correctiveActions.assignedZoneLeaderUserId, unitId: correctiveActions.unitId },
+      { zoneId: correctiveActions.zoneId, unitId: correctiveActions.unitId },
     );
     return sql`(${base} OR (${evidence.kind} = 'CORRECTIVE_AFTER' AND EXISTS (
       SELECT 1 FROM ${correctiveActions}
