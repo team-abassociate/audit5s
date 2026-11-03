@@ -221,6 +221,7 @@ export class AuditZonesService {
         resumeQuestionId: request.resumeQuestionId,
         // R-72: the auditor may correct it while the audit is open; a finished one keeps it.
         auditeeName: editable ? request.auditeeName : undefined,
+        previousNcsAnswer: editable ? request.previousNcsAnswer : undefined,
         clientUpdatedAt: request.clientUpdatedAt ? new Date(request.clientUpdatedAt) : new Date(),
         snapshot,
         /*

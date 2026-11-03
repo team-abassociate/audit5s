@@ -25,6 +25,7 @@ import {
   SlipText,
   useSheetInset,
 } from '../../../components/ui';
+import { PreviousNcsButton } from '../../../components/previous-ncs';
 import {
   abortLocalAudit,
   addLocalZone,
@@ -607,6 +608,9 @@ export default function AuditZonesScreen() {
           </SlipText>
         </Slip>
       ) : null}
+
+      {/* R-79: what the Zone's last audit found, and what its leader has closed since. */}
+      {selected && !walkBy ? <PreviousNcsButton zoneId={selected.id} /> : null}
 
       {mayEditZone ? (
         <>

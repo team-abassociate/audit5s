@@ -271,6 +271,8 @@ export const auditZoneSchema = z.object({
   zoneLeaderNameSnapshot: z.string().nullable(),
   /** R-72: who faced the audit of this Zone, as the auditor typed it. */
   auditeeName: z.string().nullable().optional(),
+  /** R-79: "Are the earlier NCs closed by the Zone Leader?" — the auditor's answer. */
+  previousNcsAnswer: z.string().nullable().optional(),
   /** **The binding version** for this Zone's questions (QR-2). */
   checklistVersionId: uuidSchema.nullable(),
   checklistTemplateNameSnapshot: z.string().nullable(),
@@ -519,6 +521,8 @@ export const upsertAuditZoneRequestSchema = z
      */
     auditeeName: clearable(z.string().trim().max(200)),
     zoneRemark: clearable(z.string().trim().max(4000)),
+    /** R-79: optional on the wire; phones before it never send it. */
+    previousNcsAnswer: clearable(z.string().trim().max(4000)),
     /**
      * R-38: the Zone's overall corrective-action suggestions, whole — the list replaces
      * the one stored. Absent leaves it as it is; `[]` clears it. Optional to complete.

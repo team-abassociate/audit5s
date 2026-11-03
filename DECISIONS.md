@@ -2939,3 +2939,29 @@ leaves R-22 / R-47 (the PDF link) as they were.
   policy to match. `CorrectiveAction` gains optional `zoneLeaderUserId`.
 - Reassigning an action (`corrective_action:reassign`) still records an assignee for
   notifications, but no longer decides who may close it.
+
+## R-79 — The next auditor sees the Zone's earlier NCs, and answers whether they were closed
+
+**Ruled 2026-11-02 by the owner.** *"When someone chooses a zone for auditing, be it cross
+audit or external audit, the number of NCs raised, NCs closed by zone leader and NCs still
+remaining … should be visible to the auditor … he should be able to see the photos of the NC
+and if it's closed the before/after. At the end of the 50 questions the auditor should get a
+question 'Are the earlier NCs closed by the zone leader' … with a text field, published in
+the report."*
+
+- **Which NCs:** those of the Zone's **last finished audit** (any type — a walk-by's NCs are
+  the Zone's too), withdrawn ones left out. *Closed* is `VERIFIED` (R-43's "closed").
+- **`GET /zones/{id}/previous-nonconformities`**, `zone:read`: whoever may read the Zone —
+  a Consultant on an external audit, a Zone Leader on a cross audit — sees the figures and
+  the photos, whoever conducted that audit. Photos are presigned GETs (≤5 min); a redacted
+  photo is null. The field app shows the figures on the Select Zone card (cross and external,
+  not walk-by) and a screen of each NC with its before photo and, once closed, its after
+  photo, tap to view. It needs a connection.
+- **The closing question** sits after the fifty, before the overall remark: *Are the earlier
+  NCs closed by the Zone Leader?*, answered in words, optional (a Zone's first audit has
+  nothing to ask about). `audit_zone.previous_ncs_answer` (migration 0064), sent on the
+  Zone's upsert while the audit is open; phone local schema v16. The Zone report prints it
+  after the overall remark (template 1.14.0); a report issued before keeps its bytes (R-35).
+- **On the web too** (R-51, owner 2026-11-03): the conduct screen shows *Earlier NCs* under
+  the Zone picker (figures, then each NC with its photos, opening full size), asks the
+  closing question above the overall remark, and an audit's panel prints the answer.

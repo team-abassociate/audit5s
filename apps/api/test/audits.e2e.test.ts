@@ -1584,9 +1584,12 @@ describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)
         zoneDescription: 'Press shop, bay 7 — corrected on site',
         zoneLeaderName: 'R. Iyer',
         auditeeName: 'S. Patil',
+        previousNcsAnswer: 'Yes, all three were closed last week.',
       },
     });
     expect(fixed.status, JSON.stringify(fixed.body)).toBe(200);
+    // R-79: the auditor's answer to "Are the earlier NCs closed by the Zone Leader?".
+    expect((fixed.body as AuditZone).previousNcsAnswer).toBe('Yes, all three were closed last week.');
     // R-74: only a Super Admin or the Coordinator says what the Zone is and who leads it.
     expect((fixed.body as AuditZone).zoneDescriptionSnapshot).toBe('Typed in a hurry');
     expect((fixed.body as AuditZone).zoneLeaderNameSnapshot).not.toBe('R. Iyer');

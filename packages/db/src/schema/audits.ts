@@ -184,6 +184,8 @@ export const auditZones = pgTable(
     checklistTemplateNameSnapshot: text('checklist_template_name_snapshot'),
 
     zoneRemark: text('zone_remark'),
+    /** R-79: "Are the earlier NCs closed by the Zone Leader?", the auditor's answer (0064). */
+    previousNcsAnswer: text('previous_ncs_answer'),
     /**
      * R-38: overall corrective-action suggestions, in the auditor's order. Each becomes a
      * corrective action when the audit completes. Empty when there are none.

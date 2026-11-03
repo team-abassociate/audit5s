@@ -216,6 +216,7 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
     },
     sections,
     zoneRemark: zone.zoneRemark,
+    previousNcsAnswer: zone.previousNcsAnswer,
     questions,
     good: photos.filter((photo) => photo.classification === 'GOOD').map(toPhoto),
     nonconformities: photos
