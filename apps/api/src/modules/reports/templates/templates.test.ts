@@ -503,6 +503,13 @@ describe('the Zone trend and the display-board pages', () => {
 });
 
 describe('R-75 — the summary of summaries', () => {
+  it('ends with a score card per point and the band histogram', () => {
+    const html = renderReportHtml(fixtureTrendPayload(4), resolve);
+    const end = html.slice(html.indexOf('LEAN 5S — SCORE CARDS'));
+    expect(end).toContain('Score band distribution');
+    expect(end).toContain('Overall');
+  });
+
   it('names the Zone, the period and how many audits it compares', () => {
     const html = renderReportHtml(fixtureTrendPayload(4), resolve);
     expect(html).toContain('LEAN 5S — SUMMARY OF SUMMARIES');
@@ -593,6 +600,15 @@ describe('§4.3 — the multi-Zone summary', () => {
     expect(html).toContain('Score band distribution');
     expect(html).toContain('Recurrent check point');
     expect(html).toContain('Flagged photographs');
+  });
+
+  it('ends with the score card of every Zone and the band histogram', () => {
+    const end = html.slice(html.indexOf('LEAN 5S — ZONE SCORE CARDS'));
+    expect(end).toContain('Score band distribution');
+    expect(end).toContain('All selected zones');
+    expect(end).toContain('1 — Press');
+    expect(end).toContain('2 — Assembly');
+    expect(end.indexOf('Score band distribution')).toBeLessThan(end.indexOf('All selected zones'));
   });
 
   it('shows only the flagged photographs, not every photo in the Zone', () => {

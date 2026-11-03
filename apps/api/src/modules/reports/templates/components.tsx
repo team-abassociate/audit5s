@@ -479,6 +479,89 @@ export function TrendBars({
   );
 }
 
+/**
+ * The rating histogram: how many of the things scored (Zones, audits, summaries) fall in
+ * each band, one vertical bar per band in the payload's own order, tinted by the band, its
+ * count above it. A null score is in no band and in no bar (D4).
+ */
+export function BandHistogram({
+  pcts,
+  bands,
+  brand,
+  width = 480,
+  height = 160,
+}: {
+  pcts: readonly (number | null)[];
+  bands: readonly ReportBand[];
+  brand: Record<string, string>;
+  width?: number;
+  height?: number;
+}) {
+  const counts = bands.map((band) => pcts.filter((pct) => bandOf(bands, pct)?.token === band.token).length);
+  const top = 14;
+  const bottom = 18;
+  const plot = height - top - bottom;
+  const slot = width / Math.max(bands.length, 1);
+  const bar = Math.min(slot * 0.6, 80);
+  const most = Math.max(1, ...counts);
+  const ink = brand.ink ?? '#101112';
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} xmlns="http://www.w3.org/2000/svg" role="img">
+      <line x1={0} y1={top + plot} x2={width} y2={top + plot} stroke={ink} strokeWidth={0.75} />
+      {bands.map((band, index) => {
+        const h = round((counts[index]! / most) * plot);
+        const x = round(index * slot + (slot - bar) / 2);
+        return (
+          <g key={`hist-${band.token}`}>
+            <rect x={x} y={round(top + plot - h)} width={round(bar)} height={h} fill={band.color} />
+            <text x={round(x + bar / 2)} y={round(top + plot - h - 3)} textAnchor="middle" fontSize={8} fontWeight={700} fill={band.color}>
+              {counts[index]}
+            </text>
+            <text x={round(x + bar / 2)} y={height - 5} textAnchor="middle" fontSize={7} fill={ink}>
+              {band.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/**
+ * The score card the app shows at the end of an audit (R-80) — marks, score, rating, the
+ * S-wise table and the 5S web — one per Zone, audit or summary, printed at the end of a report.
+ */
+export function ScoreCards({
+  cards,
+  bands,
+  brand,
+}: {
+  cards: readonly { key: string; label: string; totals: ReportPayload['totals']; sections: readonly SectionScorePayload[] }[];
+  bands: readonly ReportBand[];
+  brand: Record<string, string>;
+}) {
+  return (
+    <>
+      {cards.map((card) => (
+        <div key={card.key} className="avoid-break">
+          <h2 className="section-title">{card.label}</h2>
+          <div className="web-row">
+            <div style={{ flex: 1 }}>
+              <div className="meta-grid">
+                <MetaCell label="Marks" value={formatMarks(card.totals.rawScore, card.totals.maxScore)} />
+                <MetaCell label="Score" value={formatPercentage(card.totals.scorePercentage)} />
+                <MetaCell label="Rating" value={bandOf(bands, card.totals.scorePercentage)?.label ?? 'N/A'} />
+              </div>
+              <SectionTable sections={card.sections} bands={bands} />
+            </div>
+            <RadarWeb sections={card.sections} bands={bands} brand={brand} size={170} />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 // --------------------------------------------------------------------------- evidence
 
 /** The caption §4.1 asks for: `Q{n} · {S label} · Score {n}`. */

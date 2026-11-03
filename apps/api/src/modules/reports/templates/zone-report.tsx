@@ -1,4 +1,4 @@
-import { S_SECTION_ORDER, S_SECTION_LABELS, reportZoneLabel, sectionLabel } from '@audit5s/domain';
+import { S_SECTION_ORDER, S_SECTION_LABELS, S_SECTION_SHORT_LABELS, reportZoneLabel, sectionLabel } from '@audit5s/domain';
 import type {
   ReportNonconformity,
   ReportOutcome,
@@ -298,13 +298,21 @@ function ScoreBoard({ zone, payload }: { zone: ReportZone; payload: ReportPayloa
             bands={payload.bands}
             brand={payload.brand}
             width={640}
-            height={280}
+            height={220}
           />
         </>
       ) : null}
+      <h2 className="section-title">S-wise histogram</h2>
+      <TrendBars
+        points={zone.sections.map((section) => ({ label: S_SECTION_SHORT_LABELS[section.section], pct: section.pct }))}
+        bands={payload.bands}
+        brand={payload.brand}
+        width={640}
+        height={150}
+      />
       <h2 className="section-title">5S performance web</h2>
       <div className="radar-box">
-        <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} size={300} />
+        <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} size={220} />
       </div>
       <RatingPills bands={payload.bands} />
     </>

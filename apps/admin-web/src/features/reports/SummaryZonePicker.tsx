@@ -3,18 +3,19 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { formatDateTime, formatWeekdayDate, isAuditCompleted, istDateKey, reportZoneLabel, formatScore } from '@audit5s/domain';
 import type { Audit, AuditScoreSummary, ReportSnapshot } from '@audit5s/contracts';
 import { api, fetchAll } from '@/lib/api';
+import { AUDIT_TYPE_LABEL } from '@/lib/labels';
 import { Badge, Button, ErrorNotice, Field, Select, Spinner } from '@/components/ui';
 
 /**
  * The unit summary's selection, made one audited Zone at a time.
  *
- * A Unit is often audited more than once on the same day — a team audit, or a second walk —
- * and the summary a Super Admin wants is rarely "the latest of every Zone": it is Zones 1
- * and 2 from the first audit and Zones 3, 4 and 5 from the second. So the choice is one day
- * at a time, laid out the way the work happened — every finished audit of the Unit on that
- * day with its time and auditor, and under it the Zones that audit finished — and what is
- * sent is exactly the audited Zones ticked (`selectedAuditZoneIds`). The server stores that
- * list on the snapshot, so a regeneration is the same document.
+ * One audit round of a Unit is often spread over several audits and several days — a cross
+ * audit on Monday, the external audit of the rest on Thursday — and the summary a Super Admin
+ * wants is those Zones together. So every finished audit of the Unit is offered, whatever
+ * day it finished, each with its time and auditor and under it the Zones it finished; the
+ * date list only narrows what is shown, and ticks are kept across dates. What is sent is
+ * exactly the audited Zones ticked (`selectedAuditZoneIds`). The server stores that list on
+ * the snapshot, so a regeneration is the same document.
  *
  * `auditIds` narrows the list to some audits of the Unit — one team audit's, for the
  * combined summary of several auditors' work.
@@ -53,9 +54,9 @@ export function SummaryZonePicker({
     () => [...new Set(finished.map((audit) => dayKey(audit.completedAt!)))],
     [finished],
   );
-  // One day's audits at a time, the newest day by default: a summary covers the audits of a
-  // Unit taken on the same day. A team audit is one day already, so it shows whole.
-  const shownDay = auditIds ? 'ALL' : (day ?? days[0] ?? 'ALL');
+  // Every date by default: one summary may take Zones from audits of different days. A date
+  // only narrows the list; what is ticked stays ticked.
+  const shownDay = auditIds ? 'ALL' : (day ?? 'ALL');
   const shown = finished
     .filter((audit) => shownDay === 'ALL' || dayKey(audit.completedAt!) === shownDay)
     // Earliest first within the day — the order the day happened in.
@@ -115,14 +116,10 @@ export function SummaryZonePicker({
         {!auditIds ? (
           <div className="w-64">
             <Field label="Audits finished on">
-              <Select
-                value={shownDay}
-                onChange={(event) => {
-                  // A summary is one day's Zones; ticks from another day do not carry over.
-                  setDay(event.target.value);
-                  setChosen([]);
-                }}
-              >
+              <Select value={shownDay} onChange={(event) => setDay(event.target.value)}>
+                <option value="ALL">
+                  All dates ({finished.length} audit{finished.length === 1 ? '' : 's'})
+                </option>
                 {days.map((key) => (
                   <option key={key} value={key}>
                     {dayLabel(key)} ({countOn(finished, key)} audit{countOn(finished, key) === 1 ? '' : 's'})
@@ -171,7 +168,7 @@ export function SummaryZonePicker({
                 />
                 <span className="font-medium text-ink">{formatDateTime(audit.completedAt!)}</span>
                 <span className="text-ink-2">
-                  {audit.auditorName} · {zones.length} Zone{zones.length === 1 ? '' : 's'}
+                  {AUDIT_TYPE_LABEL[audit.auditType]} · {audit.auditorName} · {zones.length} Zone{zones.length === 1 ? '' : 's'}
                 </span>
                 {audit.scored && audit.totals.scorePercentage !== null ? (
                   <Badge>{formatScore(audit.totals.scorePercentage)}%</Badge>
@@ -213,8 +210,8 @@ export function SummaryZonePicker({
       </div>
 
       <p className="text-xs text-ink-2">
-        Every figure in the summary is computed over the Zones chosen here only. The same Zone
-        may be taken from one audit of the day and left out of another.
+        Every figure in the summary is computed over the Zones chosen here only, from audits of
+        any date. Take each Zone from one audit only, or it is counted twice.
       </p>
 
       {generate.error ? <ErrorNotice error={generate.error} /> : null}
