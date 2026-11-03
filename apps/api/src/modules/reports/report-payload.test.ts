@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { auditTrend, freezePayload, freezeTrendPayload, unitTrend, type FreezeInput } from './report-payload';
+import { auditTrend, freezePayload, freezeTrendPayload, monthlyOf, unitTrend, type FreezeInput } from './report-payload';
 
 /**
  * Field report, 2026-09-30: an after-evidence report printed each finding's own photograph
@@ -256,5 +256,23 @@ describe('a unit-wise trend from audits (R-75)', () => {
       ['external', 'EXTERNAL_5S', 2, 50],
       ['cross', 'CROSS_5S', 1, 50],
     ]);
+  });
+});
+
+describe('the summary’s month-wise Unit score', () => {
+  it('is the six IST months ending with the generation month, Σ/Σ, null when empty', () => {
+    const rows = [
+      // 31 Jan 20:00 UTC is 1 Feb in India: February's.
+      { auditDate: new Date('2026-01-31T20:00:00Z'), rawScore: 30, maxScore: 40 },
+      { auditDate: new Date('2026-02-10T06:00:00Z'), rawScore: 10, maxScore: 60 },
+      { auditDate: new Date('2026-07-01T06:00:00Z'), rawScore: 9, maxScore: 10 },
+      // Older than the window: dropped.
+      { auditDate: new Date('2026-01-15T06:00:00Z'), rawScore: 1, maxScore: 100 },
+    ];
+    const months = monthlyOf(rows, new Date('2026-07-15T06:00:00Z'));
+    expect(months.map((m) => m.month)).toEqual(['2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07']);
+    expect(months[0]).toMatchObject({ rawScore: 40, maxScore: 100, scorePercentage: 40 });
+    expect(months[1]!.scorePercentage).toBeNull();
+    expect(months[5]!.scorePercentage).toBe(90);
   });
 });

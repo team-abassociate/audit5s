@@ -315,7 +315,10 @@ export function fixtureSummaryPayload(): ReportPayload {
   return fixtureZonePayload({
     kind: 'MULTI_ZONE_SUMMARY',
     snapshotId: '00000000-0000-7000-8000-000000000003',
-    zones: [ZONE, second],
+    zones: [
+      { ...ZONE, historyNcs: { raised: 5, closed: 3 } },
+      { ...second, history: ZONE.history!.slice(-2), historyNcs: { raised: 1, closed: 0 } },
+    ],
     audit: null,
     sections: summed,
     totals: {
@@ -342,6 +345,14 @@ export function fixtureSummaryPayload(): ReportPayload {
           { questionGlobalOrder: 21, questionText: 'Check point 21 – kept clean and free of dust', zones: 2 },
         ],
       },
+      monthly: [
+        { month: '2026-04', rawScore: 0, maxScore: 0, scorePercentage: null },
+        { month: '2026-05', rawScore: 60, maxScore: 100, scorePercentage: 60 },
+        { month: '2026-06', rawScore: 70, maxScore: 100, scorePercentage: 70 },
+        { month: '2026-07', rawScore: 0, maxScore: 0, scorePercentage: null },
+        { month: '2026-08', rawScore: 80, maxScore: 100, scorePercentage: 80 },
+        { month: '2026-09', rawScore: 106, maxScore: 160, scorePercentage: 66.25 },
+      ],
     },
   });
 }

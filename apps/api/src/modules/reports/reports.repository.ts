@@ -460,6 +460,52 @@ export class ReportsRepository extends BaseRepository {
       .groupBy(correctiveActions.auditZoneId, questionResponses.section);
   }
 
+  /**
+   * A summary's NC columns: per audit Zone, the nonconformities raised (a finding's
+   * corrective action, not an overall suggestion, not withdrawn) and how many are verified.
+   */
+  async readNcCounts(tx: Transaction, auditZoneIds: readonly string[]) {
+    if (auditZoneIds.length === 0) return [];
+    return tx
+      .select({
+        auditZoneId: correctiveActions.auditZoneId,
+        raised: sql<number>`count(*)::int`,
+        closed: sql<number>`count(*) FILTER (WHERE ${correctiveActions.status} = 'VERIFIED')::int`,
+      })
+      .from(correctiveActions)
+      .where(
+        and(
+          inArray(correctiveActions.auditZoneId, [...auditZoneIds]),
+          sql`${correctiveActions.evidenceId} IS NOT NULL`,
+          sql`${correctiveActions.status} <> 'WITHDRAWN'`,
+        ),
+      )
+      .groupBy(correctiveActions.auditZoneId);
+  }
+
+  /**
+   * A summary's month-wise chart: every scored, finished audit Zone of the Unit finished
+   * since `since`, with its marks. The freeze groups them into IST months.
+   */
+  async readUnitScores(tx: Transaction, unitId: string, since: Date) {
+    const auditDate = sql<Date>`coalesce(${audits.completedAt}, ${auditZones.completedAt})`.mapWith(
+      audits.completedAt,
+    );
+    return tx
+      .select({ auditDate, rawScore: auditZones.rawScore, maxScore: auditZones.maxScore })
+      .from(auditZones)
+      .innerJoin(audits, eq(audits.id, auditZones.auditId))
+      .where(
+        and(
+          eq(audits.unitId, unitId),
+          eq(auditZones.status, 'COMPLETED'),
+          inArray(audits.status, [...COMPLETED_AUDIT_STATUSES]),
+          sql`${audits.auditType} <> 'WALK_BY'`,
+          sql`${auditDate} >= ${since.toISOString()}`,
+        ),
+      );
+  }
+
   /** The auditor's selfie for the AUDITOR VERIFICATION box (§4.1 item 4). */
   async readSelfieKey(tx: Transaction, auditId: string): Promise<string | null> {
     const [row] = await tx

@@ -22,6 +22,7 @@ import {
   S_SECTION_ORDER,
   awaitsResponse,
   bandFor,
+  istDateKey,
   percentageOf,
   reportZoneLabel,
 } from '@audit5s/domain';
@@ -68,9 +69,15 @@ export interface FreezeInput {
   auditeePhotoKeys: ReadonlyMap<string, string>;
   /** A Zone report's trend, newest first; empty on a summary. */
   history: Rows<'readZoneHistory'>;
-  /** The S-wise scores and NC counts of each `history` audit Zone; absent in older callers. */
+  /** A summary's `auditZoneId →` that Zone's last six scored audits, newest first. */
+  summaryHistory?: ReadonlyMap<string, Rows<'readZoneHistory'>>;
+  /** A summary's NC counts per audit Zone, over every audit in `summaryHistory`. */
+  ncCounts?: Rows<'readNcCounts'>;
+  /** A summary's Unit-wide scored audit Zones of the last seven months, for the month chart. */
+  unitScores?: Rows<'readUnitScores'>;
+  /** A Zone report's S-wise scores and per-S NC counts of each `history` audit Zone. */
   historySections?: Rows<'readSectionScores'>;
-  historyNcs?: Rows<'readNcCountsBySection'>;
+  historySectionNcs?: Rows<'readNcCountsBySection'>;
   /** `correctiveActionId → /ca/{token}`. Minted before the render, frozen here (R-14). */
   actionUrls: ReadonlyMap<string, string>;
 }
@@ -138,7 +145,9 @@ export function freezePayload(input: FreezeInput): ReportPayload {
         : null,
     auditorNames,
     closure: input.kind === 'AFTER_EVIDENCE_ZONE' ? closureOf(zones) : null,
-    summaryExtras: isSummary ? summaryExtrasOf(zones) : null,
+    summaryExtras: isSummary
+      ? { ...summaryExtrasOf(zones), monthly: monthlyOf(input.unitScores ?? [], input.generatedAt) }
+      : null,
     // Frozen with the report, so one reopened in December keeps the palette it was issued
     // with even if the business repaints the scale in the meantime (§10.2).
     bands: RATING_BANDS.map((band) => ({ ...band })),
@@ -237,18 +246,14 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
       )
       .sort((a, b) => a.suggestionNo! - b.suggestionNo!)
       .map((action) => toOverallAction(action, input.actionUrls)),
+    ...summaryHistoryOf(zone.auditZoneId, input),
     ...(scored && input.kind !== 'MULTI_ZONE_SUMMARY' && input.history.length > 0
       ? {
-          // Oldest first, as the chart reads left to right.
-          history: [...input.history].reverse().map((point) => ({
-            auditZoneId: point.auditZoneId,
-            auditDate: point.auditDate?.toISOString() ?? null,
-            rawScore: point.rawScore,
-            maxScore: point.maxScore,
-            scorePercentage: point.scorePercentage === null ? null : Number(point.scorePercentage),
+          history: toScorePoints(input.history).map((point) => ({
+            ...point,
             sections: sectionsOf(point.auditZoneId, input.historySections ?? []),
             ncs: S_SECTION_ORDER.map((section) => {
-              const row = input.historyNcs?.find(
+              const row = input.historySectionNcs?.find(
                 (count) => count.auditZoneId === point.auditZoneId && count.section === section,
               );
               return { section, raised: row?.raised ?? 0, closed: row?.closed ?? 0 };
@@ -257,6 +262,54 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
         }
       : {}),
   };
+}
+
+/** Oldest first, as a chart reads left to right. */
+function toScorePoints(rows: FreezeInput['history']) {
+  return [...rows].reverse().map((point) => ({
+    auditZoneId: point.auditZoneId,
+    auditDate: point.auditDate?.toISOString() ?? null,
+    rawScore: point.rawScore,
+    maxScore: point.maxScore,
+    scorePercentage: point.scorePercentage === null ? null : Number(point.scorePercentage),
+  }));
+}
+
+/**
+ * A summary Zone's last six scores and the NCs raised and closed over those audits — and
+ * over the selected one, in case it is a walk-by, which has no score but can raise NCs.
+ */
+function summaryHistoryOf(auditZoneId: string, input: FreezeInput): Pick<ReportZone, 'history' | 'historyNcs'> {
+  const rows = input.summaryHistory?.get(auditZoneId);
+  if (input.kind !== 'MULTI_ZONE_SUMMARY' || !rows) return {};
+  const ids = new Set([auditZoneId, ...rows.map((row) => row.auditZoneId)]);
+  const counts = (input.ncCounts ?? []).filter((row) => ids.has(row.auditZoneId));
+  return {
+    history: toScorePoints(rows),
+    historyNcs: {
+      raised: counts.reduce((sum, row) => sum + row.raised, 0),
+      closed: counts.reduce((sum, row) => sum + row.closed, 0),
+    },
+  };
+}
+
+/**
+ * The Unit's score in each of the six IST months ending with the generation month, oldest
+ * first: Σachieved / Σmax over the month's audit Zones, null for a month with none. Next
+ * month's report drops the oldest month and adds the new one.
+ */
+export function monthlyOf(rows: FreezeInput['unitScores'] & {}, generatedAt: Date) {
+  const now = istDateKey(generatedAt)!;
+  const year = Number(now.slice(0, 4));
+  const month = Number(now.slice(5, 7)) - 1;
+  return Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(Date.UTC(year, month - 5 + index, 1));
+    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    const inMonth = rows.filter((row) => istDateKey(row.auditDate)?.slice(0, 7) === key);
+    const rawScore = inMonth.reduce((sum, row) => sum + row.rawScore, 0);
+    const maxScore = inMonth.reduce((sum, row) => sum + row.maxScore, 0);
+    return { month: key, rawScore, maxScore, scorePercentage: percentageOf(rawScore, maxScore) };
+  });
 }
 
 /**

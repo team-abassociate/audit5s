@@ -216,6 +216,13 @@ export const reportZoneSchema = z.object({
    * summary, on a walk-by, and on a payload frozen before it existed.
    */
   history: z.array(reportScorePointSchema).optional(),
+  /**
+   * A summary Zone's nonconformities summed over the audits in `history` (its last six):
+   * how many were raised and how many of those are verified closed. Absent elsewhere.
+   */
+  historyNcs: z
+    .object({ raised: z.number().int().nonnegative(), closed: z.number().int().nonnegative() })
+    .optional(),
 });
 export type ReportZone = z.infer<typeof reportZoneSchema>;
 
@@ -272,6 +279,22 @@ export const reportSummaryExtrasSchema = z.object({
       }),
     ),
   }),
+  /**
+   * The Unit's score month by month, Σachieved / Σmax over every scored, finished audit
+   * Zone of the Unit: the six IST months ending with the month the report was generated,
+   * oldest first. A month with no audit has a null percentage. Absent on older payloads.
+   */
+  monthly: z
+    .array(
+      z.object({
+        /** `YYYY-MM`, in India Standard Time. */
+        month: z.string(),
+        rawScore: z.number(),
+        maxScore: z.number(),
+        scorePercentage: z.number().nullable(),
+      }),
+    )
+    .optional(),
 });
 export type ReportSummaryExtras = z.infer<typeof reportSummaryExtrasSchema>;
 
