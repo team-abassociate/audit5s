@@ -24,7 +24,7 @@ import type { ReportPayload } from '@audit5s/contracts';
  * so a report reopened in December keeps the palette it was issued with even if the
  * business repaints the scale (§10.2).
  */
-export function reportStyles(payload: ReportPayload): string {
+export function reportStyles(payload: Pick<ReportPayload, 'brand' | 'bands' | 'responseTokens'>): string {
   const brand = payload.brand;
   const bandRules = payload.bands
     .map(

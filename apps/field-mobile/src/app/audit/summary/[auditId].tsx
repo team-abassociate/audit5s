@@ -18,6 +18,7 @@ import {
   StatGrid,
   StatusBand,
 } from '../../../components/ui';
+import { ScorecardButton } from '../../../components/scorecard-button';
 import { formatPct } from '../../../lib/format';
 import { bandOf, createThemedStyles } from '../../../lib/theme';
 
@@ -117,6 +118,9 @@ export default function AuditSummaryScreen() {
           title="Score summary"
           description="Your own figures, as the server computed them. This is not the official report; a Super Admin issues those."
         />
+
+        {/* R-80: the same card as a PDF, the Unit and Zone named on it. */}
+        <ScorecardButton auditId={auditId} />
 
         <ScoreBlock title="Whole audit" totals={data.audit.totals} sections={data.audit.sections} />
 

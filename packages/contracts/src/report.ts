@@ -560,3 +560,9 @@ export const publicCorrectiveActionSchema = z.object({
     .nullable(),
 });
 export type PublicCorrectiveAction = z.infer<typeof publicCorrectiveActionSchema>;
+
+/**
+ * R-80: an audit's score card PDF — the score summary with the Unit and Zone named on it,
+ * queued and polled the way a Kaizen Sheet is. Not the official report (N5).
+ */
+export { kaizenExportSchema as scorecardExportSchema, type KaizenExport as ScorecardExport } from './kaizen';

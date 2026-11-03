@@ -17,6 +17,7 @@ import { Link, useParams } from '@tanstack/react-router';
 import { Button, Card, CardHeader, EmptyState, ErrorNotice, Field, Input, RowActions, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { useDocumentTitle } from '@/components/AppShell';
+import { ScorecardButton } from '@/features/audits/ScorecardButton';
 import { roleLabel } from '@/lib/labels';
 import { auditDays, formatDate, zonesLine } from '@audit5s/domain';
 
@@ -175,6 +176,7 @@ export function UnitDetail() {
 
 /** Which Zones were audited on which day: newest day first, Zones ascending within it. */
 function UnitAuditDays({ unitId }: { unitId: string }) {
+  const { can } = useSession();
   const audits = useQuery({
     queryKey: ['audits', 'register', unitId],
     queryFn: () => fetchAll<Audit>(`/audits?limit=200&unitId=${unitId}`),
@@ -216,10 +218,16 @@ function UnitAuditDays({ unitId }: { unitId: string }) {
                 <Td className="font-medium">{zones.length > 0 ? zones.join(', ') : '—'}</Td>
                 <Td>
                   {dayAudits.map((audit) => (
-                    <Link key={audit.id} to="/audits" search={{ audit: audit.id } as never} className="block underline">
-                      {audit.auditorName}
-                      {audit.zoneCodes?.length ? ` — ${zonesLine(audit.zoneCodes)}` : ''}
-                    </Link>
+                    <div key={audit.id} className="space-y-1 py-1">
+                      <Link to="/audits" search={{ audit: audit.id } as never} className="block underline">
+                        {audit.auditorName}
+                        {audit.zoneCodes?.length ? ` — ${zonesLine(audit.zoneCodes)}` : ''}
+                      </Link>
+                      {/* R-80: each scored audit's score card, from the Unit's register too. */}
+                      {audit.auditType !== 'WALK_BY' && can('report', 'score_summary') ? (
+                        <ScorecardButton auditId={audit.id} />
+                      ) : null}
+                    </div>
                   ))}
                 </Td>
               </tr>

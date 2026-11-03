@@ -6,6 +6,7 @@ import { QueueService } from './infrastructure/queue/queue.service';
 import { StructuredLogger } from './common/observability/logger';
 import { ReportWorker } from './modules/reports/report.worker';
 import { KaizenExportWorker } from './modules/kaizens/kaizen-export.worker';
+import { ScorecardWorker } from './modules/scorecards/scorecard.worker';
 import { CONFIG, type AppConfig } from './config/env';
 
 /**
@@ -25,6 +26,7 @@ async function bootstrap(): Promise<void> {
   const queue = app.get(QueueService);
 
   await app.get(ReportWorker).register(queue);
+  await app.get(ScorecardWorker).register(queue);
   // The Kaizen Sheet prints on the same browser, from its own queue, so it never waits
   // behind a 5S report nor holds one up. Switched off (R-71), its jobs wait in the queue.
   if (app.get<AppConfig>(CONFIG).KAIZEN_ENABLED) await app.get(KaizenExportWorker).register(queue);

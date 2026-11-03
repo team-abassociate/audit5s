@@ -2965,3 +2965,26 @@ the report."*
 - **On the web too** (R-51, owner 2026-11-03): the conduct screen shows *Earlier NCs* under
   the Zone picker (figures, then each NC with its photos, opening full size), asks the
   closing question above the overall remark, and an audit's panel prints the answer.
+
+## R-80 — The score card downloads as a PDF, from the app
+
+**Ruled 2026-11-02 by the owner.** *"The zone wise score card which appears at the end of the
+audit should also be available for download with the name of the unit and zone in it from
+the app itself. Also in the unit tab which shows audits done by the auditor … there should
+be an option to download the score card."* Narrows C4/N5's "not a PDF" for the score
+summary only; the official reports stay the Super Admin's (N5, R-39(a)).
+
+- **What it is:** the score summary (`GET /audits/{id}/summary`) as a one-page PDF — Unit,
+  Zone, audit type, date, auditor, auditee, marks, score, band, the S-wise table and the 5S
+  web — drawn from the Zone report's components. It says it is not the official report.
+  File name `Score card - {Unit} - Zone {n} {name} - {date}.pdf`. A walk-by has none (422).
+- **Who:** whoever holds `report:score_summary` on the audit — its auditor (Consultant or
+  Zone Leader), the Unit's Coordinator and Zone Leaders, a Super Admin.
+- **How:** `POST /audits/{id}/scorecard` (202) queues `scorecard.export`, printed by
+  `worker-report` on its own queue; `GET /audits/{id}/scorecard/{exportId}` is QUEUED,
+  FAILED, or READY with a ≤5-minute presigned GET — the Kaizen Sheet's pattern, no table.
+- **Where in the app:** *Download score card* on the score summary, the audit's page, each
+  finished scored audit in History, and each scored audit under *Audits by date* on the
+  Unit tab. It needs a connection.
+- **On the web too** (R-51, owner 2026-11-03): *Download score card* on a finished scored
+  audit's panel, and under each scored audit in a Unit's *Audits by date*.

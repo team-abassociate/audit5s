@@ -34,6 +34,7 @@ import {
 import { useSession } from '@/lib/session';
 import { EVIDENCE_KIND_LABEL, SECTION_LABEL } from '@/lib/labels';
 import { TeamProgress } from './AuditProgress';
+import { ScorecardButton } from './ScorecardButton';
 import { read } from './data';
 
 /** Question id → its English wording, from the checklist versions the audit's Zones used. */
@@ -146,6 +147,11 @@ export function AuditDetailPanel({
           </div>
         </div>
       )}
+
+      {/* R-80: the score card as a PDF, once the audit is finished and scored. */}
+      {audit.scored && audit.completedAt && audit.status !== 'CANCELLED' && can('report', 'score_summary') ? (
+        <ScorecardButton auditId={audit.id} />
+      ) : null}
 
       <section className="space-y-2">
         <h3 className="gb-label">
