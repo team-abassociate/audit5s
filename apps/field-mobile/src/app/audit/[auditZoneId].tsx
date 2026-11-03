@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, FlatList, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, FlatList, Keyboard, Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
@@ -57,7 +57,7 @@ import {
 } from '../../lib/db/evidence.repository';
 import { ZONE_PHOTO_LIMIT, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import type { ProcessedImage } from '../../lib/capture/media';
-import { pickFromGallery } from '../../lib/capture/gallery';
+import { pickPhotosFromGallery } from '../../lib/capture/gallery';
 import {
   applyLocalOverride,
   completeLocalZone,
@@ -335,8 +335,10 @@ export default function QuestionnaireScreen() {
       // would be filed neutral and land in neither section of the report.
       if ((picked[row.questionId] ?? row.value) === null) throw new Error(t.chooseAnswerFirst);
       await assertZonePhotoCapacity(database, auditZoneId);
-      const image = await pickFromGallery();
-      if (image) await capture.mutateAsync({ row, image, live: false });
+      // Several at once, up to the Zone's room left (the owner, 2026-11-03).
+      const taken = (await listLocalEvidenceForZone(database, auditZoneId)).filter((photo) => isZoneAuditPhoto(photo.kind));
+      const images = await pickPhotosFromGallery(ZONE_PHOTO_LIMIT - taken.length);
+      for (const image of images) await capture.mutateAsync({ row, image, live: false });
     },
   });
 
@@ -365,6 +367,19 @@ export default function QuestionnaireScreen() {
       list.current?.scrollToIndex({ index, animated: true, viewPosition: 0, viewOffset: 8 }),
     );
   }, [scrollTo, page, questions.data]);
+
+  // "Add remark": the question scrolls so its remark box sits just above the keyboard. The
+  // Screen shrinks for the keyboard on keyboardDidShow, so the scroll waits for that layout.
+  // ponytail: fixed 150 ms wait for the re-layout; tie it to Screen's onLayout if it misses.
+  const revealRemark = useCallback((index: number) => {
+    const reveal = () =>
+      setTimeout(() => list.current?.scrollToIndex({ index, animated: true, viewPosition: 1 }), 150);
+    if (Keyboard.isVisible()) return void reveal();
+    const shown = Keyboard.addListener('keyboardDidShow', () => {
+      shown.remove();
+      reveal();
+    });
+  }, []);
 
   const goTo = useCallback((next: number) => {
     setPage(next);
@@ -647,7 +662,7 @@ export default function QuestionnaireScreen() {
             ) : null}
           </View>
         }
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <QuestionCard
             row={item}
             value={valueOf(item)}
@@ -671,6 +686,7 @@ export default function QuestionnaireScreen() {
             }}
             onPhoto={() => setCameraFor(item)}
             onGallery={() => gallery.mutate(item)}
+            onRemarkFocus={() => revealRemark(index)}
           />
         )}
         ListFooterComponent={
@@ -848,6 +864,7 @@ function QuestionCard({
   onRemark,
   onPhoto,
   onGallery,
+  onRemarkFocus,
 }: {
   row: Row;
   value: ResponseValue | null;
@@ -869,12 +886,15 @@ function QuestionCard({
   onRemark: (remark: string | null) => void;
   onPhoto: () => void;
   onGallery: () => void;
+  onRemarkFocus: () => void;
 }) {
   const styles = useStyles();
   const { language, strings: t } = useLanguage();
   const wording = questionWording(row, language);
   const [remark, setRemark] = useState(row.remark ?? '');
   const [remarkOpen, setRemarkOpen] = useState(Boolean(row.remark));
+  /** Opened by a tap, so the box takes focus and the keyboard comes up with it in view. */
+  const [remarkTapped, setRemarkTapped] = useState(false);
 
   useEffect(() => setRemark(row.remark ?? ''), [row.remark]);
 
@@ -907,7 +927,10 @@ function QuestionCard({
         </Text>
         <Pressable
           accessibilityRole="button"
-          onPress={() => setRemarkOpen((open) => !open)}
+          onPress={() => {
+            setRemarkTapped(!remarkOpen);
+            setRemarkOpen(!remarkOpen);
+          }}
           style={styles.remarkToggle}
         >
           <Text style={styles.remarkToggleText}>
@@ -949,6 +972,8 @@ function QuestionCard({
           placeholder={t.remarkPlaceholder}
           value={remark}
           onChangeText={setRemark}
+          autoFocus={remarkTapped && !readOnly}
+          onFocus={onRemarkFocus}
           onBlur={() => onRemark(remark.trim() || null)}
           containerStyle={styles.remark}
         />

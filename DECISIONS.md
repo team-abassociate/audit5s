@@ -3014,3 +3014,21 @@ photos are never removed) for the auditor's own correction; widens R-62's 24 hou
 - **Web** (R-51, owner 2026-11-03): on a finished audit's panel, opening a photo gives its
   auditor (or a Super Admin) *Delete photo* and *Use as the summary photo*, with a reason;
   *Correct a completed audit* lets the auditor add a photo to the chosen question.
+
+## R-82 — Audit photos zoom, every photo is in the gallery at once, and the gallery picks several
+
+**Ruled 2026-11-03 by the owner.** *"If I choose the option of 'Upload from Gallery' I should be
+able to see that photograph also"*, *"I should be able to have multiple selection when I'm
+taking from the gallery"*, and the auditor cannot zoom a photo or see the remark being typed.
+Widens R-62's timing; the gallery rules of R-54 are unchanged.
+
+- **Zoom:** tapping the photo in its preview opens it full screen, held like a Kaizen photo
+  (pinch to 4×, drag, double-tap, pull down to close).
+- **Remark:** *Add remark* focuses the box, and the question scrolls so the box sits just above
+  the keyboard.
+- **Gallery copy at capture:** R-62's copy to Pictures/Audit5S is made the moment a photo is
+  saved (selfie, auditee photo, question, walk-by, corrective action), not only before each
+  sync, so it is in the gallery picker for the next question. Copies run one at a time. It
+  still needs the folder granted once; Kaizen photos are still not copied.
+- **Several at once:** a question's and a walk-by Zone's gallery button picks several photos,
+  up to the Zone's room under its 25-photo cap. Kaizen and corrective-action pickers stay one.

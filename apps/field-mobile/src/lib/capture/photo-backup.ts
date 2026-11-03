@@ -66,8 +66,17 @@ export async function chooseBackupFolder(): Promise<boolean> {
   return true;
 }
 
-/** Copies new photos out, and tidies what is no longer needed. Before every sync. */
-export async function backUpPhotos(database: LocalDatabase, userId: string): Promise<void> {
+/** One copy run at a time: two at once would both see a photo as not copied and write it twice. */
+let queue: Promise<void> = Promise.resolve();
+
+/** Copies new photos out, and tidies what is no longer needed. Before every sync, and on every capture. */
+export function backUpPhotos(database: LocalDatabase, userId: string): Promise<void> {
+  const run = queue.then(() => copyOut(database, userId));
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+async function copyOut(database: LocalDatabase, userId: string): Promise<void> {
   const folder = await backupFolder();
   if (!folder) return;
   const { write, settle, drop } = await planPhotoBackup(database);

@@ -6,6 +6,7 @@ import { runSync, type SyncResult } from './engine';
 import { createSyncTransport } from './http-transport';
 import { readFileBytes } from '../capture/media';
 import { backUpPhotos, recoverPhotos } from '../capture/photo-backup';
+import { onPhotoSaved } from '../db/evidence.repository';
 import { getDeviceId } from '../secure-storage';
 import { useOptionalLocalDatabase } from '../db/provider';
 import { useSession } from '../session';
@@ -61,6 +62,16 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const running = useRef(false);
   const again = useRef(false);
   const latest = useRef<() => Promise<SyncResult>>(async () => IDLE);
+
+  // Each photo goes to the gallery the moment it is saved, even mid-upload or offline (R-62).
+  useEffect(() => {
+    if (!database) return;
+    onPhotoSaved(() => {
+      const userId = userIdRef.current;
+      if (userId) void backUpPhotos(database, userId).catch(() => undefined);
+    });
+    return () => onPhotoSaved(null);
+  }, [database]);
 
   const sync = useCallback(async (): Promise<SyncResult> => {
     if (!allowedRef.current) return IDLE;

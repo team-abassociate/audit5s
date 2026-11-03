@@ -95,6 +95,37 @@ export function KaizenPhotoViewer({
   );
 }
 
+/**
+ * One photograph full screen, held in the hand exactly like a Kaizen's: pinch, drag, double-tap,
+ * pull down to close. An audit photo opens here from its preview (the owner, 2026-11-03).
+ */
+export function PhotoZoomViewer({ uri, label, onClose }: { uri: string | null; label: string; onClose: () => void }) {
+  const styles = useStyles();
+  const insets = useSafeAreaInsets();
+  const pulled = useSharedValue(0);
+  const height = useSharedValue(1);
+  useEffect(() => {
+    if (uri) pulled.set(0);
+  }, [uri, pulled]);
+  const fade = useAnimatedStyle(() => ({
+    opacity: interpolate(pulled.get(), [0, height.get()], [1, 0], 'clamp'),
+  }));
+
+  if (!uri) return null;
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <GestureHandlerRootView style={styles.root}>
+        <Animated.View style={[styles.viewer, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }, fade]}>
+          <View style={styles.frame} onLayout={(event) => height.set(event.nativeEvent.layout.height)}>
+            <Zoomable uri={uri} label={label} pulled={pulled} onDismiss={onClose} />
+          </View>
+          <Button title="Close" icon="close" variant="secondary" onPress={onClose} />
+        </Animated.View>
+      </GestureHandlerRootView>
+    </Modal>
+  );
+}
+
 const MAX_ZOOM = 4;
 const DOUBLE_TAP_ZOOM = 2.5;
 /** Pulled down this far, or flicked this fast, at 1×: it closes. Either alone is enough. */
