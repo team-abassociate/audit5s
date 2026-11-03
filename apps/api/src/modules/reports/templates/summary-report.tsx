@@ -1,12 +1,14 @@
 import { S_SECTION_ORDER, S_SECTION_SHORT_LABELS, reportZoneLabel } from '@audit5s/domain';
 import type { ReportPayload, ReportZone } from './payload-types';
 import {
+  BandHistogram,
   Footer,
   Header,
   MetaCell,
   Photo,
   RadarWeb,
   RatingPills,
+  ScoreCards,
   SectionBars,
   SectionTable,
   ZoneComparisonBars,
@@ -141,13 +143,6 @@ export function SummaryReport({
             </div>
           </div>
 
-          <h2 className="section-title">Score band distribution</h2>
-          <div className="closure-grid">
-            {extras.histogram.map((entry) => (
-              <MetaCell key={entry.token} label={entry.label} value={String(entry.count)} />
-            ))}
-          </div>
-
           <h2 className="section-title">Nonconformity summary</h2>
           <div className="closure-grid">
             <MetaCell label="Open" value={String(extras.nonconformitySummary.open)} />
@@ -180,6 +175,30 @@ export function SummaryReport({
       ) : null}
 
       <FlaggedPhotos payload={payload} resolve={resolve} />
+
+      {/* At the end: the score card of every Zone, as the app shows it, and the histogram. */}
+      <div className="page-break" />
+      <Header title="LEAN 5S — ZONE SCORE CARDS" subtitle={payload.unit.name} />
+      <h2 className="section-title">Score band distribution</h2>
+      <BandHistogram
+        pcts={scored.map((zone) => zone.totals.scorePercentage)}
+        bands={payload.bands}
+        brand={payload.brand}
+      />
+      <ScoreCards
+        cards={[
+          { key: 'all', label: 'All selected zones', totals: payload.totals, sections: payload.sections },
+          ...scored.map((zone) => ({
+            key: zone.auditZoneId,
+            label: `${reportZoneLabel(zone)} · ${formatDate(zone.auditDate)} · ${zone.auditorName}`,
+            totals: zone.totals,
+            sections: zone.sections,
+          })),
+        ]}
+        bands={payload.bands}
+        brand={payload.brand}
+      />
+      <RatingPills bands={payload.bands} />
     </>
   );
 }

@@ -225,11 +225,10 @@ export default function ManageAuditScreen() {
                   variant="secondary"
                   onPress={() => setSummaryOpen((isOpen) => !isOpen)}
                 />
-                {summaryOpen && audit.completedAt ? (
+                {summaryOpen ? (
                   <View style={styles.itemAction}>
                     <SummaryZonePicker
                       unitId={audit.unitId}
-                      day={audit.completedAt}
                       onQueued={() => setSummaryOpen(false)}
                     />
                   </View>

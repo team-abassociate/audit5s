@@ -1,11 +1,13 @@
 import { S_SECTION_ORDER, S_SECTION_SHORT_LABELS } from '@audit5s/domain';
 import type { ReportPayload, ReportTrend } from './payload-types';
 import {
+  BandHistogram,
   Footer,
   Header,
   MetaCell,
   RadarWeb,
   RatingPills,
+  ScoreCards,
   TrendBars,
   bandOf,
   formatDate,
@@ -168,6 +170,30 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
         compared {zoneWise ? 'audit' : 'summary report'}, never an average of percentages. NA
         answers are excluded from the applicable maximum.
       </div>
+
+      {/* At the end: a score card per compared audit or summary, and the histogram. */}
+      <div className="page-break" />
+      <Header title="LEAN 5S — SCORE CARDS" subtitle={payload.unit.name} />
+      <h2 className="section-title">Score band distribution</h2>
+      <BandHistogram
+        pcts={trend.points.map((point) => point.totals.scorePercentage)}
+        bands={payload.bands}
+        brand={payload.brand}
+      />
+      <ScoreCards
+        cards={[
+          { key: 'overall', label: 'Overall', totals: payload.totals, sections: payload.sections },
+          ...trend.points.map((point) => ({
+            key: point.id,
+            label: named(point),
+            totals: point.totals,
+            sections: point.sections,
+          })),
+        ]}
+        bands={payload.bands}
+        brand={payload.brand}
+      />
+      <RatingPills bands={payload.bands} />
     </>
   );
 }

@@ -5,26 +5,24 @@ import type { Audit, AuditDetail, Page, ReportSnapshot } from '@audit5s/contract
 import { isAuditCompleted, reportZoneLabel } from '@audit5s/domain';
 import { Button, CheckRow, Data, ErrorBanner, Muted } from './ui';
 import { api, problemMessage } from '../lib/api';
-import { formatDate, formatDateTime, formatPct } from '../lib/format';
+import { formatDateTime, formatPct } from '../lib/format';
+import { AUDIT_TYPE_LABELS } from '../lib/labels';
 import { createThemedStyles, useTheme } from '../lib/theme';
 
 /**
  * The unit summary's selection on the phone, one audited Zone at a time.
  *
- * A Unit is often audited more than once on the same day — a team audit, or a second walk
- * after lunch — and the summary a Super Admin wants is those Zones together, not "every Zone
- * of the audit I happened to open". So this lists every finished audit of the Unit finished
- * on the same calendar day as `day`, each with its finished Zones, and sends exactly the
- * audited Zones ticked (`selectedAuditZoneIds`). Nothing is ticked to begin with.
+ * One audit round of a Unit is often spread over several audits and several days — a cross
+ * audit on Monday, the external audit of the rest on Thursday — and the summary a Super Admin
+ * wants is those Zones together. So this lists every finished, scored audit of the Unit,
+ * whatever day it finished, newest first, each with its finished Zones, and sends exactly
+ * the audited Zones ticked (`selectedAuditZoneIds`). Nothing is ticked to begin with.
  */
 export function SummaryZonePicker({
   unitId,
-  day,
   onQueued,
 }: {
   unitId: string;
-  /** Any instant on the day to summarise — the opened audit's `completedAt`. */
-  day: string;
   onQueued?: (snapshot: ReportSnapshot) => void;
 }) {
   const styles = useStyles();
@@ -37,10 +35,9 @@ export function SummaryZonePicker({
     queryFn: () => api.get<Page<Audit>>(`/audits?limit=200&unitId=${unitId}`),
   });
 
-  // Finished, scored audits of this Unit finished on the same day — a summary states
-  // scores, an open audit's are still moving, and a walk-by has none. Earliest first, the
-  // order the day happened in.
-  const sameDay = useMemo(
+  // Finished, scored audits of this Unit, on any day — a summary states scores, an open
+  // audit's are still moving, and a walk-by has none. Newest first.
+  const finished = useMemo(
     () =>
       (audits.data?.data ?? [])
         .filter(
@@ -48,22 +45,21 @@ export function SummaryZonePicker({
             audit.unitId === unitId &&
             audit.scored &&
             isAuditCompleted(audit.status) &&
-            audit.completedAt !== null &&
-            dayKey(audit.completedAt) === dayKey(day),
+            audit.completedAt !== null,
         )
-        .sort((a, b) => a.completedAt!.localeCompare(b.completedAt!)),
-    [audits.data, unitId, day],
+        .sort((a, b) => b.completedAt!.localeCompare(a.completedAt!)),
+    [audits.data, unitId],
   );
 
   const details = useQueries({
-    queries: sameDay.map((audit) => ({
+    queries: finished.map((audit) => ({
       queryKey: ['audit', audit.id],
       queryFn: () => api.get<AuditDetail>(`/audits/${audit.id}`),
     })),
   });
 
   /** Each audit's finished Zones — only those can be summarised. */
-  const zonesByAudit = sameDay.map((audit, index) => ({
+  const zonesByAudit = finished.map((audit, index) => ({
     audit,
     query: details[index],
     zones: (details[index]?.data?.zones ?? []).filter((zone) => zone.status === 'COMPLETED'),
@@ -90,8 +86,8 @@ export function SummaryZonePicker({
 
   if (audits.isLoading) return <ActivityIndicator color={theme.color.ink} />;
   if (audits.error) return <ErrorBanner message={problemMessage(audits.error)} />;
-  if (sameDay.length === 0) {
-    return <Muted>No finished audit of this Unit on {formatDate(day)}. A summary is made from finished Zones.</Muted>;
+  if (finished.length === 0) {
+    return <Muted>No finished audit of this Unit yet. A summary is made from finished Zones.</Muted>;
   }
 
   const count = `${chosen.length} Zone${chosen.length === 1 ? '' : 's'}`;
@@ -99,9 +95,9 @@ export function SummaryZonePicker({
   return (
     <View style={styles.picker}>
       <Muted>
-        {sameDay.length === 1 ? 'The audit' : `All ${sameDay.length} audits`} of this Unit finished on{' '}
-        {formatDate(day)}. Tick the Zones the summary should cover; every figure in it is computed over those
-        Zones only.
+        {finished.length === 1 ? 'The finished audit' : `All ${finished.length} finished audits`} of this
+        Unit, on any date. Tick the Zones the summary should cover; every figure in it is computed over those
+        Zones only. Take each Zone from one audit only.
       </Muted>
 
       {allIds.length > 0 ? (
@@ -122,7 +118,7 @@ export function SummaryZonePicker({
               <View style={styles.groupText}>
                 <Text style={styles.groupTitle}>{audit.auditorName}</Text>
                 <Data>
-                  Finished {formatDateTime(audit.completedAt!)} · {zones.length} Zone{zones.length === 1 ? '' : 's'}
+                  {AUDIT_TYPE_LABELS[audit.auditType]} · finished {formatDateTime(audit.completedAt!)} · {zones.length} Zone{zones.length === 1 ? '' : 's'}
                 </Data>
               </View>
               {ids.length > 1 ? (
@@ -166,12 +162,6 @@ export function SummaryZonePicker({
       <ErrorBanner message={problemMessage(generate.error)} />
     </View>
   );
-}
-
-/** `2026-09-28`, in the phone's own calendar — the day an auditor would name. */
-function dayKey(iso: string): string {
-  const at = new Date(iso);
-  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
 }
 
 const useStyles = createThemedStyles((theme) => ({
