@@ -11,6 +11,7 @@ import { createThemedStyles } from '../../lib/theme';
 import type { AuditStatus, AuditType } from '@audit5s/contracts';
 import { zoneDisplayLabel } from '@audit5s/domain';
 import { SelfieChip, useSelfieStatuses } from '../../components/selfie-check';
+import { ScorecardButton } from '../../components/scorecard-button';
 
 type LocalAudit = Awaited<ReturnType<typeof listLocalAudits>>[number];
 
@@ -74,6 +75,11 @@ export default function HistoryScreen() {
                   router.push({ pathname: '/audit/summary/[auditId]', params: { auditId: item.id } })
                 }
               />
+            </View>
+          ) : null}
+          {isFinished(item.status) && item.auditType !== 'WALK_BY' ? (
+            <View style={styles.action}>
+              <ScorecardButton auditId={item.id} />
             </View>
           ) : null}
           <View style={styles.action}>

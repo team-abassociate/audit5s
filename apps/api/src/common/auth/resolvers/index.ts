@@ -83,24 +83,23 @@ export class OwnAuditsScopeResolver implements ScopeResolver {
 }
 
 /**
- * `assigned_actions` — corrective actions assigned to this Zone Leader **or** belonging to
- * their Unit.
+ * `assigned_actions` — corrective actions of a Zone this actor may close (R-78).
  *
- * The `OR` is deliberate (DECISIONS.md R-3b): assigned leaders take leave, and corrective
- * actions must not stall. Narrowing it is a product decision that needs a replacement for
- * the stall case, not a tidy-up.
+ * The Zone's own leader, named by the Coordinator (R-74), closes its actions; a Zone with no
+ * leader account (typed names only, R-64) is closed by any Zone Leader or Consultant of the
+ * Unit. R-3b's "or anyone of the Unit" is withdrawn for Zones that have a leader. The
+ * Coordinator and Super Admin hold `own_unit` / `organization`, not this.
  */
 @Injectable()
 export class AssignedActionsScopeResolver implements ScopeResolver {
   readonly name: ScopeResolverName = 'assigned_actions';
 
   predicate(actor: ActorContext, columns: ScopeColumns): SQL {
-    const assignedUserId = requireColumn(columns, 'assignedUserId', this.name);
+    const zoneId = requireColumn(columns, 'zoneId', this.name);
     const unitId = requireColumn(columns, 'unitId', this.name);
-    if (!actor.activeUnitId) {
-      return eq(assignedUserId, actor.userId);
-    }
-    return sql`(${eq(assignedUserId, actor.userId)} OR ${eq(unitId, actor.activeUnitId)})`;
+    if (actor.unitIds.length === 0) return MATCH_NOTHING;
+    return sql`(${inArray(unitId, actor.unitIds)} AND EXISTS (SELECT 1 FROM zone z
+      WHERE z.id = ${zoneId} AND (z.zone_leader_id = ${actor.userId}::uuid OR z.zone_leader_id IS NULL)))`;
   }
 }
 

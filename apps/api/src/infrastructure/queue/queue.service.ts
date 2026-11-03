@@ -37,6 +37,8 @@ export const QUEUES = {
    * export table.
    */
   kaizenExport: 'kaizen.export',
+  /** R-80: an audit's score card PDF, printed by `worker-report` as the Kaizen Sheet is. */
+  scorecardExport: 'scorecard.export',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

@@ -1166,6 +1166,7 @@ export function toAuditZone(
     checklistVersionId: row.checklistVersionId,
     checklistTemplateNameSnapshot: row.checklistTemplateNameSnapshot,
     zoneRemark: row.zoneRemark,
+    previousNcsAnswer: row.previousNcsAnswer,
     overallActionSuggestions: row.overallActionSuggestions,
     totals: {
       applicableQuestions: row.applicableQuestions,

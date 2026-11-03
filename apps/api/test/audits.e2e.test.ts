@@ -14,6 +14,7 @@ import {
   type CrossAuditRound,
   type Page,
   type ReportPayload,
+  type ScorecardExport,
   type ReportSnapshot,
   type ResponseValue,
   type ZoneLocksResponse,
@@ -29,6 +30,7 @@ import {
   type TestWorld,
 } from './harness';
 import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
+import { ScorecardWorker } from '../src/modules/scorecards/scorecard.worker';
 
 /**
  * The audit engine (PART 14, Phase 3 tests row).
@@ -1584,9 +1586,12 @@ describe('snapshot isolation (D6): a renamed Zone leaves its audits alone (R-60)
         zoneDescription: 'Press shop, bay 7 — corrected on site',
         zoneLeaderName: 'R. Iyer',
         auditeeName: 'S. Patil',
+        previousNcsAnswer: 'Yes, all three were closed last week.',
       },
     });
     expect(fixed.status, JSON.stringify(fixed.body)).toBe(200);
+    // R-79: the auditor's answer to "Are the earlier NCs closed by the Zone Leader?".
+    expect((fixed.body as AuditZone).previousNcsAnswer).toBe('Yes, all three were closed last week.');
     // R-74: only a Super Admin or the Coordinator says what the Zone is and who leads it.
     expect((fixed.body as AuditZone).zoneDescriptionSnapshot).toBe('Typed in a hurry');
     expect((fixed.body as AuditZone).zoneLeaderNameSnapshot).not.toBe('R. Iyer');
@@ -2489,4 +2494,29 @@ describe('a Zone’s trend in its report, and the summary of summaries (R-75)', 
     });
     expect(response.status).toBe(422);
   });
+});
+
+describe('R-80 — the score card, downloadable from the app', () => {
+  const request = (token: string, auditId: string) =>
+    world.request('POST', `${base}/audits/${auditId}/scorecard`, { token });
+  const status = (token: string, auditId: string, exportId: string) =>
+    world.request('GET', `${base}/audits/${auditId}/scorecard/${exportId}`, { token });
+
+  it('QUEUED → printed → READY: a PDF named for the Unit and the Zone, for the auditor and the Unit', async () => {
+    const { auditId } = await completedAudit('Z-88', 'Paint shop');
+    const queued = await request(consultantToken, auditId);
+    expect(queued.status, JSON.stringify(queued.body)).toBe(202);
+    const job = queued.body as ScorecardExport;
+    expect(job.fileName).toMatch(/^Score card - .+ - Zone .*Paint shop - \d{1,2} \w+ \d{4}\.pdf$/);
+    expect((await status(world.actors.COORDINATOR.accessToken, auditId, job.exportId)).body).toMatchObject({ status: 'QUEUED' });
+    expect((await status(consultantToken, auditId, randomUUID())).status).toBe(404);
+
+    await world.app.get(ScorecardWorker).handle({ auditId, exportId: job.exportId, userId: world.actors.CONSULTANT.userId });
+
+    const ready = (await status(world.actors.COORDINATOR.accessToken, auditId, job.exportId)).body as ScorecardExport;
+    expect(ready.status).toBe('READY');
+    const download = await world.app.inject({ method: 'GET', url: ready.downloadUrl!.replace(/^https?:\/\/[^/]+/, '') });
+    expect(download.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    expect((await status(world.outOfScopeActor.accessToken, auditId, job.exportId)).status).toBe(404);
+  }, 180_000);
 });

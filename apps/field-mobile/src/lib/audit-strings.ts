@@ -49,6 +49,9 @@ export interface AuditStrings {
   deletePhotoHint: string;
   savesOffline: string;
   overallRemark: string;
+  /** R-79: asked after the fifty questions, answered in words, printed in the report. */
+  previousNcsQuestion: string;
+  previousNcsPlaceholder: string;
   overallRemarkPlaceholder: string;
   /** R-38: the auditor's overall corrective-action suggestions for the Zone. */
   overallActions: string;
@@ -133,6 +136,8 @@ const EN: AuditStrings = {
   deletePhotoHint: 'Tap a photo below, then Delete photo. No photos are removed automatically.',
   savesOffline: 'Answers save on this device as you tap, and sync as soon as there is a connection.',
   overallRemark: 'Overall remark (optional)',
+  previousNcsQuestion: 'Are the earlier NCs closed by the Zone Leader?',
+  previousNcsPlaceholder: 'What was closed, and what is still open',
   overallRemarkPlaceholder: 'Anything the report should carry about this Zone',
   overallActions: 'Overall corrective action suggestions (optional)',
   overallActionsHint:
@@ -226,6 +231,8 @@ const HI: AuditStrings = {
   deletePhotoHint: 'नीचे किसी फ़ोटो पर टैप करें, फिर Delete photo दबाएँ। कोई फ़ोटो अपने-आप नहीं हटाई जाती।',
   savesOffline: 'टैप करते ही उत्तर इस फ़ोन में सेव हो जाते हैं, और नेटवर्क मिलते ही सिंक हो जाते हैं।',
   overallRemark: 'पूरे ज़ोन पर टिप्पणी (वैकल्पिक)',
+  previousNcsQuestion: 'क्या पिछली NCs ज़ोन लीडर ने बंद कर दी हैं?',
+  previousNcsPlaceholder: 'क्या बंद हुआ, और क्या अभी खुला है',
   overallRemarkPlaceholder: 'इस ज़ोन के बारे में जो बात रिपोर्ट में आनी चाहिए',
   overallActions: 'पूरे ज़ोन के लिए सुधारात्मक कार्रवाई के सुझाव (वैकल्पिक)',
   overallActionsHint:
@@ -319,6 +326,8 @@ const MR: AuditStrings = {
   deletePhotoHint: 'खालील एखाद्या फोटोवर टॅप करा, मग Delete photo दाबा. कोणताही फोटो आपोआप काढला जात नाही.',
   savesOffline: 'टॅप करताच उत्तरे या फोनमध्ये जतन होतात आणि नेटवर्क मिळताच सिंक होतात.',
   overallRemark: 'संपूर्ण झोनबद्दल शेरा (ऐच्छिक)',
+  previousNcsQuestion: 'मागील NCs झोन लीडरने बंद केल्या आहेत का?',
+  previousNcsPlaceholder: 'काय बंद झाले, आणि काय अजून उघडे आहे',
   overallRemarkPlaceholder: 'या झोनबद्दल अहवालात यावी अशी कोणतीही गोष्ट',
   overallActions: 'संपूर्ण झोनसाठी सुधारात्मक कृतीच्या सूचना (ऐच्छिक)',
   overallActionsHint:

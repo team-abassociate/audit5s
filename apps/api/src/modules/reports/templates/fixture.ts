@@ -202,6 +202,7 @@ const ZONE: ReportZone = {
   totals: { applicableQuestions: 40, naQuestions: 10, rawScore: 66, maxScore: 80, scorePercentage: 82.5 },
   sections: SECTIONS,
   zoneRemark: 'Housekeeping has improved since the last visit; drainage remains the weak point.',
+  previousNcsAnswer: 'Four of five closed; the drain cover is still awaited from stores.',
   questions: QUESTIONS,
   good: [
     photo({ evidenceId: 'ev-good-1', remark: 'Shadow board complete', isSummaryFlagged: true }),

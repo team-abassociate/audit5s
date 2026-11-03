@@ -10,11 +10,12 @@ import {
   type CorrectiveActionDetail,
   type CorrectiveActionSubmission,
   type Page,
+  type PreviousNonconformities,
   type SyncBatchResponse,
   type SyncCatalogue,
 } from '@audit5s/contracts';
 import { captureEvidence, loginFromDevice, sha256Hex, startWorld, stopWorld, TINY_JPEG, type TestActor, type TestWorld } from './harness';
-import { afterPhoto, completedWalkBy, submit, submitOptionA } from './corrective-fixtures';
+import { afterPhoto, completedWalkBy, makeZone, submit, submitOptionA } from './corrective-fixtures';
 import { isReviewable, zoneLabelFromCode } from '@audit5s/domain';
 import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
 import { CorrectiveActionsService } from '../src/modules/corrective-actions/corrective-actions.service';
@@ -624,7 +625,7 @@ describe('CA-2 and the submission contract (§8.8)', () => {
 // --------------------------------------------------------------- authorization
 
 describe('PART 6 — corrective actions', () => {
-  it('reads: SA everywhere, Consultant their audits, Coordinator and Zone Leader their Unit', async () => {
+  it("reads: SA everywhere, Consultant their audits, Coordinator their Unit, Zone Leader their Zone's", async () => {
     const inA = (await walkBy(1)).actions[0]!;
     const inB = (await walkBy(1, { unitB: true })).actions[0]!;
     const status = async (token: string, id: string) =>
@@ -638,16 +639,32 @@ describe('PART 6 — corrective actions', () => {
     expect(await status(leaderToken, inB.id)).toBe(404);
   });
 
-  it('submits: a Zone Leader or Coordinator of the Unit, or a Super Admin (R-18); nobody else', async () => {
-    const { actions } = await walkBy(3);
+  it("submits: the Zone's leader, the Coordinator or a Super Admin (R-78); nobody else", async () => {
+    const { actions } = await walkBy(4);
     const body = { option: 'NOT_POSSIBLE', explanation: 'Structural — needs capex' };
 
-    // Not the assignee, but a Zone Leader of the same Unit: accepted, deliberately.
-    expect((await submit(world, secondLeader.accessToken, actions[0]!.id, body)).status).toBe(201);
+    // R-78: another Zone Leader of the Unit no longer closes a Zone that has a leader.
+    expect((await submit(world, secondLeader.accessToken, actions[0]!.id, body)).status).toBe(404);
+    expect((await submit(world, consultantToken, actions[0]!.id, body)).status).toBe(404);
+    expect((await submit(world, leaderToken, actions[0]!.id, body)).status).toBe(201);
     expect((await submit(world, world.outOfScopeActor.accessToken, actions[1]!.id, body)).status).toBe(404);
+    expect((await submit(world, world.actors.COORDINATOR.accessToken, actions[1]!.id, body)).status).toBe(201);
     // R-18: a Super Admin answers any action.
     expect((await submit(world, superAdmin, actions[2]!.id, body)).status).toBe(201);
-    expect((await submit(world, world.actors.CONSULTANT.accessToken, actions[2]!.id, body)).status).toBe(403);
+    // A Zone Leader sees only their own Zone's: to another, the item does not exist.
+    const read = await world.request('GET', `${base}/corrective-actions/${actions[3]!.id}`, {
+      token: secondLeader.accessToken,
+    });
+    expect(read.status).toBe(404);
+  });
+
+  it('submits on a Zone with no leader account: any Zone Leader or Consultant of the Unit (R-78)', async () => {
+    const { actions, zoneId } = await walkBy(2);
+    await world.owner.query('UPDATE zone SET zone_leader_id = NULL WHERE id = $1', [zoneId]);
+    const body = { option: 'NOT_POSSIBLE', explanation: 'Structural — needs capex' };
+
+    expect((await submit(world, secondLeader.accessToken, actions[0]!.id, body)).status).toBe(201);
+    expect((await submit(world, consultantToken, actions[1]!.id, body)).status).toBe(201);
   });
 
   it('verifies and reopens: a Super Admin, or the Coordinator of the Unit (R-43); nobody else', async () => {
@@ -723,12 +740,12 @@ describe('offline submission through the outbox (§9.2, §9.3)', () => {
     });
   }
 
-  it('carries the Zone Leader’s open items in the catalogue, and none for a Consultant', async () => {
+  it('carries the Zone Leader’s open items in the catalogue, and not to a Consultant (a leaderless Zone’s only, R-78)', async () => {
     const { actions } = await walkBy(1);
     const leader = await world.request('GET', `${base}/sync/catalogue`, { token: deviceToken });
     expect((leader.body as SyncCatalogue).correctiveActions.map((action) => action.id)).toContain(actions[0]!.id);
     const consultant = await world.request('GET', `${base}/sync/catalogue`, { token: consultantToken });
-    expect((consultant.body as SyncCatalogue).correctiveActions).toEqual([]);
+    expect((consultant.body as SyncCatalogue).correctiveActions.map((action) => action.id)).not.toContain(actions[0]!.id);
   });
 
   it('applies commit then submit in one batch, waits for an uncommitted photo, and never doubles', async () => {
@@ -936,6 +953,33 @@ describe('R-60 — a Zone renamed by an import leaves its audits and actions alo
     expect((action.body as CorrectiveActionDetail).zoneName).toBe(name);
   });
 });
+
+describe('R-79 — the next auditor sees the Zone’s earlier NCs', () => {
+  it('counts the last finished audit’s NCs, raised, closed and open, with the fix’s photo', async () => {
+    const { actions, auditId, zoneId } = await walkBy(2);
+    expect((await submitOptionA(world, leaderToken, actions[0]!)).status).toBe(201);
+
+    // A Zone Leader of the Unit, auditing across: not this Zone's leader, and still sees it.
+    const response = await world.request('GET', `${base}/zones/${zoneId}/previous-nonconformities`, {
+      token: secondLeader.accessToken,
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const body = response.body as PreviousNonconformities;
+    expect(body.auditId).toBe(auditId);
+    expect({ raised: body.raised, closed: body.closed, open: body.open }).toEqual({ raised: 2, closed: 1, open: 1 });
+    const closed = body.items.find((item) => item.id === actions[0]!.id)!;
+    expect(closed.beforePhotoUrl).toContain('http');
+    expect(closed.afterPhotoUrl).toContain('http');
+    expect(closed.closedAt).not.toBeNull();
+    expect(body.items.find((item) => item.id === actions[1]!.id)!.afterPhotoUrl).toBeNull();
+  });
+
+  it('answers zeros for a Zone never audited', async () => {
+    const zoneId = await makeZone(world, world.unitA, null);
+    const response = await world.request('GET', `${base}/zones/${zoneId}/previous-nonconformities`, {
+      token: consultantToken,
+    });
+    expect(response.body).toMatchObject({ auditId: null, raised: 0, closed: 0, open: 0, items: [] });
 
 describe('R-81 — reviewing a finished audit changes its photos, through the logged correction', () => {
   it('removes a finding’s photo (withdrawing its action) and picks a summary photo', async () => {

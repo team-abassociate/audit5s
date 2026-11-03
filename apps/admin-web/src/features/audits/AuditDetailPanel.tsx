@@ -35,6 +35,7 @@ import { useSession } from '@/lib/session';
 import { uploadEvidence } from '@/lib/evidence';
 import { EVIDENCE_KIND_LABEL, SECTION_LABEL } from '@/lib/labels';
 import { TeamProgress } from './AuditProgress';
+import { ScorecardButton } from './ScorecardButton';
 import { read } from './data';
 
 /** Question id → its English wording, from the checklist versions the audit's Zones used. */
@@ -148,6 +149,11 @@ export function AuditDetailPanel({
         </div>
       )}
 
+      {/* R-80: the score card as a PDF, once the audit is finished and scored. */}
+      {audit.scored && audit.completedAt && audit.status !== 'CANCELLED' && can('report', 'score_summary') ? (
+        <ScorecardButton auditId={audit.id} />
+      ) : null}
+
       <section className="space-y-2">
         <h3 className="gb-label">
           {audit.zones.length} Zone{audit.zones.length === 1 ? '' : 's'}
@@ -184,6 +190,13 @@ export function AuditDetailPanel({
                   <p className="text-sm text-ink-2">
                     <span className="font-semibold">Zone remark: </span>
                     {zone.zoneRemark}
+                  </p>
+                )}
+
+                {zone.previousNcsAnswer && (
+                  <p className="text-sm text-ink-2">
+                    <span className="font-semibold">Are the earlier NCs closed by the Zone Leader? </span>
+                    {zone.previousNcsAnswer}
                   </p>
                 )}
 

@@ -25,6 +25,7 @@ import {
   localEvidence,
   localQuestionResponses,
   localAuditZoneAuditees,
+  localAuditZonePreviousNcs,
   localZoneActionSuggestions,
   outbox,
   zones,
@@ -304,6 +305,7 @@ export async function editLocalZone(
     ...(input.zoneDescription !== undefined ? { zoneDescription: typedDescription } : {}),
     ...(input.zoneLeaderName !== undefined ? { zoneLeaderName: typedLeader } : {}),
     auditeeName: auditee,
+    previousNcsAnswer: existing.previousNcsAnswer,
     // The outbox replaces an unsynced upsert's payload whole, so this one carries the
     // suggestions too — or an edit after them would quietly empty the list (R-38).
     overallActionSuggestions: await getZoneSuggestions(database, input.auditZoneId),
@@ -459,11 +461,19 @@ export async function saveZoneRemark(
   remark: string | null,
   now: string = new Date().toISOString(),
   suggestions?: readonly string[],
+  /** R-79: the answer to "Are the earlier NCs closed by the Zone Leader?"; undefined keeps it. */
+  previousNcsAnswer?: string | null,
 ): Promise<void> {
   await database
     .update(localAuditZones)
     .set({ zoneRemark: remark, clientUpdatedAt: now })
     .where(eq(localAuditZones.id, auditZoneId));
+  if (previousNcsAnswer !== undefined) {
+    await database
+      .insert(localAuditZonePreviousNcs)
+      .values({ auditZoneId, answer: previousNcsAnswer })
+      .onConflictDoUpdate({ target: localAuditZonePreviousNcs.auditZoneId, set: { answer: previousNcsAnswer } });
+  }
 
   if (suggestions !== undefined) {
     const kept = overallActionSuggestionsSchema.parse(
@@ -493,6 +503,7 @@ export async function saveZoneRemark(
       zoneDescription: zone.zoneDescriptionSnapshot,
       zoneLeaderName: zone.zoneLeaderNameSnapshot,
       auditeeName: zone.auditeeName,
+      previousNcsAnswer: zone.previousNcsAnswer,
       zoneRemark: remark,
       overallActionSuggestions: await getZoneSuggestions(database, auditZoneId),
     });
@@ -984,13 +995,18 @@ export async function listResumableAudits(database: LocalDatabase): Promise<Resu
 }
 
 /** An audit Zone's row, with who faced its audit (R-72). */
-const AUDIT_ZONE_COLUMNS = { ...getTableColumns(localAuditZones), auditeeName: localAuditZoneAuditees.auditeeName };
+const AUDIT_ZONE_COLUMNS = {
+  ...getTableColumns(localAuditZones),
+  auditeeName: localAuditZoneAuditees.auditeeName,
+  previousNcsAnswer: localAuditZonePreviousNcs.answer,
+};
 
 export function listLocalAuditZones(database: LocalDatabase, auditId: string) {
   return database
     .select(AUDIT_ZONE_COLUMNS)
     .from(localAuditZones)
     .leftJoin(localAuditZoneAuditees, eq(localAuditZoneAuditees.auditZoneId, localAuditZones.id))
+    .leftJoin(localAuditZonePreviousNcs, eq(localAuditZonePreviousNcs.auditZoneId, localAuditZones.id))
     .where(eq(localAuditZones.auditId, auditId))
     .orderBy(asc(localAuditZones.sequenceNo));
 }
@@ -1000,6 +1016,7 @@ export function getLocalAuditZone(database: LocalDatabase, auditZoneId: string) 
     .select(AUDIT_ZONE_COLUMNS)
     .from(localAuditZones)
     .leftJoin(localAuditZoneAuditees, eq(localAuditZoneAuditees.auditZoneId, localAuditZones.id))
+    .leftJoin(localAuditZonePreviousNcs, eq(localAuditZonePreviousNcs.auditZoneId, localAuditZones.id))
     .where(eq(localAuditZones.id, auditZoneId))
     .limit(1);
 }

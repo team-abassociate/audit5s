@@ -25,6 +25,7 @@ import { useSession } from '../../../lib/session';
 import { formatDateTime, formatPct } from '../../../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, humanize, isFinished } from '../../../lib/labels';
 import { bandOf, createThemedStyles, useTheme } from '../../../lib/theme';
+import { ScorecardButton } from '../../../components/scorecard-button';
 
 const REPORT_KIND: Record<ReportKind, string> = {
   INITIAL_ZONE: 'Initial report',
@@ -158,6 +159,7 @@ export default function ManageAuditScreen() {
               variant="secondary"
               onPress={() => router.push({ pathname: '/audit/summary/[auditId]', params: { auditId } })}
             />
+            <ScorecardButton auditId={auditId} />
           </Card>
         ) : null}
 

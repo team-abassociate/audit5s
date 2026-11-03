@@ -101,6 +101,7 @@ const auditZoneColumns = {
   checklistVersionId: auditZones.checklistVersionId,
   checklistTemplateNameSnapshot: auditZones.checklistTemplateNameSnapshot,
   zoneRemark: auditZones.zoneRemark,
+  previousNcsAnswer: auditZones.previousNcsAnswer,
   overallActionSuggestions: auditZones.overallActionSuggestions,
   scorePercentage: auditZones.scorePercentage,
   applicableQuestions: auditZones.applicableQuestions,
@@ -371,6 +372,8 @@ export class AuditsRepository extends BaseRepository {
       resumeQuestionId: string | null | undefined;
       /** R-72: who faced the audit. Undefined leaves it as it is. */
       auditeeName?: string | null;
+      /** R-79. Undefined leaves it as it is. */
+      previousNcsAnswer?: string | null;
       clientUpdatedAt: Date;
       snapshot: ZoneSnapshot;
       /**
@@ -397,6 +400,7 @@ export class AuditsRepository extends BaseRepository {
           overallActionSuggestions: input.overallActionSuggestions ?? [],
           resumeQuestionId: input.resumeQuestionId ?? null,
           auditeeName: input.auditeeName || null,
+          previousNcsAnswer: input.previousNcsAnswer || null,
           clientUpdatedAt: input.clientUpdatedAt,
           ...input.snapshot,
         })
@@ -413,6 +417,10 @@ export class AuditsRepository extends BaseRepository {
                 ? sql`${auditZones.resumeQuestionId}`
                 : (input.resumeQuestionId ?? null),
             auditeeName: input.auditeeName === undefined ? sql`${auditZones.auditeeName}` : input.auditeeName || null,
+            previousNcsAnswer:
+              input.previousNcsAnswer === undefined
+                ? sql`${auditZones.previousNcsAnswer}`
+                : input.previousNcsAnswer || null,
             sequenceNo: input.sequenceNo,
             clientUpdatedAt: input.clientUpdatedAt,
             version: sql`${auditZones.version} + 1`,

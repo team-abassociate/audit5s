@@ -236,6 +236,14 @@ function AuthGate() {
             // this every pushed screen carried a second status-bar-high band over its title.
             unstable_nativeProps: { headerConfig: { disableTopInsetApplication: showBar } },
             contentStyle: { backgroundColor: theme.color.ground },
+            // Field web only (the native header lays itself out): the JS header sizes the title
+            // for one small right button, so a long Zone name ran under Pause and Abort. The
+            // title shrinks to an ellipsis instead and the buttons keep their size. The web
+            // native stack passes every option to that header, but its types do not list these.
+            ...{
+              headerTitleContainerStyle: { flexShrink: 1, minWidth: 0 },
+              headerRightContainerStyle: { flexBasis: 'auto', flexShrink: 0 },
+            },
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

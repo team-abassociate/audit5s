@@ -23,7 +23,7 @@ import type {
   Role,
   SubmissionChannel,
 } from '@audit5s/contracts';
-import type { ScopeContext } from '@audit5s/domain';
+import { COMPLETED_AUDIT_STATUSES, type ScopeContext } from '@audit5s/domain';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { SYSTEM_SCOPE } from '../../common/auth/system-scope';
@@ -35,12 +35,12 @@ import { setActorContext } from '../users/users.repository';
  *
  * Every read joins the audit, so all three resolvers PART 6 names for this resource have a
  * column to work on: `own_unit` the action's Unit, `own_audits` the audit's auditor (a
- * Consultant reads what their audit raised), `assigned_actions` the assignee or the Unit.
+ * Consultant reads what their audit raised), `assigned_actions` the Zone's leader (R-78).
  */
 const scopeColumns = {
   unitId: correctiveActions.unitId,
   ownerUserId: audits.auditorUserId,
-  assignedUserId: correctiveActions.assignedZoneLeaderUserId,
+  zoneId: correctiveActions.zoneId,
   // Phase 7: `signed_token`'s single-item audience is this column (§6.2). Supplied here
   // rather than only where the public surface reads, so every query through this
   // repository narrows the same way when a signed link is the authority.
@@ -66,6 +66,7 @@ const actionColumns = {
   // correlated read rather than a join, so every query built on `selectActions` keeps its rows.
   zoneLeaderName: sql<string | null>`(SELECT COALESCE(app_zone_leader_name(z.unit_id, z.zone_leader_id), z.zone_leader_name)
     FROM zone z WHERE z.id = ${correctiveActions.zoneId})`,
+  zoneLeaderUserId: sql<string | null>`(SELECT z.zone_leader_id FROM zone z WHERE z.id = ${correctiveActions.zoneId})`,
   dueAt: correctiveActions.dueAt,
   openedAt: correctiveActions.openedAt,
   lastSubmittedAt: correctiveActions.lastSubmittedAt,
@@ -342,6 +343,61 @@ export class CorrectiveActionsRepository extends BaseRepository {
    * Zone Leader's device would put a job on their list that the server would refuse and
    * that nobody wanted doing.
    */
+  /**
+   * R-79: a Zone's last finished audit (a walk-by too: its NCs are the Zone's), and the NCs it raised — for the
+   * next auditor of the Zone. `scope` is the caller's `zone:read`, a Unit predicate: whoever
+   * may audit the Zone sees what was found there, whoever conducted it. Photo keys come back
+   * for the service to presign; a redacted photo's key is null.
+   */
+  async previousForZone(scope: ScopeContext, zoneId: string) {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const auditDate = sql<Date>`coalesce(${audits.completedAt}, ${auditZones.completedAt})`.mapWith(audits.completedAt);
+      const [last] = await tx
+        .select({ auditZoneId: auditZones.id, auditId: audits.id, auditDate })
+        .from(auditZones)
+        .innerJoin(audits, eq(audits.id, auditZones.auditId))
+        .where(
+          and(
+            eq(auditZones.zoneId, zoneId),
+            eq(auditZones.status, 'COMPLETED'),
+            inArray(audits.status, [...COMPLETED_AUDIT_STATUSES]),
+            this.scoped(scope, { unitId: audits.unitId }),
+          ),
+        )
+        .orderBy(desc(auditDate), desc(auditZones.id))
+        .limit(1);
+      if (!last) return null;
+
+      const photoKey = (evidenceId: SQL) => sql<string | null>`(SELECT CASE WHEN e.redacted_at IS NULL
+        THEN e.object_key END FROM evidence e WHERE e.id = ${evidenceId})`;
+      const items = await tx
+        .select({
+          id: correctiveActions.id,
+          status: correctiveActions.status,
+          questionNo: checklistQuestions.globalOrder,
+          questionText: checklistQuestions.text,
+          suggestion: correctiveActions.suggestion,
+          beforeKey: photoKey(sql`${correctiveActions.evidenceId}`),
+          afterKey: photoKey(sql`(SELECT s.after_evidence_id FROM corrective_action_submission s
+            WHERE s.corrective_action_id = ${correctiveActions.id} ORDER BY s.attempt_no DESC LIMIT 1)`),
+          closedByName: actionColumns.closedByName,
+          resolvedAt: correctiveActions.resolvedAt,
+        })
+        .from(correctiveActions)
+        .leftJoin(checklistQuestions, eq(checklistQuestions.id, correctiveActions.checklistQuestionId))
+        .where(
+          and(
+            eq(correctiveActions.auditZoneId, last.auditZoneId),
+            ne(correctiveActions.status, 'WITHDRAWN'),
+            this.scoped(scope, { unitId: correctiveActions.unitId }),
+          ),
+        )
+        .orderBy(asc(checklistQuestions.globalOrder), asc(correctiveActions.suggestionNo), asc(correctiveActions.id));
+      return { ...last, items };
+    });
+  }
+
   async listUnverified(scope: ScopeContext) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);

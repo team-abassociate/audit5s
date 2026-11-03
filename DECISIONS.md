@@ -2897,6 +2897,98 @@ slip, the board grid, "colour only for score bands" as worded there, or its dark
 - **Not changed:** the printed report's palette (`BRAND_TOKENS` in `packages/domain`) and its
   fonts.
 
+## R-77 — A password is anything but empty
+
+**Ruled 2026-11-02 by the owner.** *"I want the password condition to be removed, it can be
+anything the user wants — name, number, whatever the user wants."* Withdraws §12.1's policy:
+the 10-character minimum, the phone/name/login-ID checks and the common-password list.
+
+- `checkPassword` (`packages/domain`) refuses only an empty password and one over
+  `PASSWORD_MAX_LENGTH` (256, kept so Argon2 is never handed megabytes).
+  `PASSWORD_MIN_LENGTH` is 1. The forced reset, change-password and the e-mailed reset link
+  all go through it.
+- The phone number may be kept as the password. The forced reset after a first sign-in still
+  happens; the user may type the same number back.
+
+## R-78 — A Zone's nonconformities are closed by its own leader
+
+**Ruled 2026-11-02 by the owner.** *"The NCs should be closed by the zone leader only … the
+coordinator is able to add zone leaders and that can't be edited by anyone else except the
+super admin or the coordinator himself, so the zone leader allocation is streamlined, so the
+NC should be closed by that zone leader only and it should be visible to him only."*
+Withdraws R-3b's widening and R-39(b)'s "any zone leader can resolve nonconformities";
+leaves R-22 / R-47 (the PDF link) as they were.
+
+- **A Zone with a leader account** (the Zone form's leader, set only by a Super Admin or the
+  Coordinator, R-74): its NCs are seen and closed, among Zone Leaders, by that leader alone.
+  The **Coordinator** (R-54) and the **Super Admin** (R-18) still close any in their scope.
+  The rule follows the Zone's leader *now*: a new leader takes over its open NCs.
+- **A Zone with no leader account** (typed names only, R-64): any Zone Leader or
+  **Consultant** of the Unit closes them, as well as the Coordinator and the Super Admin.
+  A Consultant gets the field app's NCs tab for this; on the web, the answer form shows to
+  a Consultant only on a leaderless Zone's item.
+- **The PDF link still answers, for every Zone** (owner, same day: *"the pdfs will be
+  shared by the coordinator to their respective zone leaders, so keep the pdf links working
+  for each and every zone"*). The link acts as the Super Admin or Coordinator who made it
+  (R-47), both of whom may close any NC of their scope, so R-78 does not narrow it. Whoever
+  holds the Coordinator's PDF answers through it, as R-22 says.
+- `assigned_actions` is now "the Zone's leader is me, or the Zone has none, inside my
+  Units"; it is the Zone Leader's `corrective_action:read` and `:submit` and the
+  Consultant's `:submit`. A device's catalogue carries what its user may *close*.
+  Migration `0063` redefines `app_may_answer_corrective_action` and the action's UPDATE
+  policy to match. `CorrectiveAction` gains optional `zoneLeaderUserId`.
+- Reassigning an action (`corrective_action:reassign`) still records an assignee for
+  notifications, but no longer decides who may close it.
+
+## R-79 — The next auditor sees the Zone's earlier NCs, and answers whether they were closed
+
+**Ruled 2026-11-02 by the owner.** *"When someone chooses a zone for auditing, be it cross
+audit or external audit, the number of NCs raised, NCs closed by zone leader and NCs still
+remaining … should be visible to the auditor … he should be able to see the photos of the NC
+and if it's closed the before/after. At the end of the 50 questions the auditor should get a
+question 'Are the earlier NCs closed by the zone leader' … with a text field, published in
+the report."*
+
+- **Which NCs:** those of the Zone's **last finished audit** (any type — a walk-by's NCs are
+  the Zone's too), withdrawn ones left out. *Closed* is `VERIFIED` (R-43's "closed").
+- **`GET /zones/{id}/previous-nonconformities`**, `zone:read`: whoever may read the Zone —
+  a Consultant on an external audit, a Zone Leader on a cross audit — sees the figures and
+  the photos, whoever conducted that audit. Photos are presigned GETs (≤5 min); a redacted
+  photo is null. The field app shows the figures on the Select Zone card (cross and external,
+  not walk-by) and a screen of each NC with its before photo and, once closed, its after
+  photo, tap to view. It needs a connection.
+- **The closing question** sits after the fifty, before the overall remark: *Are the earlier
+  NCs closed by the Zone Leader?*, answered in words, optional (a Zone's first audit has
+  nothing to ask about). `audit_zone.previous_ncs_answer` (migration 0064), sent on the
+  Zone's upsert while the audit is open; phone local schema v16. The Zone report prints it
+  after the overall remark (template 1.14.0); a report issued before keeps its bytes (R-35).
+- **On the web too** (R-51, owner 2026-11-03): the conduct screen shows *Earlier NCs* under
+  the Zone picker (figures, then each NC with its photos, opening full size), asks the
+  closing question above the overall remark, and an audit's panel prints the answer.
+
+## R-80 — The score card downloads as a PDF, from the app
+
+**Ruled 2026-11-02 by the owner.** *"The zone wise score card which appears at the end of the
+audit should also be available for download with the name of the unit and zone in it from
+the app itself. Also in the unit tab which shows audits done by the auditor … there should
+be an option to download the score card."* Narrows C4/N5's "not a PDF" for the score
+summary only; the official reports stay the Super Admin's (N5, R-39(a)).
+
+- **What it is:** the score summary (`GET /audits/{id}/summary`) as a one-page PDF — Unit,
+  Zone, audit type, date, auditor, auditee, marks, score, band, the S-wise table and the 5S
+  web — drawn from the Zone report's components. It says it is not the official report.
+  File name `Score card - {Unit} - Zone {n} {name} - {date}.pdf`. A walk-by has none (422).
+- **Who:** whoever holds `report:score_summary` on the audit — its auditor (Consultant or
+  Zone Leader), the Unit's Coordinator and Zone Leaders, a Super Admin.
+- **How:** `POST /audits/{id}/scorecard` (202) queues `scorecard.export`, printed by
+  `worker-report` on its own queue; `GET /audits/{id}/scorecard/{exportId}` is QUEUED,
+  FAILED, or READY with a ≤5-minute presigned GET — the Kaizen Sheet's pattern, no table.
+- **Where in the app:** *Download score card* on the score summary, the audit's page, each
+  finished scored audit in History, and each scored audit under *Audits by date* on the
+  Unit tab. It needs a connection.
+- **On the web too** (R-51, owner 2026-11-03): *Download score card* on a finished scored
+  audit's panel, and under each scored audit in a Unit's *Audits by date*.
+
 ## R-81 — Reviewing a finished audit, the auditor changes its photos and summary picks
 
 **Ruled 2026-11-02 by the owner.** *"When the auditor wants to review his audit then he

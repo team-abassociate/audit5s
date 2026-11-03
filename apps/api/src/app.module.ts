@@ -21,6 +21,7 @@ import { AuditsModule } from './modules/audits/audits.module';
 import { DevicesModule } from './modules/devices/devices.module';
 import { CorrectiveActionsModule } from './modules/corrective-actions/corrective-actions.module';
 import { KaizensModule } from './modules/kaizens/kaizens.module';
+import { ScorecardModule } from './modules/scorecards/scorecard.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
@@ -66,6 +67,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     EvidenceModule,
     CorrectiveActionsModule,
     KaizensModule,
+    ScorecardModule,
     ReportsModule,
     NotificationsModule,
     DevicesModule,

@@ -117,6 +117,7 @@ export default function QuestionnaireScreen() {
   const [page, setPage] = useState(0);
   const [picked, setPicked] = useState<Record<string, ResponseValue>>({});
   const [zoneRemarkDraft, setZoneRemarkDraft] = useState('');
+  const [previousNcsDraft, setPreviousNcsDraft] = useState('');
   /** R-38: the overall corrective-action suggestions, saved with the remark on Finish. */
   const [suggestionDrafts, setSuggestionDrafts] = useState<string[]>([]);
   const [cameraFor, setCameraFor] = useState<Row | null>(null);
@@ -190,6 +191,10 @@ export default function QuestionnaireScreen() {
   useEffect(() => {
     setZoneRemarkDraft(zone.data?.zoneRemark ?? '');
   }, [zone.data?.zoneRemark]);
+
+  useEffect(() => {
+    setPreviousNcsDraft(zone.data?.previousNcsAnswer ?? '');
+  }, [zone.data?.previousNcsAnswer]);
 
   const savedSuggestions = useQuery({
     queryKey: ['local', 'zone-suggestions', auditZoneId],
@@ -271,6 +276,7 @@ export default function QuestionnaireScreen() {
         zoneRemarkDraft.trim() || null,
         undefined,
         suggestionDrafts,
+        previousNcsDraft.trim() || null,
       );
       await assertZonePhotoLimitForCompletion(database, auditZoneId);
       await completeLocalZone(database, auditZoneId);
@@ -673,6 +679,18 @@ export default function QuestionnaireScreen() {
               <ScoreCard breakdown={score.data} answered={answered} />
               <AuditeeCard auditZoneId={auditZoneId} name={zone.data.auditeeName} title={t.auditee} />
               <SummaryPhotosCard photos={zonePhotos} onOpen={setPreviewId} />
+              <Card>
+                <Field
+                  label={t.previousNcsQuestion}
+                  multiline
+                  placeholder={t.previousNcsPlaceholder}
+                  value={previousNcsDraft}
+                  onChangeText={setPreviousNcsDraft}
+                  maxLength={4000}
+                  editable={editable}
+                  containerStyle={styles.lastField}
+                />
+              </Card>
               <Card>
                 <Field
                   label={t.overallRemark}

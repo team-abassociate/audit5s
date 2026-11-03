@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { PASSWORD_MIN_LENGTH } from '@audit5s/contracts';
 import { api } from '@/lib/api';
 import { Button, ErrorNotice, Field, PasswordInput } from '@/components/ui';
 import { useSession } from '@/lib/session';
@@ -61,17 +60,13 @@ export function ForcedResetPage() {
 
           <Field
             label="New password"
-            hint={`At least ${PASSWORD_MIN_LENGTH} characters, and not your name or phone number`}
+            hint="Any password you like"
             error={errors.newPassword?.message}
           >
             <PasswordInput
               autoComplete="new-password"
               {...register('newPassword', {
                 required: 'Required',
-                minLength: {
-                  value: PASSWORD_MIN_LENGTH,
-                  message: `At least ${PASSWORD_MIN_LENGTH} characters`,
-                },
               })}
             />
           </Field>

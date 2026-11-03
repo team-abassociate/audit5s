@@ -414,6 +414,17 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     },
   },
   {
+    method: 'GET',
+    path: '/api/v1/zones/:id/previous-nonconformities',
+    description: 'zone:read — R-79: the last audit’s NCs, for whoever audits the Zone next',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+  },
+  {
     method: 'PATCH',
     path: '/api/v1/zones/:id',
     description: 'zone:update — a description edit never touches history (D6)',
@@ -1637,6 +1648,30 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
       COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
     },
     coveredBy: 'kaizens.e2e.test.ts',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/audits/:auditId/scorecard',
+    description: 'report:score_summary — R-80: queues the score card PDF on worker-report; 202',
+    expected: {
+      SUPER_ADMIN: { inScope: ACCEPTED, outOfScope: ACCEPTED },
+      CONSULTANT: { inScope: ACCEPTED, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: ACCEPTED, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: ACCEPTED, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/audits/:auditId/scorecard/:exportId',
+    description: 'report:score_summary — the score card’s state; a short-TTL presigned GET once READY',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'audits.e2e.test.ts',
   },
   {
     method: 'POST',

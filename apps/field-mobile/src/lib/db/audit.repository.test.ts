@@ -298,6 +298,15 @@ describe('starting an audit', () => {
       zoneLeaderName: 'Ravi Kumar',
       zoneRemark: 'Observed after cleanup',
     });
+
+    // R-79: the closing answer rides the same upsert, and a later edit keeps it.
+    await saveZoneRemark(database, auditZoneId, 'Observed after cleanup', undefined, undefined, 'Two of three closed');
+    await editLocalZone(database, { auditZoneId, auditeeName: 'S. Patil' });
+    const kept = (await listOutbox(database)).find(
+      (item) => item.entityType === 'audit_zone' && item.entityId === auditZoneId,
+    );
+    expect(JSON.parse(kept!.payload)).toMatchObject({ previousNcsAnswer: 'Two of three closed' });
+    expect((await getLocalAuditZone(database, auditZoneId))[0]?.previousNcsAnswer).toBe('Two of three closed');
   });
 
   it('adds a Zone the catalogue does not have, named by its number (R-19)', async () => {

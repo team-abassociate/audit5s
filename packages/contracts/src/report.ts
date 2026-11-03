@@ -189,6 +189,8 @@ export const reportZoneSchema = z.object({
   totals: scoreTotalsSchema,
   sections: z.array(sectionScoreSchema),
   zoneRemark: z.string().nullable(),
+  /** R-79: absent on a payload frozen before it, which renders as issued. */
+  previousNcsAnswer: z.string().nullable().optional(),
   questions: z.array(reportQuestionSchema),
   good: z.array(reportPhotoSchema),
   nonconformities: z.array(reportNonconformitySchema),
@@ -558,3 +560,9 @@ export const publicCorrectiveActionSchema = z.object({
     .nullable(),
 });
 export type PublicCorrectiveAction = z.infer<typeof publicCorrectiveActionSchema>;
+
+/**
+ * R-80: an audit's score card PDF — the score summary with the Unit and Zone named on it,
+ * queued and polled the way a Kaizen Sheet is. Not the official report (N5).
+ */
+export { kaizenExportSchema as scorecardExportSchema, type KaizenExport as ScorecardExport } from './kaizen';

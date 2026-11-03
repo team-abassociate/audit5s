@@ -35,6 +35,7 @@ import { ROLE_LABELS } from '../lib/labels';
 import { useSession } from '../lib/session';
 import { createThemedStyles, useTheme } from '../lib/theme';
 import { leaveScreen } from '../lib/leave-screen';
+import { ScorecardButton } from './scorecard-button';
 
 /**
  * One Unit: its details, its Zones, the people with access, and the way to start an audit
@@ -502,6 +503,12 @@ function UnitAuditDays({ unitId }: { unitId: string }) {
               <Text style={styles.chevron}>›</Text>
             </Pressable>
           ))}
+          {/* R-80: each scored audit's score card, from the Unit tab too. */}
+          {dayAudits
+            .filter((audit) => audit.auditType !== 'WALK_BY')
+            .map((audit) => (
+              <ScorecardButton key={`card-${audit.id}`} auditId={audit.id} />
+            ))}
         </View>
       ))}
       <ErrorBanner message={audits.error ? problemMessage(audits.error) : null} />

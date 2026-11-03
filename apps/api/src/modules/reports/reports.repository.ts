@@ -59,6 +59,7 @@ export interface FrozenZoneSource {
   departmentName: string | null;
   checklistVersionNo: number | null;
   zoneRemark: string | null;
+  previousNcsAnswer: string | null;
   completedAt: Date | null;
   auditStartedAt: Date | null;
   auditCompletedAt: Date | null;
@@ -271,6 +272,7 @@ export class ReportsRepository extends BaseRepository {
         departmentName: auditZones.checklistTemplateNameSnapshot,
         checklistVersionNo: checklistVersions.versionNumber,
         zoneRemark: auditZones.zoneRemark,
+        previousNcsAnswer: auditZones.previousNcsAnswer,
         completedAt: auditZones.completedAt,
         auditStartedAt: audits.startedAt,
         auditCompletedAt: audits.completedAt,
