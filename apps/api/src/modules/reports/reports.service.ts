@@ -479,6 +479,12 @@ export class ReportsService {
         ? []
         : await this.repository.readZoneHistory(tx, target.auditZoneIds[0], ZONE_HISTORY_LENGTH);
 
+    // A summary's end pages: each Zone's last six scores with their NCs, and the Unit's
+    // score month by month. Frozen once, here, like the rest.
+    const generatedAt = new Date();
+    const summary =
+      target.kind === 'MULTI_ZONE_SUMMARY' ? await this.readSummaryHistory(tx, target, generatedAt) : null;
+
     // A verified finding needs no button: the right half of its row already carries the
     // outcome. Minting a link for it would put a live door on a closed item.
     const tokens =
@@ -502,7 +508,7 @@ export class ReportsService {
       version: target.version,
       // Frozen here, once. The renderer never calls `new Date()`, which is half of what
       // makes the same payload produce the same bytes.
-      generatedAt: new Date(),
+      generatedAt,
       generatedByName,
       unit,
       zones,
@@ -513,10 +519,31 @@ export class ReportsService {
       selfieObjectKey,
       auditeePhotoKeys,
       history,
+      ...summary,
       actionUrls: tokens?.urls ?? new Map<string, string>(),
     });
 
     return { payload, tokens };
+  }
+
+  private async readSummaryHistory(
+    tx: Transaction,
+    target: { unitId: string; auditZoneIds: string[] },
+    generatedAt: Date,
+  ) {
+    // Seven months back covers the six IST months the chart prints, whatever today's date.
+    const since = new Date(generatedAt.getTime() - 7 * 31 * 24 * 3_600_000);
+    const [histories, unitScores] = await Promise.all([
+      Promise.all(
+        target.auditZoneIds.map(
+          async (id) => [id, await this.repository.readZoneHistory(tx, id, ZONE_HISTORY_LENGTH)] as const,
+        ),
+      ),
+      this.repository.readUnitScores(tx, target.unitId, since),
+    ]);
+    const ids = new Set([...target.auditZoneIds, ...histories.flatMap(([, rows]) => rows.map((row) => row.auditZoneId))]);
+    const ncCounts = await this.repository.readNcCounts(tx, [...ids]);
+    return { summaryHistory: new Map(histories), ncCounts, unitScores };
   }
 
   /**

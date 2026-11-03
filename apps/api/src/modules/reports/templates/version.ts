@@ -40,7 +40,9 @@
 // 1.13.0 — R-75: unit-wise from audits, Cross and External; each audit row names its type.
 // 1.14.0 — R-79: the Zone report prints the auditor's answer to "Are the earlier NCs closed
 // by the Zone Leader?" after the overall remark.
-export const TEMPLATE_VERSION = '1.14.0';
+// 1.15.0 — the summary drops the NC summary and the score-card page; it ends with each
+// Zone's last six scores and NCs raised / closed, then the Unit's month-wise score.
+export const TEMPLATE_VERSION = '1.15.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

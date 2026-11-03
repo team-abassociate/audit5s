@@ -1,16 +1,15 @@
 import { S_SECTION_ORDER, S_SECTION_SHORT_LABELS, reportZoneLabel } from '@audit5s/domain';
 import type { ReportPayload, ReportZone } from './payload-types';
 import {
-  BandHistogram,
   Footer,
   Header,
   MetaCell,
   Photo,
   RadarWeb,
   RatingPills,
-  ScoreCards,
   SectionBars,
   SectionTable,
+  TrendBars,
   ZoneComparisonBars,
   bandOf,
   formatDate,
@@ -142,63 +141,35 @@ export function SummaryReport({
               </table>
             </div>
           </div>
-
-          <h2 className="section-title">Nonconformity summary</h2>
-          <div className="closure-grid">
-            <MetaCell label="Open" value={String(extras.nonconformitySummary.open)} />
-            <MetaCell label="Submitted" value={String(extras.nonconformitySummary.submitted)} />
-            <MetaCell label="Verified" value={String(extras.nonconformitySummary.verified)} />
-          </div>
-          {extras.nonconformitySummary.recurrent.length > 0 ? (
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ width: '8%' }}>Sr.</th>
-                  <th>Recurrent check point</th>
-                  <th style={{ width: '14%' }} className="centre">
-                    Zones
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {extras.nonconformitySummary.recurrent.map((entry) => (
-                  <tr key={`rec-${entry.questionGlobalOrder}`}>
-                    <td className="centre">{entry.questionGlobalOrder ?? '—'}</td>
-                    <td>{entry.questionText ?? '—'}</td>
-                    <td className="centre">{entry.zones}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
         </>
       ) : null}
 
       <FlaggedPhotos payload={payload} resolve={resolve} />
 
-      {/* At the end: the score card of every Zone, as the app shows it, and the histogram. */}
+      {/* At the end: each Zone's last six scores with their NCs, then the Unit by month. */}
       <div className="page-break" />
-      <Header title="LEAN 5S — ZONE SCORE CARDS" subtitle={payload.unit.name} />
-      <h2 className="section-title">Score band distribution</h2>
-      <BandHistogram
-        pcts={scored.map((zone) => zone.totals.scorePercentage)}
-        bands={payload.bands}
-        brand={payload.brand}
-      />
-      <ScoreCards
-        cards={[
-          { key: 'all', label: 'All selected zones', totals: payload.totals, sections: payload.sections },
-          ...scored.map((zone) => ({
-            key: zone.auditZoneId,
-            label: `${reportZoneLabel(zone)} · ${formatDate(zone.auditDate)} · ${zone.auditorName}`,
-            totals: zone.totals,
-            sections: zone.sections,
-          })),
-        ]}
-        bands={payload.bands}
-        brand={payload.brand}
-      />
+      <Header title="LEAN 5S — LAST SIX AUDITS" subtitle={payload.unit.name} />
+      <HistoryTable payload={payload} />
       <RatingPills bands={payload.bands} />
+
+      {extras?.monthly ? (
+        <>
+          <div className="page-break" />
+          <Header title="LEAN 5S — MONTH-WISE UNIT SCORE" subtitle={payload.unit.name} />
+          <h2 className="section-title">Unit score, last six months</h2>
+          <TrendBars
+            points={extras.monthly.map((entry) => ({ label: monthLabel(entry.month), pct: entry.scorePercentage }))}
+            bands={payload.bands}
+            brand={payload.brand}
+            width={680}
+            height={320}
+          />
+          <div className="footnote">
+            Each month is summed achieved marks / summed applicable maximum over every scored
+            audit of the Unit finished that month. A month with no audit prints N/A.
+          </div>
+        </>
+      ) : null}
     </>
   );
 }
@@ -336,6 +307,74 @@ function FlaggedPhotos({
       ))}
     </>
   );
+}
+
+/**
+ * Each Zone's last six scored audits, latest in the right-hand column, and the NCs raised
+ * over those audits with how many are closed (verified) — cumulative, so a Zone audited
+ * once shows that audit's NCs and one audited six times shows all six audits'.
+ */
+function HistoryTable({ payload }: { payload: ReportPayload }) {
+  const slots = [0, 1, 2, 3, 4, 5];
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th rowSpan={2}>Zone</th>
+          <th colSpan={6} className="centre">
+            Score — last six audits (oldest → latest)
+          </th>
+          <th colSpan={2} className="centre">
+            NCs
+          </th>
+        </tr>
+        <tr>
+          {slots.map((slot) => (
+            <th key={`h-${slot}`} className="centre">
+              {slot + 1}
+            </th>
+          ))}
+          <th className="centre">Raised</th>
+          <th className="centre">Closed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {payload.zones.map((zone) => {
+          const history = zone.history ?? [];
+          const padded = [...slots.slice(history.length).map(() => null), ...history.slice(-6)];
+          return (
+            <tr key={`hist-${zone.auditZoneId}`} className="avoid-break">
+              <td>{reportZoneLabel(zone)}</td>
+              {padded.map((point, index) => {
+                const band = bandOf(payload.bands, point?.scorePercentage ?? null);
+                return (
+                  <td key={`${zone.auditZoneId}-${index}`} className={`centre ${band ? `tint-${band.token}` : 'na'}`}>
+                    {point ? (
+                      <>
+                        {formatPercentage(point.scorePercentage)}
+                        <span className="q-remark">{formatDate(point.auditDate)}</span>
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                );
+              })}
+              <td className="centre">{zone.historyNcs?.raised ?? '—'}</td>
+              <td className="centre">{zone.historyNcs?.closed ?? '—'}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+
+/** `2026-11` → `Nov 2026`. */
+function monthLabel(key: string): string {
+  return `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`;
 }
 
 function dateRangeLabel(payload: ReportPayload): string {
