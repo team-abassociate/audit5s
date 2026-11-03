@@ -2897,6 +2897,49 @@ slip, the board grid, "colour only for score bands" as worded there, or its dark
 - **Not changed:** the printed report's palette (`BRAND_TOKENS` in `packages/domain`) and its
   fonts.
 
+## R-77 — A password is anything but empty
+
+**Ruled 2026-11-02 by the owner.** *"I want the password condition to be removed, it can be
+anything the user wants — name, number, whatever the user wants."* Withdraws §12.1's policy:
+the 10-character minimum, the phone/name/login-ID checks and the common-password list.
+
+- `checkPassword` (`packages/domain`) refuses only an empty password and one over
+  `PASSWORD_MAX_LENGTH` (256, kept so Argon2 is never handed megabytes).
+  `PASSWORD_MIN_LENGTH` is 1. The forced reset, change-password and the e-mailed reset link
+  all go through it.
+- The phone number may be kept as the password. The forced reset after a first sign-in still
+  happens; the user may type the same number back.
+
+## R-78 — A Zone's nonconformities are closed by its own leader
+
+**Ruled 2026-11-02 by the owner.** *"The NCs should be closed by the zone leader only … the
+coordinator is able to add zone leaders and that can't be edited by anyone else except the
+super admin or the coordinator himself, so the zone leader allocation is streamlined, so the
+NC should be closed by that zone leader only and it should be visible to him only."*
+Withdraws R-3b's widening and R-39(b)'s "any zone leader can resolve nonconformities";
+leaves R-22 / R-47 (the PDF link) as they were.
+
+- **A Zone with a leader account** (the Zone form's leader, set only by a Super Admin or the
+  Coordinator, R-74): its NCs are seen and closed, among Zone Leaders, by that leader alone.
+  The **Coordinator** (R-54) and the **Super Admin** (R-18) still close any in their scope.
+  The rule follows the Zone's leader *now*: a new leader takes over its open NCs.
+- **A Zone with no leader account** (typed names only, R-64): any Zone Leader or
+  **Consultant** of the Unit closes them, as well as the Coordinator and the Super Admin.
+  A Consultant gets the field app's NCs tab for this; on the web, the answer form shows to
+  a Consultant only on a leaderless Zone's item.
+- **The PDF link still answers, for every Zone** (owner, same day: *"the pdfs will be
+  shared by the coordinator to their respective zone leaders, so keep the pdf links working
+  for each and every zone"*). The link acts as the Super Admin or Coordinator who made it
+  (R-47), both of whom may close any NC of their scope, so R-78 does not narrow it. Whoever
+  holds the Coordinator's PDF answers through it, as R-22 says.
+- `assigned_actions` is now "the Zone's leader is me, or the Zone has none, inside my
+  Units"; it is the Zone Leader's `corrective_action:read` and `:submit` and the
+  Consultant's `:submit`. A device's catalogue carries what its user may *close*.
+  Migration `0063` redefines `app_may_answer_corrective_action` and the action's UPDATE
+  policy to match. `CorrectiveAction` gains optional `zoneLeaderUserId`.
+- Reassigning an action (`corrective_action:reassign`) still records an assignee for
+  notifications, but no longer decides who may close it.
+
 ## R-79 — The next auditor sees the Zone's earlier NCs, and answers whether they were closed
 
 **Ruled 2026-11-02 by the owner.** *"When someone chooses a zone for auditing, be it cross

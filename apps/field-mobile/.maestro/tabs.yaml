@@ -61,6 +61,6 @@ env:
 - tapOn: "History"
 - assertVisible: "Audits on this device"
 - takeScreenshot: tab-history
-- tapOn: "Profile"
+- tapOn: "Your profile.*"
 - assertVisible: "Sync catalogue"
 - takeScreenshot: tab-profile

@@ -72,15 +72,14 @@ describe('policy enforcement', () => {
     ).not.toThrow();
   });
 
-  it('rejects the bootstrap credential itself and names why', () => {
+  it('accepts the phone number itself (R-77) and refuses only an empty one', () => {
     const service = new PasswordService();
+    expect(() => service.assertAcceptable({ ...subject, password: '+919876543210' })).not.toThrow();
     try {
-      service.assertAcceptable({ ...subject, password: '+919876543210' });
+      service.assertAcceptable({ ...subject, password: '' });
       throw new Error('should have thrown');
     } catch (error) {
-      const problem = error as { code?: string; detail?: string };
-      expect(problem.code).toBe('WEAK_PASSWORD');
-      expect(problem.detail).toMatch(/phone number/i);
+      expect((error as { code?: string }).code).toBe('WEAK_PASSWORD');
     }
   });
 });

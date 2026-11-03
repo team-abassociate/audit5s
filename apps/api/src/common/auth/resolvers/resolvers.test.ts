@@ -112,28 +112,22 @@ describe('own_record and own_audits', () => {
   });
 });
 
-describe('assigned_actions (R-3b)', () => {
-  it('matches the assignee OR the Unit — the widening is deliberate', () => {
-    // Assigned leaders take leave, and corrective actions must not stall. Narrowing this
-    // is a product decision, not a tidy-up.
-    const resolver = new AssignedActionsScopeResolver();
-    const predicate = resolver.predicate(actor({ role: 'ZONE_LEADER' }), {
-      assignedUserId: unitMemberships.userId,
-      unitId: unitMemberships.unitId,
-    });
-    const rendered = render(predicate);
+describe('assigned_actions (R-78)', () => {
+  const resolver = new AssignedActionsScopeResolver();
+  const columns = { zoneId: unitMemberships.id, unitId: unitMemberships.unitId };
+
+  it("matches the Zone's own leader, or a leaderless Zone, inside the actor's Units", () => {
+    const rendered = render(resolver.predicate(actor({ role: 'ZONE_LEADER' }), columns));
     expect(rendered).toContain('user-1');
     expect(rendered).toContain('unit-a');
-    expect(rendered).toContain('OR');
+    expect(rendered).toContain('zone_leader_id IS NULL');
   });
 
-  it('falls back to the assignee alone when the leader has no active Unit', () => {
-    const resolver = new AssignedActionsScopeResolver();
-    const predicate = resolver.predicate(
-      actor({ role: 'ZONE_LEADER', activeUnitId: null, unitIds: [] }),
-      { assignedUserId: unitMemberships.userId, unitId: unitMemberships.unitId },
+  it('matches nothing when the actor holds no Unit', () => {
+    const rendered = render(
+      resolver.predicate(actor({ role: 'ZONE_LEADER', activeUnitId: null, unitIds: [] }), columns),
     );
-    expect(render(predicate)).toContain('user-1');
+    expect(rendered.toLowerCase()).toContain('false');
   });
 });
 

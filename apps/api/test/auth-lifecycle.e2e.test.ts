@@ -354,7 +354,7 @@ describe('the forced reset (CH-1)', () => {
     expect(allowed.status).toBe(200);
   });
 
-  it('refuses a new password that is the phone number, the name, or too short (§12.1)', async () => {
+  it('takes any non-empty new password, the phone number included (R-77)', async () => {
     resetLimits();
     const created = await world.request('POST', `${base}/users`, {
       token: world.actors.SUPER_ADMIN.accessToken,
@@ -371,13 +371,17 @@ describe('the forced reset (CH-1)', () => {
     });
     const token = (login.body as { accessToken: string }).accessToken;
 
-    for (const candidate of ['+919000000202', 'weakpassword1', 'short']) {
-      const response = await world.request('POST', `${base}/auth/change-password`, {
-        token,
-        body: { currentPassword: '+919000000202', newPassword: candidate },
-      });
-      expect(response.status, `"${candidate}" must be refused`).toBeGreaterThanOrEqual(422);
-    }
+    const empty = await world.request('POST', `${base}/auth/change-password`, {
+      token,
+      body: { currentPassword: '+919000000202', newPassword: '' },
+    });
+    expect(empty.status).toBeGreaterThanOrEqual(400);
+
+    const short = await world.request('POST', `${base}/auth/change-password`, {
+      token,
+      body: { currentPassword: '+919000000202', newPassword: '1' },
+    });
+    expect(short.status).toBeLessThan(300);
   });
 });
 

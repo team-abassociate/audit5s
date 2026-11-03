@@ -139,5 +139,5 @@ const useStyles = createThemedStyles((theme) => ({
     marginTop: 6,
     fontVariant: ['tabular-nums'],
   },
-  late: { fontFamily: theme.family.medium, color: theme.color.needsSupport },
+  late: { fontFamily: theme.family.medium, color: theme.color.primaryInk },
 }));
