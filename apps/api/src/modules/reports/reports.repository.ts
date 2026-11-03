@@ -435,6 +435,32 @@ export class ReportsRepository extends BaseRepository {
   }
 
   /**
+   * Each audit Zone's photo NCs per S: raised, and closed (VERIFIED). A withdrawn finding
+   * (R-31) was never an NC; an overall suggestion has no S and is left out.
+   */
+  async readNcCountsBySection(tx: Transaction, auditZoneIds: readonly string[]) {
+    if (auditZoneIds.length === 0) return [];
+    return tx
+      .select({
+        auditZoneId: correctiveActions.auditZoneId,
+        section: questionResponses.section,
+        raised: sql<number>`count(*)::int`,
+        closed: sql<number>`(count(*) FILTER (WHERE ${correctiveActions.status} = 'VERIFIED'))::int`,
+      })
+      .from(correctiveActions)
+      .innerJoin(evidence, eq(evidence.id, correctiveActions.evidenceId))
+      .innerJoin(questionResponses, eq(questionResponses.id, evidence.questionResponseId))
+      .where(
+        and(
+          inArray(correctiveActions.auditZoneId, [...auditZoneIds]),
+          sql`${correctiveActions.status} <> 'WITHDRAWN'`,
+          isNull(evidence.deletedAt),
+        ),
+      )
+      .groupBy(correctiveActions.auditZoneId, questionResponses.section);
+  }
+
+  /**
    * A summary's NC columns: per audit Zone, the nonconformities raised (a finding's
    * corrective action, not an overall suggestion, not withdrawn) and how many are verified.
    */

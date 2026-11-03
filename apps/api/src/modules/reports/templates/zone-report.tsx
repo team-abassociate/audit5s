@@ -1,4 +1,5 @@
-import { S_SECTION_ORDER, S_SECTION_LABELS, S_SECTION_SHORT_LABELS, reportZoneLabel, sectionLabel } from '@audit5s/domain';
+import { S_SECTION_ORDER, S_SECTION_LABELS, S_SECTION_SHORT_LABELS, formatMonthYear, reportZoneLabel, sectionLabel } from '@audit5s/domain';
+import type { SSection } from '@audit5s/contracts';
 import type {
   ReportNonconformity,
   ReportOutcome,
@@ -283,8 +284,8 @@ function ScoreBoard({ zone, payload }: { zone: ReportZone; payload: ReportPayloa
   const history = zone.history ?? [];
   return (
     <>
+      {/* No banner: the board page is pinned up at the Zone, and is all chart. */}
       <div className="page-break" />
-      <Header title="LEAN 5S — ZONE SCORE BOARD" subtitle={reportZoneLabel(zone)} />
       <div className="meta-grid">
         <MetaCell label="Zone" value={reportZoneLabel(zone)} />
         <MetaCell label="Audit date" value={formatDate(zone.auditDate)} />
@@ -294,11 +295,12 @@ function ScoreBoard({ zone, payload }: { zone: ReportZone; payload: ReportPayloa
         <>
           <h2 className="section-title">Score trend — last {history.length} audits</h2>
           <TrendBars
-            points={history.map((point) => ({ label: formatDate(point.auditDate), pct: point.scorePercentage }))}
+            points={history.map((point) => ({ label: formatMonthYear(point.auditDate), pct: point.scorePercentage }))}
             bands={payload.bands}
             brand={payload.brand}
             width={640}
-            height={220}
+            height={240}
+            axes={{ x: 'Month', y: 'Score %' }}
           />
         </>
       ) : null}
@@ -315,6 +317,86 @@ function ScoreBoard({ zone, payload }: { zone: ReportZone; payload: ReportPayloa
         <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} size={220} />
       </div>
       <RatingPills bands={payload.bands} />
+      <SectionHistoryTable zone={zone} payload={payload} />
+    </>
+  );
+}
+
+/**
+ * The report's last page: the Zone's S-wise score in each of its last six audits, then the
+ * NCs those audits raised in each S and how many of them are closed. Absent on a payload
+ * frozen before the history carried S-wise scores.
+ */
+function SectionHistoryTable({ zone, payload }: { zone: ReportZone; payload: ReportPayload }) {
+  const history = zone.history ?? [];
+  if (history.length === 0 || history.some((point) => !point.sections || !point.ncs)) return null;
+  const ncsOf = (section: SSection) =>
+    history.reduce(
+      (sum, point) => {
+        const row = point.ncs!.find((count) => count.section === section);
+        return { raised: sum.raised + (row?.raised ?? 0), closed: sum.closed + (row?.closed ?? 0) };
+      },
+      { raised: 0, closed: 0 },
+    );
+  const total = S_SECTION_ORDER.map(ncsOf).reduce(
+    (sum, row) => ({ raised: sum.raised + row.raised, closed: sum.closed + row.closed }),
+    { raised: 0, closed: 0 },
+  );
+  const pctCell = (key: string, pct: number | null) => {
+    const band = bandOf(payload.bands, pct);
+    return (
+      <td key={key} className={`centre ${band ? `tint-${band.token}` : 'na'}`}>
+        {formatPercentage(pct)}
+      </td>
+    );
+  };
+  return (
+    <>
+      <div className="page-break" />
+      <h2 className="section-title">S-wise score — last {history.length} audits</h2>
+      <table>
+        <thead>
+          <tr>
+            <th rowSpan={2}>Zone</th>
+            <th rowSpan={2}>S</th>
+            {history.map((point) => (
+              <th key={point.auditZoneId} rowSpan={2} className="centre">
+                {formatDate(point.auditDate)}
+              </th>
+            ))}
+            <th colSpan={2} className="centre">
+              NCs
+            </th>
+          </tr>
+          <tr>
+            <th className="centre">Raised</th>
+            <th className="centre">Closed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {S_SECTION_ORDER.map((section, index) => {
+            const ncs = ncsOf(section);
+            return (
+              <tr key={section}>
+                {index === 0 ? <td rowSpan={S_SECTION_ORDER.length + 1}>{reportZoneLabel(zone)}</td> : null}
+                <td>{S_SECTION_SHORT_LABELS[section]}</td>
+                {history.map((point) =>
+                  pctCell(point.auditZoneId, point.sections!.find((entry) => entry.section === section)?.pct ?? null),
+                )}
+                <td className="centre">{ncs.raised}</td>
+                <td className="centre">{ncs.closed}</td>
+              </tr>
+            );
+          })}
+          <tr className="total-row">
+            <td>Overall</td>
+            {history.map((point) => pctCell(point.auditZoneId, point.scorePercentage))}
+            <td className="centre">{total.raised}</td>
+            <td className="centre">{total.closed}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="caption">NCs are counted over the audits shown; closed means the closure is verified.</div>
     </>
   );
 }

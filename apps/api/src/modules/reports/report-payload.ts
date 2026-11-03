@@ -75,6 +75,9 @@ export interface FreezeInput {
   ncCounts?: Rows<'readNcCounts'>;
   /** A summary's Unit-wide scored audit Zones of the last seven months, for the month chart. */
   unitScores?: Rows<'readUnitScores'>;
+  /** A Zone report's S-wise scores and per-S NC counts of each `history` audit Zone. */
+  historySections?: Rows<'readSectionScores'>;
+  historySectionNcs?: Rows<'readNcCountsBySection'>;
   /** `correctiveActionId → /ca/{token}`. Minted before the render, frozen here (R-14). */
   actionUrls: ReadonlyMap<string, string>;
 }
@@ -245,7 +248,18 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
       .map((action) => toOverallAction(action, input.actionUrls)),
     ...summaryHistoryOf(zone.auditZoneId, input),
     ...(scored && input.kind !== 'MULTI_ZONE_SUMMARY' && input.history.length > 0
-      ? { history: toScorePoints(input.history) }
+      ? {
+          history: toScorePoints(input.history).map((point) => ({
+            ...point,
+            sections: sectionsOf(point.auditZoneId, input.historySections ?? []),
+            ncs: S_SECTION_ORDER.map((section) => {
+              const row = input.historySectionNcs?.find(
+                (count) => count.auditZoneId === point.auditZoneId && count.section === section,
+              );
+              return { section, raised: row?.raised ?? 0, closed: row?.closed ?? 0 };
+            }),
+          })),
+        }
       : {}),
   };
 }

@@ -478,6 +478,11 @@ export class ReportsService {
       target.kind === 'MULTI_ZONE_SUMMARY' || !target.auditZoneIds[0]
         ? []
         : await this.repository.readZoneHistory(tx, target.auditZoneIds[0], ZONE_HISTORY_LENGTH);
+    const historyIds = history.map((point) => point.auditZoneId);
+    const [historySections, historySectionNcs] = await Promise.all([
+      this.repository.readSectionScores(tx, historyIds),
+      this.repository.readNcCountsBySection(tx, historyIds),
+    ]);
 
     // A summary's end pages: each Zone's last six scores with their NCs, and the Unit's
     // score month by month. Frozen once, here, like the rest.
@@ -519,6 +524,8 @@ export class ReportsService {
       selfieObjectKey,
       auditeePhotoKeys,
       history,
+      historySections,
+      historySectionNcs,
       ...summary,
       actionUrls: tokens?.urls ?? new Map<string, string>(),
     });

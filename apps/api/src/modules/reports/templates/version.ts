@@ -42,7 +42,9 @@
 // by the Zone Leader?" after the overall remark.
 // 1.15.0 — the summary drops the NC summary and the score-card page; it ends with each
 // Zone's last six scores and NCs raised / closed, then the Unit's month-wise score.
-export const TEMPLATE_VERSION = '1.15.0';
+// 1.16.0 — the Zone score board drops its banner and reads month against score %; the Zone
+// report ends with each S's score in its last six audits and NCs raised / closed over them.
+export const TEMPLATE_VERSION = '1.16.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;
