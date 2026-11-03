@@ -414,6 +414,17 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     },
   },
   {
+    method: 'GET',
+    path: '/api/v1/zones/:id/previous-nonconformities',
+    description: 'zone:read — R-79: the last audit’s NCs, for whoever audits the Zone next',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+  },
+  {
     method: 'PATCH',
     path: '/api/v1/zones/:id',
     description: 'zone:update — a description edit never touches history (D6)',

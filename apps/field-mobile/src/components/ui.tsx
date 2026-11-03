@@ -57,7 +57,6 @@ export const TAB_ICON = {
   units: 'factory',
   people: 'group',
   history: 'history',
-  profile: 'person',
   newKaizen: 'add-box',
   kaizens: 'lightbulb',
   analysis: 'insights',

@@ -15,8 +15,8 @@ export interface ScopeColumns {
   ownerUserId?: PgColumn;
   /** The subject of a personal record, for `own_record`. */
   recordUserId?: PgColumn;
-  /** The Zone Leader a corrective action is assigned to, for `assigned_actions`. */
-  assignedUserId?: PgColumn;
+  /** The Zone a corrective action belongs to, for `assigned_actions` (R-78). */
+  zoneId?: PgColumn;
   /** The corrective action's own primary key, for `signed_token`'s single-item audience. */
   correctiveActionId?: PgColumn;
 }

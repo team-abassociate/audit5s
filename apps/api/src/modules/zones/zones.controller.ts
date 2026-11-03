@@ -23,6 +23,7 @@ import {
   type CreateZoneRequest,
   type Page,
   type UpdateZoneRequest,
+  type PreviousNonconformities,
   type Zone,
   type ZoneListImportResult,
 } from '@audit5s/contracts';
@@ -107,6 +108,17 @@ export class ZonesController {
   @Get('zones/:id')
   get(@CurrentScope() scope: ScopeContext, @Param('id', ParseUUIDPipe) id: string): Promise<Zone> {
     return this.zones.get(scope, id);
+  }
+
+  /** R-79: the Zone's last finished audit's NCs and their photos, for its next auditor. */
+  @RequirePermission('zone', 'read')
+  @Scope({ param: 'id', intent: 'read' })
+  @Get('zones/:id/previous-nonconformities')
+  previousNonconformities(
+    @CurrentScope() scope: ScopeContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PreviousNonconformities> {
+    return this.zones.previousNonconformities(scope, id);
   }
 
   /** Editing a description never touches history — that is the snapshot's job (D6). */

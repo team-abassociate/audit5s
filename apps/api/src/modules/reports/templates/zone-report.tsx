@@ -161,6 +161,14 @@ export function ZoneReport({
         </>
       ) : null}
 
+      {/* R-79: the closing question, answered in words. Absent before it, so nothing prints. */}
+      {zone.previousNcsAnswer ? (
+        <>
+          <h2 className="section-title">Are the earlier NCs closed by the Zone Leader?</h2>
+          <div className="zone-remark">{zone.previousNcsAnswer}</div>
+        </>
+      ) : null}
+
       {/* Absent on a payload frozen before R-38, which renders as it was issued. */}
       {(zone.overallActions ?? []).length > 0 ? (
         <>

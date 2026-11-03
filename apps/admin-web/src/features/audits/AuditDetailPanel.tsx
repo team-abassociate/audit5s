@@ -192,6 +192,13 @@ export function AuditDetailPanel({
                   </p>
                 )}
 
+                {zone.previousNcsAnswer && (
+                  <p className="text-sm text-ink-2">
+                    <span className="font-semibold">Are the earlier NCs closed by the Zone Leader? </span>
+                    {zone.previousNcsAnswer}
+                  </p>
+                )}
+
                 {/* R-38: each of these becomes a corrective action when the audit completes. */}
                 {(zone.overallActionSuggestions ?? []).length > 0 && (
                   <div className="text-sm text-ink-2">

@@ -435,6 +435,12 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
     version: 15,
     statements: [`CREATE TABLE IF NOT EXISTS audit_zone_auditee (audit_zone_id TEXT PRIMARY KEY, auditee_name TEXT)`],
   },
+  {
+    // R-79: the answer to "Are the earlier NCs closed by the Zone Leader?", beside the row
+    // for v15's reason.
+    version: 16,
+    statements: [`CREATE TABLE IF NOT EXISTS audit_zone_previous_ncs (audit_zone_id TEXT PRIMARY KEY, answer TEXT)`],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

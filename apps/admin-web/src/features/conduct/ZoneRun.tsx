@@ -117,6 +117,7 @@ function Questionnaire({ audit, zone, evidence, editable, client }: ZoneProps) {
   const [section, setSection] = useState<SSection>(S_SECTION_ORDER[0]!);
   const [showMissing, setShowMissing] = useState(false);
   const [remark, setRemark] = useState(zone.zoneRemark ?? '');
+  const [previousNcs, setPreviousNcs] = useState(zone.previousNcsAnswer ?? '');
   const [suggestions, setSuggestions] = useState<string[]>(zone.overallActionSuggestions ?? []);
   const [cameraFor, setCameraFor] = useState<Question | null>(null);
   const [viewing, setViewing] = useState<Evidence | null>(null);
@@ -167,7 +168,14 @@ function Questionnaire({ audit, zone, evidence, editable, client }: ZoneProps) {
       const kept = suggestions.map((s) => s.trim()).filter(Boolean);
       await client!.put(
         `/audits/${audit.id}/zones/${zone.id}`,
-        { zoneId: zone.zoneId, sequenceNo: zone.sequenceNo, zoneRemark: remark.trim() || null, overallActionSuggestions: kept, clientUpdatedAt: new Date().toISOString() },
+        {
+          zoneId: zone.zoneId,
+          sequenceNo: zone.sequenceNo,
+          zoneRemark: remark.trim() || null,
+          previousNcsAnswer: previousNcs.trim() || null,
+          overallActionSuggestions: kept,
+          clientUpdatedAt: new Date().toISOString(),
+        },
         uuidv7(),
       );
       await client!.post(`/audits/${audit.id}/zones/${zone.id}/complete`, { zoneRemark: remark.trim() || null, completedAt: new Date().toISOString() }, uuidv7());
@@ -333,6 +341,10 @@ function Questionnaire({ audit, zone, evidence, editable, client }: ZoneProps) {
         <Card>
           <CardHeader title="Overall" />
           <div className="space-y-4 p-4">
+            {/* R-79: asked after the fifty, answered in words, printed in the Zone report. */}
+            <Field label="Are the earlier NCs closed by the Zone Leader?" hint="Optional. What was closed, and what is still open.">
+              <textarea className="gb-input" rows={3} maxLength={4000} value={previousNcs} onChange={(event) => setPreviousNcs(event.target.value)} />
+            </Field>
             <Field label="Overall remark">
               <textarea className="gb-input" rows={3} maxLength={4000} value={remark} onChange={(event) => setRemark(event.target.value)} />
             </Field>

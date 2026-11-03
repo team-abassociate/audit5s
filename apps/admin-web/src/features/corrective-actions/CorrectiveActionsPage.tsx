@@ -535,7 +535,7 @@ function ActionPanel({ actionId, onClose }: { actionId: string | null; onClose: 
 }
 
 function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; leader: string | null }) {
-  const { can, user } = useSession();
+  const { can, user, scope } = useSession();
   const queryClient = useQueryClient();
   const [note, setNote] = useState('');
 
@@ -617,7 +617,10 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
         <CopyLink actionId={action.id} listed={can('report_access_token', 'mint')} />
       )}
 
-      {can('corrective_action', 'submit') && awaitsResponse(action.status) && <AnswerForm key={action.id} action={action} onDone={refresh} />}
+      {/* R-78: a Consultant reads their audit's NCs but closes only a leaderless Zone's. */}
+      {can('corrective_action', 'submit') &&
+        awaitsResponse(action.status) &&
+        !(scope?.role === 'CONSULTANT' && action.zoneLeaderUserId) && <AnswerForm key={action.id} action={action} onDone={refresh} />}
 
       <div className="space-y-3">
         <p className="gb-label">Answers ({action.submissions.length})</p>
