@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
-import { PASSWORD_MIN_LENGTH } from '@audit5s/contracts';
 import { PASSWORD_REJECTION_MESSAGES, checkPassword } from '@audit5s/domain';
 import { Button, ErrorBanner, Field, GateCard, Heading, Muted, Screen } from '../components/ui';
 import { ApiError } from '../lib/api';
@@ -80,8 +79,7 @@ export default function ResetPasswordScreen() {
           <View style={styles.intro}>
             <Heading>Choose a password</Heading>
             <Muted>
-              Your phone number was a temporary credential only. Pick a password of at least{' '}
-              {PASSWORD_MIN_LENGTH} characters that is not your name or phone number.
+              Your phone number was a temporary credential only. Pick any password you like.
             </Muted>
           </View>
 
