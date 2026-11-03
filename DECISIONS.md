@@ -2917,3 +2917,5 @@ summary only; the official reports stay the Super Admin's (N5, R-39(a)).
 - **Where in the app:** *Download score card* on the score summary, the audit's page, each
   finished scored audit in History, and each scored audit under *Audits by date* on the
   Unit tab. It needs a connection.
+- **On the web too** (R-51, owner 2026-11-03): *Download score card* on a finished scored
+  audit's panel, and under each scored audit in a Unit's *Audits by date*.
