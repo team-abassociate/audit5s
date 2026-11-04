@@ -156,7 +156,7 @@ export function SummaryReport({
         <>
           <div className="page-break" />
           <Header title="LEAN 5S — MONTH-WISE UNIT SCORE" subtitle={payload.unit.name} />
-          <h2 className="section-title">Unit score, last six months</h2>
+          <h2 className="section-title">Unit score — month-wise</h2>
           <TrendBars
             points={extras.monthly.map((entry) => ({ label: monthLabel(entry.month), pct: entry.scorePercentage }))}
             bands={payload.bands}

@@ -476,11 +476,15 @@ describe('the Zone trend and the display-board pages', () => {
   });
 
   it('ends every scored Zone report with the score board page', () => {
-    expect(initial).toContain('S-wise histogram');
-    expect(after).toContain('S-wise histogram');
-    // The board page carries no banner, and its trend reads by month.
+    expect(initial).toContain('Score trend — month-wise');
+    expect(after).toContain('Score trend — month-wise');
+    // The board page carries no banner, and only the month-wise chart: an empty month is N/A.
     expect(initial).not.toContain('ZONE SCORE BOARD');
-    expect(initial).toContain('>Jan 2026</text>');
+    expect(initial).not.toContain('S-wise histogram');
+    const board = initial.slice(initial.indexOf('Score trend — month-wise'));
+    expect(board).not.toContain('5S performance web');
+    expect(board.indexOf('>Oct 2026</text>')).toBeLessThan(board.indexOf('>Nov 2026</text>'));
+    expect(board).toContain('N/A');
   });
 
   it('ends with the S-wise table of the last audits and their NCs, raised and closed', () => {
@@ -509,17 +513,17 @@ describe('the Zone trend and the display-board pages', () => {
   });
 
   it('prints no question number on the Before & After page', () => {
-    const board = after.slice(after.indexOf('LEAN 5S — BEFORE &amp; AFTER'), after.indexOf('S-wise histogram'));
+    const board = after.slice(after.indexOf('LEAN 5S — BEFORE &amp; AFTER'), after.indexOf('Score trend — month-wise'));
     // Text nodes only: the embedded logo's base64 contains "Q" and digits.
     expect(board).not.toMatch(/>[^<]*\bQ\d/);
   });
 
   it('still renders a Zone frozen before history existed', () => {
     const payload = fixtureZonePayload();
-    const { history: _history, ...zone } = payload.zones[0]!;
+    const { history: _history, monthly: _monthly, ...zone } = payload.zones[0]!;
     const html = renderReportHtml({ ...payload, zones: [zone] }, resolve);
     expect(html).not.toContain('Score trend');
-    expect(html).toContain('S-wise histogram');
+    expect(html).toContain('Checklist — responses and marks');
   });
 });
 
@@ -640,8 +644,8 @@ describe('§4.3 — the multi-Zone summary', () => {
     const last = html.slice(html.indexOf('LEAN 5S — MONTH-WISE UNIT SCORE'));
     expect(html.indexOf('LEAN 5S — LAST SIX AUDITS')).toBeLessThan(html.indexOf('LEAN 5S — MONTH-WISE UNIT SCORE'));
     expect(last).toContain('<svg');
-    expect(last).toContain('Apr 2026');
-    expect(last).toContain('Sept 2026');
+    expect(last).toContain('Oct 2026');
+    expect(last).toContain('Nov 2026');
   });
 
   it('shows only the flagged photographs, not every photo in the Zone', () => {

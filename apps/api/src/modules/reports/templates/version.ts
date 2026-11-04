@@ -44,7 +44,9 @@
 // Zone's last six scores and NCs raised / closed, then the Unit's month-wise score.
 // 1.16.0 — the Zone score board drops its banner and reads month against score %; the Zone
 // report ends with each S's score in its last six audits and NCs raised / closed over them.
-export const TEMPLATE_VERSION = '1.16.0';
+// 1.17.0 — the Zone score board drops the S-wise histogram and the 5S web; its chart is the
+// Zone's score month by month from October 2026. The summary's month chart starts there too.
+export const TEMPLATE_VERSION = '1.17.0';
 
 /** §10.5: the renderer selects by the payload's schema version, not by today's code. */
 export const SUPPORTED_PAYLOAD_SCHEMA_VERSIONS = [1] as const;

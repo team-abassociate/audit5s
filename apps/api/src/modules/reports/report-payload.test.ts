@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { auditTrend, freezePayload, freezeTrendPayload, monthlyOf, unitTrend, type FreezeInput } from './report-payload';
+import { AUDITS_BEGAN_AT, auditTrend, freezePayload, freezeTrendPayload, monthlyOf, unitTrend, zoneMonthlyOf, type FreezeInput } from './report-payload';
 
 /**
  * Field report, 2026-09-30: an after-evidence report printed each finding's own photograph
@@ -260,19 +260,51 @@ describe('a unit-wise trend from audits (R-75)', () => {
 });
 
 describe('the summary’s month-wise Unit score', () => {
-  it('is the six IST months ending with the generation month, Σ/Σ, null when empty', () => {
+  it('runs from October 2026 to the generation month, Σ/Σ, null when empty', () => {
     const rows = [
-      // 31 Jan 20:00 UTC is 1 Feb in India: February's.
-      { auditDate: new Date('2026-01-31T20:00:00Z'), rawScore: 30, maxScore: 40 },
-      { auditDate: new Date('2026-02-10T06:00:00Z'), rawScore: 10, maxScore: 60 },
-      { auditDate: new Date('2026-07-01T06:00:00Z'), rawScore: 9, maxScore: 10 },
-      // Older than the window: dropped.
-      { auditDate: new Date('2026-01-15T06:00:00Z'), rawScore: 1, maxScore: 100 },
+      // 30 Sept 20:00 UTC is 1 Oct in India: October's.
+      { auditDate: new Date('2026-09-30T20:00:00Z'), rawScore: 30, maxScore: 40 },
+      { auditDate: new Date('2026-10-10T06:00:00Z'), rawScore: 10, maxScore: 60 },
+      { auditDate: new Date('2026-12-01T06:00:00Z'), rawScore: 9, maxScore: 10 },
+      // Before audits began: dropped.
+      { auditDate: new Date('2026-09-15T06:00:00Z'), rawScore: 1, maxScore: 100 },
     ];
-    const months = monthlyOf(rows, new Date('2026-07-15T06:00:00Z'));
-    expect(months.map((m) => m.month)).toEqual(['2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07']);
+    const months = monthlyOf(rows, new Date('2026-12-15T06:00:00Z'));
+    expect(months.map((m) => m.month)).toEqual(['2026-10', '2026-11', '2026-12']);
     expect(months[0]).toMatchObject({ rawScore: 40, maxScore: 100, scorePercentage: 40 });
     expect(months[1]!.scorePercentage).toBeNull();
-    expect(months[5]!.scorePercentage).toBe(90);
+    expect(months[2]!.scorePercentage).toBe(90);
+    // The query's lower bound is the first instant of that October, in India.
+    expect(AUDITS_BEGAN_AT.toISOString()).toBe('2026-09-30T18:30:00.000Z');
+  });
+});
+
+describe('a Zone’s month-wise score', () => {
+  const row = (auditDate: string, rawScore: number, maxScore: number) => ({
+    auditZoneId: auditDate,
+    auditDate: new Date(auditDate),
+    rawScore,
+    maxScore,
+    scorePercentage: String((rawScore / maxScore) * 100),
+  });
+
+  it('runs from October 2026 to this audit’s month, Σ/Σ, null when empty', () => {
+    const months = zoneMonthlyOf([
+      // Newest first. 31 Dec 20:00 UTC is 1 Jan in India: January's.
+      row('2026-12-31T20:00:00Z', 9, 10),
+      row('2026-10-20T06:00:00Z', 10, 60),
+      row('2026-10-05T06:00:00Z', 30, 40),
+      // Before audits began: not charted.
+      row('2026-09-15T06:00:00Z', 1, 100),
+    ]);
+    expect(months.map((m) => m.month)).toEqual(['2026-10', '2026-11', '2026-12', '2027-01']);
+    expect(months[0]).toMatchObject({ rawScore: 40, maxScore: 100, scorePercentage: 40 });
+    expect(months[1]!.scorePercentage).toBeNull();
+    expect(months[3]!.scorePercentage).toBe(90);
+  });
+
+  it('charts nothing for an audit before October 2026', () => {
+    expect(zoneMonthlyOf([row('2026-09-15T06:00:00Z', 1, 100)])).toEqual([]);
+    expect(zoneMonthlyOf([])).toEqual([]);
   });
 });

@@ -69,11 +69,13 @@ export interface FreezeInput {
   auditeePhotoKeys: ReadonlyMap<string, string>;
   /** A Zone report's trend, newest first; empty on a summary. */
   history: Rows<'readZoneHistory'>;
+  /** A Zone report's every audit of the Zone up to this one, newest first, for its month chart. */
+  monthHistory?: Rows<'readZoneHistory'>;
   /** A summary's `auditZoneId →` that Zone's last six scored audits, newest first. */
   summaryHistory?: ReadonlyMap<string, Rows<'readZoneHistory'>>;
   /** A summary's NC counts per audit Zone, over every audit in `summaryHistory`. */
   ncCounts?: Rows<'readNcCounts'>;
-  /** A summary's Unit-wide scored audit Zones of the last seven months, for the month chart. */
+  /** A summary's Unit-wide scored audit Zones since audits began, for the month chart. */
   unitScores?: Rows<'readUnitScores'>;
   /** A Zone report's S-wise scores and per-S NC counts of each `history` audit Zone. */
   historySections?: Rows<'readSectionScores'>;
@@ -259,6 +261,7 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
               return { section, raised: row?.raised ?? 0, closed: row?.closed ?? 0 };
             }),
           })),
+          monthly: zoneMonthlyOf(input.monthHistory ?? input.history),
         }
       : {}),
   };
@@ -293,23 +296,38 @@ function summaryHistoryOf(auditZoneId: string, input: FreezeInput): Pick<ReportZ
   };
 }
 
-/**
- * The Unit's score in each of the six IST months ending with the generation month, oldest
- * first: Σachieved / Σmax over the month's audit Zones, null for a month with none. Next
- * month's report drops the oldest month and adds the new one.
- */
+/** 1 October 2026 in India: audits began then, and no month chart starts earlier (owner, 2026-11-04). */
+export const AUDITS_BEGAN_AT = new Date('2026-09-30T18:30:00.000Z');
+
+/** The Unit's score month by month, from October 2026 to the generation month. */
 export function monthlyOf(rows: FreezeInput['unitScores'] & {}, generatedAt: Date) {
-  const now = istDateKey(generatedAt)!;
-  const year = Number(now.slice(0, 4));
-  const month = Number(now.slice(5, 7)) - 1;
-  return Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(Date.UTC(year, month - 5 + index, 1));
-    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-    const inMonth = rows.filter((row) => istDateKey(row.auditDate)?.slice(0, 7) === key);
-    const rawScore = inMonth.reduce((sum, row) => sum + row.rawScore, 0);
-    const maxScore = inMonth.reduce((sum, row) => sum + row.maxScore, 0);
-    return { month: key, rawScore, maxScore, scorePercentage: percentageOf(rawScore, maxScore) };
-  });
+  return monthsSinceAuditsBegan(rows, istDateKey(generatedAt)?.slice(0, 7));
+}
+
+/** A Zone's score month by month, from October 2026 to the month of `rows[0]`, this audit. */
+export function zoneMonthlyOf(rows: FreezeInput['history']) {
+  return monthsSinceAuditsBegan(rows, istDateKey(rows[0]?.auditDate)?.slice(0, 7));
+}
+
+/** Oldest first: Σachieved / Σmax over each month's audit Zones, null for a month with none. */
+function monthsSinceAuditsBegan(rows: FreezeInput['unitScores'] & {}, last: string | undefined) {
+  const months: ReturnType<typeof monthScoreOf>[] = [];
+  if (!last) return months;
+  for (let date = new Date(Date.UTC(2026, 9, 1)); monthKeyOf(date) <= last; date.setUTCMonth(date.getUTCMonth() + 1)) {
+    months.push(monthScoreOf(rows, monthKeyOf(date)));
+  }
+  return months;
+}
+
+function monthKeyOf(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthScoreOf(rows: FreezeInput['unitScores'] & {}, month: string) {
+  const inMonth = rows.filter((row) => istDateKey(row.auditDate)?.slice(0, 7) === month);
+  const rawScore = inMonth.reduce((sum, row) => sum + row.rawScore, 0);
+  const maxScore = inMonth.reduce((sum, row) => sum + row.maxScore, 0);
+  return { month, rawScore, maxScore, scorePercentage: percentageOf(rawScore, maxScore) };
 }
 
 /**

@@ -174,6 +174,15 @@ export const reportScorePointSchema = z.object({
 });
 export type ReportScorePoint = z.infer<typeof reportScorePointSchema>;
 
+/** A score over one month's audits; a month with none has a null percentage. */
+export const reportMonthScoreSchema = z.object({
+  /** `YYYY-MM`, in India Standard Time. */
+  month: z.string(),
+  rawScore: z.number(),
+  maxScore: z.number(),
+  scorePercentage: z.number().nullable(),
+});
+
 /** One Zone of the report. A zone report has exactly one; a summary has many. */
 export const reportZoneSchema = z.object({
   auditZoneId: uuidSchema,
@@ -223,6 +232,12 @@ export const reportZoneSchema = z.object({
   historyNcs: z
     .object({ raised: z.number().int().nonnegative(), closed: z.number().int().nonnegative() })
     .optional(),
+  /**
+   * A Zone report's score board: the Zone's score each IST month from October 2026, when
+   * audits began, to this audit's month, Σachieved / Σmax over that month's audits. A month
+   * with no audit has a null percentage. Absent on a summary and on older payloads.
+   */
+  monthly: z.array(reportMonthScoreSchema).optional(),
 });
 export type ReportZone = z.infer<typeof reportZoneSchema>;
 
@@ -281,20 +296,11 @@ export const reportSummaryExtrasSchema = z.object({
   }),
   /**
    * The Unit's score month by month, Σachieved / Σmax over every scored, finished audit
-   * Zone of the Unit: the six IST months ending with the month the report was generated,
-   * oldest first. A month with no audit has a null percentage. Absent on older payloads.
+   * Zone of the Unit: each IST month from October 2026, when audits began, to the month the
+   * report was generated, oldest first. A month with no audit has a null percentage. Older
+   * payloads carry six months from an earlier month, or nothing.
    */
-  monthly: z
-    .array(
-      z.object({
-        /** `YYYY-MM`, in India Standard Time. */
-        month: z.string(),
-        rawScore: z.number(),
-        maxScore: z.number(),
-        scorePercentage: z.number().nullable(),
-      }),
-    )
-    .optional(),
+  monthly: z.array(reportMonthScoreSchema).optional(),
 });
 export type ReportSummaryExtras = z.infer<typeof reportSummaryExtrasSchema>;
 
