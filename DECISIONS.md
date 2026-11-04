@@ -2852,7 +2852,10 @@ board at each Zone and for management reviewing months of audits at once.
   large, and the 5S web — for the Zone Leader to print and pin up. The after-evidence report
   also gets a *Before & After* page: each closed finding with an after photo, side by side,
   dated, with no question number, link or remark. A finding without an after photo, or with
-  a redacted photo on either side, is left off it.
+  a redacted photo on either side, is left off it. *Owner, 2026-11-04:* the score board drops
+  the 5S web and the S-wise histogram; its one chart is the Zone's score month by month, from
+  October 2026 (when audits began) to the audit's month, frozen as `zones[].monthly`. The Summary report's Unit chart starts at
+  October 2026 as well, in place of its rolling six months.
 - **A summary of summaries** (`TREND_SUMMARY`, migrations 0061–0062). Zone-wise: any number of
   finished, scored audits of one Zone. Unit-wise: any number of finished audits of the Unit,
   Cross and External alike, one point per audit over its finished Zones, each row naming the

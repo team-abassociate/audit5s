@@ -215,6 +215,11 @@ const ZONE: ReportZone = {
     { auditZoneId: 'az-0b', auditDate: '2026-02-07T06:00:00.000Z', rawScore: 60, maxScore: 80, scorePercentage: 75 },
     { auditZoneId: 'az-1', auditDate: '2026-03-04T06:00:00.000Z', rawScore: 66, maxScore: 80, scorePercentage: 82.5 },
   ],
+  monthly: [
+    { month: '2026-10', rawScore: 44, maxScore: 80, scorePercentage: 55 },
+    { month: '2026-11', rawScore: 0, maxScore: 0, scorePercentage: null },
+    { month: '2026-12', rawScore: 66, maxScore: 80, scorePercentage: 82.5 },
+  ],
 };
 
 /** The initial Zone report (§4.1). Its nonconformities have no outcome rendered. */
@@ -346,12 +351,8 @@ export function fixtureSummaryPayload(): ReportPayload {
         ],
       },
       monthly: [
-        { month: '2026-04', rawScore: 0, maxScore: 0, scorePercentage: null },
-        { month: '2026-05', rawScore: 60, maxScore: 100, scorePercentage: 60 },
-        { month: '2026-06', rawScore: 70, maxScore: 100, scorePercentage: 70 },
-        { month: '2026-07', rawScore: 0, maxScore: 0, scorePercentage: null },
-        { month: '2026-08', rawScore: 80, maxScore: 100, scorePercentage: 80 },
-        { month: '2026-09', rawScore: 106, maxScore: 160, scorePercentage: 66.25 },
+        { month: '2026-10', rawScore: 80, maxScore: 100, scorePercentage: 80 },
+        { month: '2026-11', rawScore: 106, maxScore: 160, scorePercentage: 66.25 },
       ],
     },
   });

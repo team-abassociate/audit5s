@@ -20,7 +20,7 @@ import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
 import { ObjectStorage } from '../../infrastructure/storage/object-storage';
 import { reportFileName } from './report-file-name';
 import { reportSubject } from './report-subject';
-import { freezePayload, freezeTrendPayload, auditTrend, unitTrend, zoneTrend } from './report-payload';
+import { AUDITS_BEGAN_AT, freezePayload, freezeTrendPayload, auditTrend, unitTrend, zoneTrend } from './report-payload';
 import { ReportTokensService, type MintedTokens } from './report-tokens.service';
 import { ReportsRepository, type ReportSnapshotRow } from './reports.repository';
 import { TEMPLATE_VERSION } from './templates/version';
@@ -55,6 +55,8 @@ const RETRYABLE = ['QUEUED', 'RENDERING', 'FAILED'] as const;
 
 /** How many audits a Zone report's trend chart shows, this one included. */
 const ZONE_HISTORY_LENGTH = 6;
+// ponytail: a bound, not a window. Past 500 audits of one Zone the oldest month would thin out.
+const ZONE_MONTH_CHART_AUDITS = 500;
 
 /** What a Super Admin can still cancel: anything not yet rendered. */
 const IN_FLIGHT = ['QUEUED', 'RENDERING'] as const;
@@ -473,11 +475,13 @@ export class ReportsService {
         ? null
         : await this.repository.readSelfieKey(tx, target.auditId);
 
-    // A Zone report's last six scores — this audit and five before it. A summary has none.
-    const history =
+    // A Zone report's audits for its month chart, and of them its last six scores — this
+    // audit and five before it. A summary has none.
+    const monthHistory =
       target.kind === 'MULTI_ZONE_SUMMARY' || !target.auditZoneIds[0]
         ? []
-        : await this.repository.readZoneHistory(tx, target.auditZoneIds[0], ZONE_HISTORY_LENGTH);
+        : await this.repository.readZoneHistory(tx, target.auditZoneIds[0], ZONE_MONTH_CHART_AUDITS);
+    const history = monthHistory.slice(0, ZONE_HISTORY_LENGTH);
     const historyIds = history.map((point) => point.auditZoneId);
     const [historySections, historySectionNcs] = await Promise.all([
       this.repository.readSectionScores(tx, historyIds),
@@ -488,7 +492,7 @@ export class ReportsService {
     // score month by month. Frozen once, here, like the rest.
     const generatedAt = new Date();
     const summary =
-      target.kind === 'MULTI_ZONE_SUMMARY' ? await this.readSummaryHistory(tx, target, generatedAt) : null;
+      target.kind === 'MULTI_ZONE_SUMMARY' ? await this.readSummaryHistory(tx, target) : null;
 
     // A verified finding needs no button: the right half of its row already carries the
     // outcome. Minting a link for it would put a live door on a closed item.
@@ -524,6 +528,7 @@ export class ReportsService {
       selfieObjectKey,
       auditeePhotoKeys,
       history,
+      monthHistory,
       historySections,
       historySectionNcs,
       ...summary,
@@ -536,17 +541,14 @@ export class ReportsService {
   private async readSummaryHistory(
     tx: Transaction,
     target: { unitId: string; auditZoneIds: string[] },
-    generatedAt: Date,
   ) {
-    // Seven months back covers the six IST months the chart prints, whatever today's date.
-    const since = new Date(generatedAt.getTime() - 7 * 31 * 24 * 3_600_000);
     const [histories, unitScores] = await Promise.all([
       Promise.all(
         target.auditZoneIds.map(
           async (id) => [id, await this.repository.readZoneHistory(tx, id, ZONE_HISTORY_LENGTH)] as const,
         ),
       ),
-      this.repository.readUnitScores(tx, target.unitId, since),
+      this.repository.readUnitScores(tx, target.unitId, AUDITS_BEGAN_AT),
     ]);
     const ids = new Set([...target.auditZoneIds, ...histories.flatMap(([, rows]) => rows.map((row) => row.auditZoneId))]);
     const ncCounts = await this.repository.readNcCounts(tx, [...ids]);

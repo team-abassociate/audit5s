@@ -278,45 +278,34 @@ function BeforeAfterBoard({ zone, resolve }: { zone: ReportZone; resolve: ImageR
   );
 }
 
-/** The display-board page of the Zone's score: its trend, large, and this audit's web. */
+/** The display-board page of the Zone's score: its month-wise trend, large, and nothing else. */
 function ScoreBoard({ zone, payload }: { zone: ReportZone; payload: ReportPayload }) {
   if (!zone.scored) return null;
-  const history = zone.history ?? [];
+  const months = zone.monthly ?? [];
   return (
     <>
-      {/* No banner: the board page is pinned up at the Zone, and is all chart. */}
-      <div className="page-break" />
-      <div className="meta-grid">
-        <MetaCell label="Zone" value={reportZoneLabel(zone)} />
-        <MetaCell label="Audit date" value={formatDate(zone.auditDate)} />
-        <MetaCell label="Score" value={`${formatPercentage(zone.totals.scorePercentage)} · ${ratingLabel(payload, zone.totals.scorePercentage)}`} />
-      </div>
-      {history.length > 0 ? (
+      {months.length > 0 ? (
         <>
-          <h2 className="section-title">Score trend — last {history.length} audits</h2>
+          {/* No banner: the board page is pinned up at the Zone, and is all chart. */}
+          <div className="page-break" />
+          <div className="meta-grid">
+            <MetaCell label="Zone" value={reportZoneLabel(zone)} />
+            <MetaCell label="Audit date" value={formatDate(zone.auditDate)} />
+            <MetaCell label="Score" value={`${formatPercentage(zone.totals.scorePercentage)} · ${ratingLabel(payload, zone.totals.scorePercentage)}`} />
+          </div>
+          <h2 className="section-title">Score trend — month-wise</h2>
           <TrendBars
-            points={history.map((point) => ({ label: formatMonthYear(point.auditDate), pct: point.scorePercentage }))}
+            // The middle of the month, so the IST formatter cannot slip into its neighbour.
+            points={months.map((entry) => ({ label: formatMonthYear(`${entry.month}-15T06:00:00Z`), pct: entry.scorePercentage }))}
             bands={payload.bands}
             brand={payload.brand}
-            width={640}
-            height={240}
+            width={680}
+            height={320}
             axes={{ x: 'Month', y: 'Score %' }}
           />
+          <RatingPills bands={payload.bands} />
         </>
       ) : null}
-      <h2 className="section-title">S-wise histogram</h2>
-      <TrendBars
-        points={zone.sections.map((section) => ({ label: S_SECTION_SHORT_LABELS[section.section], pct: section.pct }))}
-        bands={payload.bands}
-        brand={payload.brand}
-        width={640}
-        height={150}
-      />
-      <h2 className="section-title">5S performance web</h2>
-      <div className="radar-box">
-        <RadarWeb sections={zone.sections} bands={payload.bands} brand={payload.brand} size={220} />
-      </div>
-      <RatingPills bands={payload.bands} />
       <SectionHistoryTable zone={zone} payload={payload} />
     </>
   );
