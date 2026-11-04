@@ -58,3 +58,8 @@
   header Cross-Origin-Resource-Policy "cross-origin"
   reverse_proxy object-storage:9000
 }
+
+# Temporary Kaizen staging (R-84). While it is stopped, these names answer 502 and nothing else.
+staging.leanstack.tech, objects-staging.leanstack.tech {
+  reverse_proxy staging-web:80
+}

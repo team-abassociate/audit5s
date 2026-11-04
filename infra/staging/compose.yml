@@ -1,0 +1,144 @@
+# Temporary staging for Kaizen testing, on the production VPS (DECISIONS.md R-84).
+# Own database, photo storage and secrets. Production wins any contention: staging has hard
+# memory caps and no swap, gets a quarter of the CPU weight, and is what the kernel kills first.
+name: audit5s-staging
+
+x-limits: &limits
+  restart: unless-stopped
+  cpu_shares: 256
+  oom_score_adj: 800
+  logging:
+    driver: json-file
+    options: { max-size: 10m, max-file: '2' }
+
+x-api-env: &api-env
+  NODE_ENV: production
+  LOG_LEVEL: info
+  DATABASE_URL: postgres://audit5s_app:${APP_PASSWORD}@postgres:5432/audit5s
+  DATABASE_POOL_MAX: 5
+  PGBOSS_POOL_MAX: 2
+  JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64}
+  JWT_PUBLIC_KEY_B64: ${JWT_PUBLIC_KEY_B64}
+  JWT_ISSUER: https://staging.leanstack.tech
+  JWT_AUDIENCE: audit5s
+  WEB_APP_URL: https://staging.leanstack.tech
+  S3_ENDPOINT: https://objects-staging.leanstack.tech
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+  S3_BUCKET: audit5s-staging
+  PGBOSS_SCHEMA: pgboss
+  KAIZEN_ENABLED: 'true'
+
+services:
+  postgres:
+    <<: *limits
+    image: postgres:18-alpine
+    mem_limit: 384m
+    memswap_limit: 384m
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: audit5s
+      PGDATA: /var/lib/postgresql/data
+    command: ['postgres', '-c', 'shared_buffers=96MB', '-c', 'max_connections=30']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d audit5s']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  object-storage:
+    <<: *limits
+    image: quay.io/minio/aistor/minio:RELEASE.2026-03-26T21-24-40Z
+    mem_limit: 320m
+    memswap_limit: 320m
+    command: ['minio', 'server', '/data', '--console-address', ':9001', '--license', '/minio.license']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_API_CORS_ALLOW_ORIGIN: https://staging.leanstack.tech
+    volumes:
+      - objectdata:/data
+      - /opt/audit5s/infra/.local/minio.license:/minio.license:ro
+    ports:
+      - '127.0.0.1:9100:9000'
+    networks:
+      default:
+        aliases: [staging-objects]
+
+  api:
+    <<: *limits
+    image: ${API_IMAGE}
+    mem_limit: 384m
+    memswap_limit: 384m
+    stop_grace_period: 30s
+    command: ['node', 'dist/main.js']
+    environment:
+      <<: *api-env
+      API_PORT: 3000
+      API_HOST: 0.0.0.0
+      CORS_ORIGINS: https://staging.leanstack.tech
+    depends_on:
+      postgres: { condition: service_healthy }
+      object-storage: { condition: service_started }
+    networks:
+      default:
+        aliases: [staging-api]
+
+  worker-general:
+    <<: *limits
+    image: ${API_IMAGE}
+    mem_limit: 256m
+    memswap_limit: 256m
+    stop_grace_period: 30s
+    command: ['node', 'dist/worker.general.js']
+    environment:
+      <<: *api-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  worker-report:
+    <<: *limits
+    image: ${API_IMAGE}
+    mem_limit: 768m
+    memswap_limit: 768m
+    shm_size: 128m
+    stop_grace_period: 30s
+    command: ['node', 'dist/worker.report.js']
+    environment:
+      <<: *api-env
+      REPORT_CONCURRENCY: 1
+      CHROMIUM_EXECUTABLE_PATH: /usr/bin/chromium-browser
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # Production's Caddy holds ports 80 and 443 and forwards the staging names here, which is why
+  # this one container also joins production's network. Only this one: the API and workers can
+  # never reach production's database. Its upstreams use the staging- aliases because `api`
+  # would be ambiguous on two networks and could reach production.
+  web:
+    <<: *limits
+    image: ${WEB_IMAGE}
+    mem_limit: 64m
+    memswap_limit: 64m
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      default:
+      production:
+        aliases: [staging-web]
+    depends_on:
+      - api
+      - object-storage
+
+networks:
+  production:
+    external: true
+    name: audit5s_default
+
+volumes:
+  pgdata:
+  objectdata:

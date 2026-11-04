@@ -37,7 +37,7 @@ for attempt in $(seq 1 30); do
     keep="$(printf '%s\n' "$previous_images" \
       "ghcr.io/team-abassociate/audit5s-api:$sha" "ghcr.io/team-abassociate/audit5s-web:$sha")"
     stale="$(docker images --format '{{.Repository}}:{{.Tag}}' |
-      grep -E '^ghcr\.io/team-abassociate/audit5s-(api|web):' | grep -vxF "$keep" || true)"
+      grep -E '^ghcr\.io/team-abassociate/audit5s-(api|web):' | grep -v ':staging-' | grep -vxF "$keep" || true)"
     if [[ -n "$stale" ]]; then
       if xargs docker rmi <<<"$stale" >/dev/null; then
         echo "Removed $(wc -l <<<"$stale") old release image(s)"

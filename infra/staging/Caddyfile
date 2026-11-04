@@ -1,0 +1,45 @@
+# Staging's web server (R-84). Production's Caddy terminates HTTPS and forwards here.
+{
+  auto_https off
+  admin off
+  servers {
+    trusted_proxies static private_ranges
+  }
+}
+
+http://staging.leanstack.tech {
+  encode zstd gzip
+  header {
+    X-Robots-Tag "noindex"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://objects-staging.leanstack.tech; connect-src 'self' https://objects-staging.leanstack.tech; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+  }
+
+  handle /api/* {
+    reverse_proxy staging-api:3000
+  }
+
+  # The field app in a browser: the same isolation headers production's /field needs.
+  handle /field* {
+    header {
+      Cross-Origin-Opener-Policy "same-origin"
+      Cross-Origin-Embedder-Policy "require-corp"
+      Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://objects-staging.leanstack.tech; connect-src 'self' data: blob: https://objects-staging.leanstack.tech; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+    }
+    root * /srv
+    try_files {path} /field/index.html
+    file_server
+  }
+
+  handle {
+    root * /srv
+    try_files {path} /index.html
+    file_server
+  }
+}
+
+http://objects-staging.leanstack.tech {
+  header Cross-Origin-Resource-Policy "cross-origin"
+  reverse_proxy staging-objects:9000
+}

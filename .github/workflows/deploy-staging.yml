@@ -1,0 +1,58 @@
+name: Staging deploy
+
+# Temporary (R-84). Staging never publishes an OTA update, so no phone on production changes.
+# Automatic for the testing branch; any other branch can be sent by hand:
+#   gh workflow run deploy-staging.yml --ref <branch>
+on:
+  push:
+    branches: [kaizen-staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Holds the VPS secrets. Nothing here reaches production's containers.
+    environment: production
+    concurrency:
+      group: staging
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/team-abassociate/audit5s-api:staging-${{ github.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/team-abassociate/audit5s-web:staging-${{ github.sha }}
+      - name: Deploy to staging
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 0700 -d ~/.ssh
+          printf '%s' "$VPS_SSH_KEY" | base64 --decode > ~/.ssh/id_ed25519
+          chmod 0600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          tar -czf - -C infra/staging compose.yml Caddyfile deploy.sh -C ../sql 00-roles.sql |
+            ssh -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+              "mkdir -p /opt/audit5s-staging && tar -xzf - -C /opt/audit5s-staging && bash /opt/audit5s-staging/deploy.sh $GITHUB_SHA"
