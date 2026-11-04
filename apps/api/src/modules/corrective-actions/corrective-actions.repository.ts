@@ -208,6 +208,7 @@ export class CorrectiveActionsRepository extends BaseRepository {
             inArray(correctiveActions.status, ['OPEN', 'REOPENED']),
             isNull(correctiveActions.overdueNotifiedAt),
             sql`${correctiveActions.dueAt} IS NOT NULL AND ${correctiveActions.dueAt} < ${now}`,
+            sql`NOT app_audit_set_aside(${correctiveActions.auditId})`,
             this.scoped(scope, scopeColumns),
           ),
         )
@@ -321,7 +322,8 @@ export class CorrectiveActionsRepository extends BaseRepository {
     return [
       query.unitId ? eq(correctiveActions.unitId, query.unitId) : undefined,
       query.zoneId ? eq(correctiveActions.zoneId, query.zoneId) : undefined,
-      query.auditId ? eq(correctiveActions.auditId, query.auditId) : undefined,
+      // R-83: set-aside NCs leave the lists, and can still be read from their own audit.
+      query.auditId ? eq(correctiveActions.auditId, query.auditId) : sql`NOT app_audit_set_aside(${correctiveActions.auditId})`,
       query.assignedTo ? eq(correctiveActions.assignedZoneLeaderUserId, query.assignedTo) : undefined,
       query.status ? eq(correctiveActions.status, query.status) : undefined,
       query.overdue ? overdueNow : undefined,
@@ -359,7 +361,9 @@ export class CorrectiveActionsRepository extends BaseRepository {
         .innerJoin(audits, eq(audits.id, auditZones.auditId))
         .where(
           and(
-            eq(auditZones.zoneId, zoneId),
+            // R-83: the audits taken under this Zone's name, not those left on its record.
+            sql`${audits.unitId} = (SELECT unit_id FROM zone WHERE id = ${zoneId})`,
+            sql`app_comparison_zone(${auditZones.id}) = ${zoneId}`,
             eq(auditZones.status, 'COMPLETED'),
             inArray(audits.status, [...COMPLETED_AUDIT_STATUSES]),
             this.scoped(scope, { unitId: audits.unitId }),
@@ -407,6 +411,7 @@ export class CorrectiveActionsRepository extends BaseRepository {
             scope,
             scopeColumns,
             notInArray(correctiveActions.status, ['VERIFIED', 'WITHDRAWN']),
+            sql`NOT app_audit_set_aside(${correctiveActions.auditId})`,
           ),
         )
         .orderBy(asc(correctiveActions.id));

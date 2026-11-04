@@ -85,6 +85,8 @@ export const units = pgTable(
     photoCapPerZone: integer('photo_cap_per_zone').notNull().default(30),
     /** When the Zone list was last imported (0054). NULL: a Consultant may add Zones. */
     zoneListImportedAt: timestamp('zone_list_imported_at', { withTimezone: true }),
+    /** R-83: audits started before this stay out of comparisons, their NCs out of the lists. */
+    auditsSetAsideBefore: timestamp('audits_set_aside_before', { withTimezone: true }),
     version: integer('version').notNull().default(1),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     ...timestamps,

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  HEADER_IDEMPOTENCY_KEY,
   unitScoreTrendsSchema,
   type OrganizationOverview,
   type UnitScoreTrend,
@@ -239,6 +240,110 @@ describe('Phase 8 analytics', () => {
     timings.sort((a, b) => a - b);
     expect(timings[Math.ceil(timings.length * 0.95) - 1]).toBeLessThan(500);
   });
+
+  /** R-83: an import moved the name "Press" to another record; its audits follow the name. */
+  it('compares a Zone by the name its audits were taken under', async () => {
+    const range = '?from=2026-01-01T00:00:00.000Z&to=2026-03-01T00:00:00.000Z';
+    const { rows: named } = await world.owner.query(`SELECT name FROM zone WHERE id = $1`, [world.zoneA]);
+    const { rows: added } = await world.owner.query(
+      `INSERT INTO zone (unit_id, code, name) VALUES ($1, 'Z-83', 'Holds the name later') RETURNING id`,
+      [world.unitA],
+    );
+    const moved = added[0].id as string;
+    const rollup = world.app.get(AnalyticsRollupWorker);
+    await rollup.handle({ unitId: world.unitA, timezone: 'Asia/Kolkata' }, new Date('2026-02-03T00:00:00.000Z'));
+    const read = async () => {
+      const ranking = await world.request('GET', `${base}/units/${world.unitA}/zones/ranking${range}&limit=100`, {
+        token: coordinator,
+      });
+      const trend = await world.request('GET', `${base}/units/${world.unitA}/trend${range}`, { token: coordinator });
+      const items = ranking.body as ZoneRankingItem[];
+      return {
+        old: items.find((item) => item.zoneId === world.zoneA)!,
+        moved: items.find((item) => item.zoneId === moved)!,
+        lines: (trend.body as UnitTrend).zones.map((zone) => zone.zoneId),
+      };
+    };
+    expect((await read()).old.auditCount).toBe(3);
+
+    try {
+      await world.owner.query(`UPDATE zone SET name = 'Another department' WHERE id = $1`, [world.zoneA]);
+      await world.owner.query(`UPDATE zone SET name = $2 WHERE id = $1`, [moved, named[0].name]);
+      const after = await read();
+      expect(after.moved).toMatchObject({ auditCount: 3, score: { scorePercentage: 60, sampleCount: 2 } });
+      expect(after.moved.dominantWeakSection).not.toBeNull();
+      expect(after.old).toMatchObject({ auditCount: 0, lastScore: null, dominantWeakSection: null });
+      expect(after.lines).toEqual([moved]);
+
+      // A new audit under the name, on the record that has it now, reads the old audits as its own.
+      const { rows: versions } = await world.owner.query(
+        `SELECT checklist_version_id AS id FROM audit_zone WHERE zone_id = $1 AND checklist_version_id IS NOT NULL LIMIT 1`,
+        [world.zoneA],
+      );
+      const { rows: questions } = await world.owner.query(
+        `SELECT id FROM checklist_question WHERE version_id = $1 ORDER BY global_order`,
+        [versions[0].id],
+      );
+      const auditZoneId = await insertAudit(
+        versions[0].id as string,
+        questions.map((question) => question.id as string),
+        { completedAt: '2026-02-20T06:00:00.000Z', values: ['SCORE_2', 'SCORE_2', 'SCORE_0'], raw: 4, max: 6, score: '66.667' },
+        moved,
+      );
+      const preview = await world.request('POST', '/api/v1/reports/preview', {
+        token: superAdmin,
+        headers: { [HEADER_IDEMPOTENCY_KEY]: randomUUID() },
+        body: { kind: 'INITIAL_ZONE', auditZoneId },
+      });
+      expect(preview.status, String(preview.body)).toBe(200);
+      expect(String(preview.body)).toContain('Score trend — last 3 audits of this zone');
+    } finally {
+      await world.owner.query(`UPDATE zone SET name = 'Retired by the test', archived_at = now() WHERE id = $1`, [moved]);
+      await world.owner.query(`UPDATE zone SET name = $2 WHERE id = $1`, [world.zoneA, named[0].name]);
+    }
+  });
+
+  /** R-83: audits a Unit set aside leave its analytics; their marks stay on the audit. */
+  it('leaves set-aside audits out of Unit analytics and keeps them readable', async () => {
+    const range = '?from=2026-01-01T00:00:00.000Z&to=2026-03-01T00:00:00.000Z';
+    const rollup = world.app.get(AnalyticsRollupWorker);
+    // The 2026-02-01 IST day holds the audit of 66.667; the later audits start after the cutoff.
+    const rebuild = () => rollup.handle({ unitId: world.unitA, timezone: 'Asia/Kolkata' }, new Date('2026-02-02T00:00:00.000Z'));
+    const read = async () => {
+      const trend = (await world.request('GET', `${base}/units/${world.unitA}/trend${range}`, { token: coordinator })).body as UnitTrend;
+      const sections = (await world.request('GET', `${base}/units/${world.unitA}/sections`, { token: coordinator })).body as UnitSections;
+      const unitTrends = unitScoreTrendsSchema.parse(
+        (await world.request('GET', `${base}/organization/unit-trends${range}`, { token: superAdmin })).body,
+      );
+      return {
+        sampleCount: trend.points.find((point) => point.period === '2026-02')!.sampleCount,
+        radar: sections.radar.find((row) => row.section === 'S1_SORT')!.previousScorePercentage,
+        points: unitTrends.find((row) => row.unitId === world.unitA)!.points.length,
+      };
+    };
+    const { rows: audits } = await world.owner.query(
+      `SELECT id FROM audit WHERE unit_id = $1 AND completed_at = '2026-01-31T20:00:00.000Z'`,
+      [world.unitA],
+    );
+    await rebuild();
+    const before = await read();
+
+    await world.owner.query(`UPDATE unit SET audits_set_aside_before = '2026-02-01T00:00:00.000Z' WHERE id = $1`, [world.unitA]);
+    try {
+      await rebuild();
+      const after = await read();
+      expect(after.sampleCount).toBe(before.sampleCount - 1);
+      expect(after.points).toBe(before.points - 1);
+      // The audit itself is untouched and still opens with its marks.
+      const audit = await world.request('GET', `/api/v1/audits/${audits[0].id}`, { token: superAdmin });
+      expect(audit.status).toBe(200);
+      expect((audit.body as { totals: { scorePercentage: number } }).totals.scorePercentage).toBeCloseTo(66.667);
+    } finally {
+      await world.owner.query(`UPDATE unit SET audits_set_aside_before = NULL WHERE id = $1`, [world.unitA]);
+      await rebuild();
+    }
+    expect(await read()).toEqual(before);
+  });
 });
 
 async function allRollups() {
@@ -319,6 +424,7 @@ async function insertAudit(
   versionId: string,
   questionIds: string[],
   fixture: { completedAt: string; values: string[]; raw: number; max: number; score: string },
+  zoneId = world.zoneA,
 ) {
   const auditId = randomUUID();
   const auditZoneId = randomUUID();
@@ -337,7 +443,7 @@ async function insertAudit(
        applicable_questions, na_questions, score_percentage)
      VALUES ($1, $2, $3, 1, 'IN_PROGRESS', 'Z-01', 'Press', $4, 'Analytics', $5,
        $6, $7, $8, $9, $10)`,
-    [auditZoneId, auditId, world.zoneA, versionId, fixture.completedAt, fixture.raw, fixture.max,
+    [auditZoneId, auditId, zoneId, versionId, fixture.completedAt, fixture.raw, fixture.max,
       fixture.max / 2, fixture.values.filter((value) => value === 'NA').length, fixture.score],
   );
   for (const [index, value] of fixture.values.entries()) {
@@ -360,6 +466,7 @@ async function insertAudit(
   );
   await world.owner.query(`UPDATE audit_zone SET status = 'COMPLETED' WHERE id = $1`, [auditZoneId]);
   await world.owner.query(`UPDATE audit SET status = 'CLOSED' WHERE id = $1`, [auditId]);
+  return auditZoneId;
 }
 
 async function seedTwoYears() {

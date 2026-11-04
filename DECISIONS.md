@@ -56,6 +56,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-61 | A Zone Leader may correct their own completed audit | Settled |
 | R-63 | An imported Zone list makes its leaders' accounts; two leaders make subzones | Settled |
 | R-76 | The Gemba Board is retired; Ledger is the design system | Settled |
+| R-83 | A Zone's past audits are compared by the name they were taken under | Settled |
 
 ---
 
@@ -3035,3 +3036,37 @@ Widens R-62's timing; the gallery rules of R-54 are unchanged.
   still needs the folder granted once; Kaizen photos are still not copied.
 - **Several at once:** a question's and a walk-by Zone's gallery button picks several photos,
   up to the Zone's room under its 25-photo cap. Kaizen and corrective-action pickers stay one.
+
+## R-83 — A Zone's past audits are compared by the name they were taken under
+
+**Settled 2026-11-04 by the product owner.** On 2026-10-27 a Zone list import renumbered Sahney
+Kirkwood's Zones. R-59 updates a Zone by its number, so each audit of 2026-09-23 stayed on a
+record that now names another department, and its marks and NCs read as that department's.
+
+- **The rule.** A comparison across audits follows the name the audit was taken under (its R-60
+  snapshot), not the Zone record, ignoring case and spacing: `app_comparison_zone` (migration
+  0065) is the one copy. The audit belongs to the live Zone with that name. A record that still
+  has the name keeps its own audits, so two Zones sharing a name are not merged.
+- **It applies to** a Zone report's and a summary's last six audits and their NC counts, the Zone
+  report's month chart, a summary's "latest audit of this Zone", the earlier NCs shown to the next
+  auditor (R-79), and analytics by Zone: trend lines, ranking, weak S and recurrent findings.
+- **It does not move anything.** No audit is re-pointed and no report is relabelled. A corrective
+  action stays on its record for closing and chasing, unless set aside (below). R-59's import still
+  updates by number.
+  Unit-wide scores are unchanged, because they do not depend on which Zone an audit belongs to.
+- **A Unit can set its earlier audits aside** (`unit.audits_set_aside_before`, migration 0065).
+  Those audits leave every comparison above. Their NCs leave the working lists and summaries, the
+  phone's to-do, the overdue reminders and the open and closure counts. Nothing is deleted or
+  changed: the audits and their reports stay, the NCs still open by id and from their own audit,
+  and a link already printed still works.
+- **Set-aside audits leave Unit analytics too** (owner): the daily totals behind the overview and
+  trend, the S trend and radar, the cross-Unit trend and a summary's month chart. The Unit can still
+  open the audits and read their marks. People's activity (audits done, answers given) still counts
+  them, because that work happened.
+- **Sahney's audits before October 2026 are set aside** (owner), all 15 of 23 Sep, Zone 1
+  included. They were real audits; no repair or re-pointing is made. Migration 0065 corrects its
+  stored daily totals once. Bringing them back would mean clearing the column and rebuilding those
+  days, since the rollup rebuilds only recent ones.
+- **A rename starts a new comparison.** A Zone renamed by hand no longer compares with audits
+  under its old name, a corrected spelling included.
+- **A summary of summaries is not changed:** the Super Admin picks its audits by hand (R-75).

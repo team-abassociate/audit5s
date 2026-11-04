@@ -168,6 +168,7 @@ export class AnalyticsRepository extends BaseRepository {
             scope,
             { unitId: audits.unitId },
             completed(),
+            sql`NOT app_audit_set_aside(${audits.id})`,
             gte(audits.completedAt, range.from),
             lt(audits.completedAt, range.to),
             unitId ? eq(audits.unitId, unitId) : undefined,
@@ -197,6 +198,7 @@ export class AnalyticsRepository extends BaseRepository {
             scope,
             { unitId: audits.unitId },
             completed(),
+            sql`NOT app_audit_set_aside(${audits.id})`,
             isNotNull(audits.completedAt),
             isNotNull(audits.totalScore),
             gte(audits.completedAt, range.from),
@@ -207,6 +209,10 @@ export class AnalyticsRepository extends BaseRepository {
     );
   }
 
+  /**
+   * Each Zone's scored audits, oldest first. R-83: an audit counts for the Zone with the name
+   * it was taken under, and for none when no Zone has that name now.
+   */
   async zoneScoreHistory(scope: ScopeContext, range: AnalyticsRange, unitId: string) {
     return this.inScope(scope, (tx) =>
       tx
@@ -219,7 +225,7 @@ export class AnalyticsRepository extends BaseRepository {
         })
         .from(auditZones)
         .innerJoin(audits, eq(audits.id, auditZones.auditId))
-        .innerJoin(zones, eq(zones.id, auditZones.zoneId))
+        .innerJoin(zones, sql`${zones.id} = app_comparison_zone(${auditZones.id})`)
         .where(
           this.scoped(
             scope,
@@ -263,6 +269,7 @@ export class AnalyticsRepository extends BaseRepository {
           FROM audit
           JOIN audit_zone ON audit_zone.audit_id = audit.id
           WHERE ${this.scoped(scope, { unitId: audits.unitId }, eq(audits.unitId, unitId), completed())}
+            AND NOT app_audit_set_aside(audit.id)
             AND audit.completed_at IS NOT NULL
             AND audit_zone.completed_at IS NOT NULL
             AND audit_zone.score_percentage IS NOT NULL
@@ -307,9 +314,43 @@ export class AnalyticsRepository extends BaseRepository {
             { unitId: correctiveActions.unitId },
             eq(correctiveActions.unitId, unitId),
             inArray(correctiveActions.status, ['OPEN', 'REOPENED']),
+            sql`NOT app_audit_set_aside(${correctiveActions.auditId})`,
           ),
         )
         .groupBy(correctiveActions.zoneId),
+    );
+  }
+
+  /**
+   * Each Zone's marks and audit count in the range, by the name each audit was taken under
+   * (R-83). Read from the audits, not the daily rollup: a rollup keeps the Zone record of the
+   * day it was written, and a later import would leave it naming another department.
+   */
+  async zoneTotals(scope: ScopeContext, range: AnalyticsRange, unitId: string) {
+    const scored = sql`${auditZones.scorePercentage} IS NOT NULL AND ${auditZones.maxScore} > 0`;
+    const zoneId = sql<string | null>`app_comparison_zone(${auditZones.id})`;
+    return this.inScope(scope, (tx) =>
+      tx
+        .select({
+          zoneId,
+          auditCount: sql<number>`count(*)::int`,
+          rawScore: sql<number>`coalesce(sum(${auditZones.rawScore}) FILTER (WHERE ${scored}), 0)::int`,
+          maxScore: sql<number>`coalesce(sum(${auditZones.maxScore}) FILTER (WHERE ${scored}), 0)::int`,
+          sampleCount: sql<number>`(count(*) FILTER (WHERE ${scored}))::int`,
+        })
+        .from(auditZones)
+        .innerJoin(audits, eq(audits.id, auditZones.auditId))
+        .where(
+          this.scoped(
+            scope,
+            { unitId: audits.unitId },
+            eq(audits.unitId, unitId),
+            completed(),
+            gte(auditZones.completedAt, range.from),
+            lt(auditZones.completedAt, range.to),
+          ),
+        )
+        .groupBy(zoneId),
     );
   }
 
@@ -321,19 +362,23 @@ export class AnalyticsRepository extends BaseRepository {
         raw_score: number;
         max_score: number;
       }>`
-        SELECT metric_section_daily.zone_id, metric_section_daily.section,
-               sum(metric_section_daily.raw_score)::int AS raw_score,
-               sum(metric_section_daily.max_score)::int AS max_score
-        FROM metric_section_daily
+        SELECT app_comparison_zone(audit_zone.id) AS zone_id, audit_zone_section_score.section,
+               sum(audit_zone_section_score.raw_score)::int AS raw_score,
+               sum(audit_zone_section_score.max_score)::int AS max_score
+        FROM audit_zone_section_score
+        JOIN audit_zone ON audit_zone.id = audit_zone_section_score.audit_zone_id
+        JOIN audit ON audit.id = audit_zone.audit_id
         WHERE ${this.scoped(
           scope,
-          { unitId: metricSectionDaily.unitId },
-          eq(metricSectionDaily.unitId, unitId),
-          gte(metricSectionDaily.day, range.fromDay),
-          lte(metricSectionDaily.day, range.toDay),
+          { unitId: audits.unitId },
+          eq(audits.unitId, unitId),
+          completed(),
+          gte(auditZones.completedAt, range.from),
+          lt(auditZones.completedAt, range.to),
         )}
-          AND metric_section_daily.max_score > 0
-        GROUP BY metric_section_daily.zone_id, metric_section_daily.section
+          AND audit_zone_section_score.max_score > 0
+          AND audit_zone_section_score.score_percentage IS NOT NULL
+        GROUP BY 1, audit_zone_section_score.section
       `);
       return result.rows as Array<{
         zone_id: string;
@@ -358,13 +403,13 @@ export class AnalyticsRepository extends BaseRepository {
       }>`
         SELECT question_response.checklist_question_id,
                checklist_question.text AS question_text, checklist_question.section,
-               audit_zone.zone_id, zone.code AS zone_code, zone.name AS zone_name,
+               zone.id AS zone_id, zone.code AS zone_code, zone.name AS zone_name,
                count(*)::int AS failure_count, max(audit_zone.completed_at) AS last_seen_at
         FROM question_response
         JOIN audit_zone ON audit_zone.id = question_response.audit_zone_id
         JOIN audit ON audit.id = audit_zone.audit_id
         JOIN checklist_question ON checklist_question.id = question_response.checklist_question_id
-        JOIN zone ON zone.id = audit_zone.zone_id
+        JOIN zone ON zone.id = app_comparison_zone(audit_zone.id)
         WHERE ${this.scoped(
           scope,
           { unitId: audits.unitId },
@@ -375,7 +420,7 @@ export class AnalyticsRepository extends BaseRepository {
         )}
           AND question_response.value IN ('SCORE_0','SCORE_1')
         GROUP BY question_response.checklist_question_id, checklist_question.text,
-                 checklist_question.section, audit_zone.zone_id, zone.code, zone.name
+                 checklist_question.section, zone.id, zone.code, zone.name
         HAVING count(*) >= 2
         ORDER BY failure_count DESC, last_seen_at DESC
       `);
@@ -416,6 +461,7 @@ export class AnalyticsRepository extends BaseRepository {
           gte(correctiveActions.openedAt, range.from),
           lt(correctiveActions.openedAt, range.to),
           unitId ? eq(correctiveActions.unitId, unitId) : undefined,
+          sql`NOT app_audit_set_aside(${correctiveActions.auditId})`,
         )}
         GROUP BY corrective_action.unit_id, unit.name, corrective_action.zone_id, zone.name,
                  corrective_action.assigned_zone_leader_user_id, leader_name
@@ -534,11 +580,11 @@ export class AnalyticsRepository extends BaseRepository {
           scorePercentage: audits.totalScore,
         })
         .from(audits)
-        .where(and(unitScope, completed(), gte(audits.completedAt, start), lt(audits.completedAt, end)));
+        .where(and(unitScope, completed(), sql`NOT app_audit_set_aside(${audits.id})`, gte(audits.completedAt, start), lt(audits.completedAt, end)));
       const created = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(audits)
-        .where(and(unitScope, gte(audits.createdAt, start), lt(audits.createdAt, end)));
+        .where(and(unitScope, sql`NOT app_audit_set_aside(${audits.id})`, gte(audits.createdAt, start), lt(audits.createdAt, end)));
       const scoredAudits = auditRows.filter((row) => row.scorePercentage !== null && (row.maxScore ?? 0) > 0);
       const auditTotals = sumTotals(
         scoredAudits.map((row) => scorePart(row.rawScore ?? 0, row.maxScore ?? 0)),
@@ -572,7 +618,7 @@ export class AnalyticsRepository extends BaseRepository {
                       AND ${correctiveActions.status} <> 'WITHDRAWN')`,
         })
         .from(correctiveActions)
-        .where(this.scoped(scope, { unitId: correctiveActions.unitId }, eq(correctiveActions.unitId, unitId)));
+        .where(this.scoped(scope, { unitId: correctiveActions.unitId }, eq(correctiveActions.unitId, unitId), sql`NOT app_audit_set_aside(${correctiveActions.auditId})`));
 
       const unitValues = {
         auditCount: created[0]?.count ?? 0,
@@ -616,7 +662,7 @@ export class AnalyticsRepository extends BaseRepository {
         })
         .from(auditZones)
         .innerJoin(audits, eq(audits.id, auditZones.auditId))
-        .where(and(unitScope, completed(), gte(auditZones.completedAt, start), lt(auditZones.completedAt, end)))
+        .where(and(unitScope, completed(), sql`NOT app_audit_set_aside(${audits.id})`, gte(auditZones.completedAt, start), lt(auditZones.completedAt, end)))
         .orderBy(desc(auditZones.completedAt));
       const unitZones = await tx
         .select({ id: zones.id })
@@ -632,6 +678,7 @@ export class AnalyticsRepository extends BaseRepository {
             eq(correctiveActions.unitId, unitId),
             lt(correctiveActions.openedAt, end),
             or(isNull(correctiveActions.resolvedAt), gte(correctiveActions.resolvedAt, end)),
+            sql`NOT app_audit_set_aside(${correctiveActions.auditId})`,
           ),
         )
         .groupBy(correctiveActions.zoneId);
@@ -679,7 +726,7 @@ export class AnalyticsRepository extends BaseRepository {
         .from(auditZoneSectionScores)
         .innerJoin(auditZones, eq(auditZones.id, auditZoneSectionScores.auditZoneId))
         .innerJoin(audits, eq(audits.id, auditZones.auditId))
-        .where(and(unitScope, completed(), gte(auditZones.completedAt, start), lt(auditZones.completedAt, end)));
+        .where(and(unitScope, completed(), sql`NOT app_audit_set_aside(${audits.id})`, gte(auditZones.completedAt, start), lt(auditZones.completedAt, end)));
 
       for (const zone of unitZones) {
         for (const section of S_SECTION_ORDER) {
