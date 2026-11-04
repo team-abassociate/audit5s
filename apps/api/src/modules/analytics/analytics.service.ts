@@ -204,17 +204,20 @@ export class AnalyticsService {
     query: AnalyticsRankingQuery,
   ): Promise<ZoneRankingItem[]> {
     const range = toRange(query, await this.assertUnit(scope, unitId));
-    const [daily, history, weak, open] = await Promise.all([
+    const [daily, totals, history, weak, open] = await Promise.all([
       this.repository.dailyZones(scope, range, unitId),
+      this.repository.zoneTotals(scope, range, unitId),
       this.repository.zoneScoreHistory(scope, range, unitId),
       this.repository.weakSectionsByZone(scope, range, unitId),
       this.repository.openNonconformitiesByZone(scope, unitId),
     ]);
+    const totalsByZone = new Map(totals.map((row) => [row.zoneId, row]));
     const historyByZone = group(history, (row) => row.zoneId);
     const weakByZone = group(weak, (row) => row.zone_id);
     const openByZone = new Map(open.map((row) => [row.zoneId, row.count]));
     const items = [...group(daily, (row) => row.row.zoneId).entries()].map(([zoneId, values]) => {
-      const score = scoreOf(values.map((value) => value.row));
+      const zoneTotal = totalsByZone.get(zoneId);
+      const score = scoreOf(zoneTotal ? [zoneTotal] : []);
       const scores = historyByZone.get(zoneId) ?? [];
       const last = scores.at(-1);
       const previous = scores.at(-2);
@@ -232,7 +235,7 @@ export class AnalyticsService {
         previousScore: nullableNumber(previous?.scorePercentage),
         improvement:
           last && previous ? Number(last.scorePercentage) - Number(previous.scorePercentage) : null,
-        auditCount: values.reduce((sum, value) => sum + value.row.auditCount, 0),
+        auditCount: zoneTotal?.auditCount ?? 0,
         lastAuditAt,
         daysSinceLastAudit: lastAuditAt
           ? Math.max(0, Math.floor((Date.now() - Date.parse(lastAuditAt)) / 86_400_000))

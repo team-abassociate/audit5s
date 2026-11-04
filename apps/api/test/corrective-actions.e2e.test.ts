@@ -15,9 +15,10 @@ import {
   type SyncCatalogue,
 } from '@audit5s/contracts';
 import { captureEvidence, loginFromDevice, sha256Hex, startWorld, stopWorld, TINY_JPEG, type TestActor, type TestWorld } from './harness';
+import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
+import { CorrectiveActionsRepository } from '../src/modules/corrective-actions/corrective-actions.repository';
 import { afterPhoto, completedWalkBy, makeZone, submit, submitOptionA } from './corrective-fixtures';
 import { isReviewable, zoneLabelFromCode } from '@audit5s/domain';
-import { SYSTEM_SCOPE } from '../src/common/auth/system-scope';
 import { CorrectiveActionsService } from '../src/modules/corrective-actions/corrective-actions.service';
 
 /**
@@ -981,9 +982,101 @@ describe('R-79 — the next auditor sees the Zone’s earlier NCs', () => {
     });
     expect(response.body).toMatchObject({ auditId: null, raised: 0, closed: 0, open: 0, items: [] });
   });
+
+  it('R-83: follows the name the audit was taken under, not the record it stayed on', async () => {
+    const { auditId, zoneId } = await walkBy(1);
+    const previous = async (id: string) =>
+      (await world.request('GET', `${base}/zones/${id}/previous-nonconformities`, { token: superAdmin }))
+        .body as PreviousNonconformities;
+    const comparison = async () =>
+      (
+        await world.owner.query(`SELECT app_comparison_zone(id) AS zone_id FROM audit_zone WHERE audit_id = $1`, [auditId])
+      ).rows[0].zone_id as string | null;
+    const { rows } = await world.owner.query(`SELECT name FROM zone WHERE id = $1`, [zoneId]);
+    const name = rows[0].name as string;
+
+    // A second Zone with the name does not take the audit while its own record keeps the name.
+    const twin = await makeZone(world, world.unitA, null);
+    await world.owner.query(`UPDATE zone SET name = $2 WHERE id = $1`, [twin, name]);
+    expect(await comparison()).toBe(zoneId);
+    expect((await previous(twin)).auditId).toBeNull();
+
+    // The import's renumbering: the audit's record now names another department.
+    await world.owner.query(`UPDATE zone SET name = $2 WHERE id = $1`, [zoneId, `Other ${zoneId}`]);
+    // Spacing and case are not a different name.
+    await world.owner.query(`UPDATE zone SET name = $2 WHERE id = $1`, [twin, `  ${name.toUpperCase().replace(' ', '   ')} `]);
+    expect(await comparison()).toBe(twin);
+    expect((await previous(twin)).auditId).toBe(auditId);
+    expect((await previous(zoneId)).auditId).toBeNull();
+
+    // No Zone has the name any more: it compares with no Zone.
+    await world.owner.query(`UPDATE zone SET name = $2 WHERE id = $1`, [twin, `Another ${twin}`]);
+    expect(await comparison()).toBeNull();
+    expect((await previous(twin)).auditId).toBeNull();
+    expect((await previous(zoneId)).auditId).toBeNull();
+  });
+
+  it('R-83: a Unit’s set-aside audits leave comparisons and the working lists, and nothing is lost', async () => {
+    const { auditId, actions, zoneId } = await walkBy(1);
+    const actionId = actions[0]!.id;
+    const listed = async (query: string) =>
+      (
+        (await world.request('GET', `${base}/corrective-actions?limit=100${query}`, { token: superAdmin })).body as {
+          data: Array<{ id: string }>;
+        }
+      ).data.some((row) => row.id === actionId);
+    const zoneCounted = async () =>
+      (
+        (await world.request('GET', `${base}/corrective-actions/summary?zoneId=${zoneId}`, { token: superAdmin })).body as {
+          total: number;
+        }
+      ).total;
+    const previous = async () =>
+      (
+        (await world.request('GET', `${base}/zones/${zoneId}/previous-nonconformities`, { token: superAdmin }))
+          .body as PreviousNonconformities
+      ).auditId;
+    const comparison = async () =>
+      (await world.owner.query(`SELECT app_comparison_zone(id) AS zone_id FROM audit_zone WHERE audit_id = $1`, [auditId]))
+        .rows[0].zone_id as string | null;
+    await world.owner.query(`UPDATE corrective_action SET due_at = now() - interval '1 day', overdue_notified_at = NULL WHERE id = $1`, [actionId]);
+    const claimOverdue = () =>
+      world.app.get(CorrectiveActionsRepository).claimOverdue(
+        SYSTEM_SCOPE,
+        world.unitA,
+        new Date(),
+        async () => undefined,
+      );
+    expect(await listed('')).toBe(true);
+    expect(await zoneCounted()).toBeGreaterThan(0);
+    expect(await previous()).toBe(auditId);
+    expect(await comparison()).toBe(zoneId);
+
+    await world.owner.query(`UPDATE unit SET audits_set_aside_before = now() + interval '1 hour' WHERE id = $1`, [world.unitA]);
+    try {
+      expect(await listed('')).toBe(false);
+      expect(await zoneCounted()).toBe(0);
+      expect(await previous()).toBeNull();
+      expect(await comparison()).toBeNull();
+      await claimOverdue();
+      const { rows } = await world.owner.query(`SELECT overdue_notified_at FROM corrective_action WHERE id = $1`, [actionId]);
+      expect(rows[0].overdue_notified_at).toBeNull();
+      // Set aside, not deleted: it opens by id and from its own audit.
+      expect((await detail(actionId)).id).toBe(actionId);
+      expect(await listed(`&auditId=${auditId}`)).toBe(true);
+    } finally {
+      await world.owner.query(`UPDATE unit SET audits_set_aside_before = NULL WHERE id = $1`, [world.unitA]);
+    }
+    expect(await listed('')).toBe(true);
+    expect(await previous()).toBe(auditId);
+    // Back in the working set, the overdue reminder claims it again.
+    await claimOverdue();
+    const { rows: claimed } = await world.owner.query(`SELECT overdue_notified_at FROM corrective_action WHERE id = $1`, [actionId]);
+    expect(claimed[0].overdue_notified_at).not.toBeNull();
+  });
 });
 
-describe('R-81 — reviewing a finished audit changes its photos, through the logged correction', () => {
+describe('R-81— reviewing a finished audit changes its photos, through the logged correction', () => {
   it('removes a finding’s photo (withdrawing its action) and picks a summary photo', async () => {
     const { auditId, actions } = await walkBy(1, { good: 1 });
     const { rows: photos } = await world.owner.query(

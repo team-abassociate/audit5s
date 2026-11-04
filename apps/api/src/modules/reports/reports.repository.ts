@@ -400,9 +400,9 @@ export class ReportsRepository extends BaseRepository {
 
   /**
    * A Zone report's trend: this audited Zone and the scored, finished audits of the same
-   * Zone before it, newest first, `limit` in all. `zone_id` is the live pointer kept for
-   * exactly this (D6); the scores are the audit Zone's own stored totals. A walk-by has no
-   * score and is left out.
+   * Zone before it, newest first, `limit` in all. The same Zone means the same name (R-83),
+   * not the same record: an import can move a number onto another department. The scores are
+   * the audit Zone's own stored totals. A walk-by has no score and is left out.
    */
   async readZoneHistory(tx: Transaction, auditZoneId: string, limit: number) {
     const auditDate = sql<Date>`coalesce(${audits.completedAt}, ${auditZones.completedAt})`.mapWith(
@@ -420,7 +420,9 @@ export class ReportsRepository extends BaseRepository {
       .innerJoin(audits, eq(audits.id, auditZones.auditId))
       .where(
         and(
-          sql`${auditZones.zoneId} = (SELECT zone_id FROM audit_zone WHERE id = ${auditZoneId})`,
+          sql`app_zone_name_key(${auditZones.zoneNameSnapshot}) = (
+            SELECT app_zone_name_key(zone_name_snapshot) FROM audit_zone WHERE id = ${auditZoneId})`,
+          sql`app_comparison_zone(${auditZones.id}) IS NOT DISTINCT FROM app_comparison_zone(${auditZoneId})`,
           sql`${audits.unitId} = (SELECT a.unit_id FROM audit_zone az JOIN audit a ON a.id = az.audit_id WHERE az.id = ${auditZoneId})`,
           eq(auditZones.status, 'COMPLETED'),
           inArray(audits.status, [...COMPLETED_AUDIT_STATUSES]),
@@ -501,6 +503,7 @@ export class ReportsRepository extends BaseRepository {
           eq(auditZones.status, 'COMPLETED'),
           inArray(audits.status, [...COMPLETED_AUDIT_STATUSES]),
           sql`${audits.auditType} <> 'WALK_BY'`,
+          sql`NOT app_audit_set_aside(${audits.id})`,
           sql`${auditDate} >= ${since.toISOString()}`,
         ),
       );
@@ -604,12 +607,13 @@ export class ReportsRepository extends BaseRepository {
       .where(
         and(
           eq(audits.unitId, unitId),
-          inArray(auditZones.zoneId, [...zoneIds]),
+          // R-83: a Zone's latest is the latest under its name, not on its record.
+          inArray(sql`app_comparison_zone(${auditZones.id})`, [...zoneIds]),
           sql`${auditZones.completedAt} IS NOT NULL`,
           sql`${auditZones.id} = (
             SELECT az.id FROM audit_zone az
             INNER JOIN audit a ON a.id = az.audit_id
-            WHERE az.zone_id = ${auditZones.zoneId}
+            WHERE app_comparison_zone(az.id) = app_comparison_zone(${auditZones.id})
               AND a.unit_id = ${unitId}
               AND az.completed_at IS NOT NULL
             ORDER BY az.completed_at DESC, az.id DESC
