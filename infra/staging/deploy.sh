@@ -36,7 +36,8 @@ sed -i -E "s|^API_IMAGE=.*$|API_IMAGE=ghcr.io/team-abassociate/audit5s-api:stagi
 sed -i -E "s|^WEB_IMAGE=.*$|WEB_IMAGE=ghcr.io/team-abassociate/audit5s-web:staging-$sha|" .env
 
 compose pull -q
-compose up -d --no-deps --wait postgres object-storage
+# The web server too: the API reaches photo storage through it, and the seed stores a workbook.
+compose up -d --no-deps --wait postgres object-storage web
 
 for _ in $(seq 1 30); do
   curl -fsS http://127.0.0.1:9100/minio/health/ready >/dev/null 2>&1 && break
@@ -70,13 +71,18 @@ compose run --rm --no-deps -e DATABASE_MIGRATION_URL api \
   node -e "require('/repo/packages/db/dist/migrate.js')"
 
 # First run: the same Super Admin as production. Their first password is their phone number.
+# Production's .env quotes these values and Compose unquotes them, so the quotes come off here.
+# The workbook comes from production's checkout because it is not in the image; without it the
+# seed skips the checklists and staging cannot run a 5S audit.
 # Output is dropped so their details stay out of the workflow log; errors still show.
+seed_value() { env_value "$1" /opt/audit5s/.env | sed -E 's/^"(.*)"$/\1/'; }
 if [[ ! -f .seeded ]]; then
-  SEED_SUPER_ADMIN_FULL_NAME="$(env_value SEED_SUPER_ADMIN_FULL_NAME /opt/audit5s/.env)" \
-  SEED_SUPER_ADMIN_PHONE="$(env_value SEED_SUPER_ADMIN_PHONE /opt/audit5s/.env)" \
-  SEED_SUPER_ADMIN_EMAIL="$(env_value SEED_SUPER_ADMIN_EMAIL /opt/audit5s/.env)" \
+  SEED_SUPER_ADMIN_FULL_NAME="$(seed_value SEED_SUPER_ADMIN_FULL_NAME)" \
+  SEED_SUPER_ADMIN_PHONE="$(seed_value SEED_SUPER_ADMIN_PHONE)" \
+  SEED_SUPER_ADMIN_EMAIL="$(seed_value SEED_SUPER_ADMIN_EMAIL)" \
     compose run --rm --no-deps -e DATABASE_MIGRATION_URL \
       -e SEED_SUPER_ADMIN_FULL_NAME -e SEED_SUPER_ADMIN_PHONE -e SEED_SUPER_ADMIN_EMAIL \
+      -v /opt/audit5s/docs/requirements:/repo/docs/requirements:ro \
       api node dist/seed.js >/dev/null
   touch .seeded
 fi
