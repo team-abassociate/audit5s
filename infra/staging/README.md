@@ -5,11 +5,8 @@ use `https://staging.leanstack.tech/field` in a browser. Accounts and data are s
 production. Sign in as the Super Admin (the first password is their phone number, for 72 hours),
 then add a test Unit and testers and grant Kaizen as usual.
 
-**Setup, once:** add DNS A records for `staging.leanstack.tech` and
-`objects-staging.leanstack.tech` pointing at the VPS, merge this into `main` so production's Caddy
-knows both names, then push the `kaizen-staging` branch.
-
-**Deploy:** push to `kaizen-staging`, or `gh workflow run deploy-staging.yml --ref <branch>`.
+**Deploy a fix before it merges:** `gh workflow run deploy-staging.yml --ref <short-branch>`. Each
+fix goes to `main` in its own PR after it passes here (R-84).
 
 **Wipe the test data:** on the VPS, in `/opt/audit5s-staging`:
 `docker compose --env-file .env down -v && rm .seeded`, then deploy again.

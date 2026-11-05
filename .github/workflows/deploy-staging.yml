@@ -1,11 +1,8 @@
 name: Staging deploy
 
 # Temporary (R-84). Staging never publishes an OTA update, so no phone on production changes.
-# Automatic for the testing branch; any other branch can be sent by hand:
-#   gh workflow run deploy-staging.yml --ref <branch>
+# Send a short branch by hand: gh workflow run deploy-staging.yml --ref <branch>
 on:
-  push:
-    branches: [kaizen-staging]
   workflow_dispatch:
 
 permissions:

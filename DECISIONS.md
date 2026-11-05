@@ -3080,6 +3080,8 @@ the production VPS (`infra/staging`, `staging.leanstack.tech`), removed when tes
 - **Separate:** its own database, photo storage and secrets, and no OTA update. Testers are
   granted Kaizen the usual way (R-57). Only its web container joins production's network, so that
   production's Caddy can reach it.
+- **Short branches, as ever:** each fix is sent to staging from its own branch, then goes to `main`
+  in its own PR. There is no long-lived testing branch.
 - **Production comes first:** staging is capped at about 2.1 GB of memory with no swap, has a
   quarter of production's CPU weight, and is what the kernel kills first. If available memory on
   the VPS stays under ~4 GB (STACK.md), stop staging rather than moving the report worker.
