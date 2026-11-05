@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import type { CorrectiveActionDetail, EvidenceViewUrl } from '@audit5s/contracts';
-import { awaitsResponse, awaitsReview, isOverdue, isReviewable, isUnapprovedClosure, sectionLabel, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
+import type { CorrectiveActionDetail, CorrectiveActionReminder, EvidenceViewUrl } from '@audit5s/contracts';
+import { awaitsResponse, awaitsReview, isOverdue, isReviewable, isUnapprovedClosure, mayRemind, reminderRecipients, sectionLabel, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -76,6 +76,12 @@ export default function ReviewActionScreen() {
         queryClient.invalidateQueries({ queryKey: ['audits'] }),
       ]);
     },
+  });
+
+  // R-87: one notice to the Zone's leader; the server decides who, and refuses a second that day.
+  const remind = useMutation({
+    mutationFn: () => api.post<CorrectiveActionReminder>(`/corrective-actions/${actionId}/remind`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['corrective-action', actionId] }),
   });
 
   if (detail.isLoading) {
@@ -280,6 +286,28 @@ export default function ReviewActionScreen() {
                 onPress={() => router.push({ pathname: '/actions/[actionId]', params: { actionId: action.id } })}
               />
             ) : null}
+            {can('corrective_action', 'remind') ? (
+              reminderRecipients([action]).length === 0 ? (
+                <Muted>No Zone Leader account to remind. Send them a Zone Leader link.</Muted>
+              ) : (
+                <View style={styles.remind}>
+                  <ErrorBanner message={problemMessage(remind.error)} />
+                  <Button icon="notifications"
+                    title="Send reminder"
+                    variant="secondary"
+                    busy={remind.isPending}
+                    disabled={!mayRemind(action.lastRemindedAt, Date.now())}
+                    onPress={() => remind.mutate()}
+                  />
+                  <Muted>
+                    {action.lastRemindedAt
+                      ? `Reminded ${formatDateTime(action.lastRemindedAt)} by ${action.lastRemindedByName ?? 'someone'}. `
+                      : ''}
+                    One notification to the Zone leader, listing all of this Zone's open items.
+                  </Muted>
+                </View>
+              )
+            ) : null}
           </Card>
         ) : null}
       </ScrollView>
@@ -331,4 +359,5 @@ const useStyles = createThemedStyles((theme) => ({
   },
   row: { flexDirection: 'row', gap: theme.space.sm },
   rowItem: { flex: 1 },
+  remind: { marginTop: theme.space.sm, gap: theme.space.sm },
 }));

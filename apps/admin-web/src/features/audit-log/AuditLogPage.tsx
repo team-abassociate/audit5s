@@ -76,6 +76,7 @@ export const ACTION_LABEL: Record<AuditLogAction, string> = {
   'corrective_action.verified': 'Approved a corrective action',
   'corrective_action.reopened': 'Reopened a corrective action',
   'corrective_action.reassigned': 'Reassigned a corrective action',
+  'corrective_action.reminded': 'Reminded a Zone Leader of open corrective actions',
   'corrective_action.raised_missing': 'Raised missed corrective actions',
   'evidence.redacted': 'Redacted a photo',
   'permission.changed': 'Changed permissions',

@@ -3086,3 +3086,22 @@ the production VPS (`infra/staging`, `staging.leanstack.tech`), removed when tes
   quarter of production's CPU weight, and is what the kernel kills first. If available memory on
   the VPS stays under ~4 GB (STACK.md), stop staging rather than moving the report worker.
 - **No backups:** staging data is test data and can be wiped.
+
+## R-87 — A Super Admin or Coordinator reminds a Zone Leader of open NCs
+
+**Ruled 2026-11-05 by the owner.** *"A feature for super admin and coordinator to be able to
+send reminders to zone leaders for closing their NCs."* In-app, chosen over a WhatsApp hand-off.
+
+- **Where:** the web's Corrective actions page, on each Zone-and-leader heading and in the
+  item's panel; on the phone, the "Waiting for a response" card of an item.
+- **What:** `corrective_action:remind`, for the Super Admin and the Unit's Coordinator. One
+  `CORRECTIVE_ACTION_REMINDER` notice for the whole Zone, whichever item it was pressed on, as
+  D10 bundles the overdue notice. It covers items waiting on an answer (`OPEN`, `REOPENED`),
+  not only overdue ones, and not those already answered and waiting for review.
+- **Who:** the Zone's leader account (R-78). A Zone with typed names only: whoever its items
+  were reassigned to; with nobody, the request is refused and the button points to the link.
+- **How often:** once per Zone in 24 hours, by anyone. The item says who last reminded and when
+  (0066). A reminder bumps no version, so a reviewer's open copy stays good.
+- **Delivery:** every event's channels. That is in-app today, and not the phone's notification
+  bar until `PushChannel` has a real FCM implementation and the app registers a token, which
+  needs a new APK. It is not a WhatsApp template event.

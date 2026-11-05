@@ -1800,6 +1800,7 @@ Cell = the scope resolver that applies. `—` = denied.
 | CorrectiveAction | verify | `organization` | — | — | — |
 | CorrectiveAction | reopen | `organization` | — | — | — |
 | CorrectiveAction | reassign | `organization` | — | `own_unit` | — |
+| CorrectiveAction | remind (R-87) | `organization` | — | `own_unit` | — |
 | Submission | read | `organization` | `own_audits` | `own_unit` | `own_unit` |
 
 ### Reporting
@@ -2218,6 +2219,7 @@ so a bad spreadsheet can never leave half a checklist behind.
 | POST | `/corrective-actions/{id}/verify` | SA | `{ comment? }` → `VERIFIED`; may roll the audit to `CLOSED` |
 | POST | `/corrective-actions/{id}/reopen` | SA | `{ reason }` (required) → `REOPENED`, `reopen_count++` |
 | POST | `/corrective-actions/{id}/reassign` | SA, COO | `{ zoneLeaderUserId }` |
+| POST | `/corrective-actions/{id}/remind` | SA, Coord (`own_unit`, R-87) | **Idempotency-Key required.** One notification to the Zone's leader listing all the Zone's open items; 409 within 24 hours of the last, or when the Zone has no leader account |
 | POST | `/corrective-actions/{id}/link` | SA, Coord (`own_unit`, R-47) | **Idempotency-Key required.** Mints one more public link to this action for copying or resending; the URL is in this response once and not on a replay. Earlier links, the PDF's included, keep working (R-41) |
 
 ### Public, signed-token surface (the live report page)

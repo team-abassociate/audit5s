@@ -1100,6 +1100,18 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
     },
     coveredBy: 'corrective-actions.e2e.test.ts',
   },
+  {
+    method: 'POST',
+    path: '/api/v1/corrective-actions/:correctiveActionId/remind',
+    description:
+      "corrective_action:remind (R-87) — one notice to the Zone's leader; Idempotency-Key required; " +
+      'once a day; AuditLog: corrective_action.reminded',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      COORDINATOR: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'notifications.e2e.test.ts',
+  },
 
   // ---------------------------------------------------------------- reports
   /*

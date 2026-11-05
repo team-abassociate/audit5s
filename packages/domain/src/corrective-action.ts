@@ -134,6 +134,33 @@ export function isReviewable(
   return (awaitsReview(status) && !ownAnswer) || isUnapprovedClosure(status, verifiedByUserId);
 }
 
+/** R-87: a Zone's leader is reminded at most once in this long. */
+export const REMINDER_COOLDOWN_MS = 86_400_000;
+
+export function mayRemind(lastRemindedAt: string | null | undefined, nowMs: number): boolean {
+  return !lastRemindedAt || nowMs - Date.parse(lastRemindedAt) >= REMINDER_COOLDOWN_MS;
+}
+
+/**
+ * R-87, following R-78: who a Zone's open items wait on. The Zone's leader account alone, when
+ * it has one, since nobody else among its Zone Leaders can close them. A Zone with typed names
+ * only has whoever the items were reassigned to, which may be nobody.
+ */
+export function reminderRecipients(
+  actions: ReadonlyArray<{ zoneLeaderUserId?: string | null; assignedZoneLeaderUserId: string | null }>,
+): string[] {
+  const leader = actions.find((action) => action.zoneLeaderUserId)?.zoneLeaderUserId;
+  if (leader) return [leader];
+  return [...new Set(actions.flatMap((action) => action.assignedZoneLeaderUserId ?? []))];
+}
+
+/** The newest reminder among these items, for "Reminded … by …". */
+export function latestReminder<T extends { lastRemindedAt?: string | null }>(actions: readonly T[]): T | undefined {
+  return actions
+    .filter((action) => action.lastRemindedAt)
+    .sort((a, b) => Date.parse(b.lastRemindedAt!) - Date.parse(a.lastRemindedAt!))[0];
+}
+
 export function isOverdue(
   status: CorrectiveActionStatus,
   dueAt: string | null,

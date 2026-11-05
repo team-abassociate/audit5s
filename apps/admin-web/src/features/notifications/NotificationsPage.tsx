@@ -53,6 +53,13 @@ function notificationLink(n: Notification) {
           search: { overdue: true, group: 'leader', ...(n.unitId ? { unit: n.unitId } : {}) },
         } as const;
       }
+      // R-87: a reminder covers open items that may not be overdue yet.
+      if (n.eventType === 'CORRECTIVE_ACTION_REMINDER') {
+        return {
+          to: '/corrective-actions',
+          search: { group: 'leader', ...(n.unitId ? { unit: n.unitId } : {}) },
+        } as const;
+      }
       return { to: '/units' } as const;
     case 'unit':
       // §2.6: a called cross audit opens where the Zone Leader starts one.

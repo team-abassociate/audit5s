@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   API_BASE_PATH,
+  HEADER_IDEMPOTENCY_KEY,
   type Audit,
+  type CorrectiveActionDetail,
   type CrossAuditCall,
   type CrossAuditRound,
   type NotificationPage,
@@ -383,6 +385,85 @@ describe('overdue bundles (D10)', () => {
     for (const bundle of bundles) await worker.handle(bundle);
     expect(await received(world.actors.COORDINATOR.userId)).toHaveLength(2);
     expect(await received(world.actors.ZONE_LEADER.userId)).toHaveLength(1);
+  });
+});
+
+/** R-87: the button on Corrective actions, and the same on the phone. */
+describe('reminding a Zone Leader (R-87)', () => {
+  const remind = (token: string, actionId: string, key = randomUUID()) =>
+    world.request('POST', `${base}/corrective-actions/${actionId}/remind`, {
+      token,
+      headers: { [HEADER_IDEMPOTENCY_KEY]: key },
+    });
+  const reminders = async (userId: string) =>
+    (await notificationsFor(userId)).filter((row) => row.event_type === 'CORRECTIVE_ACTION_REMINDER');
+
+  it('sends the leader one notice for the whole Zone, once a day, and only them', async () => {
+    const coordinator = world.actors.COORDINATOR;
+    const leader = world.actors.ZONE_LEADER;
+    const { actions, zoneId } = await walkBy(3);
+    await drainNotifications(world, worker, seen);
+    const before = await reminders(leader.userId);
+
+    // Neither the Zone Leader nor the Consultant may send it.
+    expect((await remind(leader.accessToken, actions[0]!.id)).status).toBe(403);
+    expect((await remind(world.actors.CONSULTANT.accessToken, actions[0]!.id)).status).toBe(403);
+
+    // Pressed on one item, it covers the Zone's three.
+    const key = randomUUID();
+    const sent = await remind(coordinator.accessToken, actions[0]!.id, key);
+    expect(sent.status).toBe(200);
+    expect(sent.body).toMatchObject({ actionCount: 3 });
+    const events = (await drainNotifications(world, worker, seen)).filter((e) => e.type === 'CORRECTIVE_ACTION_REMINDER');
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ resourceType: 'zone', resourceId: zoneId, userIds: [leader.userId] });
+
+    const received = await reminders(leader.userId);
+    expect(received).toHaveLength(before.length + 1);
+    expect(received.at(-1)!.title).toMatch(/^Reminder: 3 open corrective actions in Zone \d+ — Line \d+$/);
+    expect(received.at(-1)!.body).toMatch(/asks you to close 3 walk-by observations\./);
+    // Delivery: in-app only for now. It has no WhatsApp or SMS row (the choice in R-87).
+    expect(received.at(-1)!.deliveries.filter((d) => d.channel === 'WHATSAPP' || d.channel === 'SMS')).toEqual([]);
+    expect(await reminders(coordinator.userId)).toHaveLength(0);
+
+    // The list says who and when, and the version a reviewer holds did not move.
+    const detail = await world.request('GET', `${base}/corrective-actions/${actions[0]!.id}`, { token: coordinator.accessToken });
+    const read = detail.body as CorrectiveActionDetail;
+    expect(read.lastRemindedAt).not.toBeNull();
+    expect(read.lastRemindedByName).toBe('Cole Coord');
+    expect(read.version).toBe(actions[0]!.version);
+
+    // A retried press replays. A second press within the day is refused, by anyone.
+    expect((await remind(coordinator.accessToken, actions[0]!.id, key)).status).toBe(200);
+    expect((await remind(coordinator.accessToken, actions[1]!.id)).status).toBe(409);
+    expect((await remind(world.actors.SUPER_ADMIN.accessToken, actions[2]!.id)).status).toBe(409);
+    expect((await drainNotifications(world, worker, seen)).filter((e) => e.type === 'CORRECTIVE_ACTION_REMINDER')).toEqual([]);
+
+    // A day later it may be sent again.
+    await world.owner.query(
+      `UPDATE corrective_action SET last_reminded_at = now() - interval '25 hours' WHERE id = ANY($1::uuid[])`,
+      [actions.map((action) => action.id)],
+    );
+    expect((await remind(world.actors.SUPER_ADMIN.accessToken, actions[1]!.id)).status).toBe(200);
+  });
+
+  it("refuses a Zone with no leader account, and another Unit's Coordinator", async () => {
+    const typed = await completedWalkBy(world, {
+      token: consultantToken,
+      deviceId: DEVICE,
+      unitId: world.unitA,
+      zoneLeaderUserId: null,
+      nonconformities: 1,
+    });
+    const refused = await remind(world.actors.COORDINATOR.accessToken, typed.actions[0]!.id);
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toContain('no Zone Leader account');
+    const { rows } = await world.owner.query(`SELECT last_reminded_at FROM corrective_action WHERE id = $1`, [typed.actions[0]!.id]);
+    expect(rows[0].last_reminded_at).toBeNull();
+
+    // An item of another Unit does not exist, for this Coordinator.
+    await world.owner.query(`UPDATE corrective_action SET unit_id = $2 WHERE id = $1`, [typed.actions[0]!.id, world.unitB]);
+    expect((await remind(world.actors.COORDINATOR.accessToken, typed.actions[0]!.id)).status).toBe(404);
   });
 });
 

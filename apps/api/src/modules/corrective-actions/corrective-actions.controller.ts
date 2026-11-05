@@ -21,6 +21,7 @@ import {
   type CorrectiveAction,
   type CorrectiveActionDetail,
   type CorrectiveActionLink,
+  type CorrectiveActionReminder,
   type CorrectiveActionSubmission,
   type CorrectiveActionSummary,
   type CorrectiveActionSummaryQuery,
@@ -94,6 +95,24 @@ export class CorrectiveActionsController {
       ]);
     }
     return this.tokens.mintForAction(scope, actionId);
+  }
+
+  /** R-87: one notification to the Zone's leader, about all the Zone's open items. */
+  @RequirePermission('corrective_action', 'remind')
+  @Scope({ param: 'correctiveActionId', intent: 'write' })
+  @Post(':correctiveActionId/remind')
+  @HttpCode(HttpStatus.OK)
+  remind(
+    @CurrentScope() scope: ScopeContext,
+    @Param('correctiveActionId', ParseUUIDPipe) actionId: string,
+    @Headers(HEADER_IDEMPOTENCY_KEY) idempotencyKey: string | undefined,
+  ): Promise<CorrectiveActionReminder> {
+    if (!idempotencyKey) {
+      throw AppError.validation('This request needs an Idempotency-Key header', [
+        { field: HEADER_IDEMPOTENCY_KEY, message: 'Required' },
+      ]);
+    }
+    return this.actions.remind(scope, actionId);
   }
 
   @RequirePermission('corrective_action', 'read')

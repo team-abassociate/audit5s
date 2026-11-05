@@ -139,6 +139,20 @@ describe('notification policy (§5.9)', () => {
     );
   });
 
+  it('names who asked and what is open in a reminder, to the leader alone (R-87)', () => {
+    expect(RECIPIENT_ROLES.CORRECTIVE_ACTION_REMINDER).toEqual([]);
+    const q = (questionNo: number | null) => ({ actionId: 'x', questionNo, suggestionNo: null });
+    const bundle = renderNotification(
+      job('CORRECTIVE_ACTION_REMINDER', { zoneCode: 'Z-03', zoneName: 'Press', remindedByName: 'Priya', items: [q(4), q(9), q(null)] }),
+    );
+    expect(bundle.title).toBe('Reminder: 3 open corrective actions in Zone 3 — Press');
+    expect(bundle.body).toMatch(/^Priya asks you to close Q4, Q9 and 1 walk-by observation\. /);
+    const one = renderNotification(
+      job('CORRECTIVE_ACTION_REMINDER', { zoneCode: 'Z-03', zoneName: 'Press', remindedByName: 'Priya', items: [q(4)] }),
+    );
+    expect(one.title).toBe('Reminder: Zone 3 — Press, Q4');
+  });
+
   it('counts walk-by observations, which have no question to name', () => {
     const item = (questionNo: number | null) => ({ actionId: 'x', questionNo, suggestionNo: null, daysOverdue: 3 });
     const walkBy = renderNotification(job('CORRECTIVE_ACTION_OVERDUE', { zoneCode: 'Z-03', zoneName: 'Press', items: [item(null), item(null)] }));
