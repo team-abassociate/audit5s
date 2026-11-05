@@ -3101,5 +3101,8 @@ form offered only Zones the person leads, so they could not record one. On the p
   pages as in 5S. A person added from the Kaizen rail is granted Kaizen (R-57). A person added
   through a new Unit's form is not, and is granted it from Users.
 
-Other roles are unchanged. The server is unchanged. The phone's New Kaizen still offers only the
-person's own Zones.
+**On the phone (and `/field`)** the form asks the same. The server answers the Unit and Zone lists first and
+the phone's catalogue offline. Kaizen's Overview gains New Unit and New person, and that person is
+granted Kaizen. Tabs: Overview, New Kaizen, History, Kaizens, Analysis.
+
+Other roles are unchanged. The server is unchanged.
