@@ -57,6 +57,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-63 | An imported Zone list makes its leaders' accounts; two leaders make subzones | Settled |
 | R-76 | The Gemba Board is retired; Ledger is the design system | Settled |
 | R-83 | A Zone's past audits are compared by the name they were taken under | Settled |
+| R-84 | Kaizen testing has a temporary staging beside production | Settled; temporary |
 
 ---
 
@@ -3070,3 +3071,16 @@ record that now names another department, and its marks and NCs read as that dep
 - **A rename starts a new comparison.** A Zone renamed by hand no longer compares with audits
   under its old name, a corrected spelling included.
 - **A summary of summaries is not changed:** the Super Admin picks its audits by hand (R-75).
+
+## R-84 — Kaizen testing has a temporary staging beside production
+
+**Settled 2026-11-04; temporary.** Kaizen is tested without a second server: a separate stack on
+the production VPS (`infra/staging`, `staging.leanstack.tech`), removed when testing ends.
+
+- **Separate:** its own database, photo storage and secrets, and no OTA update. Testers are
+  granted Kaizen the usual way (R-57). Only its web container joins production's network, so that
+  production's Caddy can reach it.
+- **Production comes first:** staging is capped at about 2.1 GB of memory with no swap, has a
+  quarter of production's CPU weight, and is what the kernel kills first. If available memory on
+  the VPS stays under ~4 GB (STACK.md), stop staging rather than moving the report worker.
+- **No backups:** staging data is test data and can be wiped.
