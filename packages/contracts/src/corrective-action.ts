@@ -80,6 +80,9 @@ export const correctiveActionSchema = z.object({
    * rather than in their own review queue (owner, 2026-10-13). Optional for an older API.
    */
   lastSubmittedByUserId: uuidSchema.nullable().optional(),
+  /** R-87: the last reminder covering this item, and who sent it. Optional for an older API. */
+  lastRemindedAt: isoDateTimeSchema.nullable().optional(),
+  lastRemindedByName: z.string().nullable().optional(),
   reopenCount: z.number().int().nonnegative(),
   /** Optimistic lock (§15.8): the second of two concurrent reviewers gets VERSION_CONFLICT. */
   version: z.number().int().positive(),
@@ -289,6 +292,14 @@ export const reassignCorrectiveActionRequestSchema = z.object({
 export type ReassignCorrectiveActionRequest = z.infer<
   typeof reassignCorrectiveActionRequestSchema
 >;
+
+/** R-87: what one reminder covered. It names a Zone's open items, not only the one pressed on. */
+export const correctiveActionReminderSchema = z.object({
+  remindedAt: isoDateTimeSchema,
+  /** The Zone's items still waiting on an answer, all in the one notification. */
+  actionCount: z.number().int().positive(),
+});
+export type CorrectiveActionReminder = z.infer<typeof correctiveActionReminderSchema>;
 
 /**
  * R-79: one nonconformity of a Zone's last finished audit, as the next auditor of the Zone

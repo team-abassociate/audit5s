@@ -61,6 +61,9 @@ export const correctiveActions = pgTable(
      * definition of that. Cleared on reopen, so a reopened action can fall overdue again.
      */
     overdueNotifiedAt: timestamp('overdue_notified_at', { withTimezone: true }),
+    /** R-87: the last reminder that covered this action, and who sent it (0066). */
+    lastRemindedAt: timestamp('last_reminded_at', { withTimezone: true }),
+    lastRemindedByName: text('last_reminded_by_name'),
     version: integer('version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

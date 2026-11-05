@@ -9,8 +9,51 @@ import {
   submissionTarget,
   isUnapprovedClosure,
   isReviewable,
+  latestReminder,
+  mayRemind,
+  reminderRecipients,
+  REMINDER_COOLDOWN_MS,
 } from './corrective-action';
 import { canTransition } from './state-machine';
+
+describe('reminders (R-87)', () => {
+  const now = Date.parse('2026-11-05T12:00:00Z');
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+
+  it('allows one reminder a day', () => {
+    expect(mayRemind(null, now)).toBe(true);
+    expect(mayRemind(undefined, now)).toBe(true);
+    expect(mayRemind(ago(REMINDER_COOLDOWN_MS - 1), now)).toBe(false);
+    expect(mayRemind(ago(REMINDER_COOLDOWN_MS), now)).toBe(true);
+  });
+
+  it("reminds the Zone's leader alone when it has one (R-78), even over a reassignment", () => {
+    expect(
+      reminderRecipients([
+        { zoneLeaderUserId: 'leader', assignedZoneLeaderUserId: 'someone-else' },
+        { zoneLeaderUserId: 'leader', assignedZoneLeaderUserId: 'leader' },
+      ]),
+    ).toEqual(['leader']);
+  });
+
+  it('falls back to the assignees of a Zone with no leader account, once each', () => {
+    expect(
+      reminderRecipients([
+        { zoneLeaderUserId: null, assignedZoneLeaderUserId: 'a' },
+        { zoneLeaderUserId: null, assignedZoneLeaderUserId: 'a' },
+        { zoneLeaderUserId: null, assignedZoneLeaderUserId: 'b' },
+        { assignedZoneLeaderUserId: null },
+      ]),
+    ).toEqual(['a', 'b']);
+    expect(reminderRecipients([{ zoneLeaderUserId: null, assignedZoneLeaderUserId: null }])).toEqual([]);
+  });
+
+  it('finds the newest reminder', () => {
+    const newest = { lastRemindedAt: ago(1000) };
+    expect(latestReminder([{ lastRemindedAt: null }, { lastRemindedAt: ago(5000) }, newest])).toBe(newest);
+    expect(latestReminder([{ lastRemindedAt: null }])).toBeUndefined();
+  });
+});
 
 describe('audit rollup (§2.8)', () => {
   it('closes an audit that raised nothing', () => {

@@ -70,6 +70,8 @@ const actionColumns = {
   dueAt: correctiveActions.dueAt,
   openedAt: correctiveActions.openedAt,
   lastSubmittedAt: correctiveActions.lastSubmittedAt,
+  lastRemindedAt: correctiveActions.lastRemindedAt,
+  lastRemindedByName: correctiveActions.lastRemindedByName,
   resolvedAt: correctiveActions.resolvedAt,
   verifiedByUserId: correctiveActions.verifiedByUserId,
   // R-43: the approver's name, through 0041's narrow definer function — a Coordinator may
@@ -637,6 +639,34 @@ export class CorrectiveActionWork {
       .where(eq(correctiveActionSubmissions.id, submissionId))
       .limit(1);
     return row ?? null;
+  }
+
+  /** R-87: what a reminder covers — the Zone's items waiting on an answer, set-aside audits out. */
+  async openInZone(zoneId: string): Promise<CorrectiveActionRow[]> {
+    return this.repository
+      .selectActions(this.tx)
+      .where(
+        and(
+          eq(correctiveActions.zoneId, zoneId),
+          inArray(correctiveActions.status, ['OPEN', 'REOPENED']),
+          sql`NOT app_audit_set_aside(${correctiveActions.auditId})`,
+          this.repository.predicate(this.scope),
+        ),
+      )
+      .orderBy(asc(correctiveActions.id));
+  }
+
+  /** R-87: no version bump, so a reviewer holding the item is not told it changed. Returns the sender's name. */
+  async markReminded(actionIds: readonly string[], at: Date): Promise<string> {
+    const [row] = await this.tx
+      .update(correctiveActions)
+      .set({
+        lastRemindedAt: at,
+        lastRemindedByName: sql`(SELECT full_name FROM "user" WHERE id = ${this.scope.actor.userId}::uuid)`,
+      })
+      .where(inArray(correctiveActions.id, [...actionIds]))
+      .returning({ name: correctiveActions.lastRemindedByName });
+    return row?.name ?? 'Your Coordinator';
   }
 
   /**

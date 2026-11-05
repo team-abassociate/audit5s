@@ -6,6 +6,7 @@ import {
   type AuditStatus,
   type CorrectiveAction,
   type CorrectiveActionDetail,
+  type CorrectiveActionReminder,
   type CorrectiveActionSubmission,
   type CorrectiveActionSummary,
   type CorrectiveActionSummaryQuery,
@@ -22,6 +23,9 @@ import {
   assertTransition,
   awaitsReview,
   grantFor,
+  latestReminder,
+  mayRemind,
+  reminderRecipients,
   rollupAuditStatus,
   rollupPath,
   submissionTarget,
@@ -782,6 +786,75 @@ export class CorrectiveActionsService {
     return this.get(scope, actionId);
   }
 
+  /**
+   * `POST /corrective-actions/{id}/remind` (R-87): one notification to the Zone's leader
+   * listing everything of the Zone still waiting on them, as the overdue notice bundles (D10).
+   *
+   * It moves no status, so §7.3's "no method touches more than one action" still holds of
+   * every action's state; only the reminder marker is written across the Zone.
+   */
+  async remind(scope: ScopeContext, actionId: string): Promise<CorrectiveActionReminder> {
+    const anchor = await this.mustFind(scope, actionId);
+    const remindedAt = new Date();
+
+    const actionCount = await this.repository.inTransaction(scope, async (unit) => {
+      const open = await unit.openInZone(anchor.zoneId);
+      if (open.length === 0) {
+        throw AppError.conflict('CONFLICT', 'This Zone has nothing waiting on its leader.');
+      }
+      // ponytail: read then write, so two presses in the same instant can both send. The
+      // idempotency key covers a retried press; a row lock if a double notice ever matters.
+      const last = latestReminder(open.map(toCorrectiveAction));
+      if (!mayRemind(last?.lastRemindedAt, remindedAt.getTime())) {
+        throw AppError.conflict('CONFLICT', 'This Zone’s leader has already been reminded in the last 24 hours.');
+      }
+
+      // An archived leader would be dropped at fan-out, and "sent" would be untrue.
+      const candidates = reminderRecipients(open);
+      const present = await Promise.all(
+        candidates.map((userId) => this.repository.isZoneLeaderOfUnit(scope, anchor.unitId, userId)),
+      );
+      const userIds = candidates.filter((_, index) => present[index]);
+      if (userIds.length === 0) {
+        throw AppError.conflict(
+          'CONFLICT',
+          'This Zone has no Zone Leader account to notify. Copy a Zone Leader link and send it to them.',
+        );
+      }
+
+      const remindedByName = await unit.markReminded(open.map((action) => action.id), remindedAt);
+      await this.events.emit(unit.tx, {
+        type: 'CORRECTIVE_ACTION_REMINDER',
+        actorUserId: scope.actor.userId,
+        unitId: anchor.unitId,
+        // One item opens that item; a bundle opens the Zone's list (D10).
+        resourceType: open.length === 1 ? 'corrective_action' : 'zone',
+        resourceId: open.length === 1 ? open[0]!.id : anchor.zoneId,
+        userIds,
+        data: {
+          zoneCode: open[0]!.zoneCode,
+          zoneName: open[0]!.zoneName,
+          remindedByName,
+          items: open.map((action) => ({
+            actionId: action.id,
+            questionNo: action.questionGlobalOrder,
+            suggestionNo: action.suggestionNo,
+          })),
+        },
+      });
+      return open.length;
+    });
+
+    await this.auditLog.record({
+      action: 'corrective_action.reminded',
+      resourceType: 'corrective_action',
+      resourceId: actionId,
+      unitId: anchor.unitId,
+      after: { zoneId: anchor.zoneId, actionCount },
+    });
+    return { remindedAt: remindedAt.toISOString(), actionCount };
+  }
+
   // ------------------------------------------------------------------------ helpers
 
   /**
@@ -897,6 +970,8 @@ export function toCorrectiveAction(row: CorrectiveActionRow): CorrectiveAction {
     verifiedByName: row.verifiedByName,
     closedByName: row.closedByName,
     lastSubmittedByUserId: row.lastSubmittedByUserId,
+    lastRemindedAt: row.lastRemindedAt?.toISOString() ?? null,
+    lastRemindedByName: row.lastRemindedByName,
     reopenCount: row.reopenCount,
     version: row.version,
     auditType: row.auditType,

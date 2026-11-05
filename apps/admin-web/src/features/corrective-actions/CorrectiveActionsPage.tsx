@@ -6,6 +6,7 @@ import {
   type CorrectiveAction,
   type CorrectiveActionDetail,
   type CorrectiveActionLink,
+  type CorrectiveActionReminder,
   type CorrectiveActionStatus,
   type CorrectiveActionSummary,
   type CorrectiveActionSubmission,
@@ -23,6 +24,9 @@ import {
   isOverdue,
   isReviewable,
   isUnapprovedClosure,
+  latestReminder,
+  mayRemind,
+  reminderRecipients,
   zoneDisplayLabel,
 } from '@audit5s/domain';
 import { api } from '@/lib/api';
@@ -387,6 +391,11 @@ export function CorrectiveActionsPage() {
                                 {entry.list.length} of {entry.total} shown
                               </span>
                             )}
+                            {entry.auditId === null && (
+                              <span className="ml-3 inline-flex flex-wrap items-center gap-2 align-middle">
+                                <RemindLeader actions={entry.list} />
+                              </span>
+                            )}
                           </Td>
                         </tr>
                         {entry.list.map((action) => (
@@ -610,6 +619,15 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
           </>
         )}
       </dl>
+      {can('corrective_action', 'remind') && awaitsResponse(action.status) && (
+        <div className="space-y-2">
+          <p className="gb-label">Reminder</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <RemindLeader actions={[action]} />
+          </div>
+          <p className="text-xs text-ink-2">One notification to the Zone Leader, listing all of this Zone’s open items.</p>
+        </div>
+      )}
       {can('corrective_action', 'reassign') && action.status !== 'VERIFIED' && action.status !== 'WITHDRAWN' && (
         <Reassign action={action} onDone={refresh} />
       )}
@@ -686,6 +704,49 @@ function ActionDetail({ action, leader }: { action: CorrectiveActionDetail; lead
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * R-87: asks the Zone's leader to close what is waiting on them. The server sends one notice
+ * for the whole Zone and decides who gets it; this says who last did, and when it may go again.
+ */
+function RemindLeader({ actions }: { actions: CorrectiveAction[] }) {
+  const { can } = useSession();
+  const queryClient = useQueryClient();
+  const open = actions.filter((action) => awaitsResponse(action.status));
+  const remind = useMutation({
+    // One key per press: a retried request sends nothing twice.
+    mutationFn: () =>
+      api.post<CorrectiveActionReminder>(`/corrective-actions/${open[0]!.id}/remind`, undefined, crypto.randomUUID()),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['corrective-actions'] });
+      await queryClient.invalidateQueries({ queryKey: ['corrective-action'] });
+    },
+  });
+
+  if (!can('corrective_action', 'remind') || open.length === 0) return null;
+  if (reminderRecipients(open).length === 0) {
+    return <span className="text-xs text-ink-2">No Zone Leader account to remind. Send them a Zone Leader link.</span>;
+  }
+  const last = latestReminder(open);
+  return (
+    <>
+      <Button
+        variant="secondary"
+        className="gb-btn--sm"
+        disabled={remind.isPending || !mayRemind(last?.lastRemindedAt, Date.now())}
+        onClick={() => remind.mutate()}
+      >
+        {remind.isPending ? 'Sending…' : 'Send reminder'}
+      </Button>
+      {last && (
+        <span className="text-xs text-ink-2" role="status">
+          Reminded {formatDateTime(last.lastRemindedAt!)} by {last.lastRemindedByName ?? '—'}
+        </span>
+      )}
+      {remind.error && <ErrorNotice error={remind.error} />}
+    </>
   );
 }
 

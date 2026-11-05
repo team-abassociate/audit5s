@@ -34,6 +34,8 @@ export const NOTIFICATION_EVENT_TYPES = [
   /** R-31: a correction to a completed audit took a finding away. */
   'CORRECTIVE_ACTION_WITHDRAWN',
   'CORRECTIVE_ACTION_OVERDUE',
+  /** R-87: a Super Admin or Coordinator asked the Zone's leader to close its open items. */
+  'CORRECTIVE_ACTION_REMINDER',
   'SYNC_FAILURE',
   'CHECKLIST_PUBLISHED',
   'REPORT_GENERATED',

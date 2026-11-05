@@ -43,6 +43,8 @@ export const RECIPIENT_ROLES: Record<NotificationEventType, Role[]> = {
   // Unit and is who chases it; the Super Admin sees every Unit's slippage. §7.3 gives the
   // due date teeth only if somebody is told it has passed.
   CORRECTIVE_ACTION_OVERDUE: ['SUPER_ADMIN', 'COORDINATOR'],
+  // R-87: only the leader the event names. The one who pressed the button knows.
+  CORRECTIVE_ACTION_REMINDER: [],
   SYNC_FAILURE: ['SUPER_ADMIN'],
   CHECKLIST_PUBLISHED: ['SUPER_ADMIN'],
   // §10.2's REPORT_GENERATED. The Super Admin who asked for it is the actor and is never
@@ -314,23 +316,30 @@ export function renderNotification(event: DomainEventJob): { title: string; body
             'Answer it with an after photo, or mark it not possible so it can be reviewed.',
         };
       }
-      // Questions and overall actions by name; a walk-by observation has neither, so those
-      // are counted instead.
-      const named = items.map(itemName).filter(Boolean);
-      const shown = named.slice(0, OVERDUE_ITEMS_NAMED);
-      const observations = items.length - named.length;
-      const parts = [
-        ...shown,
-        ...(named.length > shown.length ? [`${named.length - shown.length} more`] : []),
-        ...(observations > 0 ? [`${observations} walk-by observation${observations === 1 ? '' : 's'}`] : []),
-      ];
-      const subject = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)!}` : parts[0]!;
+      const subject = listItems(items);
       return {
         title: `Overdue: ${items.length} corrective actions in ${where}${owner}`,
         body:
           `${subject.charAt(0).toUpperCase()}${subject.slice(1)} ` +
           `${days <= 0 ? 'are past their due date' : `are past their due date, the oldest by ${days} day${days === 1 ? '' : 's'}`}. ` +
           'Answer each with an after photo, or mark it not possible so it can be reviewed.',
+      };
+    }
+    case 'CORRECTIVE_ACTION_REMINDER': {
+      const items = (Array.isArray(data.items) ? data.items : [data]) as Array<Record<string, unknown>>;
+      const who = data.remindedByName ? String(data.remindedByName) : 'Your Coordinator';
+      const where = item || 'a Zone';
+      if (items.length === 1) {
+        const one = itemName(items[0]!);
+        const what = `${where}${one ? `, ${one}` : ''}`;
+        return {
+          title: `Reminder: ${what}`,
+          body: `${who} asks you to close ${what}. Answer it with an after photo, or mark it not possible so it can be reviewed.`,
+        };
+      }
+      return {
+        title: `Reminder: ${items.length} open corrective actions in ${where}`,
+        body: `${who} asks you to close ${listItems(items)}. Answer each with an after photo, or mark it not possible so it can be reviewed.`,
       };
     }
     case 'CORRECTIVE_ACTION_REOPENED':
@@ -427,6 +436,22 @@ const OVERDUE_ITEMS_NAMED = 8;
 function itemName(one: Record<string, unknown>): string {
   if (one.questionNo) return `Q${String(one.questionNo)}`;
   return one.suggestionNo ? `overall action ${String(one.suggestionNo)}` : '';
+}
+
+/**
+ * "Q1, Q2 and 3 more": questions and overall actions by name. A walk-by observation has
+ * neither, so those are counted instead.
+ */
+function listItems(items: Array<Record<string, unknown>>): string {
+  const named = items.map(itemName).filter(Boolean);
+  const shown = named.slice(0, OVERDUE_ITEMS_NAMED);
+  const observations = items.length - named.length;
+  const parts = [
+    ...shown,
+    ...(named.length > shown.length ? [`${named.length - shown.length} more`] : []),
+    ...(observations > 0 ? [`${observations} walk-by observation${observations === 1 ? '' : 's'}`] : []),
+  ];
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)!}` : parts[0]!;
 }
 
 /**
