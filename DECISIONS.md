@@ -59,6 +59,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-83 | A Zone's past audits are compared by the name they were taken under | Settled |
 | R-84 | Kaizen testing has a temporary staging beside production | Settled; temporary |
 | R-85 | A Super Admin records a Kaizen for any Unit, and sets up Units and people from Kaizen | Settled |
+| R-86 | A phone opening the portal goes to the field app, with a way back | Settled |
 
 ---
 
@@ -3106,3 +3107,14 @@ the phone's catalogue offline. Kaizen's Overview gains New Unit and New person, 
 granted Kaizen. Tabs: Overview, New Kaizen, History, Kaizens, Analysis.
 
 Other roles are unchanged. The server is unchanged.
+
+## R-86 — A phone opening the portal goes to the field app, with a way back
+
+**Settled 2026-11-05 by the user.** The portal on a phone is a squeezed desk screen, with its menu in
+a sliding strip. A phone browser opening any portal page now goes to `/field`, whose tabs are at the
+bottom.
+
+- **Who:** browsers that call themselves mobile ("Mobi"). Computers and tablets stay on the website.
+- **Links that stay:** `/ca/…` and `/reset-password`, which people receive and open on a phone.
+- **The way back:** "Use the website" on `/field`'s sign-in and Profile. It holds for that browser
+  tab, so the next visit starts in the app again. The installed app does not show it.
