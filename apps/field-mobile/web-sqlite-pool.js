@@ -33,6 +33,7 @@ async function census(name) {
   return `at start ${files} files: ${Object.entries(kinds).map(([kind, count]) => `${kind}=${count}`).join(' ')}`;
 }
 
+const IOERR = 10;
 const CANTOPEN = 14;
 const NAMED_FILES = 0x100 | 0x800; // SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_MAIN_JOURNAL
 
@@ -43,6 +44,43 @@ function rawName(module, pointer) {
   const end = bytes.indexOf(0);
   const text = new TextDecoder().decode(bytes.subarray(0, end < 0 ? 60 : end));
   return `pointer ${pointer}, heap ${heap.length}/${heap.buffer.byteLength}, first byte ${bytes[0]}, reads "${text.slice(-20)}", UTF8ToString "${String(module.UTF8ToString(pointer)).slice(-20)}"`;
+}
+
+/** A C string read a byte at a time. Our file names are ASCII (`audit5s-<uuid>.db`). */
+function plainString(heap, pointer) {
+  let text = '';
+  for (let at = pointer; pointer && heap[at] !== 0; at++) text += String.fromCharCode(heap[at]);
+  return text;
+}
+
+/*
+ * On a real Android phone a file name intermittently came out blank between SQLite and this pool,
+ * though the same code never does on a desktop. Both conversions it passes through are replaced with
+ * plain byte copies; the diagnostic says which of the two was at fault when it happens.
+ */
+function copyNamesPlainly(vfs) {
+  const module = vfs._module;
+  const decode = module.UTF8ToString;
+  let told = 0;
+  const once = (what) => {
+    if (told++ < 3) void tell(what, vfs);
+  };
+  module.UTF8ToString = (pointer, ...rest) => {
+    const plain = plainString(module.HEAPU8, pointer);
+    const browser = decode(pointer, ...rest);
+    if (browser !== plain) once(`decoder wrong: got "${String(browser).slice(-20)}" for "${plain.slice(-20)}"`);
+    return plain;
+  };
+  vfs.jFullPathname = (filename, zOut) => {
+    const { written } = new TextEncoder().encodeInto(filename, zOut);
+    if (written !== filename.length || zOut[0] !== filename.charCodeAt(0)) {
+      once(`encodeInto wrong: wrote ${written} of ${filename.length}, first byte ${zOut[0]}`);
+    }
+    if (filename.length >= zOut.length) return IOERR;
+    for (let at = 0; at < filename.length; at++) zOut[at] = filename.charCodeAt(at);
+    zOut[filename.length] = 0;
+    return 0;
+  };
 }
 
 function reportFailedOpens(vfs) {
@@ -89,6 +127,7 @@ export class AccessHandlePoolVFS extends Pool {
       void tell(`pool start: ${caught?.name} ${caught?.message}`, vfs);
       throw caught;
     }
+    copyNamesPlainly(vfs);
     reportFailedOpens(vfs);
     return vfs;
   }
