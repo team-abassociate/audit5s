@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Image, Pressable, ScrollView, Text, View } from 'react-native';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
 import { DateTimePickerAndroid } from '../lib/date-dialog';
 import Animated, { useReducedMotion } from 'react-native-reanimated';
@@ -15,15 +15,10 @@ import {
   type KaizenPhotoKind,
   type KaizenRequiredField,
   type KaizenWaste,
-  type Page,
-  type Unit,
-  type Zone,
 } from '@audit5s/contracts';
 import { formatDate, istDateKey, zoneDisplayLabel } from '@audit5s/domain';
-import { api } from '../lib/api';
 import type { ProcessedImage } from '../lib/capture/media';
 import { pickFromGallery } from '../lib/capture/gallery';
-import { listLocalUnits, listLocalZones } from '../lib/db/catalogue.repository';
 import {
   addLocalKaizenPhoto,
   createLocalKaizen,
@@ -115,13 +110,10 @@ export function KaizenForm({
   const styles = useStyles();
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
-  const { user, scope } = useSession();
-  const router = useRouter();
+  const { user } = useSession();
   const { sync } = useSync();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
-  // R-85: a Super Admin files a Kaizen under any Zone of any Unit, and picks both.
-  const anyUnit = scope?.role === 'SUPER_ADMIN';
 
   const [id, setId] = useState(kaizenId);
   // Read by `save`, so two saves in one render cannot both see "no draft yet" and make two.
@@ -137,7 +129,6 @@ export function KaizenForm({
   // Boxes typed in since they were last saved: what a flush writes. Never the prefills alone.
   const dirty = useRef(new Set<KaizenTextField>());
   const timers = useRef(new Map<KaizenTextField, ReturnType<typeof setTimeout>>());
-  const [unitId, setUnitId] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
   const [open, setOpen] = useState<number>(0);
   const [attempted, setAttempted] = useState(false);
@@ -150,38 +141,11 @@ export function KaizenForm({
   const scroller = useRef<ScrollView | null>(null);
   const reduced = useReducedMotion();
 
-  const leaderZones = useQuery({
+  const zones = useQuery({
     queryKey: ['local', 'leader-zones', user?.id],
     queryFn: () => listLeaderZones(database, user!.id),
-    enabled: Boolean(user) && !anyUnit,
+    enabled: Boolean(user),
   });
-  // A Unit made a moment ago is on the server before it is in the phone's catalogue, so the
-  // server answers first. Offline, the catalogue does.
-  const units = useQuery({
-    queryKey: ['kaizen-form', 'units'],
-    queryFn: () =>
-      api
-        .get<Page<Unit>>('/units?limit=200')
-        .then((page) => page.data.map((unit) => ({ id: unit.id, name: unit.name })))
-        .catch(() => listLocalUnits(database)),
-    enabled: anyUnit && kaizenId === null,
-  });
-  const unitZones = useQuery({
-    queryKey: ['kaizen-form', 'zones', unitId],
-    queryFn: () =>
-      api
-        .get<Page<Zone>>(`/units/${unitId}/zones?active=true&limit=200`)
-        .then((page) => page.data.map(({ id: zone, unitId: unit, code, name }) => ({ id: zone, unitId: unit, code, name })))
-        .catch(() => listLocalZones(database, unitId!)),
-    enabled: anyUnit && unitId !== null,
-  });
-  const zoneOptions = anyUnit ? unitZones.data : leaderZones.data;
-  // Back from adding a Unit or a Zone, the lists show it.
-  useFocusEffect(
-    useCallback(() => {
-      if (anyUnit) void queryClient.invalidateQueries({ queryKey: ['kaizen-form'] });
-    }, [anyUnit, queryClient]),
-  );
   const kaizen = useQuery({
     queryKey: ['local', 'kaizen', id],
     queryFn: () => getLocalKaizen(database, id!),
@@ -200,15 +164,14 @@ export function KaizenForm({
       setTexts({
         ...textsOf({}),
         implementedOn: istDateKey(new Date()) ?? '',
-        // A Super Admin records it for someone else's Zone, so their own name would be wrong.
-        ideaBy: anyUnit ? '' : (user?.fullName ?? ''),
-        implementedBy: anyUnit ? '' : (user?.fullName ?? ''),
+        ideaBy: user?.fullName ?? '',
+        implementedBy: user?.fullName ?? '',
       });
     } else if (kaizen.data) setTexts(textsOf(kaizen.data.sheet));
-  }, [anyUnit, id, kaizen.data, texts, user]);
+  }, [id, kaizen.data, texts, user]);
   useEffect(() => {
-    if (!anyUnit && zoneId === null && leaderZones.data?.[0]) setZoneId(leaderZones.data[0].id);
-  }, [anyUnit, leaderZones.data, zoneId]);
+    if (zoneId === null && zones.data?.[0]) setZoneId(zones.data[0].id);
+  }, [zones.data, zoneId]);
 
   // The camera is the whole screen: no tab bar under it (the form is also mounted in a
   // stack, which has none), and the header's arrow closes the camera. Both are put back when
@@ -248,7 +211,7 @@ export function KaizenForm({
       await saveLocalKaizenFields(database, idRef.current, fields);
       return idRef.current;
     }
-    const zone = zoneOptions?.find((z) => z.id === zoneId);
+    const zone = zones.data?.find((z) => z.id === zoneId);
     if (!zone) throw new Error(t.noZone);
     // The draft is born with the prefilled date and names too, not only the box that made it
     // (Phase 0.1: a draft started from Machine reopened with no date).
@@ -428,60 +391,8 @@ export function KaizenForm({
     );
   }
   if (!texts) return null;
-  if (!anyUnit && id === null && leaderZones.data && leaderZones.data.length === 0) {
+  if (id === null && zones.data && zones.data.length === 0) {
     return <Slip title={t.noZone} />;
-  }
-
-  // Which Unit, then which Zone: the two lists, whether first or back in the sheet's first step.
-  const filing = (
-    <>
-      <SelectField
-        label={t.unit}
-        searchable
-        options={(units.data ?? []).map((unit) => ({ value: unit.id, label: unit.name }))}
-        value={unitId}
-        onChange={(value) => {
-          setUnitId(value);
-          setZoneId(null);
-        }}
-      />
-      {unitId !== null && (unitZones.data?.length ?? 0) > 0 ? (
-        <SelectField
-          label={t.zone}
-          searchable
-          options={(unitZones.data ?? []).map((z) => ({ value: z.id, label: zoneDisplayLabel(z.code, z.name) }))}
-          value={zoneId}
-          onChange={setZoneId}
-        />
-      ) : null}
-    </>
-  );
-  // The sheet opens once it has somewhere to be filed.
-  if (anyUnit && id === null && zoneId === null) {
-    return (
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Card>
-          <Label>{t.chooseFiling}</Label>
-          {filing}
-        </Card>
-        {units.data?.length === 0 ? (
-          <>
-            <Slip title={t.noUnits} />
-            <Button title={t.newUnit} icon="add" onPress={() => router.push('/manage/new-unit')} />
-          </>
-        ) : null}
-        {unitId !== null && unitZones.data?.length === 0 ? (
-          <>
-            <Slip title={t.noUnitZones} />
-            <Button
-              title={t.addZone}
-              icon="add"
-              onPress={() => router.push({ pathname: '/manage/unit/[unitId]', params: { unitId } })}
-            />
-          </>
-        ) : null}
-      </ScrollView>
-    );
   }
 
   const current: LocalKaizen | null = kaizen.data ?? null;
@@ -614,11 +525,10 @@ export function KaizenForm({
       case 'details':
         return (
           <>
-            {anyUnit && id === null ? filing : null}
-            {!anyUnit && id === null && (leaderZones.data?.length ?? 0) > 1 ? (
+            {id === null && (zones.data?.length ?? 0) > 1 ? (
               <SelectField
                 label={t.zone}
-                options={(leaderZones.data ?? []).map((z) => ({ value: z.id, label: zoneDisplayLabel(z.code, z.name) }))}
+                options={(zones.data ?? []).map((z) => ({ value: z.id, label: zoneDisplayLabel(z.code, z.name) }))}
                 value={zoneId}
                 onChange={setZoneId}
               />
@@ -815,8 +725,7 @@ export function KaizenForm({
             />
           </View>
         ) : null}
-        {/* Drizzle's message is only the query; the database's own error is its `cause`. */}
-        <ErrorBanner message={error ? (error.cause ? String(error.cause) : error.message) : null} />
+        <ErrorBanner message={error?.message ?? null} />
         <View style={styles.submit}>
           <Button testID="kaizen-submit" quiet title={submitTitle} icon="send" busy={submit.isPending} onPress={() => submit.mutate()} />
         </View>

@@ -157,13 +157,6 @@ export interface KaizenStrings {
   readyToSubmit: string;
   savedAsYouGo: string;
   noZone: string;
-  unit: string;
-  chooseFiling: string;
-  noUnits: string;
-  noUnitZones: string;
-  newUnit: string;
-  newPerson: string;
-  addZone: string;
   badSaving: string;
   submittedNote: string;
 
@@ -397,13 +390,6 @@ const EN: KaizenStrings = {
   readyToSubmit: 'Ready to submit',
   savedAsYouGo: 'Each field is saved on this phone as you go, and sent when there is signal.',
   noZone: 'No Zone of yours is on this phone yet. Sync, or ask your Coordinator.',
-  unit: 'Unit',
-  chooseFiling: 'Which Unit and Zone is this Kaizen for?',
-  noUnits: 'No Units yet. Add one first.',
-  noUnitZones: 'This Unit has no Zones yet.',
-  newUnit: 'New Unit',
-  newPerson: 'New person',
-  addZone: 'Add a Zone',
   badSaving: 'Enter the saving in rupees, digits only.',
   submittedNote: 'Submitted. It reaches your Coordinator when there is signal.',
 
@@ -632,13 +618,6 @@ const HI: KaizenStrings = {
   readyToSubmit: 'जमा करने के लिए तैयार',
   savedAsYouGo: 'हर जानकारी इसी फ़ोन पर तुरंत सहेजी जाती है और सिग्नल मिलने पर भेजी जाती है।',
   noZone: 'आपका कोई ज़ोन अभी इस फ़ोन पर नहीं है। सिंक करें, या कोऑर्डिनेटर से पूछें।',
-  unit: 'यूनिट',
-  chooseFiling: 'यह काइज़ेन किस यूनिट और ज़ोन के लिए है?',
-  noUnits: 'अभी कोई यूनिट नहीं। पहले एक जोड़ें।',
-  noUnitZones: 'इस यूनिट में अभी कोई ज़ोन नहीं है।',
-  newUnit: 'नई यूनिट',
-  newPerson: 'नया व्यक्ति',
-  addZone: 'ज़ोन जोड़ें',
   badSaving: 'बचत रुपयों में लिखें, केवल अंक।',
   submittedNote: 'जमा हो गया। सिग्नल मिलने पर यह आपके कोऑर्डिनेटर तक पहुँचेगा।',
 
@@ -867,13 +846,6 @@ const MR: KaizenStrings = {
   readyToSubmit: 'सादर करण्यास तयार',
   savedAsYouGo: 'प्रत्येक माहिती याच फोनवर लगेच जतन होते आणि सिग्नल मिळाल्यावर पाठवली जाते.',
   noZone: 'तुमचा कोणताही झोन अजून या फोनवर नाही. सिंक करा, किंवा कोऑर्डिनेटरला विचारा.',
-  unit: 'युनिट',
-  chooseFiling: 'हा कायझेन कोणत्या युनिट आणि झोनसाठी आहे?',
-  noUnits: 'अजून कोणतेही युनिट नाही. आधी एक जोडा.',
-  noUnitZones: 'या युनिटमध्ये अजून कोणताही झोन नाही.',
-  newUnit: 'नवीन युनिट',
-  newPerson: 'नवीन व्यक्ती',
-  addZone: 'झोन जोडा',
   badSaving: 'बचत रुपयांत लिहा, फक्त अंक.',
   submittedNote: 'सादर झाले. सिग्नल मिळाल्यावर ते तुमच्या कोऑर्डिनेटरकडे पोहोचेल.',
 

@@ -48,7 +48,6 @@ import { UnitDetail } from '@/features/units/UnitDetail';
 import { UsersPage, type UsersSearch } from '@/features/users/UsersPage';
 import { SessionProvider, useSession } from '@/lib/session';
 import { validateScopeSearch, type ScopeSearch } from '@/lib/scope';
-import { phoneAppTarget } from '@/lib/phone-redirect';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -298,14 +297,12 @@ const profileRoute = createRoute({
   component: ProfilePage,
 });
 
-const validateUsersSearch = (search: Record<string, unknown>): UsersSearch => ({
-  user: typeof search.user === 'string' ? search.user : undefined,
-});
-
 const usersRoute = createRoute({
   getParentRoute: () => gatedRoute,
   path: '/users',
-  validateSearch: validateUsersSearch,
+  validateSearch: (search: Record<string, unknown>): UsersSearch => ({
+    user: typeof search.user === 'string' ? search.user : undefined,
+  }),
   component: UsersPage,
 });
 
@@ -363,43 +360,6 @@ const kaizenAnalysisRoute = createRoute({
     <KaizenOnly>
       <KaizenAnalysisPage />
     </KaizenOnly>
-  ),
-});
-
-/** R-85: a Super Admin's Units and people, the same pages, without leaving Kaizen. */
-function KaizenSuperAdminOnly({ children }: { children: ReactNode }) {
-  const { scope } = useSession();
-  return scope?.role === 'SUPER_ADMIN' ? <KaizenOnly>{children}</KaizenOnly> : <Navigate to="/kaizen" replace />;
-}
-
-const kaizenUnitsRoute = createRoute({
-  getParentRoute: () => gatedRoute,
-  path: '/kaizen/units',
-  component: () => (
-    <KaizenSuperAdminOnly>
-      <UnitsPage />
-    </KaizenSuperAdminOnly>
-  ),
-});
-
-const kaizenUnitDetailRoute = createRoute({
-  getParentRoute: () => gatedRoute,
-  path: '/kaizen/units/$unitId',
-  component: () => (
-    <KaizenSuperAdminOnly>
-      <UnitDetail />
-    </KaizenSuperAdminOnly>
-  ),
-});
-
-const kaizenUsersRoute = createRoute({
-  getParentRoute: () => gatedRoute,
-  path: '/kaizen/users',
-  validateSearch: validateUsersSearch,
-  component: () => (
-    <KaizenSuperAdminOnly>
-      <UsersPage />
-    </KaizenSuperAdminOnly>
   ),
 });
 
@@ -468,9 +428,6 @@ const routeTree = rootRoute.addChildren([
     kaizenAnalysisRoute,
     kaizenNewRoute,
     kaizenEditRoute,
-    kaizenUnitsRoute,
-    kaizenUnitDetailRoute,
-    kaizenUsersRoute,
     kaizenDetailRoute,
   ]),
 ]);
@@ -483,26 +440,12 @@ declare module '@tanstack/react-router' {
   }
 }
 
-// R-86. Not in development: Vite does not serve `/field`.
-const phoneApp = import.meta.env.PROD
-  ? phoneAppTarget({
-      userAgent: navigator.userAgent,
-      pathname: window.location.pathname,
-      search: window.location.search,
-      session: window.sessionStorage,
-    })
-  : null;
-
-if (phoneApp) {
-  window.location.replace(phoneApp);
-} else {
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <SessionProvider>
-          <RouterProvider router={router} />
-        </SessionProvider>
-      </QueryClientProvider>
-    </StrictMode>,
-  );
-}
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>
+    </QueryClientProvider>
+  </StrictMode>,
+);
