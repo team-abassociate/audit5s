@@ -17,6 +17,22 @@ async function tell(what, vfs) {
   const mb = (bytes) => Math.round((bytes ?? 0) / 1048576);
   page.postMessage(`${what}; ${slots}; storage ${mb(storage?.usage)}/${mb(storage?.quota)}MB`);
 }
+/** What holds the pool's files, read before the pool locks them: a count by kind, and any stray names. */
+async function census(name) {
+  const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle(name);
+  const kinds = {};
+  let files = 0;
+  for await (const [, handle] of directory.entries()) {
+    files += 1;
+    const head = new Uint8Array(await (await handle.getFile()).slice(0, 516).arrayBuffer());
+    const path = new TextDecoder().decode(head.subarray(0, Math.max(head.indexOf(0), 0)));
+    const flags = head.length === 516 ? new DataView(head.buffer).getUint32(512).toString(16) : '?';
+    const kind = !path ? 'free' : path.endsWith('.db') ? 'db' : path.endsWith('-journal') ? 'journal' : `other(${path.slice(0, 12)},${flags})`;
+    kinds[kind] = (kinds[kind] ?? 0) + 1;
+  }
+  return `at start ${files} files: ${Object.entries(kinds).map(([kind, count]) => `${kind}=${count}`).join(' ')}`;
+}
+
 function reportFailedOpens(vfs) {
   const open = vfs.jOpen.bind(vfs);
   vfs.jOpen = (filename, fileId, flags, outFlags) => {
@@ -40,6 +56,8 @@ function reportFailedOpens(vfs) {
 export class AccessHandlePoolVFS extends Pool {
   static async create(name, module) {
     let vfs;
+    const held = await census(name).catch((caught) => `census failed: ${caught?.message}`);
+    page.postMessage(held);
     try {
       vfs = await Pool.create(name, module);
       if (vfs.getCapacity() < CAPACITY) await vfs.addCapacity(CAPACITY - vfs.getCapacity());

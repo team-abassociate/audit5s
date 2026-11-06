@@ -83,7 +83,9 @@ async function withPoolDetail(caught: unknown): Promise<never> {
   if (Platform.OS === 'web' && caught instanceof Error) {
     // The worker sends its report after it has answered with the error.
     await new Promise((resolve) => setTimeout(resolve, 400));
-    caught.message += ` [diagnostic: ${poolReports.slice(-2).join(' | ') || 'no pool report'}]`;
+    const census = poolReports.filter((report) => report.startsWith('at start') || report.startsWith('census')).slice(-1);
+    const failures = poolReports.filter((report) => !census.includes(report)).slice(-2);
+    caught.message += ` [diagnostic: ${[...census, ...failures].join(' | ') || 'no pool report'}]`;
   }
   throw caught;
 }
