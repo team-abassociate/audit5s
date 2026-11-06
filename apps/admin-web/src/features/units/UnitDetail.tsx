@@ -13,7 +13,7 @@ import {
 } from '@audit5s/contracts';
 import { ApiError, api, fetchAll } from '@/lib/api';
 import { devGet } from '@/features/units/worst-case';
-import { Link, useParams, useRouterState } from '@tanstack/react-router';
+import { Link, useParams } from '@tanstack/react-router';
 import { Button, Card, CardHeader, EmptyState, ErrorNotice, Field, Input, RowActions, Select, Spinner, Table, Td, Th } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { useDocumentTitle } from '@/components/AppShell';
@@ -33,8 +33,6 @@ export function UnitDetail() {
   const { unitId } = useParams({ strict: false }) as { unitId: string };
   const { scope, can } = useSession();
   const queryClient = useQueryClient();
-  // The same page in Kaizen's corner (R-85), so Back stays there.
-  const inKaizen = useRouterState({ select: (s) => s.location.pathname.startsWith('/kaizen/') });
   const isCoordinator = scope?.role === 'COORDINATOR';
 
   const unit = useQuery({
@@ -74,7 +72,7 @@ export function UnitDetail() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to={inKaizen ? '/kaizen/units' : '/units'} className="gb-btn">
+        <Link to="/units" className="gb-btn">
           ← Units & zones
         </Link>
         <h1 className="gb-h1">{unit.data.name}</h1>

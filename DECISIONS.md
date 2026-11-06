@@ -58,8 +58,6 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-76 | The Gemba Board is retired; Ledger is the design system | Settled |
 | R-83 | A Zone's past audits are compared by the name they were taken under | Settled |
 | R-84 | Kaizen testing has a temporary staging beside production | Settled; temporary |
-| R-85 | A Super Admin records a Kaizen for any Unit, and sets up Units and people from Kaizen | Settled |
-| R-86 | A phone opening the portal goes to the field app, with a way back | Settled |
 
 ---
 
@@ -3088,33 +3086,3 @@ the production VPS (`infra/staging`, `staging.leanstack.tech`), removed when tes
   quarter of production's CPU weight, and is what the kernel kills first. If available memory on
   the VPS stays under ~4 GB (STACK.md), stop staging rather than moving the report worker.
 - **No backups:** staging data is test data and can be wiped.
-
-## R-85 — A Super Admin records a Kaizen for any Unit, and sets up Units and people from Kaizen
-
-**Settled 2026-11-05 by the user.** R-18 already gave a Super Admin `kaizen:create`, but the portal's
-form offered only Zones the person leads, so they could not record one. On the portal:
-
-- **The form asks for the Unit, then the Zone.** Nothing is pre-selected, because a Kaizen keeps its
-  Zone. The Super Admin is the Kaizen's author, and it goes to that Unit's Coordinator as usual.
-- **Their Kaizen screens are the reviewer's, plus New Kaizen.** They see every Unit's Kaizens and the
-  analysis, not "My Kaizens" and a Zone Leader's overview.
-- **Units & zones and Users are on their Kaizen rail** (`/kaizen/units`, `/kaizen/users`), the same
-  pages as in 5S. A person added from the Kaizen rail is granted Kaizen (R-57). A person added
-  through a new Unit's form is not, and is granted it from Users.
-
-**On the phone (and `/field`)** the form asks the same. The server answers the Unit and Zone lists first and
-the phone's catalogue offline. Kaizen's Overview gains New Unit and New person, and that person is
-granted Kaizen. Tabs: Overview, New Kaizen, History, Kaizens, Analysis.
-
-Other roles are unchanged. The server is unchanged.
-
-## R-86 — A phone opening the portal goes to the field app, with a way back
-
-**Settled 2026-11-05 by the user.** The portal on a phone is a squeezed desk screen, with its menu in
-a sliding strip. A phone browser opening any portal page now goes to `/field`, whose tabs are at the
-bottom.
-
-- **Who:** browsers that call themselves mobile ("Mobi"). Computers and tablets stay on the website.
-- **Links that stay:** `/ca/…` and `/reset-password`, which people receive and open on a phone.
-- **The way back:** "Use the website" on `/field`'s sign-in and Profile. It holds for that browser
-  tab, so the next visit starts in the app again. The installed app does not show it.

@@ -21,8 +21,6 @@ export default function KaizenTabsLayout() {
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
   const author = can('kaizen', 'create');
-  // R-85: a Super Admin records Kaizens too, and still reads every Unit's and the analysis.
-  const reader = !author || scope?.role === 'SUPER_ADMIN';
   const shownTo = (show: boolean) => (show ? {} : { href: null });
   return (
     <Tabs
@@ -46,9 +44,9 @@ export default function KaizenTabsLayout() {
       <Tabs.Screen name="overview" options={{ title: t.overview, tabBarIcon: tabIcon('overview') }} />
       <Tabs.Screen name="new" options={{ title: t.newKaizen, tabBarIcon: tabIcon('newKaizen'), ...shownTo(author) }} />
       <Tabs.Screen name="history" options={{ title: t.history, tabBarIcon: tabIcon('history'), ...shownTo(author) }} />
-      <Tabs.Screen name="kaizens" options={{ title: t.kaizens, tabBarIcon: tabIcon('kaizens'), ...shownTo(reader) }} />
+      <Tabs.Screen name="kaizens" options={{ title: t.kaizens, tabBarIcon: tabIcon('kaizens'), ...shownTo(!author) }} />
       <Tabs.Screen name="my-unit" options={{ title: t.myUnit, tabBarIcon: tabIcon('units'), ...shownTo(scope?.role === 'COORDINATOR') }} />
-      <Tabs.Screen name="analysis" options={{ title: t.analysis, tabBarIcon: tabIcon('analysis'), ...shownTo(reader) }} />
+      <Tabs.Screen name="analysis" options={{ title: t.analysis, tabBarIcon: tabIcon('analysis'), ...shownTo(!author) }} />
       {/* Opened by the initials in the top-left corner, never a tab: it keeps Kaizen's bar. */}
       <Tabs.Screen name="profile" options={{ title: t.profile, href: null }} />
     </Tabs>

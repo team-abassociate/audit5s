@@ -46,13 +46,13 @@ const CLEAR_SUBMITTED = { submitted: undefined, resubmitted: undefined };
  */
 export default function KaizenOverview() {
   const { can } = useSession();
-  return can('kaizen', 'create') && !can('kaizen', 'review') ? <LeaderOverview /> : <CoordinatorOverview />;
+  return can('kaizen', 'create') ? <LeaderOverview /> : <CoordinatorOverview />;
 }
 
 function CoordinatorOverview() {
   const styles = useStyles();
   const router = useRouter();
-  const { can, scope } = useSession();
+  const { can } = useSession();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
   const [period, setPeriod] = useState<KaizenDashboardPeriod>('overall');
@@ -107,22 +107,6 @@ function CoordinatorOverview() {
         }
       >
         <ErrorBanner message={queries.some((query) => query.isError) ? t.needsConnection : null} />
-        {/* R-85: set up a Unit or a person without leaving Kaizen. */}
-        {scope?.role === 'SUPER_ADMIN' ? (
-          <View style={styles.setup}>
-            <View style={styles.setupButton}>
-              <Button title={t.newUnit} icon="add" variant="secondary" onPress={() => router.push('/manage/new-unit')} />
-            </View>
-            <View style={styles.setupButton}>
-              <Button
-                title={t.newPerson}
-                icon="person-add"
-                variant="secondary"
-                onPress={() => router.push({ pathname: '/manage/new-person', params: { kaizen: '1' } })}
-              />
-            </View>
-          </View>
-        ) : null}
         {dashboard.data ? <KpiCard kpi={dashboard.data.kpi} period={period} onPeriod={setPeriod} /> : null}
         {/* The one slip: what a review just did, or else that a review waits on this person. */}
         {reviewed.reviewedNo && reviewed.reviewedDecision ? (
@@ -284,8 +268,6 @@ function KpiTile({ label, value, context, band }: { label: string; value: number
 }
 
 const useStyles = createThemedStyles((theme) => ({
-  setup: { flexDirection: 'row', gap: theme.space.sm },
-  setupButton: { flex: 1 },
   content: { paddingBottom: theme.space.xl },
   action: { marginVertical: theme.space.md },
   tiles: { flexDirection: 'row', gap: theme.space.sm },

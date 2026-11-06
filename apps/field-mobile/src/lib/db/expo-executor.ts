@@ -28,15 +28,7 @@ export async function openExpoExecutor(
       return rows.map((row) => Object.values(row));
     },
     async run(sql, params) {
-      // Not `runAsync`: on the web its cleanup throws too, and that replaces SQLite's own error.
-      const statement = await database.prepareAsync(sql);
-      try {
-        await statement.executeAsync(params as never[]);
-      } catch (caught) {
-        await statement.finalizeAsync().catch(() => undefined);
-        throw caught;
-      }
-      await statement.finalizeAsync();
+      await database.runAsync(sql, params as never[]);
     },
     async userVersion() {
       const row = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
