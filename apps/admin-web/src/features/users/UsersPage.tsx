@@ -40,7 +40,7 @@ import {
 import { useSession } from '@/lib/session';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
-import { Link, useSearch } from '@tanstack/react-router';
+import { Link, useRouterState, useSearch } from '@tanstack/react-router';
 import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, ROLE_LABEL, roleLabel } from '@/lib/labels';
 import { formatDate, formatDateTime, formatScore, mayGrantKaizen, zoneDisplayLabel } from '@audit5s/domain';
@@ -76,6 +76,12 @@ export function UsersPage() {
   const [issued, setIssued] = useState<CreateUserResponse | null>(null);
   const [search, setSearch] = useState('');
   const [role, setRole] = useState<Role | ''>('');
+  const inKaizen = useRouterState({ select: (s) => s.location.pathname.startsWith('/kaizen/') });
+  const queryClient = useQueryClient();
+  const grantKaizen = useMutation({
+    mutationFn: (userId: string) => api.patch<User>(`/users/${userId}`, { kaizenAccess: true }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
 
   const users = useQuery({
     queryKey: ['users'],
@@ -138,9 +144,12 @@ export function UsersPage() {
             onCreated={(response) => {
               setIssued(response);
               setCreating(false);
+              // R-85: someone added from inside Kaizen is added for Kaizen.
+              if (inKaizen && response.user.role !== 'SUPER_ADMIN') grantKaizen.mutate(response.user.id);
             }}
           />
         )}
+        <ErrorNotice error={grantKaizen.error} />
 
         <div className="grid gap-3 border-b border-rule-soft bg-ground p-4 sm:grid-cols-2">
           <Field label="Search users">

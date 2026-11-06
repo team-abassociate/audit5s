@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 import type { MembershipDetail, Page, Unit, Zone } from '@audit5s/contracts';
 import { api } from '@/lib/api';
 import { devGet } from '@/features/units/worst-case';
@@ -142,6 +142,8 @@ function UnitRow({
   onToggle: () => void;
 }) {
   const { can } = useSession();
+  // The same page in Kaizen's corner (R-85), so opening a Unit stays there.
+  const inKaizen = useRouterState({ select: (s) => s.location.pathname.startsWith('/kaizen/') });
   const queryClient = useQueryClient();
   const archive = useMutation({
     mutationFn: () => api.post<void>(`/units/${unit.id}/archive`),
@@ -172,7 +174,7 @@ function UnitRow({
             subject={unit.name}
             primary={
               can('unit', 'update_profile') ? (
-                <Link to="/units/$unitId" params={{ unitId: unit.id }} className="gb-btn">
+                <Link to={inKaizen ? '/kaizen/units/$unitId' : '/units/$unitId'} params={{ unitId: unit.id }} className="gb-btn">
                   Edit
                 </Link>
               ) : null

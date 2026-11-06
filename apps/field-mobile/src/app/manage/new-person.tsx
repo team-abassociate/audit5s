@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import type { CreateUserResponse, Page, Unit, Zone } from '@audit5s/contracts';
+import type { CreateUserResponse, Page, Unit, User, Zone } from '@audit5s/contracts';
 import { zoneDisplayLabel } from '@audit5s/domain';
 import {
   ActionBar,
@@ -51,7 +51,8 @@ export default function NewPersonScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { scope } = useSession();
-  const params = useLocalSearchParams<{ role?: string; unitId?: string }>();
+  // `kaizen`: opened from Kaizen (R-85), so the person is granted it as well.
+  const params = useLocalSearchParams<{ role?: string; unitId?: string; kaizen?: string }>();
   const roles = scope?.role === 'SUPER_ADMIN' ? ROLES : ROLES.filter((option) => option.value === 'ZONE_LEADER');
   const [role, setRole] = useState<PeopleRole>(
     roles.some((option) => option.value === params.role) ? (params.role as PeopleRole) : roles[0]!.value,
@@ -76,15 +77,20 @@ export default function NewPersonScreen() {
   });
 
   const create = useMutation({
-    mutationFn: () =>
-      api.post<CreateUserResponse>('/users', {
+    mutationFn: async () => {
+      const created = await api.post<CreateUserResponse>('/users', {
         fullName: fullName.trim(),
         phone: phone.trim(),
         ...(email.trim() ? { email: email.trim() } : {}),
         role,
         ...(unitId ? { unitId } : {}),
         ...(picksZone && zoneId ? { zoneId } : {}),
-      }),
+      });
+      if (params.kaizen !== '1') return created;
+      // The account exists either way: a refused grant shows below, and never loses the login ID.
+      const user = await api.patch<User>(`/users/${created.user.id}`, { kaizenAccess: true }).catch(() => created.user);
+      return { ...created, user };
+    },
     // A Zone leader made with a Zone points that Zone at them (R-39): the Unit page shows both.
     onSuccess: () =>
       Promise.all(
@@ -107,6 +113,9 @@ export default function NewPersonScreen() {
               Give {created.user.fullName} their login ID. Their first password is their phone number,
               valid until {formatDateTime(created.bootstrapExpiresAt)}, and they choose a new one when they sign in.
             </SlipText>
+            {params.kaizen === '1' && !created.user.kaizenAccess ? (
+              <SlipText>Kaizen access was not given. Give it from their profile.</SlipText>
+            ) : null}
           </Slip>
           <Card>
             <CardHeader title={created.user.fullName} />

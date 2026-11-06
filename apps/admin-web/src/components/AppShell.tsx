@@ -89,6 +89,20 @@ const KAIZEN_AUTHOR_NAV: NavItem[] = [
   { to: '/kaizen/list', label: 'My Kaizens', resource: 'kaizen', action: 'read', group: 1 },
 ];
 
+/**
+ * A Super Admin's rail (R-85): they record Kaizens for any Unit, read every Unit's, and set up
+ * Units and people without leaving Kaizen.
+ */
+const KAIZEN_ADMIN_NAV: NavItem[] = [
+  { to: '/kaizen', label: 'Kaizen overview', resource: 'kaizen', action: 'read', group: 1 },
+  { to: '/kaizen/new', label: 'New Kaizen', resource: 'kaizen', action: 'create', group: 1 },
+  { to: '/kaizen/edit', label: 'Edit Kaizen', resource: 'kaizen', action: 'create', group: 1, hidden: true },
+  { to: '/kaizen/list', label: 'Kaizens', resource: 'kaizen', action: 'read', group: 1 },
+  { to: '/kaizen/analysis', label: 'Kaizen analysis', resource: 'kaizen', action: 'read', group: 1 },
+  { to: '/kaizen/units', label: 'Units & zones', resource: 'unit', action: 'read', group: 2 },
+  { to: '/kaizen/users', label: 'Users', resource: 'user', action: 'read', group: 2 },
+];
+
 /** The rail's group names, sentence case (LEDGER.md rule 5). */
 const GROUP_LABEL = { 1: 'Main menu', 2: 'Setup', 3: 'Records' } as const;
 
@@ -130,7 +144,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     },
   });
   const kaizen = pathname === '/kaizen' || pathname.startsWith('/kaizen/');
-  const nav = kaizen ? (can('kaizen', 'create') ? KAIZEN_AUTHOR_NAV : KAIZEN_NAV) : NAV;
+  const kaizenNav = scope?.role === 'SUPER_ADMIN' ? KAIZEN_ADMIN_NAV : can('kaizen', 'create') ? KAIZEN_AUTHOR_NAV : KAIZEN_NAV;
+  const nav = kaizen ? kaizenNav : NAV;
   const items = nav.filter(
     (item) => (can(item.resource, item.action) || (item.anyOf ?? []).some(([r, a]) => can(r, a))) && !item.hidden,
   );

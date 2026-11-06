@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Button, ErrorBanner, Field, GateCard, Screen } from '../components/ui';
+import { WebsiteLink } from '../components/website-link';
 import { ApiError } from '../lib/api';
 import { useRequiredFields } from '../lib/required-fields';
 import { useSession } from '../lib/session';
@@ -78,6 +79,7 @@ export default function LoginScreen() {
           <ErrorBanner message={error} />
 
           <Button icon="login" testID="sign-in" title="Sign in" onPress={submit} busy={busy} />
+          <WebsiteLink />
         </GateCard>
       </ScrollView>
     </Screen>

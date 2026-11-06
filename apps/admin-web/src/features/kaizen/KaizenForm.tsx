@@ -10,6 +10,7 @@ import {
   type KaizenPhotoKind,
   type KaizenPhotoUploadIntentResponse,
   type Page,
+  type Unit,
   type Zone,
 } from '@audit5s/contracts';
 import { missingKaizenFields, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
@@ -128,7 +129,7 @@ export function KaizenFormPage({ kaizenId }: { kaizenId?: string }) {
 }
 
 /** The leader's own Zones in their Unit (R-39): the Kaizen is filed under one, and keeps it. */
-function useLeaderZones() {
+function useLeaderZones(enabled: boolean) {
   const { user, scope } = useSession();
   const unitIds = scope?.unitIds ?? [];
   return useQuery({
@@ -137,14 +138,30 @@ function useLeaderZones() {
       const pages = await Promise.all(unitIds.map((unitId) => api.get<Page<Zone>>(`/units/${unitId}/zones?active=true&limit=200`)));
       return pages.flatMap((page) => page.data).filter((zone) => zone.zoneLeaderId === user?.id);
     },
-    enabled: Boolean(user),
+    enabled: Boolean(user) && enabled,
   });
 }
 
 function Form({ initial }: { initial?: KaizenDetail }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const zones = useLeaderZones();
+  const { scope } = useSession();
+  // R-85: a Super Admin files a Kaizen under any Zone of any Unit, and picks both. Nothing is
+  // assumed for them: a Kaizen keeps its Zone, so a default could file it in the wrong place.
+  const anyUnit = scope?.role === 'SUPER_ADMIN';
+  const leaderZones = useLeaderZones(!anyUnit);
+  const [unitId, setUnitId] = useState('');
+  const units = useQuery({
+    queryKey: ['units'],
+    queryFn: () => api.get<Page<Unit>>('/units?limit=200'),
+    enabled: anyUnit && !initial,
+  });
+  const unitZones = useQuery({
+    queryKey: ['zones', unitId, 'active'],
+    queryFn: () => api.get<Page<Zone>>(`/units/${unitId}/zones?active=true&limit=200`),
+    enabled: anyUnit && unitId !== '',
+  });
+  const zoneOptions = anyUnit ? unitZones.data?.data : leaderZones.data;
   const [id] = useState(() => initial?.id ?? uuidv7());
   const [zoneId, setZoneId] = useState<string | null>(initial?.zoneId ?? null);
   const [sheet, setSheet] = useState<Sheet>(() => (initial ? sheetOf(initial) : EMPTY));
@@ -161,8 +178,8 @@ function Form({ initial }: { initial?: KaizenDetail }) {
   const status = initial?.status ?? 'DRAFT';
 
   useEffect(() => {
-    if (zoneId === null && zones.data?.[0]) setZoneId(zones.data[0].id);
-  }, [zoneId, zones.data]);
+    if (!anyUnit && zoneId === null && leaderZones.data?.[0]) setZoneId(leaderZones.data[0].id);
+  }, [anyUnit, zoneId, leaderZones.data]);
 
   // The latest sheet, for a save that was queued before the last keystroke.
   const latest = useRef({ sheet, zoneId });
@@ -218,7 +235,8 @@ function Form({ initial }: { initial?: KaizenDetail }) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['kaizens'] });
       await queryClient.invalidateQueries({ queryKey: ['kaizen', id] });
-      void navigate({ to: '/kaizen', search: { submitted: status === 'SENT_BACK' ? 'again' : 'new' } as never });
+      if (anyUnit) void navigate({ to: '/kaizen/list', search: { kaizen: id } as never });
+      else void navigate({ to: '/kaizen', search: { submitted: status === 'SENT_BACK' ? 'again' : 'new' } as never });
     },
   });
 
@@ -230,13 +248,27 @@ function Form({ initial }: { initial?: KaizenDetail }) {
     },
   });
 
-  if (zones.isLoading) return <Spinner />;
-  if (zones.error) return <ErrorNotice error={zones.error} />;
-  if (!initial && (zones.data?.length ?? 0) === 0) {
+  if (units.isLoading || leaderZones.isLoading) return <Spinner />;
+  const loadError = units.error ?? unitZones.error ?? leaderZones.error;
+  if (loadError) return <ErrorNotice error={loadError} />;
+  if (anyUnit && !initial && (units.data?.data.length ?? 0) === 0) {
+    return (
+      <EmptyState
+        title="No Units yet."
+        action={
+          <Link to="/kaizen/units" className="gb-btn gb-btn--primary">
+            Add a Unit
+          </Link>
+        }
+      >
+        A Kaizen is filed under a Zone of a Unit. Add the Unit and its Zones first.
+      </EmptyState>
+    );
+  }
+  if (!anyUnit && !initial && (leaderZones.data?.length ?? 0) === 0) {
     return <EmptyState title="You don't lead a Zone yet.">A Kaizen is filed under your Zone. Ask your Coordinator to make you a Zone's leader.</EmptyState>;
   }
 
-  const zone = zones.data?.find((z) => z.id === zoneId);
   const reason = status === 'SENT_BACK' ? initial?.latestReview : null;
   const stepsLeft = KAIZEN_STEP_ITEMS.filter((step) => step.items.some((item) => missing.has(item))).length;
 
@@ -266,34 +298,72 @@ function Form({ initial }: { initial?: KaizenDetail }) {
     </Field>
   );
 
+  const filing = (
+    <Card>
+      <CardHeader
+        title={initial ? `${initial.kaizenNo} · ${status === 'SENT_BACK' ? 'Edit & resubmit' : 'Draft'}` : 'New Kaizen'}
+        description="Each field is saved as you go. Photos are optional."
+      />
+      <div className="grid gap-4 p-4 sm:grid-cols-2">
+        {anyUnit && !initial ? (
+          <Field label="Unit">
+            <Select
+              value={unitId}
+              disabled={onServer}
+              onChange={(event) => {
+                setUnitId(event.target.value);
+                setZoneId(null);
+              }}
+            >
+              <option value="">Choose a Unit</option>
+              {units.data?.data.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+        <Field label="Zone">
+          {initial ? (
+            <Input value={zoneDisplayLabel(initial.zoneCode, initial.zoneName)} disabled />
+          ) : (
+            <Select
+              value={zoneId ?? ''}
+              disabled={onServer || (anyUnit && unitId === '')}
+              onChange={(event) => setZoneId(event.target.value || null)}
+            >
+              {anyUnit ? <option value="">{unitZones.isLoading ? 'Loading…' : 'Choose a Zone'}</option> : null}
+              {zoneOptions?.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {zoneDisplayLabel(z.code, z.name)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      </div>
+      {anyUnit && !initial && unitZones.data?.data.length === 0 ? (
+        <p className="px-4 pb-4 text-sm text-ink-2">
+          This Unit has no Zones yet.{' '}
+          <Link to="/kaizen/units/$unitId" params={{ unitId }} className="underline">
+            Add a Zone
+          </Link>
+        </p>
+      ) : null}
+    </Card>
+  );
+
+  // The sheet opens once it has somewhere to be filed: autosave needs the Zone.
+  if (!zoneId && !initial) return <div className="space-y-4 pb-24">{filing}</div>;
+
   return (
     <div className="space-y-4 pb-24">
       {reason ? (
         <Slip title={`Sent back by ${reason.reviewerName}`}>{reason.comment ?? 'Fix it and resubmit.'}</Slip>
       ) : null}
 
-      <Card>
-        <CardHeader
-          title={initial ? `${initial.kaizenNo} · ${status === 'SENT_BACK' ? 'Edit & resubmit' : 'Draft'}` : 'New Kaizen'}
-          description="Each field is saved as you go. Photos are optional."
-        />
-        <div className="grid gap-4 p-4 sm:grid-cols-2">
-          <Field label="Zone">
-            {initial ? (
-              <Input value={zoneDisplayLabel(initial.zoneCode, initial.zoneName)} disabled />
-            ) : (
-              <Select value={zoneId ?? ''} disabled={onServer} onChange={(event) => setZoneId(event.target.value)}>
-                {zones.data?.map((z) => (
-                  <option key={z.id} value={z.id}>
-                    {zoneDisplayLabel(z.code, z.name)}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-          {zone || initial ? null : <p className="text-sm text-ink-2">Choose the Zone this Kaizen is for.</p>}
-        </div>
-      </Card>
+      {filing}
 
       <Step n={1} title="Kaizen details" state={stepState(['machine', 'lineArea', 'implementedOn'], missing, sheet)}>
         <div className="grid gap-4 sm:grid-cols-3">{(['machine', 'lineArea', 'implementedOn'] as const).map(text)}</div>

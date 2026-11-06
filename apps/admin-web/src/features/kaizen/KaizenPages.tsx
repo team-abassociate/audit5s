@@ -66,7 +66,9 @@ const PAGE = 100;
 
 export function KaizensPage() {
   const { can } = useSession();
-  const author = can('kaizen', 'create');
+  // A Super Admin also records Kaizens (R-85), but reads every Unit's, not just their own.
+  const records = can('kaizen', 'create');
+  const author = records && !can('kaizen', 'review');
   const search = useSearch({ strict: false }) as KaizensSearch;
   const navigate = useNavigate();
   const panel = useRoutedPanel('kaizen');
@@ -116,6 +118,13 @@ export function KaizensPage() {
           <CardHeader
             title="Kaizens"
             description="Every submitted Kaizen in your Units. Open one to read the sheet, review it, or download it as a PDF."
+            action={
+              records ? (
+                <Link to="/kaizen/new" className="gb-btn gb-btn--primary">
+                  + New Kaizen
+                </Link>
+              ) : undefined
+            }
           />
         )}
         <div className="gb-filters">
@@ -132,7 +141,7 @@ export function KaizensPage() {
               }
             >
               <option value="">Any</option>
-              {KAIZEN_STATUSES.filter((value) => author || value !== 'DRAFT').map((value) => (
+              {KAIZEN_STATUSES.filter((value) => records || value !== 'DRAFT').map((value) => (
                 <option key={value} value={value}>
                   {KAIZEN_STATUS_LABEL[value]}
                 </option>
@@ -249,7 +258,7 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
  */
 export function KaizenOverviewPage() {
   const { can } = useSession();
-  return can('kaizen', 'create') ? <LeaderOverview /> : <ReviewerOverview />;
+  return can('kaizen', 'create') && !can('kaizen', 'review') ? <LeaderOverview /> : <ReviewerOverview />;
 }
 
 /**
