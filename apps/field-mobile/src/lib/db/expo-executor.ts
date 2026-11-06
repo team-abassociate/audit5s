@@ -14,7 +14,7 @@ import type { SqliteExecutor } from './local-database';
 export async function openExpoExecutor(
   name = 'audit5s.db',
 ): Promise<SqliteExecutor & { close(): Promise<void> }> {
-  const database = await openWithRetry(name);
+  const database = await openOneAtATime(name);
 
   return {
     async exec(sql) {
@@ -51,6 +51,20 @@ export async function openExpoExecutor(
       await database.closeAsync();
     },
   };
+}
+
+/**
+ * Never two opens in flight. expo-sqlite's web worker loads SQLite on its first message without
+ * guarding the load, so a second message during it loads a second copy, and the file pool ends up
+ * serving the other copy: every file name reads as blank and nothing can be saved. A return visit
+ * does exactly this on a slow phone: the signed-out file is still opening when the saved login
+ * asks for the person's own.
+ */
+let lastOpen: Promise<unknown> = Promise.resolve();
+function openOneAtATime(name: string): Promise<SQLite.SQLiteDatabase> {
+  const opening = lastOpen.then(() => openWithRetry(name));
+  lastOpen = opening.catch(() => undefined);
+  return opening;
 }
 
 /**
