@@ -48,7 +48,6 @@ import { UnitDetail } from '@/features/units/UnitDetail';
 import { UsersPage, type UsersSearch } from '@/features/users/UsersPage';
 import { SessionProvider, useSession } from '@/lib/session';
 import { validateScopeSearch, type ScopeSearch } from '@/lib/scope';
-import { phoneAppTarget } from '@/lib/phone-redirect';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -483,26 +482,12 @@ declare module '@tanstack/react-router' {
   }
 }
 
-// R-86. Not in development: Vite does not serve `/field`.
-const phoneApp = import.meta.env.PROD
-  ? phoneAppTarget({
-      userAgent: navigator.userAgent,
-      pathname: window.location.pathname,
-      search: window.location.search,
-      session: window.sessionStorage,
-    })
-  : null;
-
-if (phoneApp) {
-  window.location.replace(phoneApp);
-} else {
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <SessionProvider>
-          <RouterProvider router={router} />
-        </SessionProvider>
-      </QueryClientProvider>
-    </StrictMode>,
-  );
-}
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>
+    </QueryClientProvider>
+  </StrictMode>,
+);

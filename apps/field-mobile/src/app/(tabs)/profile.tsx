@@ -16,7 +16,6 @@ import {
   Screen,
   StatGrid,
 } from '../../components/ui';
-import { WebsiteLink } from '../../components/website-link';
 import { LanguageSwitcher } from '../../components/language-switcher';
 import { ModuleSwitch } from '../../components/module-switch';
 import { api } from '../../lib/api';
@@ -218,7 +217,6 @@ export default function ProfileScreen() {
         </Link>
 
         <ModuleSwitch />
-        <WebsiteLink />
         <Button icon="logout" title="Sign out" variant="secondary" onPress={() => void attemptSignOut()} />
         <Text style={styles.version}>App version {Constants.expoConfig?.version ?? 'dev'}</Text>
       </ScrollView>
