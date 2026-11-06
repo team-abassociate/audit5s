@@ -156,7 +156,7 @@ describe('a DRAFT and its number', () => {
       token: as(world.actors.ZONE_LEADER),
       body: { submissionId: uuidv7() },
     });
-    expect(done.status).toBe(201);
+    expect(done.status).toBe(200);
     expect((done.body as KaizenDetail).departmentLabel).toBe('Maintenance');
   });
 
@@ -173,7 +173,7 @@ describe('a DRAFT and its number', () => {
       token: as(world.actors.COORDINATOR),
       body: { submissionId: uuidv7() },
     });
-    expect(done.status).toBe(201);
+    expect(done.status).toBe(200);
     const body = done.body as KaizenDetail;
     expect(body.status).toBe('APPROVED');
     expect(body.approvedAt).not.toBeNull();
@@ -232,16 +232,20 @@ describe('authorization: who reaches what (PART 6, owner 2026-10-07)', () => {
 
   it('only the author edits, submits or adds a photo; anyone else reads it as absent', async () => {
     const kaizen = await draft(world.actors.ZONE_LEADER);
-    for (const actor of [otherLeader, world.outOfScopeActor, world.actors.SUPER_ADMIN]) {
+    // R-88: a Coordinator holds `kaizen:create` now, so is refused as a non-author, like a Super Admin.
+    for (const actor of [otherLeader, world.outOfScopeActor, world.actors.SUPER_ADMIN, world.actors.COORDINATOR]) {
       const token = as(actor);
       expect((await world.request('PATCH', `${base}/${kaizen.id}`, { token, body: { machine: 'X' } })).status).toBe(404);
       expect((await submit(actor, kaizen.id)).status).toBe(404);
       expect((await photoIntent(actor, kaizen.id)).status).toBe(404);
     }
-    for (const actor of [world.actors.COORDINATOR, world.actors.CONSULTANT]) {
-      expect((await world.request('PATCH', `${base}/${kaizen.id}`, { token: as(actor), body: { machine: 'X' } })).status).toBe(403);
-      expect((await submit(actor, kaizen.id)).status).toBe(403);
-    }
+    const consultant = as(world.actors.CONSULTANT);
+    expect((await world.request('PATCH', `${base}/${kaizen.id}`, { token: consultant, body: { machine: 'X' } })).status).toBe(403);
+    expect((await submit(world.actors.CONSULTANT, kaizen.id)).status).toBe(403);
+    // Nobody's attempt changed it.
+    const after = await world.request('GET', `${base}/${kaizen.id}`, { token: as(world.actors.ZONE_LEADER) });
+    expect((after.body as KaizenDetail).machine).toBe(kaizen.machine);
+    expect((after.body as KaizenDetail).status).toBe('DRAFT');
   });
 
   it('only a Coordinator of the Unit (or Super Admin) reviews', async () => {
@@ -647,7 +651,8 @@ describe('discarding a draft (R-49, owner 2026-10-10)', () => {
   it('only the author, and only a DRAFT', async () => {
     const kaizen = await draft(world.actors.ZONE_LEADER);
     expect((await discard(otherLeader, kaizen.id)).status).toBe(404);
-    expect((await discard(world.actors.COORDINATOR, kaizen.id)).status).toBe(403);
+    expect((await discard(world.actors.COORDINATOR, kaizen.id)).status).toBe(404);
+    expect((await discard(world.actors.CONSULTANT, kaizen.id)).status).toBe(403);
 
     const sent = await submitted(world.actors.ZONE_LEADER);
     expect((await discard(world.actors.ZONE_LEADER, sent.id)).status).toBe(409);
