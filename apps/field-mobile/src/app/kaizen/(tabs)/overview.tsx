@@ -89,7 +89,7 @@ function CoordinatorOverview() {
   const open = (kaizen: Kaizen) => router.push({ pathname: '/kaizen/[kaizenId]', params: { kaizenId: kaizen.id } });
   const cards = (items: readonly Kaizen[]) =>
     items.map((kaizen) => (
-      <KaizenCard key={kaizen.id} kaizen={cardFromServer(kaizen)} author={`${kaizen.authorName} · ${kaizen.zoneCode}`} onPress={() => open(kaizen)} />
+      <KaizenCard key={kaizen.id} kaizen={cardFromServer(kaizen)} author={`${kaizen.authorName} · ${kaizen.zoneCode ?? kaizen.department ?? ''}`} onPress={() => open(kaizen)} />
     ));
 
   return (

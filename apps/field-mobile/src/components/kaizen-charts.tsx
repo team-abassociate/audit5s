@@ -327,7 +327,7 @@ export function AnalysisTable({
               <View key={row.key} style={styles.tableRow}>
                 <Text style={[styles.td, styles.firstCol]} numberOfLines={2}>
                   {row.zoneCode ? `Zone ${zoneLabelFromCode(row.zoneCode) ?? row.zoneCode} · ` : ''}
-                  {row.label ?? t.noDepartment}
+                  {row.label ?? (by === 'zone' ? t.noZoneChoice : t.noDepartment)}
                 </Text>
                 {columns.map(([label, value]) => (
                   <Text key={label} style={[styles.tdNum, styles.numCol]}>

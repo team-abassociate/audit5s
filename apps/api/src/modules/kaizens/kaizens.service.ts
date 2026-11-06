@@ -32,10 +32,10 @@ import {
   formatDate,
   kaizenAnalysis,
   kaizenDashboard,
+  kaizenPlace,
   missingKaizenFields,
   nextSustainCheck,
   sniffImageType,
-  zoneDisplayLabel,
   type ScopeContext,
 } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
@@ -187,8 +187,8 @@ export class KaizensService {
       sheet.addRow({
         no: kaizen.kaizenNo,
         unit: kaizen.unitName,
-        zone: zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName),
-        department: kaizen.department ?? '',
+        zone: kaizen.zoneCode ? kaizenPlace(kaizen) : '',
+        department: kaizen.departmentLabel ?? '',
         theme: kaizen.theme ?? '',
         machine: [kaizen.machine, kaizen.lineArea].filter(Boolean).join(' · '),
         author: kaizen.authorName,
@@ -231,7 +231,7 @@ export class KaizensService {
    */
   async create(scope: ScopeContext, request: CreateKaizenRequest): Promise<KaizenDetail> {
     const write = scopeFor(scope, 'kaizen:create');
-    const { id, zoneId, ...fields } = request;
+    const { id, zoneId, unitId, ...fields } = request;
     const existing = await this.repository.findById(write, id);
 
     if (existing) {
@@ -239,28 +239,36 @@ export class KaizensService {
       // An edit queued before the discard arrives after it: accepted, and changes nothing
       // (R-49), so it never dead-letters on the phone.
       if (existing.discardedAt) return this.detail(scopeFor(scope, 'kaizen:read'), existing);
-      if (existing.zoneId !== zoneId) {
-        throw AppError.conflict('CONFLICT', 'A Kaizen keeps the Zone it was filed under: its number carries the code');
-      }
+      const refiled = zoneId !== undefined && zoneId !== existing.zoneId;
       if (!editable(existing)) {
-        if (sameSheet(existing, fields)) return this.get(scope, id);
+        if (!refiled && sameSheet(existing, fields)) return this.get(scope, id);
         throw this.notEditable(existing);
       }
-      await this.repository.inTransaction(write, (tx) =>
-        this.repository.update(tx, id, kaizenColumnsOf(fields)),
-      );
+      await this.repository.inTransaction(write, async (tx) => {
+        if (refiled && zoneId) {
+          // Its Unit is fixed; another Unit's Zone reads as absent (AZ-3).
+          const zone = await this.repository.zoneForCreate(write, zoneId, tx);
+          if (zone?.unitId !== existing.unitId) throw AppError.notFound('No such Zone');
+        }
+        await this.repository.update(tx, id, { ...kaizenColumnsOf(fields), ...(refiled ? { zoneId } : {}) });
+      });
       return this.get(scope, id);
     }
 
     try {
       await this.repository.inTransaction(write, async (tx) => {
-        const zone = await this.repository.zoneForCreate(write, zoneId, tx);
-        // AZ-3: a Zone outside the actor's Unit reads as absent.
-        if (!zone) throw AppError.notFound('No such Zone');
+        // AZ-3: a Zone or Unit outside the actor's scope reads as absent.
+        const zone = zoneId ? await this.repository.zoneForCreate(write, zoneId, tx) : null;
+        if (zoneId && !zone) throw AppError.notFound('No such Zone');
+        if (!zone && !unitId) {
+          throw AppError.validation('Say which Unit this Kaizen belongs to', [{ field: 'unitId', message: 'Required' }]);
+        }
+        const home = zone?.unitId ?? (await this.repository.unitForCreate(write, unitId!, tx));
+        if (!home) throw AppError.notFound('No such Unit');
         await this.repository.insert(tx, write, {
           id,
-          zoneId,
-          unitId: zone.unitId,
+          zoneId: zoneId ?? null,
+          unitId: home,
           ...kaizenColumnsOf(fields),
         });
         await insertAuditLog(
@@ -269,8 +277,8 @@ export class KaizensService {
             action: 'kaizen.created',
             resourceType: 'kaizen',
             resourceId: id,
-            unitId: zone.unitId,
-            after: { zoneId },
+            unitId: home,
+            after: { zoneId: zoneId ?? null },
           }),
         );
       });
@@ -313,7 +321,7 @@ export class KaizensService {
 
       // Named field by field first, so the form can mark the steps; the edge check after it
       // is then about the status alone.
-      const missing = missingKaizenFields(sheetOf(current));
+      const missing = missingKaizenFields({ ...sheetOf(current), zoneId: current.zoneId });
       if (missing.length > 0 && EDITABLE.has(current.status)) {
         throw AppError.validation(
           'Fill every required step before submitting',
@@ -336,6 +344,24 @@ export class KaizensService {
           after: { status: 'SUBMITTED', submissionId: request.submissionId },
         }),
       );
+      // R-88: no one reviews a Coordinator's own Kaizen, so it is approved here, on the same
+      // review row and transition as any other approval: sustain checks and counts then hold.
+      if (scope.actor.role === 'COORDINATOR') {
+        this.transition(scope, 'SUBMITTED', 'APPROVED', []);
+        const approved = await this.repository.review(tx, write, kaizenId, 'APPROVED', null);
+        await insertAuditLog(
+          tx,
+          auditLogRow({
+            action: REVIEW_ACTIONS.APPROVED,
+            resourceType: 'kaizen',
+            resourceId: kaizenId,
+            unitId: current.unitId,
+            before: { status: 'SUBMITTED' },
+            after: { status: 'APPROVED', reviewId: approved!.id, approvedOnSubmit: true },
+          }),
+        );
+        return;
+      }
       // R-69: the Unit's Coordinator hears it is waiting (0059 skips anyone without Kaizen).
       await this.events.emit(tx, {
         type: 'KAIZEN_SUBMITTED',
@@ -844,6 +870,7 @@ function toKaizen(
     zoneCode: row.zoneCode,
     zoneName: row.zoneName,
     department: row.department?.trim() || null,
+    departmentLabel: row.department?.trim() || row.zoneDepartment?.trim() || null,
     authorUserId: row.authorUserId,
     authorName: row.authorName,
     machine: row.machine,

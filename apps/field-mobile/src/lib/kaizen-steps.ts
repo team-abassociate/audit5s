@@ -10,8 +10,8 @@ import { KAIZEN_STEPS, type KaizenStep } from './kaizen-strings';
  */
 
 /** Which sheet items each step holds, in screen order. */
-export const STEP_ITEMS: Record<KaizenStep, readonly (keyof KaizenFields | 'beforePhoto' | 'afterPhoto')[]> = {
-  details: ['machine', 'lineArea', 'implementedOn'],
+export const STEP_ITEMS: Record<KaizenStep, readonly (keyof KaizenFields | 'zoneOrDepartment' | 'beforePhoto' | 'afterPhoto')[]> = {
+  details: ['zoneOrDepartment', 'department', 'machine', 'lineArea', 'implementedOn'],
   team: ['teamMembers'],
   theme: ['theme', 'target'],
   problem: ['problem5w1h'],
@@ -56,7 +56,7 @@ export function stepState(step: KaizenStep, missing: ReadonlySet<string>, sheet:
 }
 
 /** The footer: steps done of twelve, and required steps still open. */
-export function formProgress(sheet: KaizenFields, photos: Photos) {
+export function formProgress(sheet: KaizenFields & { zoneId?: string | null }, photos: Photos) {
   const missing = new Set<string>(missingKaizenFields(sheet));
   const states = KAIZEN_STEPS.map((step) => stepState(step, missing, sheet, photos));
   return {

@@ -13,7 +13,7 @@ import { missingKaizenFields } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import { enqueue, uuidv7 } from './audit.repository';
 import { UNSETTLED_STATES } from './outbox.repository';
-import { localKaizenDiscards, localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox, zones } from './schema';
+import { localKaizenDiscards, localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox } from './schema';
 
 /**
  * A Zone Leader's Kaizens on the device (R-48, plans/kaizen-module.md step 4).
@@ -33,6 +33,11 @@ import { localKaizenDiscards, localKaizenPhotos, localKaizenSubmissions, localKa
 
 export type LocalKaizenRow = typeof localKaizens.$inferSelect;
 export type LocalKaizenPhoto = typeof localKaizenPhotos.$inferSelect;
+export interface LocalKaizenZone {
+  id: string;
+  code: string;
+  name: string;
+}
 
 export interface LocalKaizen extends Omit<LocalKaizenRow, 'sheet' | 'status'> {
   sheet: KaizenFields;
@@ -92,21 +97,12 @@ export async function localKaizenCounts(
   };
 }
 
-/** The Zones this person leads, from the cached catalogue: where their Kaizens can be. */
-export function listLeaderZones(database: LocalDatabase, userId: string) {
-  return database
-    .select()
-    .from(zones)
-    .where(and(eq(zones.zoneLeaderId, userId), eq(zones.archived, 0)))
-    .orderBy(zones.sortOrder, zones.code);
-}
-
-/** A new DRAFT in the leader's Zone. The Zone is fixed here: the number carries its code. */
+/** A new DRAFT in a Unit, under a Zone or none yet (R-88). "No Zone" is `''` in this table. */
 export async function createLocalKaizen(
   database: LocalDatabase,
   input: {
     unitId: string;
-    zone: { id: string; code: string; name: string };
+    zone: LocalKaizenZone | null;
     sheet?: KaizenFields;
     now?: string;
   },
@@ -114,14 +110,14 @@ export async function createLocalKaizen(
   const id = uuidv7();
   const now = input.now ?? new Date().toISOString();
   const sheet = input.sheet ?? {};
-  const payload = upsertPayload(id, input.zone.id, sheet);
+  const payload = upsertPayload(id, input.zone?.id ?? '', input.unitId, sheet);
 
   await database.insert(localKaizens).values({
     id,
     unitId: input.unitId,
-    zoneId: input.zone.id,
-    zoneCode: input.zone.code,
-    zoneName: input.zone.name,
+    zoneId: input.zone?.id ?? '',
+    zoneCode: input.zone?.code ?? '',
+    zoneName: input.zone?.name ?? '',
     sheet: JSON.stringify(sheet),
     createdAt: now,
     updatedAt: now,
@@ -145,11 +141,28 @@ export async function saveLocalKaizenFields(
 ): Promise<void> {
   const kaizen = await editableKaizen(database, kaizenId);
   const sheet = { ...kaizen.sheet, ...fields };
-  const payload = upsertPayload(kaizenId, kaizen.zoneId, sheet);
+  const payload = upsertPayload(kaizenId, kaizen.zoneId, kaizen.unitId, sheet);
 
   await database
     .update(localKaizens)
     .set({ sheet: JSON.stringify(sheet), updatedAt: now })
+    .where(eq(localKaizens.id, kaizenId));
+  await enqueue(database, 'kaizen', kaizenId, 'upsert', payload, now);
+}
+
+/** Files it under another Zone, or none. The server renumbers it to match on the next sync. */
+export async function saveLocalKaizenZone(
+  database: LocalDatabase,
+  kaizenId: string,
+  zone: LocalKaizenZone | null,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  const kaizen = await editableKaizen(database, kaizenId);
+  const payload = upsertPayload(kaizenId, zone?.id ?? '', kaizen.unitId, kaizen.sheet);
+
+  await database
+    .update(localKaizens)
+    .set({ zoneId: zone?.id ?? '', zoneCode: zone?.code ?? '', zoneName: zone?.name ?? '', updatedAt: now })
     .where(eq(localKaizens.id, kaizenId));
   await enqueue(database, 'kaizen', kaizenId, 'upsert', payload, now);
 }
@@ -269,7 +282,7 @@ export async function submitLocalKaizen(
   now: string = new Date().toISOString(),
 ): Promise<string> {
   const kaizen = await editableKaizen(database, kaizenId);
-  const missing = missingKaizenFields(kaizen.sheet);
+  const missing = missingKaizenFields({ ...kaizen.sheet, zoneId: kaizen.zoneId });
   if (missing.length > 0) {
     throw new Error(`Fill in every required step first (${missing.length} left).`);
   }
@@ -416,9 +429,9 @@ export async function refreshLocalKaizens(database: LocalDatabase, kaizens: read
     if (busy.has(kaizen.id)) continue;
     const row = {
       unitId: kaizen.unitId,
-      zoneId: kaizen.zoneId,
-      zoneCode: kaizen.zoneCode,
-      zoneName: kaizen.zoneName,
+      zoneId: kaizen.zoneId ?? '',
+      zoneCode: kaizen.zoneCode ?? '',
+      zoneName: kaizen.zoneName ?? '',
       kaizenNo: kaizen.kaizenNo,
       sheet: JSON.stringify(sheetOf(kaizen)),
       status: kaizen.status,
@@ -479,9 +492,9 @@ async function editableKaizen(database: LocalDatabase, kaizenId: string): Promis
   return kaizen;
 }
 
-function upsertPayload(id: string, zoneId: string, sheet: KaizenFields): Record<string, unknown> {
+function upsertPayload(id: string, zoneId: string, unitId: string, sheet: KaizenFields): Record<string, unknown> {
   // The server's schema, so a sheet it would refuse is refused before it is queued.
-  const { id: _id, ...payload } = createKaizenRequestSchema.parse({ ...sheet, id, zoneId });
+  const { id: _id, ...payload } = createKaizenRequestSchema.parse({ ...sheet, id, zoneId: zoneId || null, unitId });
   void _id;
   return payload;
 }

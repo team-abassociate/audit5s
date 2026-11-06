@@ -9,7 +9,7 @@ import {
   type KaizenStatus,
   type KaizenWaste,
 } from '@audit5s/contracts';
-import { formatDate, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDate, formatRupees, kaizenPlace } from '@audit5s/domain';
 import { sanitizeFileName } from '../reports/report-file-name';
 import { REPORT_LOGO } from '../reports/templates/logo';
 
@@ -79,12 +79,12 @@ function sheetDate(kaizen: Pick<KaizenDetail, 'implementedOn' | 'createdAt'>): s
   return formatDate(kaizen.implementedOn ?? kaizen.createdAt);
 }
 
-/** `{Unit} - Zone {n} {Zone name} - {date}.pdf` (owner, 2026-10-07). */
+/** `{Unit} - Zone {n} {Zone name} - {date}.pdf` (owner, 2026-10-07); the department with no Zone (R-88). */
 export function kaizenSheetFileName(
-  kaizen: Pick<KaizenDetail, 'unitName' | 'zoneCode' | 'zoneName' | 'implementedOn' | 'createdAt'>,
+  kaizen: Pick<KaizenDetail, 'unitName' | 'zoneCode' | 'zoneName' | 'department' | 'implementedOn' | 'createdAt'>,
 ): string {
-  const zone = zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName).replace(' — ', ' ');
-  return `${sanitizeFileName([kaizen.unitName, zone, sheetDate(kaizen)].join(' - '), 'kaizen')}.pdf`;
+  const place = kaizenPlace(kaizen).replace(' — ', ' ');
+  return `${sanitizeFileName([kaizen.unitName, place, sheetDate(kaizen)].filter(Boolean).join(' - '), 'kaizen')}.pdf`;
 }
 
 export function renderKaizenSheetHtml(kaizen: KaizenDetail, photos: KaizenSheetPhotos): string {
@@ -111,7 +111,10 @@ function KaizenSheet({ kaizen, photos }: { kaizen: KaizenDetail; photos: KaizenS
         <div className="kz-logo"><img src={REPORT_LOGO} alt="AB Associates" /></div>
         <div className="kz-titleblock">
           <div className="kz-kicker">
-            CONTINUOUS IMPROVEMENT · {kaizen.unitName.toUpperCase()} · {zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName).toUpperCase()}
+            {['CONTINUOUS IMPROVEMENT', kaizen.unitName, kaizen.zoneCode ? kaizenPlace(kaizen) : null, kaizen.departmentLabel]
+              .filter(Boolean)
+              .join(' · ')
+              .toUpperCase()}
           </div>
           <h1 className="kz-title">KAIZEN SHEET</h1>
         </div>

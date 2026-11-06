@@ -25,7 +25,7 @@ export default function NewKaizen() {
   const database = useLocalDatabase();
   const queryClient = useQueryClient();
   const { sync } = useSync();
-  const { scope } = useSession();
+  const { can } = useSession();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
   const [round, setRound] = useState(0);
@@ -102,8 +102,8 @@ export default function NewKaizen() {
         kaizenId={null}
         onSubmitted={(kaizenId, resubmitted) => {
           again();
-          // A Super Admin's overview is the reviewer's, with no "submitted" slip: show the sheet.
-          if (scope?.role === 'SUPER_ADMIN') router.push({ pathname: '/kaizen/[kaizenId]', params: { kaizenId } });
+          // A reviewer's overview has no "submitted" slip: show the sheet.
+          if (can('kaizen', 'review')) router.push({ pathname: '/kaizen/[kaizenId]', params: { kaizenId } });
           else router.navigate({ pathname: '/kaizen/overview', params: { submitted: kaizenId, ...(resubmitted ? { resubmitted: '1' } : {}) } });
         }}
         onDiscarded={() => {

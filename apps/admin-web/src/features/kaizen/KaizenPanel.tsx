@@ -3,7 +3,7 @@ import { Check, Download, Undo2, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { KaizenDetail, KaizenExport, KaizenPhoto, KaizenReviewDecision } from '@audit5s/contracts';
-import { formatDate, formatDateTime, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDate, formatDateTime, formatRupees, kaizenPlace } from '@audit5s/domain';
 import { Button, ErrorNotice, Field, SidePanel, Spinner, StatusChip } from '@/components/ui';
 import { KAIZEN_TONE } from '@/components/Status';
 import { api } from '@/lib/api';
@@ -30,7 +30,7 @@ export function KaizenPanel({ kaizenId, onClose }: { kaizenId: string | null; on
     <SidePanel
       open={kaizenId !== null}
       title={kaizen?.kaizenNo ?? 'Kaizen'}
-      subtitle={kaizen ? `${zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName)} · ${kaizen.authorName}` : undefined}
+      subtitle={kaizen ? `${kaizenPlace(kaizen)} · ${kaizen.authorName}` : undefined}
       onClose={onClose}
     >
       {detail.isLoading && <Spinner />}
@@ -44,7 +44,7 @@ function KaizenSheet({ kaizen }: { kaizen: KaizenDetail }) {
   const rows: [string, string | null][] = [
     ['Machine', kaizen.machine],
     ['Line / area', kaizen.lineArea],
-    ['Department', kaizen.department],
+    ['Department', kaizen.departmentLabel],
     ['Implemented on', kaizen.implementedOn ? formatDate(kaizen.implementedOn) : null],
     ['Team members', kaizen.teamMembers],
     ['Target & target date', kaizen.target],

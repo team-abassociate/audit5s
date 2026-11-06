@@ -36,7 +36,7 @@ export default function ModulePicker() {
   const { user, scope, can } = useSession();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
-  const reviews = can('kaizen', 'review') && !can('kaizen', 'create');
+  const reviews = can('kaizen', 'review') && scope?.role !== 'SUPER_ADMIN';
 
   const local = useQuery({
     queryKey: ['local', 'module-picker'],

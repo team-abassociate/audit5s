@@ -93,7 +93,8 @@ describe('Kaizen permissions', () => {
     expect(grantFor('COORDINATOR', 'kaizen:review')?.resolver).toBe('own_unit');
     expect(grantFor('ZONE_LEADER', 'kaizen:review')).toBeNull();
     expect(grantFor('CONSULTANT', 'kaizen:create')).toBeNull();
-    expect(grantFor('COORDINATOR', 'kaizen:create')).toBeNull();
+    // R-88: anyone in the Unit may record one.
+    expect(grantFor('COORDINATOR', 'kaizen:create')?.resolver).toBe('own_unit');
     // R-18, through the rule rather than a cell.
     expect(findPermission('kaizen:review')?.grants.SUPER_ADMIN?.resolver).toBe('organization');
   });
@@ -101,7 +102,7 @@ describe('Kaizen permissions', () => {
 
 describe('missingKaizenFields', () => {
   it('names every empty required step in form order, and takes "No" as an answer', () => {
-    expect(missingKaizenFields({ machine: '  ', theme: 'x', horizontalDeployment: false })).toEqual([
+    expect(missingKaizenFields({ machine: '  ', theme: 'x', horizontalDeployment: false, zoneId: 'z' })).toEqual([
       'machine',
       'lineArea',
       'implementedOn',
@@ -113,6 +114,16 @@ describe('missingKaizenFields', () => {
       'ideaBy',
       'implementedBy',
     ]);
+  });
+
+  it('wants a Zone or a department, either or both (R-88)', () => {
+    const asks = (sheet: Parameters<typeof missingKaizenFields>[0]) =>
+      missingKaizenFields(sheet).includes('zoneOrDepartment');
+    expect(asks({})).toBe(true);
+    expect(asks({ department: '  ', zoneId: null })).toBe(true);
+    expect(asks({ zoneId: 'z' })).toBe(false);
+    expect(asks({ department: 'Stores' })).toBe(false);
+    expect(asks({ department: 'Stores', zoneId: 'z' })).toBe(false);
   });
 });
 

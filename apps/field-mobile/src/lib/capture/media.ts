@@ -98,6 +98,11 @@ async function keepDurably(cacheUri: string): Promise<string> {
   return target;
 }
 
+/** Drops a processed photograph that will not be kept. A browser's is only a string. */
+export async function discardProcessedPhoto(uri: string): Promise<void> {
+  if (Platform.OS !== 'web') await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined);
+}
+
 /**
  * SHA-256 of a file. `expo-crypto` hashes buffers rather than streams, so the file is read
  * whole; at a few hundred kilobytes that is affordable, and it is why the downscale is first.

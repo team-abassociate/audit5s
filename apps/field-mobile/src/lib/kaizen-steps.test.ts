@@ -3,7 +3,8 @@ import type { KaizenFields } from '@audit5s/contracts';
 import { missingKaizenFields } from '@audit5s/domain';
 import { formProgress, stepOf } from './kaizen-steps';
 
-const COMPLETE: KaizenFields = {
+const COMPLETE: KaizenFields & { zoneId: string } = {
+  zoneId: 'a-zone',
   machine: '250T Press P-04',
   lineArea: 'Line 3',
   implementedOn: '2026-10-03',

@@ -41,13 +41,12 @@ export const kaizens = pgTable(
   {
     /** Device-minted, so a create replayed through the outbox is the same row. */
     id: uuid('id').primaryKey(),
-    /** Set from the Zone by the numbering trigger; a client cannot choose it. */
+    /** Set from the Zone by the numbering trigger when there is one; else checked against the actor. */
     unitId: uuid('unit_id')
       .notNull()
       .references(() => units.id, { onDelete: 'restrict' }),
-    zoneId: uuid('zone_id')
-      .notNull()
-      .references(() => zones.id, { onDelete: 'restrict' }),
+    /** A Zone, a typed `department`, or both (R-88, 0067). */
+    zoneId: uuid('zone_id').references(() => zones.id, { onDelete: 'restrict' }),
     authorUserId: uuid('author_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -59,6 +58,7 @@ export const kaizens = pgTable(
     kaizenSeq: integer('kaizen_seq').notNull().$defaultFn(() => 0),
     kaizenNo: text('kaizen_no').notNull().$defaultFn(() => ''),
 
+    department: text('department'),
     machine: text('machine'),
     lineArea: text('line_area'),
     implementedOn: date('implemented_on', { mode: 'string' }),

@@ -337,11 +337,12 @@ export const CORRECTIVE_ACTION_TRANSITIONS: readonly Transition<CorrectiveAction
  * (`kaizen:create` under `own_record`), not an edge. APPROVED and REJECTED have no way out.
  */
 export const KAIZEN_TRANSITIONS: readonly Transition<KaizenStatus>[] = [
-  { from: 'DRAFT', to: 'SUBMITTED', actors: ['ZONE_LEADER'], guards: ['kaizen_sheet_complete'] },
+  // R-88: a Coordinator records one too. The service approves theirs on submit: no one reviews it.
+  { from: 'DRAFT', to: 'SUBMITTED', actors: ['ZONE_LEADER', 'COORDINATOR'], guards: ['kaizen_sheet_complete'] },
   {
     from: 'SENT_BACK',
     to: 'SUBMITTED',
-    actors: ['ZONE_LEADER'],
+    actors: ['ZONE_LEADER', 'COORDINATOR'],
     guards: ['kaizen_sheet_complete'],
     note: 'Edit & resubmit',
   },

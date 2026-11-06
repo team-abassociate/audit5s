@@ -144,7 +144,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     },
   });
   const kaizen = pathname === '/kaizen' || pathname.startsWith('/kaizen/');
-  const kaizenNav = scope?.role === 'SUPER_ADMIN' ? KAIZEN_ADMIN_NAV : can('kaizen', 'create') ? KAIZEN_AUTHOR_NAV : KAIZEN_NAV;
+  // R-88: a Coordinator records Kaizens and still reviews: the Super Admin's Kaizen items only.
+  const kaizenNav =
+    scope?.role === 'SUPER_ADMIN'
+      ? KAIZEN_ADMIN_NAV
+      : can('kaizen', 'create') && can('kaizen', 'review')
+        ? KAIZEN_ADMIN_NAV.filter((item) => item.group === 1)
+        : can('kaizen', 'create')
+          ? KAIZEN_AUTHOR_NAV
+          : KAIZEN_NAV;
   const nav = kaizen ? kaizenNav : NAV;
   const items = nav.filter(
     (item) => (can(item.resource, item.action) || (item.anyOf ?? []).some(([r, a]) => can(r, a))) && !item.hidden,

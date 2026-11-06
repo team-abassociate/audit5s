@@ -358,6 +358,7 @@ function server(
     zoneCode: ZONE.code,
     zoneName: ZONE.name,
     department: null,
+    departmentLabel: null,
     authorUserId: 'aaaaaaaa-0000-4000-8000-0000000000aa',
     authorName: 'Sunita Kale',
     machine: null,

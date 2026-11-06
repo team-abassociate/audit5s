@@ -74,10 +74,12 @@ export const kaizenSustainDaySchema = z.union([z.literal(30), z.literal(60), z.l
 
 /**
  * What must be filled before a Kaizen can be submitted — the prototype's required steps.
- * The database refuses a non-DRAFT row missing any of them (0044), and the form marks
- * the same steps REQUIRED, so the two cannot disagree.
+ * The database refuses a non-DRAFT row missing any of them (0044, 0067), and the form marks
+ * the same steps REQUIRED, so the two cannot disagree. `zoneOrDepartment` is not one box but
+ * a rule (R-88): a Zone, a typed department, or both.
  */
 export const KAIZEN_REQUIRED_FIELDS = [
+  'zoneOrDepartment',
   'machine',
   'lineArea',
   'implementedOn',
@@ -166,15 +168,18 @@ export type KaizenNextSustainCheck = z.infer<typeof kaizenNextSustainCheckSchema
 
 export const kaizenSchema = z.object({
   id: uuidSchema,
-  /** `KZ-Z07-001`: the Zone's code and the Unit's running count. Server-assigned. */
+  /** `KZ-Z07-001`: the Zone's code and the Unit's running count; `KZ-001` with no Zone. Server-assigned. */
   kaizenNo: z.string(),
   unitId: uuidSchema,
   unitName: z.string(),
-  zoneId: uuidSchema,
-  zoneCode: z.string(),
-  zoneName: z.string(),
-  /** The Zone's `department_hint`, trimmed. Null ⇒ "No department". */
+  /** A Kaizen has a Zone, a typed `department`, or both (R-88). */
+  zoneId: uuidSchema.nullable(),
+  zoneCode: z.string().nullable(),
+  zoneName: z.string().nullable(),
+  /** What the author typed; a sheet field, written back as it reads. */
   department: z.string().nullable(),
+  /** What to print: `department`, else the Zone's `department_hint`. Null ⇒ "No department". */
+  departmentLabel: z.string().nullable(),
   authorUserId: uuidSchema,
   /** Snapshotted at creation, so a Consultant or Coordinator never joins `user` for it. */
   authorName: z.string(),
@@ -229,6 +234,7 @@ export type KaizenDetail = z.infer<typeof kaizenDetailSchema>;
 
 /** The sheet's fields as a writer sends them. Every one optional: a draft is saved per field. */
 export const kaizenFieldsSchema = z.object({
+  department: clearable(shortText),
   machine: clearable(shortText),
   lineArea: clearable(shortText),
   implementedOn: clearable(isoDateSchema),
@@ -256,11 +262,15 @@ export type KaizenFields = z.infer<typeof kaizenFieldsSchema>;
  * Idempotent on `id`: the first copy creates the DRAFT (and its number), a later one
  * updates it while it is still DRAFT or SENT_BACK. The outbox replaces an unsynced
  * payload whole, so a sync upsert always carries every field the device holds.
- * The Zone is fixed at creation, because the number carries its code.
+ *
+ * `zoneId` may change or clear while the Kaizen is editable, and its number follows (R-88).
+ * `unitId` says where a Kaizen with no Zone belongs; with a Zone the Zone says, and once
+ * created the Unit is fixed. It is checked against the actor's scope (AZ-2), never trusted.
  */
 export const createKaizenRequestSchema = kaizenFieldsSchema.extend({
   id: uuidSchema,
-  zoneId: uuidSchema,
+  zoneId: uuidSchema.nullable().optional(),
+  unitId: uuidSchema.nullable().optional(),
 });
 export type CreateKaizenRequest = z.infer<typeof createKaizenRequestSchema>;
 
@@ -537,7 +547,7 @@ export type KaizenAnalysisQuery = z.infer<typeof kaizenAnalysisQuerySchema>;
 export const kaizenAnalysisRowSchema = z.object({
   /** Department key (as in the dashboard) or Zone id. */
   key: z.string(),
-  /** Department label or Zone name; null ⇒ "No department". */
+  /** Department label or Zone name; null ⇒ "No department", or "No zone" when `by=zone`. */
   label: z.string().nullable(),
   /** The Zone's code when `by=zone`. */
   zoneCode: z.string().nullable(),

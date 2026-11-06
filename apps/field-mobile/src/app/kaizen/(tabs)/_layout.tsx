@@ -11,7 +11,7 @@ import { tabBarStyle, useTheme } from '../../../lib/theme';
  * neither module's bar knows about the other. A Zone Leader (`kaizen:create`) gets
  * Overview · New Kaizen · History. Everyone else who reads Kaizens — a Coordinator, a
  * Consultant, the Super Admin — gets Overview · Kaizens · Analysis, and a Coordinator also
- * My Unit (the 5S screen itself). A tab a role does not get is `href: null`, as in 5S. The
+ * New Kaizen (R-88; their own are on Kaizens) and My Unit (the 5S screen itself). A tab a role does not get is `href: null`, as in 5S. The
  * bar is 5S's: tile-2 ground, a 2px ink rule, the current item in ink, and `TAB_ICON`'s
  * symbols, so Overview, History and My Unit look the same in both modules.
  */
@@ -21,8 +21,8 @@ export default function KaizenTabsLayout() {
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
   const author = can('kaizen', 'create');
-  // R-85: a Super Admin records Kaizens too, and still reads every Unit's and the analysis.
-  const reader = !author || scope?.role === 'SUPER_ADMIN';
+  // R-85, R-88: a Super Admin and a Coordinator record Kaizens too, and still read the analysis.
+  const reader = !author || can('kaizen', 'review');
   const shownTo = (show: boolean) => (show ? {} : { href: null });
   return (
     <Tabs
@@ -45,7 +45,7 @@ export default function KaizenTabsLayout() {
     >
       <Tabs.Screen name="overview" options={{ title: t.overview, tabBarIcon: tabIcon('overview') }} />
       <Tabs.Screen name="new" options={{ title: t.newKaizen, tabBarIcon: tabIcon('newKaizen'), ...shownTo(author) }} />
-      <Tabs.Screen name="history" options={{ title: t.history, tabBarIcon: tabIcon('history'), ...shownTo(author) }} />
+      <Tabs.Screen name="history" options={{ title: t.history, tabBarIcon: tabIcon('history'), ...shownTo(author && scope?.role !== 'COORDINATOR') }} />
       <Tabs.Screen name="kaizens" options={{ title: t.kaizens, tabBarIcon: tabIcon('kaizens'), ...shownTo(reader) }} />
       <Tabs.Screen name="my-unit" options={{ title: t.myUnit, tabBarIcon: tabIcon('units'), ...shownTo(scope?.role === 'COORDINATOR') }} />
       <Tabs.Screen name="analysis" options={{ title: t.analysis, tabBarIcon: tabIcon('analysis'), ...shownTo(reader) }} />

@@ -10,7 +10,7 @@ import {
   type KaizenStatus,
   type Page,
 } from '@audit5s/contracts';
-import { formatAge, formatDate, formatRupees, groupLeaderKaizens, zoneDisplayLabel } from '@audit5s/domain';
+import { formatAge, formatDate, formatRupees, groupLeaderKaizens, kaizenPlace, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Button,
   Card,
@@ -222,7 +222,7 @@ function KaizenRows({
             </Td>
             <Td>
               {kaizen.authorName}
-              <div className="text-xs text-muted">{zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName)}</div>
+              <div className="text-xs text-muted">{kaizenPlace(kaizen)}</div>
             </Td>
             <Td className="gb-data text-right">{kaizen.annualSaving === null ? '—' : formatRupees(kaizen.annualSaving)}</Td>
             <Td className="gb-data">
@@ -514,7 +514,7 @@ export function KaizenAnalysisPage() {
             <tbody>
               {analysis.data.rows.map((row) => (
                 <tr key={row.key}>
-                  <Td>{row.zoneCode ? zoneDisplayLabel(row.zoneCode, row.label ?? '') : (row.label ?? 'No department')}</Td>
+                  <Td>{row.zoneCode ? zoneDisplayLabel(row.zoneCode, row.label ?? '') : (row.label ?? (by === 'zone' ? 'No zone' : 'No department'))}</Td>
                   <Td className="gb-data text-right">{row.total}</Td>
                   <Td className="gb-data text-right">{row.approved}</Td>
                   <Td className="gb-data text-right">{row.pending}</Td>

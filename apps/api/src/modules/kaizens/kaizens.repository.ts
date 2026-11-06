@@ -33,14 +33,15 @@ const rowColumns = {
   unitName: units.name,
   zoneCode: zones.code,
   zoneName: zones.name,
-  department: zones.departmentHint,
+  zoneDepartment: zones.departmentHint,
 };
 
 export type KaizenRow = typeof kaizens.$inferSelect & {
   unitName: string;
-  zoneCode: string;
-  zoneName: string;
-  department: string | null;
+  zoneCode: string | null;
+  zoneName: string | null;
+  /** The Zone's `department_hint`; the row's own `department` is what the author typed. */
+  zoneDepartment: string | null;
 };
 export type KaizenReviewRow = typeof kaizenReviews.$inferSelect;
 export type KaizenPhotoRow = typeof kaizenPhotos.$inferSelect;
@@ -241,13 +242,14 @@ export class KaizensRepository extends BaseRepository {
           lastInPlace: sql<boolean | null>`(SELECT c.in_place FROM kaizen_sustain_check c
             WHERE c.kaizen_id = ${kaizens.id} ORDER BY c.day_mark DESC LIMIT 1)`,
           annualSaving: kaizens.annualSaving,
-          department: zones.departmentHint,
+          // R-88: what the author typed, else what the Zone says.
+          department: sql<string | null>`coalesce(nullif(trim(${kaizens.department}), ''), ${zones.departmentHint})`,
           zoneId: kaizens.zoneId,
           zoneName: zones.name,
           zoneCode: zones.code,
         })
         .from(kaizens)
-        .innerJoin(zones, eq(zones.id, kaizens.zoneId))
+        .leftJoin(zones, eq(zones.id, kaizens.zoneId))
         .where(
           this.scoped(
             scope,
@@ -282,13 +284,23 @@ export class KaizensRepository extends BaseRepository {
     return zone ?? null;
   }
 
+  /** The Unit a Kaizen with no Zone is filed in, by the same test: out of scope reads as absent. */
+  async unitForCreate(scope: ScopeContext, unitId: string, tx: Transaction): Promise<string | null> {
+    const [unit] = await tx
+      .select({ id: units.id })
+      .from(units)
+      .where(this.scoped(scope, { unitId: units.id }, eq(units.id, unitId), isNull(units.archivedAt)))
+      .limit(1);
+    return unit?.id ?? null;
+  }
+
   // --------------------------------------------------------------------- writes
 
   /** The DRAFT, numbered by 0044's trigger. Unit and author come from the server, never the body. */
   async insert(
     tx: Transaction,
     scope: ScopeContext,
-    values: { id: string; zoneId: string; unitId: string } & KaizenColumns,
+    values: { id: string; zoneId: string | null; unitId: string } & KaizenColumns,
   ): Promise<void> {
     await tx.insert(kaizens).values({
       ...values,
@@ -431,7 +443,7 @@ export class KaizensRepository extends BaseRepository {
       .select(rowColumns)
       .from(kaizens)
       .innerJoin(units, eq(units.id, kaizens.unitId))
-      .innerJoin(zones, eq(zones.id, kaizens.zoneId));
+      .leftJoin(zones, eq(zones.id, kaizens.zoneId));
   }
 }
 
@@ -449,9 +461,9 @@ function listFilters(query: KaizenRegisterQuery): Array<SQL | undefined> {
 function flatten(row: {
   kaizen: typeof kaizens.$inferSelect;
   unitName: string;
-  zoneCode: string;
-  zoneName: string;
-  department: string | null;
+  zoneCode: string | null;
+  zoneName: string | null;
+  zoneDepartment: string | null;
 }): KaizenRow {
   const { kaizen, ...rest } = row;
   return { ...kaizen, ...rest };

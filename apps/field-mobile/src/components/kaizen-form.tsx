@@ -21,7 +21,7 @@ import {
 } from '@audit5s/contracts';
 import { formatDate, istDateKey, zoneDisplayLabel } from '@audit5s/domain';
 import { api } from '../lib/api';
-import type { ProcessedImage } from '../lib/capture/media';
+import { discardProcessedPhoto, type ProcessedImage } from '../lib/capture/media';
 import { pickFromGallery } from '../lib/capture/gallery';
 import { listLocalUnits, listLocalZones } from '../lib/db/catalogue.repository';
 import {
@@ -29,9 +29,9 @@ import {
   createLocalKaizen,
   discardLocalKaizen,
   getLocalKaizen,
-  listLeaderZones,
   removeLocalKaizenPhoto,
   saveLocalKaizenFields,
+  saveLocalKaizenZone,
   submitLocalKaizen,
   type LocalKaizen,
 } from '../lib/db/kaizen.repository';
@@ -46,6 +46,7 @@ import { useSession } from '../lib/session';
 import { useSync } from '../lib/sync/provider';
 import { createThemedStyles, tabBarStyle, useTheme } from '../lib/theme';
 import { CameraCapture } from './camera-capture';
+import { KaizenPhotoEditor } from './kaizen-photo-editor';
 import { KaizenPhotoViewer } from './kaizen-photo-viewer';
 import {
   Button,
@@ -78,11 +79,15 @@ import {
  * is `missingKaizenFields`: the boxes the server requires. Photos are optional (owner, 2026-10-11).
  *
  * Photos come from the camera or, for Kaizen, the gallery (R-48): a "before" is often
- * already on the phone, taken before anyone thought of a Kaizen.
+ * already on the phone, taken before anyone thought of a Kaizen. Either way it opens in the
+ * editor first, to crop, rotate or highlight it (owner, 2026-11-06).
+ *
+ * A Kaizen is filed under a Zone of the person's Unit, a typed department, or both (R-88). The
+ * Zone may change while the sheet is editable; the server renumbers it to match.
  */
 
 const TEXT_FIELDS: readonly KaizenTextField[] = [
-  'machine', 'lineArea', 'implementedOn', 'teamMembers', 'theme', 'target', 'problem5w1h',
+  'department', 'machine', 'lineArea', 'implementedOn', 'teamMembers', 'theme', 'target', 'problem5w1h',
   'countermeasure', 'benefits', 'annualSaving', 'implementationCost', 'rootCause4m', 'analysis7qc', 'ideaBy', 'implementedBy',
 ];
 const MULTILINE: ReadonlySet<KaizenTextField> = new Set([
@@ -139,22 +144,33 @@ export function KaizenForm({
   const timers = useRef(new Map<KaizenTextField, ReturnType<typeof setTimeout>>());
   const [unitId, setUnitId] = useState<string | null>(null);
   const [zoneId, setZoneId] = useState<string | null>(null);
+  // For a save queued before the next render.
+  const zoneRef = useRef(zoneId);
   const [open, setOpen] = useState<number>(0);
   const [attempted, setAttempted] = useState(false);
   const [fieldError, setFieldError] = useState<Partial<Record<KaizenTextField, string>>>({});
   const [camera, setCamera] = useState<KaizenPhotoKind | null>(null);
   const [viewing, setViewing] = useState<KaizenPhotoKind | null>(null);
+  // A photo in the editor. `fresh` is the one just taken or picked, not yet on the sheet.
+  const [editing, setEditing] = useState<{
+    kind: KaizenPhotoKind;
+    source: { uri: string; width: number; height: number };
+    fresh: ProcessedImage | null;
+    live: boolean;
+  } | null>(null);
   const required = useRequiredFields<KaizenRequiredField>();
   // What waits for a step to lay out after it opens: Next's scroll, or a refused Submit's reveal.
   const afterOpen = useRef<{ index: number; run: (y: number) => void } | null>(null);
   const scroller = useRef<ScrollView | null>(null);
   const reduced = useReducedMotion();
 
-  const leaderZones = useQuery({
-    queryKey: ['local', 'leader-zones', user?.id],
-    queryFn: () => listLeaderZones(database, user!.id),
-    enabled: Boolean(user) && !anyUnit,
+  const kaizen = useQuery({
+    queryKey: ['local', 'kaizen', id],
+    queryFn: () => getLocalKaizen(database, id!),
+    enabled: id !== null,
   });
+  // M-1 gives everyone but a Super Admin one Unit; a Super Admin picks it, and it stays.
+  const filedUnit = kaizen.data?.unitId ?? (anyUnit ? unitId : (scope?.unitIds[0] ?? null));
   // A Unit made a moment ago is on the server before it is in the phone's catalogue, so the
   // server answers first. Offline, the catalogue does.
   const units = useQuery({
@@ -167,26 +183,21 @@ export function KaizenForm({
     enabled: anyUnit && kaizenId === null,
   });
   const unitZones = useQuery({
-    queryKey: ['kaizen-form', 'zones', unitId],
+    queryKey: ['kaizen-form', 'zones', filedUnit],
     queryFn: () =>
       api
-        .get<Page<Zone>>(`/units/${unitId}/zones?active=true&limit=200`)
+        .get<Page<Zone>>(`/units/${filedUnit}/zones?active=true&limit=200`)
         .then((page) => page.data.map(({ id: zone, unitId: unit, code, name }) => ({ id: zone, unitId: unit, code, name })))
-        .catch(() => listLocalZones(database, unitId!)),
-    enabled: anyUnit && unitId !== null,
+        .catch(() => listLocalZones(database, filedUnit!)),
+    enabled: filedUnit !== null,
   });
-  const zoneOptions = anyUnit ? unitZones.data : leaderZones.data;
+  const zoneOptions = unitZones.data;
   // Back from adding a Unit or a Zone, the lists show it.
   useFocusEffect(
     useCallback(() => {
       if (anyUnit) void queryClient.invalidateQueries({ queryKey: ['kaizen-form'] });
     }, [anyUnit, queryClient]),
   );
-  const kaizen = useQuery({
-    queryKey: ['local', 'kaizen', id],
-    queryFn: () => getLocalKaizen(database, id!),
-    enabled: id !== null,
-  });
   // The latest saved sheet, for the same late saves.
   const savedRef = useRef<KaizenFields>({});
   savedRef.current = kaizen.data?.sheet ?? {};
@@ -204,11 +215,12 @@ export function KaizenForm({
         ideaBy: anyUnit ? '' : (user?.fullName ?? ''),
         implementedBy: anyUnit ? '' : (user?.fullName ?? ''),
       });
-    } else if (kaizen.data) setTexts(textsOf(kaizen.data.sheet));
+    } else if (kaizen.data) {
+      setTexts(textsOf(kaizen.data.sheet));
+      zoneRef.current = kaizen.data.zoneId || null;
+      setZoneId(zoneRef.current);
+    }
   }, [anyUnit, id, kaizen.data, texts, user]);
-  useEffect(() => {
-    if (!anyUnit && zoneId === null && leaderZones.data?.[0]) setZoneId(leaderZones.data[0].id);
-  }, [anyUnit, leaderZones.data, zoneId]);
 
   // The camera is the whole screen: no tab bar under it (the form is also mounted in a
   // stack, which has none), and the header's arrow closes the camera. Both are put back when
@@ -243,18 +255,34 @@ export function KaizenForm({
     return run;
   }
   const save = useMutation({ mutationFn: persist, onSuccess: () => void refresh() });
+  /** Saved the moment it is chosen, like a tick. In the same queue, so it cannot make a second draft. */
+  const refile = useMutation({
+    mutationFn: async (chosen: string | null) => {
+      if (chosen === zoneRef.current) return;
+      zoneRef.current = chosen;
+      setZoneId(chosen);
+      const zone = zoneOptions?.find((z) => z.id === chosen);
+      const run = saving.current.then(async () => {
+        if (idRef.current === null) await write({});
+        else await saveLocalKaizenZone(database, idRef.current, zone ? { id: zone.id, code: zone.code, name: zone.name } : null);
+      });
+      saving.current = run.catch(() => undefined);
+      return run;
+    },
+    onSuccess: () => void refresh(),
+  });
   async function write(fields: KaizenFields): Promise<string> {
     if (idRef.current !== null) {
       await saveLocalKaizenFields(database, idRef.current, fields);
       return idRef.current;
     }
-    const zone = zoneOptions?.find((z) => z.id === zoneId);
-    if (!zone) throw new Error(t.noZone);
+    if (!filedUnit) throw new Error(t.noZone);
+    const zone = zoneOptions?.find((z) => z.id === zoneRef.current);
     // The draft is born with the prefilled date and names too, not only the box that made it
     // (Phase 0.1: a draft started from Machine reopened with no date).
     const created = await createLocalKaizen(database, {
-      unitId: zone.unitId,
-      zone: { id: zone.id, code: zone.code, name: zone.name },
+      unitId: filedUnit,
+      zone: zone ? { id: zone.id, code: zone.code, name: zone.name } : null,
       sheet: { ...pendingTextFields(), ...fields },
     });
     idRef.current = created;
@@ -313,7 +341,7 @@ export function KaizenForm({
   const gallery = useMutation({
     mutationFn: async (kind: KaizenPhotoKind) => {
       const image = await pickFromGallery();
-      if (image) await photo.mutateAsync({ kind, image, live: false });
+      if (image) setEditing({ kind, source: image, fresh: image, live: false });
     },
   });
   const removePhoto = useMutation({
@@ -340,7 +368,10 @@ export function KaizenForm({
       const kaizenId = await save.mutateAsync(pendingTextFields() ?? {});
       dirty.current.clear();
       const saved = await getLocalKaizen(database, kaizenId);
-      const { missing } = formProgress(saved?.sheet ?? {}, { before: Boolean(saved?.before), after: Boolean(saved?.after) });
+      const { missing } = formProgress(
+        { ...saved?.sheet, zoneId: saved?.zoneId ?? null },
+        { before: Boolean(saved?.before), after: Boolean(saved?.after) },
+      );
       if (missing.size > 0) {
         refuse([...missing] as KaizenRequiredField[]);
         return null;
@@ -421,43 +452,34 @@ export function KaizenForm({
         prompt={t.cameraPrompt(camera)}
         onCaptured={(image) => {
           haptic.captured();
-          return photo.mutateAsync({ kind: camera, image, live: true });
+          setEditing({ kind: camera, source: image, fresh: image, live: true });
+          setCamera(null);
         }}
         onCancel={() => setCamera(null)}
       />
     );
   }
   if (!texts) return null;
-  if (!anyUnit && id === null && leaderZones.data && leaderZones.data.length === 0) {
+  if (!anyUnit && id === null && filedUnit === null) {
     return <Slip title={t.noZone} />;
   }
 
-  // Which Unit, then which Zone: the two lists, whether first or back in the sheet's first step.
+  // Which Unit: a Super Admin's list, whether first or back in the sheet's first step.
   const filing = (
-    <>
-      <SelectField
-        label={t.unit}
-        searchable
-        options={(units.data ?? []).map((unit) => ({ value: unit.id, label: unit.name }))}
-        value={unitId}
-        onChange={(value) => {
-          setUnitId(value);
-          setZoneId(null);
-        }}
-      />
-      {unitId !== null && (unitZones.data?.length ?? 0) > 0 ? (
-        <SelectField
-          label={t.zone}
-          searchable
-          options={(unitZones.data ?? []).map((z) => ({ value: z.id, label: zoneDisplayLabel(z.code, z.name) }))}
-          value={zoneId}
-          onChange={setZoneId}
-        />
-      ) : null}
-    </>
+    <SelectField
+      label={t.unit}
+      searchable
+      options={(units.data ?? []).map((unit) => ({ value: unit.id, label: unit.name }))}
+      value={unitId}
+      onChange={(value) => {
+        setUnitId(value);
+        zoneRef.current = null;
+        setZoneId(null);
+      }}
+    />
   );
   // The sheet opens once it has somewhere to be filed.
-  if (anyUnit && id === null && zoneId === null) {
+  if (anyUnit && id === null && unitId === null) {
     return (
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card>
@@ -470,16 +492,6 @@ export function KaizenForm({
             <Button title={t.newUnit} icon="add" onPress={() => router.push('/manage/new-unit')} />
           </>
         ) : null}
-        {unitId !== null && unitZones.data?.length === 0 ? (
-          <>
-            <Slip title={t.noUnitZones} />
-            <Button
-              title={t.addZone}
-              icon="add"
-              onPress={() => router.push({ pathname: '/manage/unit/[unitId]', params: { unitId } })}
-            />
-          </>
-        ) : null}
       </ScrollView>
     );
   }
@@ -487,10 +499,14 @@ export function KaizenForm({
   const current: LocalKaizen | null = kaizen.data ?? null;
   const sheet: KaizenFields = { ...current?.sheet, ...ticks.current, ...pendingTextFields() };
   const resubmitting = current?.status === 'SENT_BACK';
-  const progress = formProgress(sheet, { before: Boolean(current?.before), after: Boolean(current?.after) });
+  const progress = formProgress({ ...sheet, zoneId }, { before: Boolean(current?.before), after: Boolean(current?.after) });
   const { missing } = progress;
   const missingNames = [...missing].map((item) =>
-    item === 'horizontalDeployment' ? t.step.horizontal : t.field[item as KaizenTextField],
+    item === 'horizontalDeployment'
+      ? t.step.horizontal
+      : item === 'zoneOrDepartment'
+        ? t.zoneOrDepartment
+        : t.field[item as KaizenTextField],
   );
 
   const toggle = <T extends string>(field: 'wastes' | 'parameters', value: T) => {
@@ -501,10 +517,12 @@ export function KaizenForm({
   };
 
   const textField = (field: KaizenTextField) => {
-    const item = field as KaizenRequiredField;
-    const isRequired = REQUIRED_TEXT.has(field);
+    // The department box stands for the either-or rule: a refused Submit lands on it.
+    const item = (field === 'department' ? 'zoneOrDepartment' : field) as KaizenRequiredField;
+    const isRequired = REQUIRED_TEXT.has(item);
     const hint = t.hint[field];
-    const error = fieldError[field] ?? (isRequired ? required.error(item, t.requiredError, !missing.has(item)) : undefined);
+    const message = field === 'department' ? t.zoneOrDepartmentError : t.requiredError;
+    const error = fieldError[field] ?? (isRequired ? required.error(item, message, !missing.has(item)) : undefined);
     return (
       <Field
         key={field}
@@ -577,6 +595,21 @@ export function KaizenForm({
         ) : (
           <Text style={styles.photoHint}>{kind === 'BEFORE' ? t.beforeHint : t.afterHint}</Text>
         )}
+        {shown?.localFileUri && shown.width && shown.height ? (
+          <Button
+            title={t.editPhoto}
+            icon="edit"
+            variant="secondary"
+            onPress={() =>
+              setEditing({
+                kind,
+                source: { uri: shown.localFileUri!, width: shown.width!, height: shown.height! },
+                fresh: null,
+                live: shown.isLiveCapture === 1,
+              })
+            }
+          />
+        ) : null}
         {/* Camera or gallery, side by side, always: either is fine for a Kaizen (R-48). */}
         <View style={styles.buttons}>
           <View style={styles.flex}>
@@ -615,14 +648,21 @@ export function KaizenForm({
         return (
           <>
             {anyUnit && id === null ? filing : null}
-            {!anyUnit && id === null && (leaderZones.data?.length ?? 0) > 1 ? (
-              <SelectField
-                label={t.zone}
-                options={(leaderZones.data ?? []).map((z) => ({ value: z.id, label: zoneDisplayLabel(z.code, z.name) }))}
-                value={zoneId}
-                onChange={setZoneId}
-              />
-            ) : null}
+            <SelectField
+              label={t.zoneOptional}
+              searchable
+              options={[
+                { value: '', label: t.noZoneChoice },
+                // Its own Zone stays on the list even if since archived, or the list is offline.
+                ...(current?.zoneId && !zoneOptions?.some((z) => z.id === current.zoneId)
+                  ? [{ value: current.zoneId, label: zoneDisplayLabel(current.zoneCode, current.zoneName) }]
+                  : []),
+                ...(zoneOptions ?? []).map((z) => ({ value: z.id, label: zoneDisplayLabel(z.code, z.name) })),
+              ]}
+              value={zoneId}
+              onChange={(value) => refile.mutate(value || null)}
+            />
+            {textField('department')}
             {textField('machine')}
             {textField('lineArea')}
             {dateField()}
@@ -701,7 +741,7 @@ export function KaizenForm({
   };
 
   const submitTitle = resubmitting ? t.resubmit : t.submit;
-  const error = submit.error ?? save.error ?? photo.error ?? gallery.error ?? removePhoto.error ?? discard.error;
+  const error = submit.error ?? save.error ?? refile.error ?? photo.error ?? gallery.error ?? removePhoto.error ?? discard.error;
   const ready = progress.requiredLeft === 0;
 
   return (
@@ -826,6 +866,21 @@ export function KaizenForm({
         kind={viewing}
         onClose={() => setViewing(null)}
       />
+      {editing ? (
+        <KaizenPhotoEditor
+          source={editing.source}
+          onCancel={() => {
+            if (editing.fresh) void discardProcessedPhoto(editing.fresh.uri);
+            setEditing(null);
+          }}
+          onDone={(edited) => {
+            if (edited && editing.fresh) void discardProcessedPhoto(editing.fresh.uri);
+            const image = edited ?? editing.fresh;
+            if (image) photo.mutate({ kind: editing.kind, image, live: editing.live });
+            setEditing(null);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

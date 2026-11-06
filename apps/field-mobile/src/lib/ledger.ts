@@ -71,6 +71,15 @@ export const ledger = {
 } as const;
 
 /** Manrope only (LEDGER.md rule 5), loaded in `app/_layout.tsx`. */
+/**
+ * The marks a person draws on a Kaizen photo, not interface colour, so they are the same in
+ * both themes and printed into the picture: a see-through highlighter and a solid red line.
+ */
+export const ledgerMarkup = {
+  yellow: { hex: '#FFD400', alpha: 0.5 },
+  red: { hex: '#E0241B', alpha: 1 },
+} as const;
+
 export const ledgerFonts = {
   regular: 'Manrope_400Regular',
   medium: 'Manrope_500Medium',

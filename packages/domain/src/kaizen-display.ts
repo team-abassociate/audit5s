@@ -1,9 +1,19 @@
 import { formatScore } from './scoring';
+import { zoneDisplayLabel } from './zone-code';
 
 /**
  * How Kaizen's dashboard prints and colours what the API sends (§4.7), once for the field
  * app and the admin web. Display only: every count and ratio is the server's.
  */
+
+/** Where a Kaizen belongs, in words: its Zone, else the department it was filed under (R-88). */
+export function kaizenPlace(kaizen: {
+  zoneCode: string | null;
+  zoneName: string | null;
+  department?: string | null | undefined;
+}): string {
+  return kaizen.zoneCode ? zoneDisplayLabel(kaizen.zoneCode, kaizen.zoneName ?? '') : (kaizen.department ?? '');
+}
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 

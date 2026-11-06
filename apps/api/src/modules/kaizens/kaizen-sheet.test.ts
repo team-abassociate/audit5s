@@ -6,7 +6,7 @@ import { compactRupees, costNote, numberedLines, renderKaizenSheetHtml } from '.
 const id = '00000000-0000-4000-8000-000000000001';
 const kaizen: KaizenDetail = {
   id, kaizenNo: 'KZ-Z07-001', unitId: id, unitName: 'Pune Plant', zoneId: id, zoneCode: 'Z07',
-  zoneName: 'Press Shop', department: null, authorUserId: id, authorName: 'Ravi Patil',
+  zoneName: 'Press Shop', department: null, departmentLabel: null, authorUserId: id, authorName: 'Ravi Patil',
   machine: 'Press P-12', lineArea: 'Line 3', implementedOn: '2026-10-05',
   teamMembers: 'Ravi Patil (lead) · Asha K · Imran S', theme: 'Cut die changeover time on press P-12',
   target: '≤ 20 min by 30-11-2026', problem5w1h: 'What: changeover takes 48 min\nWhere: press P-12',

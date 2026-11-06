@@ -3,7 +3,7 @@ import { Image, Linking, Pressable, ScrollView, Text, View } from 'react-native'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Kaizen, KaizenDetail, KaizenExport, KaizenFields, KaizenPhotoKind, KaizenReviewDecision, KaizenStatus, Page } from '@audit5s/contracts';
-import { formatDate, formatRupees, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDate, formatRupees, kaizenPlace } from '@audit5s/domain';
 import { KaizenPhotoViewer } from '../../components/kaizen-photo-viewer';
 import { Button, Card, CardHeader, ChoiceList, Chip, Data, ErrorBanner, Field, Hatch, Label, Muted, Screen, Slip, SlipText } from '../../components/ui';
 import { api, problemMessage } from '../../lib/api';
@@ -139,7 +139,8 @@ export default function KaizenDetailScreen() {
       </View>
     ) : null;
   const reviews = online.data?.reviews.filter((entry) => entry.comment) ?? [];
-  const reviewing = can('kaizen', 'review') && view.status === 'SUBMITTED' && online.data !== undefined;
+  // The server's status: a Coordinator's own, not yet synced, reads SUBMITTED only on this phone.
+  const reviewing = can('kaizen', 'review') && view.status === 'SUBMITTED' && online.data?.status === 'SUBMITTED';
   const needsReason = decision === 'SENT_BACK' || decision === 'REJECTED';
 
   return (
@@ -184,6 +185,7 @@ export default function KaizenDetailScreen() {
             <PhotoBox label={t.after} open={t.openPhoto('AFTER')} none={t.none} photo={view.after} onOpen={() => setViewing('AFTER')} />
           </View>
 
+          {row('department', sheet.department)}
           {row('machine', [sheet.machine, sheet.lineArea].filter(Boolean).join(' · '))}
           {row('implementedOn', sheet.implementedOn ? formatDate(sheet.implementedOn) : null)}
           {row('teamMembers', sheet.teamMembers)}
@@ -374,7 +376,7 @@ function sheetView(local: Awaited<ReturnType<typeof getLocalKaizen>>, online: Ka
       kaizenNo: local.kaizenNo,
       status: local.status,
       sheet: local.sheet,
-      zone: zoneDisplayLabel(local.zoneCode, local.zoneName),
+      zone: kaizenPlace({ zoneCode: local.zoneCode, zoneName: local.zoneName, department: local.sheet.department }),
       authorName: null,
       reviewComment: local.reviewComment,
       before: photo(local.before, online?.beforePhoto?.viewUrl),
@@ -387,7 +389,7 @@ function sheetView(local: Awaited<ReturnType<typeof getLocalKaizen>>, online: Ka
     kaizenNo: online.kaizenNo,
     status: online.status,
     sheet: sheetOf(online),
-    zone: zoneDisplayLabel(online.zoneCode, online.zoneName),
+    zone: kaizenPlace(online),
     authorName: online.authorName,
     reviewComment: online.latestReview?.comment ?? null,
     before: online.beforePhoto ? { uri: online.beforePhoto.viewUrl } : null,

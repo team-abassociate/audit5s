@@ -3655,7 +3655,7 @@ on the phone and the server (R-50).
 
 | Permission | ZONE_LEADER | COORDINATOR | CONSULTANT | SUPER_ADMIN |
 | --- | --- | --- | --- | --- |
-| `kaizen:create` (create, edit, submit, photos) | own | — | — | organization |
+| `kaizen:create` (create, edit, submit, photos; R-88) | own | own, approved on submit | — | organization |
 | `kaizen:read` (list, detail, dashboard, analysis, export) | own | own Unit | assigned Units | organization |
 | `kaizen:review` | — | own Unit | — | organization |
 

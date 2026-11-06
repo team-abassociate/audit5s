@@ -853,6 +853,8 @@ const DEFINITIONS: readonly PermissionDefinition[] = [
         resolver: 'own_unit',
         condition: 'author only; edits while DRAFT or SENT_BACK',
       },
+      // R-88: anyone in the Unit may record one. Theirs is approved on submit.
+      COORDINATOR: { resolver: 'own_unit', condition: 'author only; approved on submit' },
     },
   },
   {

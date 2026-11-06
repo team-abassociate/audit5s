@@ -60,6 +60,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-84 | Kaizen testing has a temporary staging beside production | Settled; temporary |
 | R-85 | A Super Admin records a Kaizen for any Unit, and sets up Units and people from Kaizen | Settled |
 | R-86 | A phone opening the portal goes to the field app, with a way back | Settled |
+| R-88 | A Kaizen has a Zone, a department or both; a Coordinator may record one; photos can be edited | Settled |
 
 ---
 
@@ -3118,3 +3119,28 @@ bottom.
 - **Links that stay:** `/ca/…` and `/reset-password`, which people receive and open on a phone.
 - **The way back:** "Use the website" on `/field`'s sign-in and Profile. It holds for that browser
   tab, so the next visit starts in the app again. The installed app does not show it.
+
+## R-88 — A Kaizen has a Zone, a department or both; a Coordinator may record one; photos can be edited
+
+**Settled 2026-11-06 by the owner.** A Kaizen is not bound to a Zone: anyone in the Unit may make
+one. **Changes R-48(b), (e), (i) and R-85's "a Kaizen keeps its Zone".** (R-87 is taken on the
+`feat/nc-reminder` branch, and its migration 0066, so this is 0067.)
+
+- **Either or both.** The form asks for a Zone from a dropdown, a typed department, or both. One is
+  required to submit (`zoneOrDepartment`, `missingKaizenFields`, and the `kaizen_submitted_is_complete`
+  CHECK). A draft may have neither yet. The dropdown lists every active Zone of the Unit, with
+  nothing pre-selected.
+- **Kaizen's Unit is fixed; its Zone is not.** The Zone may change or clear while the Kaizen is
+  DRAFT or SENT_BACK. The number follows it and keeps its running count: `KZ-Z07-012`, or `KZ-012`
+  with no Zone.
+- **Department in reports** is the typed department, else the Zone's `department_hint`
+  (`departmentLabel`); a Kaizen with no Zone groups under "No zone" in the zone-wise table.
+- **Who records one:** a Zone Leader holding Kaizen, whether or not they lead a Zone, and a
+  Coordinator holding Kaizen.
+- **No one reviews a Coordinator's own Kaizen** (owner): it is approved on submit, in the same
+  transaction, by the same review row, audit entry and transition as any approval. So its status,
+  counts and 30/60/90-day checks work as for any other. A Super Admin's still goes to the Coordinator.
+- **Photos can be cropped, rotated and highlighted** on the phone and `/field`, after the camera or
+  the gallery, or later from "Edit photo". There is one more dependency, `jpeg-js`, and no native
+  change, so it ships by OTA. A highlighted photo is saved at 1280 px on the long edge rather than
+  1920, because JavaScript paints the marks. The portal's photo upload is unchanged.

@@ -118,14 +118,66 @@ describe('a DRAFT and its number', () => {
     expect(outside.status).toBe(409);
   });
 
-  it('keeps the Zone it was filed under', async () => {
+  it('follows a new Zone while editable, renumbered, and never into another Unit (R-88)', async () => {
     const kaizen = await draft(world.actors.ZONE_LEADER);
     const { rows } = await world.owner.query(
       `INSERT INTO zone (unit_id, code, name) VALUES ($1, 'Z-09', 'Paint') RETURNING id`,
       [world.unitA],
     );
     const moved = await create(world.actors.ZONE_LEADER, { id: kaizen.id }, rows[0].id as string);
-    expect(moved.status).toBe(409);
+    expect(moved.status).toBe(201);
+    const seq = kaizen.kaizenNo.split('-').at(-1);
+    expect((moved.body as KaizenDetail).kaizenNo).toBe(`KZ-Z09-${seq}`);
+    expect((await create(world.actors.ZONE_LEADER, { id: kaizen.id }, world.zoneB)).status).toBe(404);
+  });
+
+  it('may be filed by department alone, and a submit needs a Zone or a department (R-88)', async () => {
+    const unitId = world.unitA;
+    const id = uuidv7();
+    const made = await world.request('POST', base, {
+      token: as(world.actors.ZONE_LEADER),
+      body: { id, unitId, zoneId: null, ...COMPLETE_SHEET },
+    });
+    expect(made.status).toBe(201);
+    expect((made.body as KaizenDetail).zoneCode).toBeNull();
+    expect((made.body as KaizenDetail).kaizenNo).toMatch(/^KZ-\d{3,}$/);
+
+    const refused = await world.request('POST', `${base}/${id}/submit`, {
+      token: as(world.actors.ZONE_LEADER),
+      body: { submissionId: uuidv7() },
+    });
+    expect(refused.status).toBe(422);
+
+    await world.request('POST', base, {
+      token: as(world.actors.ZONE_LEADER),
+      body: { id, unitId, zoneId: null, ...COMPLETE_SHEET, department: 'Maintenance' },
+    });
+    const done = await world.request('POST', `${base}/${id}/submit`, {
+      token: as(world.actors.ZONE_LEADER),
+      body: { submissionId: uuidv7() },
+    });
+    expect(done.status).toBe(201);
+    expect((done.body as KaizenDetail).departmentLabel).toBe('Maintenance');
+  });
+
+  it('refuses a Zone-less Kaizen with no Unit, or in a Unit out of scope', async () => {
+    const send = (body: Record<string, unknown>) =>
+      world.request('POST', base, { token: as(world.actors.ZONE_LEADER), body: { id: uuidv7(), ...body } });
+    expect((await send({ department: 'Stores' })).status).toBe(422);
+    expect((await send({ department: 'Stores', unitId: world.unitB })).status).toBe(404);
+  });
+
+  it("approves a Coordinator's own Kaizen on submit: no one reviews it (R-88)", async () => {
+    const kaizen = await draft(world.actors.COORDINATOR);
+    const done = await world.request('POST', `${base}/${kaizen.id}/submit`, {
+      token: as(world.actors.COORDINATOR),
+      body: { submissionId: uuidv7() },
+    });
+    expect(done.status).toBe(201);
+    const body = done.body as KaizenDetail;
+    expect(body.status).toBe('APPROVED');
+    expect(body.approvedAt).not.toBeNull();
+    expect(body.reviews.map((review) => review.decision)).toEqual(['APPROVED']);
   });
 });
 
@@ -170,8 +222,9 @@ describe('authorization: who reaches what (PART 6, owner 2026-10-07)', () => {
     expect((widened.body as Page<Kaizen>).data).toEqual([]);
   });
 
-  it('only a Zone Leader (or Super Admin) creates, and only in their own Unit', async () => {
-    expect((await create(world.actors.COORDINATOR)).status).toBe(403);
+  it('a Zone Leader, Coordinator or Super Admin creates, and only in their own Unit', async () => {
+    expect((await create(world.actors.COORDINATOR)).status).toBe(201);
+    expect((await create(world.actors.COORDINATOR, {}, world.zoneB)).status).toBe(404);
     expect((await create(world.actors.CONSULTANT)).status).toBe(403);
     expect((await create(world.actors.ZONE_LEADER, {}, world.zoneB)).status).toBe(404);
     expect((await create(world.actors.SUPER_ADMIN, {}, world.zoneB)).status).toBe(201);

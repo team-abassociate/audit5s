@@ -17,6 +17,7 @@ import type { AppLanguage } from './language';
 
 /** The sheet's text fields, as the form and the detail label them. */
 export type KaizenTextField =
+  | 'department'
   | 'machine'
   | 'lineArea'
   | 'implementedOn'
@@ -134,6 +135,11 @@ export interface KaizenStrings {
   beforeHint: string;
   afterHint: string;
   zone: string;
+  /** The form's two either-or filing boxes (R-88). */
+  zoneOptional: string;
+  noZoneChoice: string;
+  zoneOrDepartment: string;
+  zoneOrDepartmentError: string;
   waste: Record<KaizenWaste, string>;
   parameter: Record<KaizenParameter, string>;
   horizontalQuestion: string;
@@ -147,6 +153,18 @@ export interface KaizenStrings {
   retakePhoto: string;
   fromGallery: string;
   removePhoto: string;
+  /** The photo editor. */
+  editPhoto: string;
+  highlight: string;
+  crop: string;
+  applyCrop: string;
+  rotate: string;
+  undo: string;
+  usePhoto: string;
+  cancelPhoto: string;
+  markerYellow: string;
+  markerRed: string;
+  editFailed: string;
   removePhotoQuestion: (kind: 'BEFORE' | 'AFTER') => string;
   cameraPrompt: (kind: 'BEFORE' | 'AFTER') => string;
   requiredError: string;
@@ -160,10 +178,8 @@ export interface KaizenStrings {
   unit: string;
   chooseFiling: string;
   noUnits: string;
-  noUnitZones: string;
   newUnit: string;
   newPerson: string;
-  addZone: string;
   badSaving: string;
   submittedNote: string;
 
@@ -328,6 +344,7 @@ const EN: KaizenStrings = {
     people: 'Root cause & people',
   },
   field: {
+    department: 'Department',
     machine: 'Machine',
     lineArea: 'Line / area',
     implementedOn: 'Date of implementation',
@@ -345,6 +362,7 @@ const EN: KaizenStrings = {
     implementedBy: 'Implemented by',
   },
   hint: {
+    department: 'Choose a Zone, type a department, or both.',
     teamMembers: 'Names, separated by commas',
     theme: 'One line: what you improved. e.g. Quick-release clamps on the P-04 die',
     problem5w1h: 'What, where, when, who, which and how. e.g. Die change on P-04 takes 40 min because…',
@@ -356,6 +374,10 @@ const EN: KaizenStrings = {
   beforeHint: 'Optional. Take one now or pick one from the gallery: an earlier photo is fine if the problem was already fixed.',
   afterHint: 'Optional. The same view as the before photo, after the fix. Take one now or pick one from the gallery.',
   zone: 'Zone',
+  zoneOptional: 'Zone',
+  noZoneChoice: 'No zone',
+  zoneOrDepartment: 'Zone or department',
+  zoneOrDepartmentError: 'Choose a Zone or type a department.',
   waste: {
     DEFECTS: 'Defects',
     OVERPRODUCTION: 'Overproduction',
@@ -385,6 +407,17 @@ const EN: KaizenStrings = {
   retakePhoto: 'Retake photo',
   fromGallery: 'From gallery',
   removePhoto: 'Remove photo',
+  editPhoto: 'Edit photo',
+  highlight: 'Highlight',
+  crop: 'Crop',
+  applyCrop: 'Apply crop',
+  rotate: 'Rotate',
+  undo: 'Undo',
+  usePhoto: 'Use photo',
+  cancelPhoto: 'Cancel',
+  markerYellow: 'Yellow highlighter',
+  markerRed: 'Red pen',
+  editFailed: 'The photo could not be changed. Try again.',
   removePhotoQuestion: (kind) =>
     kind === 'BEFORE'
       ? 'Remove the before photo? If the problem is already fixed, it cannot be photographed again.'
@@ -396,14 +429,12 @@ const EN: KaizenStrings = {
   requiredLeft: (n) => `${n} required left`,
   readyToSubmit: 'Ready to submit',
   savedAsYouGo: 'Each field is saved on this phone as you go, and sent when there is signal.',
-  noZone: 'No Zone of yours is on this phone yet. Sync, or ask your Coordinator.',
+  noZone: 'Your Unit is not on this phone yet. Sync, or ask your Coordinator.',
   unit: 'Unit',
-  chooseFiling: 'Which Unit and Zone is this Kaizen for?',
+  chooseFiling: 'Which Unit is this Kaizen for?',
   noUnits: 'No Units yet. Add one first.',
-  noUnitZones: 'This Unit has no Zones yet.',
   newUnit: 'New Unit',
   newPerson: 'New person',
-  addZone: 'Add a Zone',
   badSaving: 'Enter the saving in rupees, digits only.',
   submittedNote: 'Submitted. It reaches your Coordinator when there is signal.',
 
@@ -563,6 +594,7 @@ const HI: KaizenStrings = {
     people: 'मूल कारण और लोग',
   },
   field: {
+    department: 'विभाग',
     machine: 'मशीन',
     lineArea: 'लाइन / क्षेत्र',
     implementedOn: 'लागू करने की तारीख',
@@ -580,6 +612,7 @@ const HI: KaizenStrings = {
     implementedBy: 'किसने लागू किया',
   },
   hint: {
+    department: 'ज़ोन चुनें, विभाग लिखें, या दोनों।',
     teamMembers: 'नाम, अल्पविराम से अलग',
     theme: 'एक पंक्ति: आपने क्या सुधारा। जैसे P-04 डाई पर क्विक-रिलीज़ क्लैंप',
     problem5w1h: 'क्या, कहाँ, कब, कौन, कौन-सा और कैसे। जैसे P-04 पर डाई बदलने में 40 मिनट लगते हैं क्योंकि…',
@@ -591,6 +624,10 @@ const HI: KaizenStrings = {
   beforeHint: 'वैकल्पिक। अभी फ़ोटो लें या गैलरी से चुनें: समस्या पहले ही ठीक हो गई हो तो पुरानी फ़ोटो भी चलेगी।',
   afterHint: 'वैकल्पिक। सुधार के बाद वही दृश्य। अभी फ़ोटो लें या गैलरी से चुनें।',
   zone: 'ज़ोन',
+  zoneOptional: 'ज़ोन',
+  noZoneChoice: 'कोई ज़ोन नहीं',
+  zoneOrDepartment: 'ज़ोन या विभाग',
+  zoneOrDepartmentError: 'ज़ोन चुनें या विभाग लिखें।',
   waste: {
     DEFECTS: 'दोष',
     OVERPRODUCTION: 'अधिक उत्पादन',
@@ -620,6 +657,17 @@ const HI: KaizenStrings = {
   retakePhoto: 'फिर से फ़ोटो लें',
   fromGallery: 'गैलरी से',
   removePhoto: 'फ़ोटो हटाएँ',
+  editPhoto: 'फ़ोटो संपादित करें',
+  highlight: 'हाइलाइट',
+  crop: 'क्रॉप',
+  applyCrop: 'क्रॉप लागू करें',
+  rotate: 'घुमाएँ',
+  undo: 'पहले जैसा करें',
+  usePhoto: 'यह फ़ोटो रखें',
+  cancelPhoto: 'रद्द करें',
+  markerYellow: 'पीला हाइलाइटर',
+  markerRed: 'लाल पेन',
+  editFailed: 'फ़ोटो नहीं बदली जा सकी। फिर से कोशिश करें।',
   removePhotoQuestion: (kind) =>
     kind === 'BEFORE'
       ? 'पहले वाली फ़ोटो हटाएँ? समस्या ठीक हो चुकी है तो इसकी फ़ोटो दोबारा नहीं ली जा सकती।'
@@ -631,14 +679,12 @@ const HI: KaizenStrings = {
   requiredLeft: (n) => `${n} आवश्यक बाकी`,
   readyToSubmit: 'जमा करने के लिए तैयार',
   savedAsYouGo: 'हर जानकारी इसी फ़ोन पर तुरंत सहेजी जाती है और सिग्नल मिलने पर भेजी जाती है।',
-  noZone: 'आपका कोई ज़ोन अभी इस फ़ोन पर नहीं है। सिंक करें, या कोऑर्डिनेटर से पूछें।',
+  noZone: 'आपकी यूनिट अभी इस फ़ोन पर नहीं है। सिंक करें, या कोऑर्डिनेटर से पूछें।',
   unit: 'यूनिट',
-  chooseFiling: 'यह काइज़ेन किस यूनिट और ज़ोन के लिए है?',
+  chooseFiling: 'यह काइज़ेन किस यूनिट के लिए है?',
   noUnits: 'अभी कोई यूनिट नहीं। पहले एक जोड़ें।',
-  noUnitZones: 'इस यूनिट में अभी कोई ज़ोन नहीं है।',
   newUnit: 'नई यूनिट',
   newPerson: 'नया व्यक्ति',
-  addZone: 'ज़ोन जोड़ें',
   badSaving: 'बचत रुपयों में लिखें, केवल अंक।',
   submittedNote: 'जमा हो गया। सिग्नल मिलने पर यह आपके कोऑर्डिनेटर तक पहुँचेगा।',
 
@@ -798,6 +844,7 @@ const MR: KaizenStrings = {
     people: 'मूळ कारण आणि लोक',
   },
   field: {
+    department: 'विभाग',
     machine: 'मशीन',
     lineArea: 'लाइन / विभाग',
     implementedOn: 'अंमलबजावणीची तारीख',
@@ -815,6 +862,7 @@ const MR: KaizenStrings = {
     implementedBy: 'अंमलबजावणी कोणी केली',
   },
   hint: {
+    department: 'झोन निवडा, विभाग लिहा, किंवा दोन्ही.',
     teamMembers: 'नावे, स्वल्पविरामाने वेगळी',
     theme: 'एका ओळीत: तुम्ही काय सुधारले. उदा. P-04 डायवर क्विक-रिलीज क्लॅम्प',
     problem5w1h: 'काय, कुठे, केव्हा, कोण, कोणते आणि कसे. उदा. P-04 वर डाय बदलायला 40 मिनिटे लागतात कारण…',
@@ -826,6 +874,10 @@ const MR: KaizenStrings = {
   beforeHint: 'ऐच्छिक. आत्ता फोटो काढा किंवा गॅलरीतून निवडा: समस्या आधीच दूर झाली असेल तर जुना फोटोही चालेल.',
   afterHint: 'ऐच्छिक. सुधारणेनंतरचे तेच दृश्य. आत्ता फोटो काढा किंवा गॅलरीतून निवडा.',
   zone: 'झोन',
+  zoneOptional: 'झोन',
+  noZoneChoice: 'झोन नाही',
+  zoneOrDepartment: 'झोन किंवा विभाग',
+  zoneOrDepartmentError: 'झोन निवडा किंवा विभाग लिहा.',
   waste: {
     DEFECTS: 'दोष',
     OVERPRODUCTION: 'अतिरिक्त उत्पादन',
@@ -855,6 +907,17 @@ const MR: KaizenStrings = {
   retakePhoto: 'पुन्हा फोटो काढा',
   fromGallery: 'गॅलरीतून',
   removePhoto: 'फोटो काढून टाका',
+  editPhoto: 'फोटो संपादित करा',
+  highlight: 'हायलाइट',
+  crop: 'क्रॉप',
+  applyCrop: 'क्रॉप लागू करा',
+  rotate: 'फिरवा',
+  undo: 'मागे घ्या',
+  usePhoto: 'हा फोटो ठेवा',
+  cancelPhoto: 'रद्द करा',
+  markerYellow: 'पिवळा हायलाइटर',
+  markerRed: 'लाल पेन',
+  editFailed: 'फोटो बदलता आला नाही. पुन्हा प्रयत्न करा.',
   removePhotoQuestion: (kind) =>
     kind === 'BEFORE'
       ? 'आधीचा फोटो काढून टाकायचा? समस्या दूर झाली असेल तर त्याचा फोटो पुन्हा काढता येणार नाही.'
@@ -866,14 +929,12 @@ const MR: KaizenStrings = {
   requiredLeft: (n) => `${n} आवश्यक बाकी`,
   readyToSubmit: 'सादर करण्यास तयार',
   savedAsYouGo: 'प्रत्येक माहिती याच फोनवर लगेच जतन होते आणि सिग्नल मिळाल्यावर पाठवली जाते.',
-  noZone: 'तुमचा कोणताही झोन अजून या फोनवर नाही. सिंक करा, किंवा कोऑर्डिनेटरला विचारा.',
+  noZone: 'तुमचे युनिट अजून या फोनवर नाही. सिंक करा, किंवा कोऑर्डिनेटरला विचारा.',
   unit: 'युनिट',
-  chooseFiling: 'हा कायझेन कोणत्या युनिट आणि झोनसाठी आहे?',
+  chooseFiling: 'हा कायझेन कोणत्या युनिटसाठी आहे?',
   noUnits: 'अजून कोणतेही युनिट नाही. आधी एक जोडा.',
-  noUnitZones: 'या युनिटमध्ये अजून कोणताही झोन नाही.',
   newUnit: 'नवीन युनिट',
   newPerson: 'नवीन व्यक्ती',
-  addZone: 'झोन जोडा',
   badSaving: 'बचत रुपयांत लिहा, फक्त अंक.',
   submittedNote: 'सादर झाले. सिग्नल मिळाल्यावर ते तुमच्या कोऑर्डिनेटरकडे पोहोचेल.',
 

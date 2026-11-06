@@ -143,6 +143,58 @@ describe('numbering', () => {
       ),
     ).rejects.toThrow(/fixed/);
   });
+
+  it('numbers a Kaizen with no Zone by the count alone, and follows a Zone chosen later (R-88)', async () => {
+    const first = await asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () =>
+      app.query(
+        `INSERT INTO kaizen (id, unit_id, zone_id, author_user_id, author_name, kaizen_seq, kaizen_no)
+         VALUES ($1, $2, NULL, $3, 'Leader', 0, '') RETURNING kaizen_no`,
+        [K.kaizen1, IDS.unitA, IDS.zoneLeaderA],
+      ),
+    );
+    expect(first.rows[0].kaizen_no).toBe('KZ-001');
+    const moved = await asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () =>
+      app.query(`UPDATE kaizen SET zone_id = $1 WHERE id = $2 RETURNING kaizen_no`, [IDS.zoneA, K.kaizen1]),
+    );
+    expect(moved.rows[0].kaizen_no).toBe('KZ-Z01-001');
+    await expect(
+      asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () =>
+        app.query(`UPDATE kaizen SET zone_id = $1 WHERE id = $2`, [K.zoneUnitB, K.kaizen1]),
+      ),
+    ).rejects.toThrow(/not an active Zone/);
+  });
+
+  it('refuses a submission with neither a Zone nor a department (R-88)', async () => {
+    const sheet = `machine = 'm', line_area = 'l', implemented_on = '2026-11-01', team_members = 't', theme = 't',
+      problem_5w1h = 'p', countermeasure = 'c', horizontal_deployment = false, benefits = 'b', root_cause_4m = 'r',
+      idea_by = 'i', implemented_by = 'i', status = 'SUBMITTED', submitted_at = now()`;
+    await asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () =>
+      app.query(
+        `INSERT INTO kaizen (id, unit_id, zone_id, author_user_id, author_name, kaizen_seq, kaizen_no)
+         VALUES ($1, $2, NULL, $3, 'Leader', 0, '')`,
+        [K.kaizen1, IDS.unitA, IDS.zoneLeaderA],
+      ),
+    );
+    await expect(
+      asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () =>
+        app.query(`UPDATE kaizen SET ${sheet} WHERE id = $1`, [K.kaizen1]),
+      ),
+    ).rejects.toThrow(/kaizen_submitted_is_complete/);
+    await asActor(app, IDS.zoneLeaderA, 'ZONE_LEADER', () =>
+      app.query(`UPDATE kaizen SET department = 'Stores', ${sheet} WHERE id = $1`, [K.kaizen1]),
+    );
+  });
+
+  it('lets a Coordinator author a Kaizen in their own Unit (R-88)', async () => {
+    const made = await asActor(app, IDS.coordinatorA, 'COORDINATOR', () =>
+      app.query(
+        `INSERT INTO kaizen (id, unit_id, zone_id, author_user_id, author_name, kaizen_seq, kaizen_no)
+         VALUES ($1, $2, NULL, $3, 'Coord', 0, '') RETURNING status`,
+        [K.kaizen1, IDS.unitA, IDS.coordinatorA],
+      ),
+    );
+    expect(made.rows[0].status).toBe('DRAFT');
+  });
 });
 
 describe('who sees which Kaizen', () => {

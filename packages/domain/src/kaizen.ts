@@ -43,12 +43,14 @@ import { daysBetween, istDateKey } from './datetime';
  * holds. A blank or whitespace string is empty; `horizontalDeployment: false` is an answer.
  */
 export function missingKaizenFields(
-  sheet: Partial<Record<keyof KaizenFields, unknown>>,
+  sheet: Partial<Record<keyof KaizenFields | 'zoneId', unknown>>,
 ): KaizenRequiredField[] {
-  return KAIZEN_REQUIRED_FIELDS.filter((field) => {
-    const value = sheet[field];
-    return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
-  });
+  const empty = (value: unknown) =>
+    value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+  return KAIZEN_REQUIRED_FIELDS.filter((field) =>
+    // R-88: either one will do, and both are welcome.
+    field === 'zoneOrDepartment' ? empty(sheet.zoneId) && empty(sheet.department) : empty(sheet[field]),
+  );
 }
 
 
@@ -67,11 +69,12 @@ export interface KaizenFact {
   /** At least one review decision, now or before — the funnel's "Reviewed". */
   reviewed: boolean;
   annualSaving: number | null;
-  /** The Zone's `department_hint`, raw. */
+  /** The typed department, else the Zone's `department_hint`, raw. */
   department: string | null;
-  zoneId: string;
-  zoneName: string;
-  zoneCode: string;
+  /** All three null for a Kaizen filed by department alone (R-88). */
+  zoneId: string | null;
+  zoneName: string | null;
+  zoneCode: string | null;
   authorUserId: string;
   authorName: string;
   /** The first review decision's time, whatever it was; null until reviewed. */
@@ -440,7 +443,7 @@ export function kaizenAnalysis(
   const rows = new Map<string, { row: KaizenAnalysisRow; savings: (number | null)[] }>();
 
   for (const fact of periodFacts(facts, period, now)) {
-    const key = by === 'zone' ? fact.zoneId : departmentKey(fact.department);
+    const key = by === 'zone' ? (fact.zoneId ?? '') : departmentKey(fact.department);
     const entry = rows.get(key) ?? {
       row: {
         key,
