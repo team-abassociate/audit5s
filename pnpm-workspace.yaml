@@ -1,3 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# The field app's browser build keeps its files in a fixed pool; see the patch for why it grew.
+patchedDependencies:
+  expo-sqlite@57.0.3: patches/expo-sqlite@57.0.3.patch

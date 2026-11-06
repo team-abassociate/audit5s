@@ -1,0 +1,25 @@
+diff --git a/web/wa-sqlite/AccessHandlePoolVFS.js b/web/wa-sqlite/AccessHandlePoolVFS.js
+--- a/web/wa-sqlite/AccessHandlePoolVFS.js
++++ b/web/wa-sqlite/AccessHandlePoolVFS.js
+@@ -22,7 +22,9 @@ const PERSISTENT_FILE_TYPES =
+   VFS.SQLITE_OPEN_SUPER_JOURNAL |
+   VFS.SQLITE_OPEN_WAL;
+ 
+-const DEFAULT_CAPACITY = 6;
++// audit5s: one file per person on this browser, plus a journal for every write. At 6 the fifth
++// person filled the pool and nobody could save (error 14). Tops up browsers already created at 6.
++const DEFAULT_CAPACITY = 32;
+ 
+ /**
+  * This VFS uses the updated Access Handle API with all synchronous methods
+@@ -230,8 +232,8 @@ export class AccessHandlePoolVFS extends FacadeVFS {
+       this.#directoryHandle = handle;
+ 
+       await this.#acquireAccessHandles();
+-      if (this.getCapacity() === 0) {
+-        await this.addCapacity(DEFAULT_CAPACITY);
++      if (this.getCapacity() < DEFAULT_CAPACITY) {
++        await this.addCapacity(DEFAULT_CAPACITY - this.getCapacity());
+       }
+     }
+     return true;
