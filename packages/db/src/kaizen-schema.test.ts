@@ -220,13 +220,13 @@ describe('who sees which Kaizen', () => {
     expect(result.rowCount).toBe(0);
   });
 
-  it('refuses a Coordinator creating one', async () => {
+  it('refuses a Coordinator creating one in another Unit (R-88)', async () => {
     await expect(
       asActor(app, IDS.coordinatorA, 'COORDINATOR', () =>
         app.query(
           `INSERT INTO kaizen (id, unit_id, zone_id, author_user_id, author_name, kaizen_seq, kaizen_no)
            VALUES ($1, $2, $3, $4, 'C', 0, '')`,
-          [K.kaizenOther, IDS.unitA, IDS.zoneA, IDS.coordinatorA],
+          [K.kaizenOther, IDS.unitB, K.zoneUnitB, IDS.coordinatorA],
         ),
       ),
     ).rejects.toThrow(/row-level security/);
