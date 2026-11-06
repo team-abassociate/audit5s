@@ -815,7 +815,8 @@ export function KaizenForm({
             />
           </View>
         ) : null}
-        <ErrorBanner message={error?.message ?? null} />
+        {/* Drizzle's message is only the query; the database's own error is its `cause`. */}
+        <ErrorBanner message={error ? (error.cause ? String(error.cause) : error.message) : null} />
         <View style={styles.submit}>
           <Button testID="kaizen-submit" quiet title={submitTitle} icon="send" busy={submit.isPending} onPress={() => submit.mutate()} />
         </View>
