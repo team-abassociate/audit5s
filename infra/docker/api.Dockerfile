@@ -12,7 +12,6 @@ WORKDIR /repo
 
 # Manifests first, so a dependency install is cached across source-only changes.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY patches/ patches/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/domain/package.json packages/domain/
 COPY packages/db/package.json packages/db/

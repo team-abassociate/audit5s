@@ -2,7 +2,6 @@ FROM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY patches/ patches/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/domain/package.json packages/domain/
 COPY apps/admin-web/package.json apps/admin-web/
