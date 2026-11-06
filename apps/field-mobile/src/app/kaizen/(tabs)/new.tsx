@@ -67,15 +67,14 @@ export default function NewKaizen() {
               <Text style={styles.draft}>
                 {t.draftFrom(formatDayMonth(draft.createdAt), draft.sheet.theme || draft.sheet.machine || t.untitled)}
               </Text>
-              <View style={styles.row}>
-                <View style={styles.flex}>
-                  <Button
-                    title={t.continueDraft}
-                    icon="edit"
-                    variant={one ? 'primary' : 'secondary'}
-                    onPress={() => router.push({ pathname: '/kaizen/edit/[kaizenId]', params: { kaizenId: draft.id } })}
-                  />
-                </View>
+              {/* One above the other: beside Continue, the delete question ran off a phone's screen. */}
+              <View style={styles.actions}>
+                <Button
+                  title={t.continueDraft}
+                  icon="edit"
+                  variant={one ? 'primary' : 'secondary'}
+                  onPress={() => router.push({ pathname: '/kaizen/edit/[kaizenId]', params: { kaizenId: draft.id } })}
+                />
                 <ConfirmAction
                   title={t.deleteDraft}
                   icon="delete"
@@ -119,6 +118,5 @@ export default function NewKaizen() {
 const useStyles = createThemedStyles((theme) => ({
   content: { paddingBottom: theme.space.xl, gap: theme.space.sm },
   draft: { fontFamily: theme.family.bold, fontSize: theme.font.base, lineHeight: 21, color: theme.color.ink, marginBottom: theme.space.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, flexWrap: 'wrap' },
-  flex: { flex: 1, minWidth: 160 },
+  actions: { gap: theme.space.sm },
 }));
