@@ -10,6 +10,7 @@ const CAPACITY = 32;
  * error 14, and the reason goes only to this worker's console, which a phone cannot show. It goes
  * to the page instead, for `expo-executor.ts` to add to the error. Remove with the page's half.
  */
+const BUILD = 'build-A';
 const page = new BroadcastChannel('audit5s-pool-diagnostic');
 async function tell(what, vfs) {
   const slots = vfs ? `slots ${vfs.getSize()}/${vfs.getCapacity()}` : 'no pool';
@@ -71,6 +72,14 @@ function copyNamesPlainly(vfs) {
     if (browser !== plain) once(`decoder wrong: got "${String(browser).slice(-20)}" for "${plain.slice(-20)}"`);
     return plain;
   };
+  // Where the name was last seen, for the report when one arrives blank.
+  const fullPathname = vfs.xFullPathname.bind(vfs);
+  vfs.xFullPathname = (pVfs, zName, nOut, zOut) => {
+    const result = fullPathname(pVfs, zName, nOut, zOut);
+    const heap = module.HEAPU8;
+    vfs.lastFullPath = `fullpath in@${zName} "${plainString(heap, zName).slice(-14)}" out@${zOut} "${plainString(heap, zOut).slice(-14)}" rc=${result} n=${nOut}`;
+    return result;
+  };
   vfs.jFullPathname = (filename, zOut) => {
     const { written } = new TextEncoder().encodeInto(filename, zOut);
     if (written !== filename.length || zOut[0] !== filename.charCodeAt(0)) {
@@ -95,7 +104,7 @@ function reportFailedOpens(vfs) {
     // A blank name gets a new random file from the pool: never found again and never freed, so the
     // pool fills and that work is lost. Refused, so the open fails where someone can see it.
     if (!filename && flags & NAMED_FILES) {
-      void tell(`blank name refused, flags ${flags.toString(16)}: ${raw}`, vfs);
+      void tell(`blank name refused, flags ${flags.toString(16)}: ${raw}; ${vfs.lastFullPath}`, vfs);
       return CANTOPEN;
     }
     const log = console.error;
@@ -119,7 +128,7 @@ export class AccessHandlePoolVFS extends Pool {
   static async create(name, module) {
     let vfs;
     const held = await census(name).catch((caught) => `census failed: ${caught?.message}`);
-    page.postMessage(held);
+    page.postMessage(`${BUILD} ${held}`);
     try {
       vfs = await Pool.create(name, module);
       if (vfs.getCapacity() < CAPACITY) await vfs.addCapacity(CAPACITY - vfs.getCapacity());
