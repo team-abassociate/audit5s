@@ -33,9 +33,33 @@ async function census(name) {
   return `at start ${files} files: ${Object.entries(kinds).map(([kind, count]) => `${kind}=${count}`).join(' ')}`;
 }
 
+const CANTOPEN = 14;
+const NAMED_FILES = 0x100 | 0x800; // SQLITE_OPEN_MAIN_DB | SQLITE_OPEN_MAIN_JOURNAL
+
+/** The name as it sits in memory, and the state of the views that read it (the diagnostic's question). */
+function rawName(module, pointer) {
+  const heap = module.HEAPU8;
+  const bytes = heap.subarray(pointer, pointer + 60);
+  const end = bytes.indexOf(0);
+  const text = new TextDecoder().decode(bytes.subarray(0, end < 0 ? 60 : end));
+  return `pointer ${pointer}, heap ${heap.length}/${heap.buffer.byteLength}, first byte ${bytes[0]}, reads "${text.slice(-20)}", UTF8ToString "${String(module.UTF8ToString(pointer)).slice(-20)}"`;
+}
+
 function reportFailedOpens(vfs) {
   const open = vfs.jOpen.bind(vfs);
+  const xOpen = vfs.xOpen.bind(vfs);
+  let raw = '';
+  vfs.xOpen = (pVfs, zName, pFile, flags, pOutFlags) => {
+    raw = rawName(vfs._module, zName);
+    return xOpen(pVfs, zName, pFile, flags, pOutFlags);
+  };
   vfs.jOpen = (filename, fileId, flags, outFlags) => {
+    // A blank name gets a new random file from the pool: never found again and never freed, so the
+    // pool fills and that work is lost. Refused, so the open fails where someone can see it.
+    if (!filename && flags & NAMED_FILES) {
+      void tell(`blank name refused, flags ${flags.toString(16)}: ${raw}`, vfs);
+      return CANTOPEN;
+    }
     const log = console.error;
     let why = 'no reason given';
     console.error = (message) => {
