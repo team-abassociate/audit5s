@@ -79,6 +79,17 @@ function photo(kaizenId: string, kind: 'BEFORE' | 'AFTER' = 'BEFORE') {
 }
 
 describe('a draft, offline', () => {
+  it('leaves nothing behind when it cannot be queued, so a retry makes no duplicate', async () => {
+    await executor.exec('ALTER TABLE outbox RENAME TO outbox_away');
+    await expect(newKaizen()).rejects.toThrow();
+    await executor.exec('ALTER TABLE outbox_away RENAME TO outbox');
+    expect(await listLocalKaizens(database)).toEqual([]);
+
+    await newKaizen();
+    expect(await listLocalKaizens(database)).toHaveLength(1);
+    expect(await listOutbox(database)).toHaveLength(1);
+  });
+
   it('queues one upsert carrying the whole sheet, however many fields are saved', async () => {
     const id = await newKaizen();
     await saveLocalKaizenFields(database, id, { theme: 'Shadow board' });

@@ -126,7 +126,13 @@ export async function createLocalKaizen(
     createdAt: now,
     updatedAt: now,
   });
-  await enqueue(database, 'kaizen', id, 'upsert', payload, now);
+  try {
+    await enqueue(database, 'kaizen', id, 'upsert', payload, now);
+  } catch (caught) {
+    // Unqueued it would never sync, and the form's retry would add another beside it.
+    await database.delete(localKaizens).where(eq(localKaizens.id, id)).catch(() => undefined);
+    throw caught;
+  }
   return id;
 }
 
