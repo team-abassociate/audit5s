@@ -146,6 +146,8 @@ export function KaizenForm({
   const [zoneId, setZoneId] = useState<string | null>(null);
   // For a save queued before the next render.
   const zoneRef = useRef(zoneId);
+  // "No zone" was chosen on purpose, so the box says so rather than asking again.
+  const [noZonePicked, setNoZonePicked] = useState(false);
   const [open, setOpen] = useState<number>(0);
   const [attempted, setAttempted] = useState(false);
   const [fieldError, setFieldError] = useState<Partial<Record<KaizenTextField, string>>>({});
@@ -659,8 +661,11 @@ export function KaizenForm({
                   : []),
                 ...(zoneOptions ?? []).map((z) => ({ value: z.id, label: zoneDisplayLabel(z.code, z.name) })),
               ]}
-              value={zoneId}
-              onChange={(value) => refile.mutate(value || null)}
+              value={zoneId ?? (noZonePicked ? '' : null)}
+              onChange={(value) => {
+                setNoZonePicked(value === '');
+                refile.mutate(value || null);
+              }}
             />
             {textField('department')}
             {textField('machine')}

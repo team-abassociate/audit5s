@@ -66,7 +66,7 @@ export default function KaizensScreen() {
         renderItem={({ item }) => (
           <KaizenCard
             kaizen={cardFromServer(item)}
-            author={`${item.authorName} · ${item.zoneCode ? `Zone ${zoneLabelFromCode(item.zoneCode) ?? item.zoneCode}` : (item.department ?? '')}`}
+            author={[item.authorName, item.zoneCode ? `Zone ${zoneLabelFromCode(item.zoneCode) ?? item.zoneCode}` : item.department].filter(Boolean).join(' · ')}
             onPress={() => router.push({ pathname: '/kaizen/[kaizenId]', params: { kaizenId: item.id } })}
           />
         )}

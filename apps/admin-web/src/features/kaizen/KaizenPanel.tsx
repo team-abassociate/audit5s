@@ -30,7 +30,7 @@ export function KaizenPanel({ kaizenId, onClose }: { kaizenId: string | null; on
     <SidePanel
       open={kaizenId !== null}
       title={kaizen?.kaizenNo ?? 'Kaizen'}
-      subtitle={kaizen ? `${kaizenPlace(kaizen)} · ${kaizen.authorName}` : undefined}
+      subtitle={kaizen ? [kaizenPlace(kaizen), kaizen.authorName].filter(Boolean).join(' · ') : undefined}
       onClose={onClose}
     >
       {detail.isLoading && <Spinner />}
