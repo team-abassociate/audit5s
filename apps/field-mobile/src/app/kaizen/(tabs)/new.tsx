@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,13 +41,17 @@ export default function NewKaizen() {
     },
   });
 
+  // The form's first save makes a draft. It stays open then: the choice is for arriving here.
+  const formOpen = useRef(false);
+
   const again = () => {
+    formOpen.current = false;
     setRound((n) => n + 1);
     setStarting(false);
   };
 
   if (kaizens.isLoading) return null;
-  if (!starting && drafts.length > 0) {
+  if (!starting && !formOpen.current && drafts.length > 0) {
     // One draft: carrying it on is the likely job. Several: starting afresh leads, above the list.
     const one = drafts.length === 1;
     const startNew = (
@@ -91,6 +95,7 @@ export default function NewKaizen() {
     );
   }
 
+  formOpen.current = true;
   return (
     <Screen bare>
       <KaizenForm

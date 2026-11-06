@@ -18,7 +18,7 @@ export async function openExpoExecutor(
 
   return {
     async exec(sql) {
-      await database.execAsync(sql).catch(withPoolDetail);
+      await database.execAsync(sql);
     },
     async query(sql, params) {
       // `getAllAsync` returns objects keyed by column name; Drizzle's proxy driver maps
@@ -34,7 +34,7 @@ export async function openExpoExecutor(
         await statement.executeAsync(params as never[]);
       } catch (caught) {
         await statement.finalizeAsync().catch(() => undefined);
-        return withPoolDetail(caught);
+        throw caught;
       }
       await statement.finalizeAsync();
     },
@@ -80,33 +80,10 @@ async function openWithRetry(name: string): Promise<SQLite.SQLiteDatabase> {
     try {
       return await SQLite.openDatabaseAsync(name);
     } catch (caught) {
-      if (Platform.OS !== 'web') throw caught;
-      if (attempt >= 10) return withPoolDetail(caught);
+      if (Platform.OS !== 'web' || attempt >= 10) throw caught;
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
   }
-}
-
-/*
- * TEMPORARY diagnostic (staging, Android error 14): the other half is in `web-sqlite-pool.js`. What
- * the worker's pool last reported joins the error, so a phone's banner shows why a file would not
- * open. A report with no error means the page is running the build that has this.
- */
-const poolReports: string[] = [];
-async function withPoolDetail(caught: unknown): Promise<never> {
-  if (Platform.OS === 'web' && caught instanceof Error) {
-    // The worker sends its report after it has answered with the error.
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    // Every different report, first seen first: a repeat of the last must not push out an earlier one.
-    const seen = [...new Set(poolReports.map((report) => report.replace(/; slots.*$/, '')))];
-    caught.message += ` [diagnostic: ${seen.slice(-6).join(' | ') || 'no pool report'}]`;
-  }
-  throw caught;
-}
-if (Platform.OS === 'web' && typeof BroadcastChannel !== 'undefined') {
-  new BroadcastChannel('audit5s-pool-diagnostic').onmessage = (event: { data: string }) => {
-    poolReports.push(event.data);
-  };
 }
 
 const TABS = 'audit5s-local-db';
