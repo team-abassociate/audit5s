@@ -29,11 +29,14 @@ import {
   createLocalKaizen,
   discardLocalKaizen,
   getLocalKaizen,
+  getLocalKaizenPhotoEdit,
   removeLocalKaizenPhoto,
   saveLocalKaizenFields,
   saveLocalKaizenZone,
   submitLocalKaizen,
   type LocalKaizen,
+  type LocalKaizenPhoto,
+  type LocalKaizenPhotoEdit,
 } from '../lib/db/kaizen.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import { KAIZEN_STEPS, KAIZEN_STRINGS, type KaizenStep, type KaizenTextField } from '../lib/kaizen-strings';
@@ -153,10 +156,12 @@ export function KaizenForm({
   const [fieldError, setFieldError] = useState<Partial<Record<KaizenTextField, string>>>({});
   const [camera, setCamera] = useState<KaizenPhotoKind | null>(null);
   const [viewing, setViewing] = useState<KaizenPhotoKind | null>(null);
-  // A photo in the editor. `fresh` is the one just taken or picked, not yet on the sheet.
+  // A photo in the editor: its original and the edits it has so far. `fresh` is the one just
+  // taken or picked, not yet on the sheet.
   const [editing, setEditing] = useState<{
     kind: KaizenPhotoKind;
     source: { uri: string; width: number; height: number };
+    steps?: LocalKaizenPhotoEdit['steps'];
     fresh: ProcessedImage | null;
     live: boolean;
   } | null>(null);
@@ -322,7 +327,17 @@ export function KaizenForm({
   }, [flush]);
 
   const photo = useMutation({
-    mutationFn: async ({ kind, image, live }: { kind: KaizenPhotoKind; image: ProcessedImage; live: boolean }) => {
+    mutationFn: async ({
+      kind,
+      image,
+      live,
+      edit,
+    }: {
+      kind: KaizenPhotoKind;
+      image: ProcessedImage;
+      live: boolean;
+      edit: LocalKaizenPhotoEdit | null;
+    }) => {
       const kaizenId = await save.mutateAsync(pendingTextFields() ?? {});
       await addLocalKaizenPhoto(database, {
         kaizenId,
@@ -333,11 +348,25 @@ export function KaizenForm({
         width: image.width,
         height: image.height,
         isLiveCapture: live,
+        edit,
       });
     },
     onSuccess: () => {
       setCamera(null);
       void refresh();
+    },
+  });
+  /** A photo on the sheet back in the editor: its original and edits if it has them, else itself. */
+  const reopenPhoto = useMutation({
+    mutationFn: async ({ kind, shown }: { kind: KaizenPhotoKind; shown: LocalKaizenPhoto }) => {
+      const edit = await getLocalKaizenPhotoEdit(database, shown.id);
+      setEditing({
+        kind,
+        source: edit?.original ?? { uri: shown.localFileUri!, width: shown.width!, height: shown.height! },
+        ...(edit ? { steps: edit.steps } : {}),
+        fresh: null,
+        live: shown.isLiveCapture === 1,
+      });
     },
   });
   const gallery = useMutation({
@@ -602,14 +631,8 @@ export function KaizenForm({
             title={t.editPhoto}
             icon="edit"
             variant="secondary"
-            onPress={() =>
-              setEditing({
-                kind,
-                source: { uri: shown.localFileUri!, width: shown.width!, height: shown.height! },
-                fresh: null,
-                live: shown.isLiveCapture === 1,
-              })
-            }
+            busy={reopenPhoto.isPending}
+            onPress={() => reopenPhoto.mutate({ kind, shown })}
           />
         ) : null}
         {/* Camera or gallery, side by side, always: either is fine for a Kaizen (R-48). */}
@@ -746,7 +769,7 @@ export function KaizenForm({
   };
 
   const submitTitle = resubmitting ? t.resubmit : t.submit;
-  const error = submit.error ?? save.error ?? refile.error ?? photo.error ?? gallery.error ?? removePhoto.error ?? discard.error;
+  const error = submit.error ?? save.error ?? refile.error ?? photo.error ?? reopenPhoto.error ?? gallery.error ?? removePhoto.error ?? discard.error;
   const ready = progress.requiredLeft === 0;
 
   return (
@@ -874,14 +897,22 @@ export function KaizenForm({
       {editing ? (
         <KaizenPhotoEditor
           source={editing.source}
+          {...(editing.steps ? { steps: editing.steps } : {})}
           onCancel={() => {
             if (editing.fresh) void discardProcessedPhoto(editing.fresh.uri);
             setEditing(null);
           }}
           onDone={(edited) => {
-            if (edited && editing.fresh) void discardProcessedPhoto(editing.fresh.uri);
-            const image = edited ?? editing.fresh;
-            if (image) photo.mutate({ kind: editing.kind, image, live: editing.live });
+            const image = edited?.image ?? editing.fresh;
+            if (image) {
+              photo.mutate({
+                kind: editing.kind,
+                image,
+                live: editing.live,
+                // The source stays on the device as the original, so this can be undone later.
+                edit: edited ? { original: editing.source, steps: edited.steps } : null,
+              });
+            }
             setEditing(null);
           }}
         />

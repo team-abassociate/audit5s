@@ -441,6 +441,17 @@ export const LOCAL_MIGRATIONS: LocalMigration[] = [
     version: 16,
     statements: [`CREATE TABLE IF NOT EXISTS audit_zone_previous_ncs (audit_zone_id TEXT PRIMARY KEY, answer TEXT)`],
   },
+  {
+    // R-88: what an edited Kaizen photo was made from, so "Edit photo" can undo earlier edits.
+    // On this device only: the server holds the finished photo. A table, for v8's reason.
+    version: 17,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS kaizen_photo_edit (
+         photo_id TEXT PRIMARY KEY, original_uri TEXT NOT NULL,
+         original_width INTEGER NOT NULL, original_height INTEGER NOT NULL, steps TEXT NOT NULL
+       )`,
+    ],
+  },
 ];
 
 export const LOCAL_SCHEMA_VERSION = LOCAL_MIGRATIONS[LOCAL_MIGRATIONS.length - 1]!.version;

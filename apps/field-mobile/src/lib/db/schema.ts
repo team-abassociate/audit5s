@@ -414,6 +414,15 @@ export const localKaizenPhotos = sqliteTable('kaizen_photo', {
   deletedAt: text('deleted_at'),
 });
 
+/** How an edited photo was made: its original and the steps, so a later edit can undo them. */
+export const localKaizenPhotoEdits = sqliteTable('kaizen_photo_edit', {
+  photoId: text('photo_id').primaryKey(),
+  originalUri: text('original_uri').notNull(),
+  originalWidth: integer('original_width').notNull(),
+  originalHeight: integer('original_height').notNull(),
+  steps: text('steps').notNull(),
+});
+
 /** A Submit tapped here and not yet confirmed: the Kaizen shows SUBMITTED meanwhile. */
 export const localKaizenSubmissions = sqliteTable('kaizen_submission', {
   id: text('id').primaryKey(),

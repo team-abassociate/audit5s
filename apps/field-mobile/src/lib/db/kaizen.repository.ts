@@ -13,7 +13,8 @@ import { missingKaizenFields } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import { enqueue, uuidv7 } from './audit.repository';
 import { UNSETTLED_STATES } from './outbox.repository';
-import { localKaizenDiscards, localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox } from './schema';
+import type { EditableImage, PhotoEditStep } from '../capture/photo-edit';
+import { localKaizenDiscards, localKaizenPhotoEdits, localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox } from './schema';
 
 /**
  * A Zone Leader's Kaizens on the device (R-48, plans/kaizen-module.md step 4).
@@ -37,6 +38,11 @@ export interface LocalKaizenZone {
   id: string;
   code: string;
   name: string;
+}
+/** What an edited photo was made from: "Edit photo" reopens this, not the flattened result. */
+export interface LocalKaizenPhotoEdit {
+  original: EditableImage;
+  steps: readonly PhotoEditStep[];
 }
 
 export interface LocalKaizen extends Omit<LocalKaizenRow, 'sheet' | 'status'> {
@@ -187,9 +193,22 @@ export async function getLocalKaizenPhoto(
   return photo ?? null;
 }
 
+/** How this photo was edited on this device, if it was. Read only for the editor: originals are large on the web. */
+export async function getLocalKaizenPhotoEdit(database: LocalDatabase, photoId: string): Promise<LocalKaizenPhotoEdit | null> {
+  const [row] = await database.select().from(localKaizenPhotoEdits).where(eq(localKaizenPhotoEdits.photoId, photoId)).limit(1);
+  if (!row) return null;
+  return {
+    original: { uri: row.originalUri, width: row.originalWidth, height: row.originalHeight },
+    steps: JSON.parse(row.steps) as PhotoEditStep[],
+  };
+}
+
 /**
  * A before or after photo, already downscaled by the capture pipeline. Replaces the live one
  * of the same kind: the server holds one per kind, so the old one is removed first.
+ *
+ * ponytail: a replaced photo's files stay on the device, its original now too (a few hundred KB
+ * each). Sweep `evidence/` for files no live row names if a phone ever runs short of space.
  */
 export async function addLocalKaizenPhoto(
   database: LocalDatabase,
@@ -203,6 +222,7 @@ export async function addLocalKaizenPhoto(
     height?: number | null;
     /** False for a photo chosen from the gallery, which Kaizen allows (R-48). */
     isLiveCapture: boolean;
+    edit?: LocalKaizenPhotoEdit | null;
     now?: string;
   },
 ): Promise<string> {
@@ -236,6 +256,15 @@ export async function addLocalKaizenPhoto(
     isLiveCapture: input.isLiveCapture ? 1 : 0,
     capturedAt: now,
   });
+  if (input.edit) {
+    await database.insert(localKaizenPhotoEdits).values({
+      photoId: id,
+      originalUri: input.edit.original.uri,
+      originalWidth: input.edit.original.width,
+      originalHeight: input.edit.original.height,
+      steps: JSON.stringify(input.edit.steps),
+    });
+  }
   await enqueue(database, 'kaizen_photo', id, 'upsert', intent, now, { queue: 'media' });
   await touch(database, input.kaizenId, now);
   return id;
@@ -255,6 +284,7 @@ export async function removeLocalKaizenPhoto(
   await editableKaizen(database, photo.kaizenId);
 
   await database.update(localKaizenPhotos).set({ deletedAt: now }).where(eq(localKaizenPhotos.id, photoId));
+  await database.delete(localKaizenPhotoEdits).where(eq(localKaizenPhotoEdits.photoId, photoId));
   const queued = await database
     .select({ operation: outbox.operation })
     .from(outbox)
@@ -329,6 +359,7 @@ export async function discardLocalKaizen(
   ).map((row) => row.id);
   if (photoIds.length > 0) {
     await database.delete(outbox).where(and(eq(outbox.entityType, 'kaizen_photo'), inArray(outbox.entityId, photoIds)));
+    await database.delete(localKaizenPhotoEdits).where(inArray(localKaizenPhotoEdits.photoId, photoIds));
   }
   // A later edit is moot; the first upsert stays when the server may not have the draft yet.
   if (upsert && (neverSent || !first)) await database.delete(outbox).where(eq(outbox.id, upsert.id));

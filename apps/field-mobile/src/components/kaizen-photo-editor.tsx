@@ -1,8 +1,17 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, Modal, PanResponder, Pressable, View, type GestureResponderEvent, type PanResponderGestureState } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { cropPhoto, finishPhoto, rotatePhoto, type EditableImage } from '../lib/capture/photo-edit';
-import { cropStrokes, rotateStrokes, type MarkupColour, type Stroke } from '../lib/capture/photo-markup';
+import {
+  addStroke,
+  applyPhotoStep,
+  finishPhoto,
+  replayPhotoSteps,
+  type CropRect as Rect,
+  type EditableImage,
+  type PhotoEditState,
+  type PhotoEditStep,
+} from '../lib/capture/photo-edit';
+import type { MarkupColour, Stroke } from '../lib/capture/photo-markup';
 import type { ProcessedImage } from '../lib/capture/media';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
@@ -11,17 +20,6 @@ import { createThemedStyles } from '../lib/theme';
 import { Button, ErrorBanner, Segmented } from './ui';
 
 type Tool = 'highlight' | 'crop';
-interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-/** One state of the edit. Undo returns to the one before, whatever the step was. */
-interface Snapshot {
-  image: EditableImage;
-  strokes: readonly Stroke[];
-}
 type Grab = 'tl' | 'tr' | 'bl' | 'br' | 'move' | null;
 
 /** How thick each mark is on screen, so it reads the same on any photo. */
@@ -37,29 +35,37 @@ const MIN_CROP_DP = 48;
  * came from the camera or the gallery. Plain Views and `PanResponder`, as the phone's charts
  * are plain Views (R-48), so this ships without a new APK and runs the same in `/field`.
  *
+ * `source` is the photo before any edit and `steps` the edits it already has: they replay on
+ * opening, so Undo can take back what was done before the photo was last kept.
+ *
  * `onDone(null)` means nothing was changed: the caller keeps the photo it already has.
  */
 export function KaizenPhotoEditor({
   source,
+  steps = [],
   onDone,
   onCancel,
 }: {
   source: EditableImage;
-  onDone: (edited: ProcessedImage | null) => void;
+  steps?: readonly PhotoEditStep[];
+  onDone: (edited: { image: ProcessedImage; steps: readonly PhotoEditStep[] } | null) => void;
   onCancel: () => void;
 }) {
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const { language } = useLanguage();
   const t = KAIZEN_STRINGS[language];
-  const [history, setHistory] = useState<Snapshot[]>([]);
-  const [current, setCurrent] = useState<Snapshot>({ image: source, strokes: [] });
+  const [history, setHistory] = useState<PhotoEditState[]>([]);
+  const [current, setCurrent] = useState<PhotoEditState>({ image: source, strokes: [], steps: [] });
+  // The state it opened in: finishing here changes nothing, however it got back here.
+  const opened = useRef(current);
+  const [replayed, setReplayed] = useState(steps.length === 0);
   const [tool, setTool] = useState<Tool>('highlight');
   const [colour, setColour] = useState<MarkupColour>('yellow');
   const [drawing, setDrawing] = useState<Stroke | null>(null);
   const [crop, setCrop] = useState<Rect | null>(null);
   const [frame, setFrame] = useState({ width: 0, height: 0 });
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(!replayed);
   const [failed, setFailed] = useState(false);
 
   const { image } = current;
@@ -67,7 +73,7 @@ export function KaizenPhotoEditor({
   const whole: Rect = { x: 0, y: 0, width: image.width, height: image.height };
   const shownCrop = crop ?? whole;
 
-  const push = (next: Snapshot) => {
+  const push = (next: PhotoEditState) => {
     setHistory((past) => [...past, current]);
     setCurrent(next);
     setCrop(null);
@@ -121,7 +127,7 @@ export function KaizenPhotoEditor({
         gesture.current.stroke = null;
         setDrawing(null);
         const { current: now, push: keep } = live.current;
-        keep({ image: now.image, strokes: [...now.strokes, stroke] });
+        keep(addStroke(now, stroke));
       },
     }),
   ).current;
@@ -141,11 +147,19 @@ export function KaizenPhotoEditor({
     }
   };
 
-  const rotate = () =>
-    run(async () => {
-      const turned = await rotatePhoto(image);
-      push({ image: turned, strokes: rotateStrokes(current.strokes, image.height) });
-    });
+  useEffect(() => {
+    if (replayed) return;
+    void run(async () => {
+      const states = await replayPhotoSteps(source, steps);
+      const last = states[states.length - 1]!;
+      opened.current = last;
+      setHistory(states.slice(0, -1));
+      setCurrent(last);
+    }).then(() => setReplayed(true));
+    // Once, on opening: it fills in the state everything after it edits.
+  }, []);
+
+  const rotate = () => run(async () => push(await applyPhotoStep(current, { type: 'rotate' })));
   const applyCrop = () =>
     run(async () => {
       const rect = {
@@ -154,8 +168,7 @@ export function KaizenPhotoEditor({
         width: Math.round(shownCrop.width),
         height: Math.round(shownCrop.height),
       };
-      const cropped = await cropPhoto(image, rect);
-      push({ image: cropped, strokes: cropStrokes(current.strokes, rect.x, rect.y) });
+      push(await applyPhotoStep(current, { type: 'crop', rect }));
       setTool('highlight');
     });
   const undo = () => {
@@ -166,8 +179,8 @@ export function KaizenPhotoEditor({
     setCrop(null);
   };
   const finish = () => {
-    if (history.length === 0) return onDone(null);
-    void run(async () => onDone(await finishPhoto(image, current.strokes)));
+    if (current === opened.current) return onDone(null);
+    void run(async () => onDone({ image: await finishPhoto(image, current.strokes), steps: current.steps }));
   };
 
   return (
@@ -185,7 +198,7 @@ export function KaizenPhotoEditor({
           style={styles.frame}
           onLayout={({ nativeEvent: { layout } }) => setFrame({ width: layout.width, height: layout.height })}
         >
-          {scale > 0 ? (
+          {scale > 0 && replayed ? (
             // Sized to the photo, so a touch's position in here is its position on the photo.
             <View style={[styles.stage, { width: image.width * scale, height: image.height * scale }]} {...responder.panHandlers}>
               <View style={styles.fill} pointerEvents="none">

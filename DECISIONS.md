@@ -3143,4 +3143,7 @@ one. **Changes R-48(b), (e), (i) and R-85's "a Kaizen keeps its Zone".** (R-87 i
 - **Photos can be cropped, rotated and highlighted** on the phone and `/field`, after the camera or
   the gallery, or later from "Edit photo". There is one more dependency, `jpeg-js`, and no native
   change, so it ships by OTA. A highlighted photo is saved at 1280 px on the long edge rather than
-  1920, because JavaScript paints the marks. The portal's photo upload is unchanged.
+  1920, because JavaScript paints the marks. The portal's photo upload is unchanged. The device
+  keeps each edited photo's original and its steps (`kaizen_photo_edit`, local v17, never sent), so
+  a later "Edit photo" can undo earlier marks, crops and turns. A photo edited before v17 opens
+  flattened, as it has no original.

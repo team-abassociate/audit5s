@@ -3,13 +3,51 @@ import { File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { decode, encode } from 'jpeg-js';
 import { processCapturedPhoto, readFileBytes, type ProcessedImage } from './media';
-import { burnStrokes, scaleStrokes, type Stroke } from './photo-markup';
+import { burnStrokes, cropStrokes, rotateStrokes, scaleStrokes, type Stroke } from './photo-markup';
 
 /** A photograph being edited. Each step writes a new file, so Undo only goes back to the last one. */
 export interface EditableImage {
   uri: string;
   width: number;
   height: number;
+}
+
+export interface CropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** One edit. Saved with the photo, so reopening the editor can replay and undo them. */
+export type PhotoEditStep = { type: 'rotate' } | { type: 'crop'; rect: CropRect } | { type: 'stroke'; stroke: Stroke };
+
+/** One state of the edit. Undo returns to the one before, whatever the step was. */
+export interface PhotoEditState {
+  image: EditableImage;
+  strokes: readonly Stroke[];
+  steps: readonly PhotoEditStep[];
+}
+
+/** Synchronous, so a mark never blinks off between the finger lifting and it being kept. */
+export function addStroke(state: PhotoEditState, stroke: Stroke): PhotoEditState {
+  return { image: state.image, strokes: [...state.strokes, stroke], steps: [...state.steps, { type: 'stroke', stroke }] };
+}
+
+export async function applyPhotoStep(state: PhotoEditState, step: PhotoEditStep): Promise<PhotoEditState> {
+  if (step.type === 'stroke') return addStroke(state, step.stroke);
+  const steps = [...state.steps, step];
+  if (step.type === 'rotate') {
+    return { image: await rotatePhoto(state.image), strokes: rotateStrokes(state.strokes, state.image.height), steps };
+  }
+  return { image: await cropPhoto(state.image, step.rect), strokes: cropStrokes(state.strokes, step.rect.x, step.rect.y), steps };
+}
+
+/** Every state from the original to the last step: the reopened editor's Undo history. */
+export async function replayPhotoSteps(original: EditableImage, steps: readonly PhotoEditStep[]): Promise<PhotoEditState[]> {
+  const states: PhotoEditState[] = [{ image: original, strokes: [], steps: [] }];
+  for (const step of steps) states.push(await applyPhotoStep(states[states.length - 1]!, step));
+  return states;
 }
 
 /**
@@ -34,7 +72,7 @@ export function rotatePhoto(image: EditableImage): Promise<EditableImage> {
   return saved(ImageManipulator.manipulate(image.uri).rotate(90));
 }
 
-export function cropPhoto(image: EditableImage, rect: { x: number; y: number; width: number; height: number }): Promise<EditableImage> {
+export function cropPhoto(image: EditableImage, rect: CropRect): Promise<EditableImage> {
   return saved(
     ImageManipulator.manipulate(image.uri).crop({
       originX: rect.x,

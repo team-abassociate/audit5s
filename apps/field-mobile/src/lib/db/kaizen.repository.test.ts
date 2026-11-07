@@ -9,6 +9,7 @@ import {
   discardLocalKaizen,
   getLocalKaizen,
   getLocalKaizenPhoto,
+  getLocalKaizenPhotoEdit,
   localKaizenCounts,
   refreshLocalKaizens,
   removeLocalKaizenPhoto,
@@ -77,6 +78,53 @@ function photo(kaizenId: string, kind: 'BEFORE' | 'AFTER' = 'BEFORE') {
     isLiveCapture: false,
   });
 }
+
+describe('an edited photo', () => {
+  const edit = {
+    original: { uri: 'file:///kaizen/original.jpg', width: 1920, height: 1080 },
+    steps: [{ type: 'rotate' as const }],
+  };
+  const edited = (kaizenId: string) =>
+    addLocalKaizenPhoto(database, {
+      kaizenId,
+      kind: 'BEFORE',
+      localFileUri: 'file:///kaizen/flattened.jpg',
+      byteSize: 1234,
+      checksumSha256: SHA,
+      isLiveCapture: true,
+      edit,
+    });
+
+  it('keeps its original and steps until it is replaced or removed', async () => {
+    const id = await newKaizen();
+    const first = await edited(id);
+    expect(await getLocalKaizenPhotoEdit(database, first)).toEqual(edit);
+
+    const second = await edited(id);
+    expect(await getLocalKaizenPhotoEdit(database, first)).toBeNull();
+    expect(await getLocalKaizenPhotoEdit(database, second)).toEqual(edit);
+
+    await removeLocalKaizenPhoto(database, second);
+    expect(await getLocalKaizenPhotoEdit(database, second)).toBeNull();
+  });
+
+  it('never sends the original or its steps to the server', async () => {
+    const id = await newKaizen();
+    await edited(id);
+    const queued = (await listOutbox(database)).find((row) => row.entityType === 'kaizen_photo');
+    expect(queued?.payload).not.toContain('original');
+  });
+
+  it('goes with a deleted draft, and a photo never edited has none', async () => {
+    const id = await newKaizen();
+    const plain = await photo(id, 'AFTER');
+    const marked = await edited(id);
+    expect(await getLocalKaizenPhotoEdit(database, plain)).toBeNull();
+
+    await discardLocalKaizen(database, id);
+    expect(await getLocalKaizenPhotoEdit(database, marked)).toBeNull();
+  });
+});
 
 describe('a draft, offline', () => {
   it('leaves nothing behind when it cannot be queued, so a retry makes no duplicate', async () => {
