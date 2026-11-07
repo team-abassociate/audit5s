@@ -156,6 +156,8 @@ export interface KaizenStrings {
   /** The photo editor. */
   editPhoto: string;
   highlight: string;
+  erase: string;
+  eraseHint: string;
   crop: string;
   applyCrop: string;
   rotate: string;
@@ -409,6 +411,8 @@ const EN: KaizenStrings = {
   removePhoto: 'Remove photo',
   editPhoto: 'Edit photo',
   highlight: 'Highlight',
+  erase: 'Erase',
+  eraseHint: 'Tap a mark to remove it.',
   crop: 'Crop',
   applyCrop: 'Apply crop',
   rotate: 'Rotate',
@@ -659,6 +663,8 @@ const HI: KaizenStrings = {
   removePhoto: 'फ़ोटो हटाएँ',
   editPhoto: 'फ़ोटो संपादित करें',
   highlight: 'हाइलाइट',
+  erase: 'मिटाएँ',
+  eraseHint: 'निशान हटाने के लिए उस पर टैप करें।',
   crop: 'क्रॉप',
   applyCrop: 'क्रॉप लागू करें',
   rotate: 'घुमाएँ',
@@ -909,6 +915,8 @@ const MR: KaizenStrings = {
   removePhoto: 'फोटो काढून टाका',
   editPhoto: 'फोटो संपादित करा',
   highlight: 'हायलाइट',
+  erase: 'पुसा',
+  eraseHint: 'खूण काढण्यासाठी तिच्यावर टॅप करा.',
   crop: 'क्रॉप',
   applyCrop: 'क्रॉप लागू करा',
   rotate: 'फिरवा',

@@ -37,6 +37,24 @@ export function scaleStrokes(strokes: readonly Stroke[], factor: number): Stroke
   }));
 }
 
+/** The topmost mark under this point, within `reach` of its edge; -1 if none. */
+export function strokeAt(strokes: readonly Stroke[], at: { x: number; y: number }, reach: number): number {
+  for (let index = strokes.length - 1; index >= 0; index -= 1) {
+    const stroke = strokes[index]!;
+    const limit = stroke.width / 2 + reach;
+    const hit = stroke.points.some((point, step) => {
+      const from = stroke.points[step - 1] ?? point;
+      const dx = point.x - from.x;
+      const dy = point.y - from.y;
+      const length = dx * dx + dy * dy;
+      const along = length === 0 ? 0 : Math.min(1, Math.max(0, ((at.x - from.x) * dx + (at.y - from.y) * dy) / length));
+      return Math.hypot(at.x - (from.x + along * dx), at.y - (from.y + along * dy)) <= limit;
+    });
+    if (hit) return index;
+  }
+  return -1;
+}
+
 /**
  * Paints the marks into RGBA pixels, in place. Each colour is rasterised to a mask first and
  * blended once, so a translucent highlighter stays even where its strokes cross.

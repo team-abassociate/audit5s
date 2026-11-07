@@ -42,4 +42,15 @@ describe('replaying saved edits', () => {
     expect(states[3]!.image).toEqual({ uri: 'turned:cropped:original', width: 30, height: 40 });
     expect(states[3]!.steps).toEqual(steps);
   });
+
+  it('keeps an erased mark gone, and one Undo back it returns', async () => {
+    const other = { ...stroke, colour: 'yellow' as const };
+    const states = await replayPhotoSteps(ORIGINAL, [
+      { type: 'stroke', stroke },
+      { type: 'stroke', stroke: other },
+      { type: 'erase', index: 0 },
+    ]);
+    expect(states[3]!.strokes).toEqual([other]);
+    expect(states[2]!.strokes).toEqual([stroke, other]);
+  });
 });

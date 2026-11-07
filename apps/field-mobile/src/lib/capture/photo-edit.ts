@@ -20,7 +20,12 @@ export interface CropRect {
 }
 
 /** One edit. Saved with the photo, so reopening the editor can replay and undo them. */
-export type PhotoEditStep = { type: 'rotate' } | { type: 'crop'; rect: CropRect } | { type: 'stroke'; stroke: Stroke };
+export type PhotoEditStep =
+  | { type: 'rotate' }
+  | { type: 'crop'; rect: CropRect }
+  | { type: 'stroke'; stroke: Stroke }
+  /** Removes the mark at this place in the list of marks at that moment. */
+  | { type: 'erase'; index: number };
 
 /** One state of the edit. Undo returns to the one before, whatever the step was. */
 export interface PhotoEditState {
@@ -34,8 +39,17 @@ export function addStroke(state: PhotoEditState, stroke: Stroke): PhotoEditState
   return { image: state.image, strokes: [...state.strokes, stroke], steps: [...state.steps, { type: 'stroke', stroke }] };
 }
 
+export function eraseStroke(state: PhotoEditState, index: number): PhotoEditState {
+  return {
+    image: state.image,
+    strokes: state.strokes.filter((_stroke, at) => at !== index),
+    steps: [...state.steps, { type: 'erase', index }],
+  };
+}
+
 export async function applyPhotoStep(state: PhotoEditState, step: PhotoEditStep): Promise<PhotoEditState> {
   if (step.type === 'stroke') return addStroke(state, step.stroke);
+  if (step.type === 'erase') return eraseStroke(state, step.index);
   const steps = [...state.steps, step];
   if (step.type === 'rotate') {
     return { image: await rotatePhoto(state.image), strokes: rotateStrokes(state.strokes, state.image.height), steps };

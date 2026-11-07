@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ledgerMarkup } from '../ledger';
-import { burnStrokes, cropStrokes, rotateStrokes, scaleStrokes, type Stroke } from './photo-markup';
+import { burnStrokes, cropStrokes, rotateStrokes, scaleStrokes, strokeAt, type Stroke } from './photo-markup';
 
 const white = (width: number, height: number) => new Uint8Array(width * height * 4).fill(255);
 const pixel = (rgba: Uint8Array, width: number, x: number, y: number) => [...rgba.slice((y * width + x) * 4, (y * width + x) * 4 + 4)];
@@ -23,6 +23,23 @@ describe('moving marks with the image', () => {
     const [scaled] = scaleStrokes([line('red')], 0.5);
     expect(scaled!.points[1]).toEqual({ x: 4, y: 2.5 });
     expect(scaled!.width).toBe(1);
+  });
+});
+
+describe('strokeAt', () => {
+  const across = (y: number): Stroke => ({ colour: 'red', width: 2, points: [{ x: 0, y }, { x: 100, y }] });
+
+  it('finds a mark along its length, not only at its points', () => {
+    expect(strokeAt([across(10)], { x: 50, y: 12 }, 2)).toBe(0);
+    expect(strokeAt([across(10)], { x: 50, y: 20 }, 2)).toBe(-1);
+  });
+
+  it('takes the topmost of two marks that overlap', () => {
+    expect(strokeAt([across(10), across(11)], { x: 50, y: 10 }, 2)).toBe(1);
+  });
+
+  it('finds a single dot', () => {
+    expect(strokeAt([{ colour: 'red', width: 4, points: [{ x: 5, y: 5 }] }], { x: 6, y: 6 }, 1)).toBe(0);
   });
 });
 

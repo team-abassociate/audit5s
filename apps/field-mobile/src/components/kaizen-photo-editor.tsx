@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addStroke,
   applyPhotoStep,
+  eraseStroke,
   finishPhoto,
   replayPhotoSteps,
   type CropRect as Rect,
@@ -11,15 +12,15 @@ import {
   type PhotoEditState,
   type PhotoEditStep,
 } from '../lib/capture/photo-edit';
-import type { MarkupColour, Stroke } from '../lib/capture/photo-markup';
+import { strokeAt, type MarkupColour, type Stroke } from '../lib/capture/photo-markup';
 import type { ProcessedImage } from '../lib/capture/media';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
 import { ledgerMarkup } from '../lib/ledger';
 import { createThemedStyles } from '../lib/theme';
-import { Button, ErrorBanner, Segmented } from './ui';
+import { Button, ErrorBanner, Muted, Segmented } from './ui';
 
-type Tool = 'highlight' | 'crop';
+type Tool = 'highlight' | 'erase' | 'crop';
 type Grab = 'tl' | 'tr' | 'bl' | 'br' | 'move' | null;
 
 /** How thick each mark is on screen, so it reads the same on any photo. */
@@ -29,6 +30,8 @@ const POINT_SPACING_DP = 4;
 /** A corner is grabbed within a 48dp target; a crop is never smaller than that. */
 const HANDLE_REACH_DP = 32;
 const MIN_CROP_DP = 48;
+/** A thin red line is hard to hit exactly with a finger: a tap this near it still counts. */
+const ERASE_REACH_DP = 16;
 
 /**
  * Crop, rotate and highlight a Kaizen photo before it is kept (owner, 2026-11-06), whether it
@@ -74,14 +77,23 @@ export function KaizenPhotoEditor({
   const shownCrop = crop ?? whole;
 
   const push = (next: PhotoEditState) => {
-    setHistory((past) => [...past, current]);
+    // Through the ref: a drag can erase two marks before the next render.
+    const before = live.current.current;
+    live.current.current = next;
+    setHistory((past) => [...past, before]);
     setCurrent(next);
     setCrop(null);
   };
+  /** The mark under this point, if any, is gone. */
+  const eraseAt = (at: { x: number; y: number }) => {
+    const { current: now, scale: zoom } = live.current;
+    const index = strokeAt(now.strokes, at, ERASE_REACH_DP / zoom);
+    if (index >= 0) push(eraseStroke(now, index));
+  };
 
   // The responder lives for the whole screen, so it reads the latest values through here.
-  const live = useRef({ tool, colour, scale, image, shownCrop, current, push });
-  live.current = { tool, colour, scale, image, shownCrop, current, push };
+  const live = useRef({ tool, colour, scale, image, shownCrop, current, push, eraseAt });
+  live.current = { tool, colour, scale, image, shownCrop, current, push, eraseAt };
   const gesture = useRef<{ grab: Grab; rect: Rect; start: { x: number; y: number }; stroke: Stroke | null }>({
     grab: null,
     rect: whole,
@@ -102,15 +114,20 @@ export function KaizenPhotoEditor({
           const stroke = { colour: ink, width: STROKE_DP[ink] / zoom, points: [start] };
           gesture.current = { ...gesture.current, start, stroke };
           setDrawing(stroke);
+        } else if (active === 'erase') {
+          gesture.current = { ...gesture.current, start, grab: null, stroke: null };
+          live.current.eraseAt(start);
         } else {
           gesture.current = { ...gesture.current, start, rect, grab: grabOf(rect, start, HANDLE_REACH_DP / zoom) };
         }
       },
       onPanResponderMove: (_event, moved: PanResponderGestureState) => {
-        const { scale: zoom, image: picture } = live.current;
+        const { tool: active, scale: zoom, image: picture, eraseAt: erase } = live.current;
         if (zoom === 0) return;
         const { start, stroke, grab, rect } = gesture.current;
-        if (stroke) {
+        if (active === 'erase') {
+          erase({ x: start.x + moved.dx / zoom, y: start.y + moved.dy / zoom });
+        } else if (stroke) {
           const point = { x: start.x + moved.dx / zoom, y: start.y + moved.dy / zoom };
           const last = stroke.points[stroke.points.length - 1]!;
           if (Math.hypot(point.x - last.x, point.y - last.y) * zoom < POINT_SPACING_DP) return;
@@ -189,6 +206,7 @@ export function KaizenPhotoEditor({
         <Segmented<Tool>
           options={[
             { value: 'highlight', label: t.highlight },
+            { value: 'erase', label: t.erase },
             { value: 'crop', label: t.crop },
           ]}
           value={tool}
@@ -226,6 +244,10 @@ export function KaizenPhotoEditor({
                 <View style={[styles.swatchInk, { backgroundColor: ledgerMarkup[option].hex }]} />
               </Pressable>
             ))
+          ) : tool === 'erase' ? (
+            <View style={styles.flex}>
+              <Muted>{t.eraseHint}</Muted>
+            </View>
           ) : (
             <View style={styles.flex}>
               <Button title={t.applyCrop} icon="crop" compact disabled={crop === null} busy={busy} onPress={() => void applyCrop()} />
