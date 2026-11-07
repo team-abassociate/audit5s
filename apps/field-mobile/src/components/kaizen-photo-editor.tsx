@@ -101,6 +101,8 @@ export function KaizenPhotoEditor({
     stroke: null,
   });
 
+  const erasedTo = useRef({ x: 0, y: 0 });
+
   const responder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -116,6 +118,7 @@ export function KaizenPhotoEditor({
           setDrawing(stroke);
         } else if (active === 'erase') {
           gesture.current = { ...gesture.current, start, grab: null, stroke: null };
+          erasedTo.current = start;
           live.current.eraseAt(start);
         } else {
           gesture.current = { ...gesture.current, start, rect, grab: grabOf(rect, start, HANDLE_REACH_DP / zoom) };
@@ -126,7 +129,14 @@ export function KaizenPhotoEditor({
         if (zoom === 0) return;
         const { start, stroke, grab, rect } = gesture.current;
         if (active === 'erase') {
-          erase({ x: start.x + moved.dx / zoom, y: start.y + moved.dy / zoom });
+          // Along the whole way from the last position: a fast swipe reports few, far apart.
+          const from = erasedTo.current;
+          const to = { x: start.x + moved.dx / zoom, y: start.y + moved.dy / zoom };
+          const hops = Math.max(1, Math.ceil((Math.hypot(to.x - from.x, to.y - from.y) * zoom) / ERASE_REACH_DP));
+          for (let hop = 1; hop <= hops; hop += 1) {
+            erase({ x: from.x + ((to.x - from.x) * hop) / hops, y: from.y + ((to.y - from.y) * hop) / hops });
+          }
+          erasedTo.current = to;
         } else if (stroke) {
           const point = { x: start.x + moved.dx / zoom, y: start.y + moved.dy / zoom };
           const last = stroke.points[stroke.points.length - 1]!;
