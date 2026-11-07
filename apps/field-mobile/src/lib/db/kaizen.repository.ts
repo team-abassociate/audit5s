@@ -13,7 +13,7 @@ import { missingKaizenFields } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import { enqueue, uuidv7 } from './audit.repository';
 import { UNSETTLED_STATES } from './outbox.repository';
-import type { EditableImage, PhotoEditStep } from '../capture/photo-edit';
+import type { EditableImage, PhotoEditStep } from '../capture/photo-markup';
 import { localKaizenDiscards, localKaizenPhotoEdits, localKaizenPhotos, localKaizenSubmissions, localKaizens, outbox } from './schema';
 
 /**

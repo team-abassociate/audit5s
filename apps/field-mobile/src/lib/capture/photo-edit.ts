@@ -3,29 +3,18 @@ import { File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { decode, encode } from 'jpeg-js';
 import { processCapturedPhoto, readFileBytes, type ProcessedImage } from './media';
-import { burnStrokes, cropStrokes, rotateStrokes, scaleStrokes, type Stroke } from './photo-markup';
+import {
+  burnStrokes,
+  cropStrokes,
+  rotateStrokes,
+  scaleStrokes,
+  type CropRect,
+  type EditableImage,
+  type PhotoEditStep,
+  type Stroke,
+} from './photo-markup';
 
-/** A photograph being edited. Each step writes a new file, so Undo only goes back to the last one. */
-export interface EditableImage {
-  uri: string;
-  width: number;
-  height: number;
-}
-
-export interface CropRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/** One edit. Saved with the photo, so reopening the editor can replay and undo them. */
-export type PhotoEditStep =
-  | { type: 'rotate' }
-  | { type: 'crop'; rect: CropRect }
-  | { type: 'stroke'; stroke: Stroke }
-  /** Removes the mark at this place in the list of marks at that moment. */
-  | { type: 'erase'; index: number };
+export type { CropRect, EditableImage, PhotoEditStep };
 
 /** One state of the edit. Undo returns to the one before, whatever the step was. */
 export interface PhotoEditState {
