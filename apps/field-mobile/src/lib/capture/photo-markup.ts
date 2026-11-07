@@ -39,6 +39,42 @@ export type PhotoEditStep =
   /** Removes the mark at this place in the list of marks at that moment. */
   | { type: 'erase'; index: number };
 
+/** Where a rectangle lands after the image turns 90° clockwise. */
+export function rotateRect(rect: CropRect, imageHeight: number): CropRect {
+  return { x: imageHeight - (rect.y + rect.height), y: rect.x, width: rect.height, height: rect.width };
+}
+
+/**
+ * The saved edits with every crop taken out, and the marks made on a cropped image moved to
+ * where they sit on the whole one, so a reopened photo shows all of itself. `crop` is what the
+ * crops added up to, on the whole image as turned by all the steps; null if there was none.
+ */
+export function liftCrops(
+  steps: readonly PhotoEditStep[],
+  original: { width: number; height: number },
+): { steps: PhotoEditStep[]; crop: CropRect | null } {
+  let height = original.height;
+  let kept: CropRect = { x: 0, y: 0, width: original.width, height: original.height };
+  let cropped = false;
+  const lifted: PhotoEditStep[] = [];
+  for (const step of steps) {
+    if (step.type === 'crop') {
+      kept = { x: kept.x + step.rect.x, y: kept.y + step.rect.y, width: step.rect.width, height: step.rect.height };
+      cropped = true;
+    } else if (step.type === 'rotate') {
+      kept = rotateRect(kept, height);
+      height = height === original.height ? original.width : original.height;
+      lifted.push(step);
+    } else if (step.type === 'stroke') {
+      const [moved] = cropStrokes([step.stroke], -kept.x, -kept.y);
+      lifted.push({ type: 'stroke', stroke: moved! });
+    } else {
+      lifted.push(step);
+    }
+  }
+  return { steps: lifted, crop: cropped ? kept : null };
+}
+
 /** Where the marks land after the image turns 90° clockwise. */
 export function rotateStrokes(strokes: readonly Stroke[], imageHeight: number): Stroke[] {
   return strokes.map((stroke) => ({

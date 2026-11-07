@@ -158,6 +158,7 @@ export interface KaizenStrings {
   highlight: string;
   erase: string;
   eraseHint: string;
+  eraseNothing: string;
   crop: string;
   applyCrop: string;
   rotate: string;
@@ -413,6 +414,7 @@ const EN: KaizenStrings = {
   highlight: 'Highlight',
   erase: 'Erase',
   eraseHint: 'Tap a mark to remove it.',
+  eraseNothing: 'No marks to remove. Marks kept before this update are part of the photo: retake it to start clean.',
   crop: 'Crop',
   applyCrop: 'Apply crop',
   rotate: 'Rotate',
@@ -665,6 +667,7 @@ const HI: KaizenStrings = {
   highlight: 'हाइलाइट',
   erase: 'मिटाएँ',
   eraseHint: 'निशान हटाने के लिए उस पर टैप करें।',
+  eraseNothing: 'हटाने के लिए कोई निशान नहीं। इस अपडेट से पहले रखे गए निशान फ़ोटो का हिस्सा हैं: साफ़ शुरुआत के लिए फ़ोटो दोबारा लें।',
   crop: 'क्रॉप',
   applyCrop: 'क्रॉप लागू करें',
   rotate: 'घुमाएँ',
@@ -917,6 +920,7 @@ const MR: KaizenStrings = {
   highlight: 'हायलाइट',
   erase: 'पुसा',
   eraseHint: 'खूण काढण्यासाठी तिच्यावर टॅप करा.',
+  eraseNothing: 'काढण्यासाठी कोणतीही खूण नाही. या अपडेटपूर्वी ठेवलेल्या खुणा फोटोचा भाग आहेत: नव्याने सुरू करण्यासाठी फोटो पुन्हा घ्या.',
   crop: 'क्रॉप',
   applyCrop: 'क्रॉप लागू करा',
   rotate: 'फिरवा',

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { replayPhotoSteps, type PhotoEditStep } from './photo-edit';
+import { applyPhotoStep, reopenPhotoEdit } from './photo-edit';
 
 // Only the file writes are faked: each crop or turn reports the size it would produce.
 vi.mock('react-native', () => ({ Platform: { OS: 'web' } }));
@@ -25,27 +25,38 @@ const ORIGINAL = { uri: 'original', width: 100, height: 60 };
 const stroke = { colour: 'red' as const, width: 2, points: [{ x: 50, y: 30 }] };
 
 describe('replaying saved edits', () => {
-  it('rebuilds every state from the original, so each can be undone in turn', async () => {
-    const steps: PhotoEditStep[] = [
-      { type: 'stroke', stroke },
-      { type: 'crop', rect: { x: 10, y: 10, width: 40, height: 30 } },
-      { type: 'rotate' },
-    ];
-    const states = await replayPhotoSteps(ORIGINAL, steps);
+  it('opens on the whole photo with the crop waiting, and Undo goes back through the rest', async () => {
+    const rect = { x: 10, y: 10, width: 40, height: 30 };
+    const states = await reopenPhotoEdit(ORIGINAL, [{ type: 'stroke', stroke }, { type: 'crop', rect }]);
 
-    expect(states.map((state) => state.steps.length)).toEqual([0, 1, 2, 3]);
-    // Undoing everything gets back the untouched original, with no marks on it.
+    expect(states).toHaveLength(3);
+    // It opens here: the image never cropped, the mark where it was drawn, the crop waiting.
+    expect(states[2]).toMatchObject({ image: ORIGINAL, pendingCrop: rect });
+    expect(states[2]!.strokes[0]!.points[0]).toEqual({ x: 50, y: 30 });
+    // One Undo takes the crop off, the next the mark: the untouched original.
+    expect(states[1]!.pendingCrop).toBeUndefined();
+    expect(states[1]!.strokes).toHaveLength(1);
     expect(states[0]).toEqual({ image: ORIGINAL, strokes: [], steps: [] });
-    // The mark follows the crop, then the turn on the 40×30 crop.
-    expect(states[2]!.strokes[0]!.points[0]).toEqual({ x: 40, y: 20 });
-    expect(states[3]!.strokes[0]!.points[0]).toEqual({ x: 10, y: 40 });
-    expect(states[3]!.image).toEqual({ uri: 'turned:cropped:original', width: 30, height: 40 });
-    expect(states[3]!.steps).toEqual(steps);
+  });
+
+  it('turns the waiting crop with the photo', async () => {
+    const [opened] = (await reopenPhotoEdit(ORIGINAL, [{ type: 'crop', rect: { x: 10, y: 10, width: 40, height: 30 } }])).slice(-1);
+    const turned = await applyPhotoStep(opened!, { type: 'rotate' });
+    expect(turned.image).toEqual({ uri: 'turned:original', width: 60, height: 100 });
+    expect(turned.pendingCrop).toEqual({ x: 20, y: 10, width: 30, height: 40 });
+  });
+
+  it('crops for real, and the crop stops waiting', async () => {
+    const [opened] = (await reopenPhotoEdit(ORIGINAL, [{ type: 'crop', rect: { x: 10, y: 10, width: 40, height: 30 } }])).slice(-1);
+    const rect = { x: 0, y: 0, width: 50, height: 50 };
+    const cropped = await applyPhotoStep(opened!, { type: 'crop', rect });
+    expect(cropped.pendingCrop).toBeUndefined();
+    expect(cropped.steps).toEqual([{ type: 'crop', rect }]);
   });
 
   it('keeps an erased mark gone, and one Undo back it returns', async () => {
     const other = { ...stroke, colour: 'yellow' as const };
-    const states = await replayPhotoSteps(ORIGINAL, [
+    const states = await reopenPhotoEdit(ORIGINAL, [
       { type: 'stroke', stroke },
       { type: 'stroke', stroke: other },
       { type: 'erase', index: 0 },

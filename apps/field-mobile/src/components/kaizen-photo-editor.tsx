@@ -6,7 +6,7 @@ import {
   applyPhotoStep,
   eraseStroke,
   finishPhoto,
-  replayPhotoSteps,
+  reopenPhotoEdit,
   type CropRect as Rect,
   type EditableImage,
   type PhotoEditState,
@@ -38,8 +38,9 @@ const ERASE_REACH_DP = 16;
  * came from the camera or the gallery. Plain Views and `PanResponder`, as the phone's charts
  * are plain Views (R-48), so this ships without a new APK and runs the same in `/field`.
  *
- * `source` is the photo before any edit and `steps` the edits it already has: they replay on
- * opening, so Undo can take back what was done before the photo was last kept.
+ * `source` is the photo before any edit and `steps` the edits it already has. It reopens on the
+ * whole photo with its marks and its crop as a box still to adjust, and Undo can take back
+ * what was done before the photo was last kept.
  *
  * `onDone(null)` means nothing was changed: the caller keeps the photo it already has.
  */
@@ -74,7 +75,9 @@ export function KaizenPhotoEditor({
   const { image } = current;
   const scale = frame.width > 0 ? Math.min(frame.width / image.width, frame.height / image.height) : 0;
   const whole: Rect = { x: 0, y: 0, width: image.width, height: image.height };
-  const shownCrop = crop ?? whole;
+  // What keeping the photo now would keep: a box being dragged, else a reopened photo's crop.
+  const kept = crop ?? current.pendingCrop ?? null;
+  const shownCrop = kept ?? whole;
 
   const push = (next: PhotoEditState) => {
     // Through the ref: a drag can erase two marks before the next render.
@@ -177,7 +180,7 @@ export function KaizenPhotoEditor({
   useEffect(() => {
     if (replayed) return;
     void run(async () => {
-      const states = await replayPhotoSteps(source, steps);
+      const states = await reopenPhotoEdit(source, steps);
       const last = states[states.length - 1]!;
       opened.current = last;
       setHistory(states.slice(0, -1));
@@ -189,13 +192,7 @@ export function KaizenPhotoEditor({
   const rotate = () => run(async () => push(await applyPhotoStep(current, { type: 'rotate' })));
   const applyCrop = () =>
     run(async () => {
-      const rect = {
-        x: Math.round(shownCrop.x),
-        y: Math.round(shownCrop.y),
-        width: Math.round(shownCrop.width),
-        height: Math.round(shownCrop.height),
-      };
-      push(await applyPhotoStep(current, { type: 'crop', rect }));
+      push(await applyPhotoStep(current, { type: 'crop', rect: wholePixels(shownCrop) }));
       setTool('highlight');
     });
   const undo = () => {
@@ -206,8 +203,11 @@ export function KaizenPhotoEditor({
     setCrop(null);
   };
   const finish = () => {
-    if (current === opened.current) return onDone(null);
-    void run(async () => onDone({ image: await finishPhoto(image, current.strokes), steps: current.steps }));
+    if (current === opened.current && crop === null) return onDone(null);
+    void run(async () => {
+      const final = kept ? await applyPhotoStep(current, { type: 'crop', rect: wholePixels(kept) }) : current;
+      onDone({ image: await finishPhoto(final.image, final.strokes), steps: final.steps });
+    });
   };
 
   return (
@@ -234,7 +234,7 @@ export function KaizenPhotoEditor({
                 {[...current.strokes, ...(drawing ? [drawing] : [])].map((stroke, index) => (
                   <StrokeView key={index} stroke={stroke} scale={scale} />
                 ))}
-                {tool === 'crop' ? <CropOverlay rect={shownCrop} image={image} scale={scale} /> : null}
+                {tool === 'crop' || kept ? <CropOverlay rect={shownCrop} image={image} scale={scale} handles={tool === 'crop'} /> : null}
               </View>
             </View>
           ) : null}
@@ -255,8 +255,8 @@ export function KaizenPhotoEditor({
               </Pressable>
             ))
           ) : tool === 'erase' ? (
-            <View style={styles.flex}>
-              <Muted>{t.eraseHint}</Muted>
+            <View style={styles.eraseHint}>
+              <Muted>{current.strokes.length === 0 ? t.eraseNothing : t.eraseHint}</Muted>
             </View>
           ) : (
             <View style={styles.flex}>
@@ -282,6 +282,10 @@ export function KaizenPhotoEditor({
       </View>
     </Modal>
   );
+}
+
+function wholePixels(rect: Rect): Rect {
+  return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
 }
 
 function grabOf(rect: Rect, at: { x: number; y: number }, reach: number): Grab {
@@ -346,7 +350,7 @@ function StrokeView({ stroke, scale }: { stroke: Stroke; scale: number }) {
 }
 
 /** What the crop would cut away is dimmed, with a corner mark at each of the four handles. */
-function CropOverlay({ rect, image, scale }: { rect: Rect; image: EditableImage; scale: number }) {
+function CropOverlay({ rect, image, scale, handles }: { rect: Rect; image: EditableImage; scale: number; handles: boolean }) {
   const styles = useStyles();
   const left = rect.x * scale;
   const top = rect.y * scale;
@@ -361,14 +365,14 @@ function CropOverlay({ rect, image, scale }: { rect: Rect; image: EditableImage;
       <View style={[styles.dim, { left: 0, top, width: left, height }]} />
       <View style={[styles.dim, { left: left + width, top, width: fullWidth - left - width, height }]} />
       <View style={[styles.cropBox, { left, top, width, height }]} />
-      {[
-        [left, top],
-        [left + width, top],
-        [left, top + height],
-        [left + width, top + height],
-      ].map(([x, y], index) => (
-        <View key={index} style={[styles.handle, { left: x! - 9, top: y! - 9 }]} />
-      ))}
+      {handles
+        ? [
+            [left, top],
+            [left + width, top],
+            [left, top + height],
+            [left + width, top + height],
+          ].map(([x, y], index) => <View key={index} style={[styles.handle, { left: x! - 9, top: y! - 9 }]} />)
+        : null}
     </View>
   );
 }
@@ -380,6 +384,8 @@ const useStyles = createThemedStyles((theme) => ({
   fill: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 },
   row: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   flex: { flex: 1 },
+  // As tall as the swatches it replaces, so the photo does not jump when the tool changes.
+  eraseHint: { flex: 1, minHeight: 48, justifyContent: 'center' },
   swatch: {
     width: 48,
     height: 48,

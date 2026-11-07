@@ -6,6 +6,8 @@ import { processCapturedPhoto, readFileBytes, type ProcessedImage } from './medi
 import {
   burnStrokes,
   cropStrokes,
+  liftCrops,
+  rotateRect,
   rotateStrokes,
   scaleStrokes,
   type CropRect,
@@ -21,16 +23,18 @@ export interface PhotoEditState {
   image: EditableImage;
   strokes: readonly Stroke[];
   steps: readonly PhotoEditStep[];
+  /** A saved crop on a reopened photo: shown, and applied when the photo is kept. */
+  pendingCrop?: CropRect;
 }
 
 /** Synchronous, so a mark never blinks off between the finger lifting and it being kept. */
 export function addStroke(state: PhotoEditState, stroke: Stroke): PhotoEditState {
-  return { image: state.image, strokes: [...state.strokes, stroke], steps: [...state.steps, { type: 'stroke', stroke }] };
+  return { ...state, strokes: [...state.strokes, stroke], steps: [...state.steps, { type: 'stroke', stroke }] };
 }
 
 export function eraseStroke(state: PhotoEditState, index: number): PhotoEditState {
   return {
-    image: state.image,
+    ...state,
     strokes: state.strokes.filter((_stroke, at) => at !== index),
     steps: [...state.steps, { type: 'erase', index }],
   };
@@ -41,15 +45,26 @@ export async function applyPhotoStep(state: PhotoEditState, step: PhotoEditStep)
   if (step.type === 'erase') return eraseStroke(state, step.index);
   const steps = [...state.steps, step];
   if (step.type === 'rotate') {
-    return { image: await rotatePhoto(state.image), strokes: rotateStrokes(state.strokes, state.image.height), steps };
+    return {
+      image: await rotatePhoto(state.image),
+      strokes: rotateStrokes(state.strokes, state.image.height),
+      steps,
+      ...(state.pendingCrop ? { pendingCrop: rotateRect(state.pendingCrop, state.image.height) } : {}),
+    };
   }
   return { image: await cropPhoto(state.image, step.rect), strokes: cropStrokes(state.strokes, step.rect.x, step.rect.y), steps };
 }
 
-/** Every state from the original to the last step: the reopened editor's Undo history. */
-export async function replayPhotoSteps(original: EditableImage, steps: readonly PhotoEditStep[]): Promise<PhotoEditState[]> {
+/**
+ * What a reopened photo starts from: the whole image with its marks, and any saved crop as the
+ * last state, so the first Undo takes the crop off and the next ones go back through the rest.
+ * The last state is where the editor opens; the ones before it are its Undo history.
+ */
+export async function reopenPhotoEdit(original: EditableImage, saved: readonly PhotoEditStep[]): Promise<PhotoEditState[]> {
+  const { steps, crop } = liftCrops(saved, original);
   const states: PhotoEditState[] = [{ image: original, strokes: [], steps: [] }];
   for (const step of steps) states.push(await applyPhotoStep(states[states.length - 1]!, step));
+  if (crop) states.push({ ...states[states.length - 1]!, pendingCrop: crop });
   return states;
 }
 

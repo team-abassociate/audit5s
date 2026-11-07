@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ledgerMarkup } from '../ledger';
-import { burnStrokes, cropStrokes, rotateStrokes, scaleStrokes, strokeAt, type Stroke } from './photo-markup';
+import { burnStrokes, cropStrokes, liftCrops, rotateStrokes, scaleStrokes, strokeAt, type Stroke } from './photo-markup';
 
 const white = (width: number, height: number) => new Uint8Array(width * height * 4).fill(255);
 const pixel = (rgba: Uint8Array, width: number, x: number, y: number) => [...rgba.slice((y * width + x) * 4, (y * width + x) * 4 + 4)];
@@ -23,6 +23,68 @@ describe('moving marks with the image', () => {
     const [scaled] = scaleStrokes([line('red')], 0.5);
     expect(scaled!.points[1]).toEqual({ x: 4, y: 2.5 });
     expect(scaled!.width).toBe(1);
+  });
+});
+
+describe('liftCrops', () => {
+  const dot = (x: number, y: number): Stroke => ({ colour: 'red', width: 2, points: [{ x, y }] });
+  const size = { width: 100, height: 60 };
+
+  it('leaves edits with no crop alone', () => {
+    const steps = [{ type: 'stroke' as const, stroke: dot(1, 2) }, { type: 'rotate' as const }];
+    expect(liftCrops(steps, size)).toEqual({ steps, crop: null });
+  });
+
+  it('moves a mark made on a cropped image back to its place on the whole one', () => {
+    const { steps, crop } = liftCrops(
+      [
+        { type: 'stroke', stroke: dot(50, 30) },
+        { type: 'crop', rect: { x: 10, y: 20, width: 40, height: 30 } },
+        { type: 'stroke', stroke: dot(5, 5) },
+        { type: 'erase', index: 0 },
+      ],
+      size,
+    );
+    expect(steps).toEqual([
+      { type: 'stroke', stroke: dot(50, 30) },
+      { type: 'stroke', stroke: dot(15, 25) },
+      { type: 'erase', index: 0 },
+    ]);
+    expect(crop).toEqual({ x: 10, y: 20, width: 40, height: 30 });
+  });
+
+  it('adds up two crops', () => {
+    const { crop } = liftCrops(
+      [
+        { type: 'crop', rect: { x: 10, y: 10, width: 50, height: 40 } },
+        { type: 'crop', rect: { x: 5, y: 5, width: 20, height: 20 } },
+      ],
+      size,
+    );
+    expect(crop).toEqual({ x: 15, y: 15, width: 20, height: 20 });
+  });
+
+  it('turns the crop with the image, and a mark made after the turn lands inside it', () => {
+    // On 100×60: a crop at (10,10) of 40×30, then a turn: the whole image is 60×100.
+    const { steps, crop } = liftCrops(
+      [
+        { type: 'crop', rect: { x: 10, y: 10, width: 40, height: 30 } },
+        { type: 'rotate' },
+        { type: 'stroke', stroke: dot(0, 0) },
+      ],
+      size,
+    );
+    expect(crop).toEqual({ x: 20, y: 10, width: 30, height: 40 });
+    expect(steps[1]).toEqual({ type: 'stroke', stroke: dot(20, 10) });
+  });
+
+  it('gives the same answer for edits already lifted and cropped again', () => {
+    const first = liftCrops(
+      [{ type: 'crop', rect: { x: 10, y: 10, width: 40, height: 30 } }, { type: 'rotate' }],
+      size,
+    );
+    const again = liftCrops([...first.steps, { type: 'crop', rect: first.crop! }], size);
+    expect(again).toEqual(first);
   });
 });
 

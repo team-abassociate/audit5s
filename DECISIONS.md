@@ -3145,5 +3145,6 @@ one. **Changes R-48(b), (e), (i) and R-85's "a Kaizen keeps its Zone".** (R-87 i
   change, so it ships by OTA. A highlighted photo is saved at 1280 px on the long edge rather than
   1920, because JavaScript paints the marks. The portal's photo upload is unchanged. The device
   keeps each edited photo's original and its steps (`kaizen_photo_edit`, local v17, never sent), so
-  a later "Edit photo" can undo earlier marks, crops and turns. A photo edited before v17 opens
-  flattened, as it has no original. An Erase tool removes any one mark, whichever order it was made in.
+  a later "Edit photo" can undo earlier marks, crops and turns. It reopens on the whole photo, with
+  the saved crop as a box to adjust or undo. A photo edited before v17 opens flattened, as it has no
+  original. An Erase tool removes any one mark, whichever order it was made in.
