@@ -1,4 +1,4 @@
-import { cubicBezier, Easing, FadeIn, ReduceMotion } from 'react-native-reanimated';
+import { cubicBezier, Easing, FadeIn, FadeOut, LinearTransition, ReduceMotion } from 'react-native-reanimated';
 import { themes } from './theme';
 
 /**
@@ -20,3 +20,12 @@ export const transition = {
 
 /** Appearing in place: opacity only, so it plays under reduced motion too (plan 002). */
 export const fadeIn = FadeIn.duration(timing.duration).easing(EASE_OUT).reduceMotion(ReduceMotion.Never);
+
+/** A chip leaving: opacity only, so it plays under reduced motion too. */
+export const chipExit = FadeOut.duration(themes.light.dur.micro).easing(EASE_OUT).reduceMotion(ReduceMotion.Never);
+
+/**
+ * Siblings sliding into a gap. Movement, so a caller leaves it off under `useReducedMotion()`:
+ * `ReduceMotion.System` skips the slide but leaves the siblings where they were.
+ */
+export const slideIntoGap = LinearTransition.duration(timing.duration).easing(EASE_OUT);
