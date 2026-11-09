@@ -58,6 +58,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-76 | The Gemba Board is retired; Ledger is the design system | Settled |
 | R-83 | A Zone's past audits are compared by the name they were taken under | Settled |
 | R-84 | Kaizen testing has a temporary staging beside production | Settled; temporary |
+| R-85 | Motion in admin-web, for exits and layout only | Settled |
 
 ---
 
@@ -3086,3 +3087,25 @@ the production VPS (`infra/staging`, `staging.leanstack.tech`), removed when tes
   quarter of production's CPU weight, and is what the kernel kills first. If available memory on
   the VPS stays under ~4 GB (STACK.md), stop staging rather than moving the report worker.
 - **No backups:** staging data is test data and can be wiped.
+
+## R-85 — Motion in admin-web, for exits and layout only
+
+**Settled 2026-11-09; owner approved.** admin-web uses Motion (`motion@14.10.1`, `motion/react`)
+for the two things CSS cannot do: animate an element after React has removed it, and slide its
+siblings into the gap. Plan: [`plans/006-motion-library.md`](plans/006-motion-library.md).
+
+- **Where:** the Schedule-audit chips (exit fade, the rest slide in), the New Unit steps (slide
+  12px with a fade, by direction), the New Unit Zone rows (rows below a removed one slide up), and
+  the segmented-control pill (glides to the new choice). ZoneRun's section tabs keep a plain fill.
+- **Timings come from the tokens.** `apps/admin-web/src/lib/motion.ts` reads `--dur-micro`,
+  `--dur-short` and `--ease-out` from `ledger-tokens.css` at runtime; there are no durations in
+  TypeScript (LEDGER rule 1). A test fails if those tokens are renamed.
+- **Bundle:** `LazyMotion` with `strict` at the root; components use `m.*` from
+  `motion/react-m`, and `domMax` loads in its own async chunk.
+- **Reduced motion:** `MotionConfig reducedMotion="user"` drops movement and keeps fades (rule 9).
+- **Declined:** variants and stagger, springs, `whileTap`/`whileHover`, drag and `Reorder`,
+  scroll effects, motion values and `useAnimate`, the dashboard line draw-in, view transitions and
+  Motion+. Each makes people wait on screens they open all day, duplicates CSS, or has nothing to
+  drive it (table in the plan). The side panel keeps its CSS exit.
+- **field-mobile keeps Reanimated.** Motion is web only.
+

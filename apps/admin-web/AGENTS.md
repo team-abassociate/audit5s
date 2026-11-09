@@ -4,7 +4,7 @@ Read the root [`AGENTS.md`](../../AGENTS.md) first; it is not repeated here. Thi
 only what is specific to the admin web app.
 
 - React 19 + Vite 7 SPA, **no SSR**. TanStack Router + TanStack Query. Tailwind + shadcn/ui,
-  Recharts, react-hook-form + Zod. Schemas are imported from `packages/contracts` — never
+  Recharts, react-hook-form + Zod, Motion (exits and layout only, through `lib/motion.ts`). Schemas are imported from `packages/contracts` — never
   redeclared here.
 - Every list and detail view is scope-filtered by the server. The client never decides what a
   role may see; it renders what the API returned and shows an honest empty state when that is
