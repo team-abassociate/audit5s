@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import Animated, { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import type { Page, Zone } from '@audit5s/contracts';
 import { zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
 import { api } from '../lib/api';
+import { chipExit, slideIntoGap } from '../lib/motion';
 import { createThemedStyles } from '../lib/theme';
 import { Button, CheckRow, HeaderAction, SectionHead } from './ui';
 
@@ -150,24 +152,30 @@ export function ZoneFilterChips({
   onChange: (selected: string[]) => void;
 }) {
   const styles = useStyles();
+  // Reanimated's own reduced-motion skip of a layout animation leaves the gap open for good
+  // (seen on the emulator), so under reduced motion there is no layout animation at all.
+  const reduced = useReducedMotion();
   if (selected.length === 0) return null;
   const chosen = zones.filter((zone) => selected.includes(zone.id));
   return (
     <View style={styles.chips}>
+      {/* A removed chip fades while the ones after it slide into its place. The last one goes
+          at once with the row, as on web: the list below moves up then anyway. */}
       {chosen.map((zone) => (
-        <Pressable
-          key={zone.id}
-          accessibilityRole="button"
-          accessibilityLabel={`Remove ${zoneTitle(zone)} from the filter`}
-          hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
-          onPress={() => onChange(selected.filter((id) => id !== zone.id))}
-          style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
-        >
-          <Text style={styles.chipText} numberOfLines={1}>
-            {`Zone ${zoneLabelFromCode(zone.code) ?? zone.code}`}
-          </Text>
-          <Text style={styles.chipX}>✕</Text>
-        </Pressable>
+        <Animated.View key={zone.id} exiting={chipExit} layout={reduced ? undefined : slideIntoGap}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${zoneTitle(zone)} from the filter`}
+            hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+            onPress={() => onChange(selected.filter((id) => id !== zone.id))}
+            style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+          >
+            <Text style={styles.chipText} numberOfLines={1}>
+              {`Zone ${zoneLabelFromCode(zone.code) ?? zone.code}`}
+            </Text>
+            <Text style={styles.chipX}>✕</Text>
+          </Pressable>
+        </Animated.View>
       ))}
     </View>
   );
