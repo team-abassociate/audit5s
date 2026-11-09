@@ -2596,6 +2596,7 @@ li:has(> .gb-menu-item--danger) {
 
 /* The auditors picked for one assignment: removable tags under the search box. */
 .gb-picked {
+  position: relative; /* Motion's popLayout places a leaving chip against it */
   list-style: none;
   margin: 8px 0 0;
   padding: 0;

@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import { AnimatePresence } from 'motion/react';
+import * as m from 'motion/react-m';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Audit,
@@ -16,6 +18,7 @@ import type {
 import { formatDate, formatDateTime, zoneDisplayLabel, zonesLine, formatScore } from '@audit5s/domain';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
+import { ledgerMotion } from '@/lib/motion';
 import { ApiError, api } from '@/lib/api';
 import {
   Button,
@@ -843,23 +846,25 @@ function NewAuditDialog({ open, onClose }: { open: boolean; onClose: () => void 
               />
               {picked.length > 0 && (
                 <ul className="gb-picked" aria-label="Chosen auditors">
-                  {picked.map((id, index) => (
-                    <li key={id}>
-                      <span>
-                        {byId.get(id)?.fullName ?? 'Auditor'}
-                        {index === 0 && picked.length > 1 ? <em> lead</em> : null}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`Remove ${byId.get(id)?.fullName ?? 'auditor'}`}
-                        onClick={() =>
-                          set({ auditorUserIds: draft.auditorUserIds.filter((value) => value !== id) })
-                        }
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    {picked.map((id, index) => (
+                      <m.li key={id} layout="position" transition={ledgerMotion().short} exit={{ opacity: 0, scale: 0.97, transition: ledgerMotion().micro }}>
+                        <span>
+                          {byId.get(id)?.fullName ?? 'Auditor'}
+                          {index === 0 && picked.length > 1 ? <em> lead</em> : null}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${byId.get(id)?.fullName ?? 'auditor'}`}
+                          onClick={() =>
+                            set({ auditorUserIds: draft.auditorUserIds.filter((value) => value !== id) })
+                          }
+                        >
+                          ×
+                        </button>
+                      </m.li>
+                    ))}
+                  </AnimatePresence>
                 </ul>
               )}
             </Field>
@@ -889,21 +894,23 @@ function NewAuditDialog({ open, onClose }: { open: boolean; onClose: () => void 
               />
               {pickedZones.length > 0 && (
                 <ul className="gb-picked" aria-label="Suggested Zones">
-                  {pickedZones.map((id) => {
-                    const zone = zoneById.get(id)!;
-                    return (
-                      <li key={id}>
-                        <span>{zoneDisplayLabel(zone.code, zone.name)}</span>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${zoneDisplayLabel(zone.code, zone.name)}`}
-                          onClick={() => set({ zoneIds: draft.zoneIds.filter((value) => value !== id) })}
-                        >
-                          ×
-                        </button>
-                      </li>
-                    );
-                  })}
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    {pickedZones.map((id) => {
+                      const zone = zoneById.get(id)!;
+                      return (
+                        <m.li key={id} layout="position" transition={ledgerMotion().short} exit={{ opacity: 0, scale: 0.97, transition: ledgerMotion().micro }}>
+                          <span>{zoneDisplayLabel(zone.code, zone.name)}</span>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${zoneDisplayLabel(zone.code, zone.name)}`}
+                            onClick={() => set({ zoneIds: draft.zoneIds.filter((value) => value !== id) })}
+                          >
+                            ×
+                          </button>
+                        </m.li>
+                      );
+                    })}
+                  </AnimatePresence>
                 </ul>
               )}
             </Field>
