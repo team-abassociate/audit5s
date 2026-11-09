@@ -31,7 +31,9 @@ DECISIONS.md R-76). It replaces the Gemba Board in full. Tokens:
 8. **Focus:** every control gets an instant `:focus-visible` ring, 2px `--focus`, 2px offset.
 9. **Motion:** transform and opacity only, `--dur-micro` 120ms (press, hover) and
    `--dur-short` 220ms (panels, sheets), ease-out. A press is a short scale/opacity change,
-   never a translate. Reduced motion keeps feedback, drops movement.
+   never a translate. Reduced motion keeps feedback, drops movement. Motion (`motion/react`)
+   is used only for exits and layout slides; it takes its timings from these tokens through
+   `apps/admin-web/src/lib/motion.ts`.
 10. **One fact per element.** No middle-dot strings ("Plant 2 · Pune" is two elements). A ▲/▼
     trend appears only where the app already computes that change.
 11. **Controls:** 36–40px tall with 44px hit targets on the web, ≥48dp on the phone. One
