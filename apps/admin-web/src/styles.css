@@ -2595,6 +2595,13 @@ li:has(> .gb-menu-item--danger) {
 }
 
 /* The auditors picked for one assignment: removable tags under the search box. */
+/* New Unit's steps. The clip keeps a taller leaving step inside the dialog; its margin keeps
+   the focus ring (2px at a 2px offset) visible. */
+.gb-steps {
+  position: relative;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
 .gb-picked {
   position: relative; /* Motion's popLayout places a leaving chip against it */
   list-style: none;

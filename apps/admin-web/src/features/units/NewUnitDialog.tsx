@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode, type Ref, type RefObject } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, useIsPresent, useReducedMotion } from 'motion/react';
+import * as m from 'motion/react-m';
 import type {
   ChecklistTemplate,
   CreateUserResponse,
@@ -15,6 +17,7 @@ import { formatDateTime, zoneCodeForLabel, zoneDisplayLabel, zoneSortOrder } fro
 import { api } from '@/lib/api';
 import { devGet } from '@/features/units/worst-case';
 import { newId } from '@/lib/photo';
+import { ledgerMotion } from '@/lib/motion';
 import { Button, Dialog, DialogActions, ErrorNotice, Field, Input, Select } from '@/components/ui';
 
 const STEPS = ['Unit', 'Zones', 'Industry and checklist', 'Coordinator', 'Review'] as const;
@@ -96,6 +99,9 @@ function Stepper({
 }) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
+  // Which way the steps slide: 1 forward, -1 back.
+  const direction = useRef<1 | -1>(1);
+  const reduceMotion = useReducedMotion();
   const [showErrors, setShowErrors] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
 
@@ -276,10 +282,12 @@ function Stepper({
       return;
     }
     setShowErrors(false);
+    direction.current = 1;
     setStep(step + 1);
   };
   const goTo = (target: number) => {
     setShowErrors(false);
+    direction.current = target < step ? -1 : 1;
     setStep(target);
   };
 
@@ -348,187 +356,193 @@ function Stepper({
           Step {step + 1} of {STEPS.length}: {STEPS[step]}
         </h3>
 
-        {step === 0 && (
-          <>
-            <Field
-              label="Name"
-              hint={unitLocked ? 'Created. Change it later with Edit on its row.' : 'Auditors and reports see this, e.g. Nashik Plant.'}
-              error={unitLocked ? undefined : shown(unitError) ?? (nameTaken ? unitError : undefined)}
-            >
-              <Input ref={nameField} value={name} disabled={unitLocked} onChange={(event) => setName(event.target.value)} />
-            </Field>
-            <Field label="City (optional)">
-              <Input value={city} disabled={unitLocked} onChange={(event) => setCity(event.target.value)} />
-            </Field>
-            <p className="gb-hint">Time zone is India (IST). Address and contact can be added after.</p>
-          </>
-        )}
+        <div className="gb-steps">
+          <AnimatePresence mode="popLayout" initial={false} custom={reduceMotion ? 0 : direction.current}>
+            <Step key={step} direction={direction.current}>
+              {step === 0 && (
+                <>
+                  <Field
+                    label="Name"
+                    hint={unitLocked ? 'Created. Change it later with Edit on its row.' : 'Auditors and reports see this, e.g. Nashik Plant.'}
+                    error={unitLocked ? undefined : shown(unitError) ?? (nameTaken ? unitError : undefined)}
+                  >
+                    <Input ref={nameField} value={name} disabled={unitLocked} onChange={(event) => setName(event.target.value)} />
+                  </Field>
+                  <Field label="City (optional)">
+                    <Input value={city} disabled={unitLocked} onChange={(event) => setCity(event.target.value)} />
+                  </Field>
+                  <p className="gb-hint">Time zone is India (IST). Address and contact can be added after.</p>
+                </>
+              )}
 
-        {step === 1 && (
-          <ZonesTable
-            zones={zones}
-            created={created.zones}
-            showErrors={showErrors}
-            errorsOf={zoneErrors}
-            onChange={setZones}
-          />
-        )}
+              {step === 1 && (
+                <ZonesTable
+                  zones={zones}
+                  created={created.zones}
+                  showErrors={showErrors}
+                  errorsOf={zoneErrors}
+                  onChange={setZones}
+                />
+              )}
 
-        {step === 2 && (
-          <>
-            <Field
-              label="Industry (optional)"
-              hint={unitLocked ? 'Created. Change it later with Edit on its row.' : 'Decides which checklists this Unit is offered. “Not set” offers every checklist.'}
-            >
-              <Select value={industryId} disabled={unitLocked} onChange={(event) => setIndustryId(event.target.value)}>
-                <option value="">Not set</option>
-                {(industries.data ?? []).map((industry) => (
-                  <option key={industry.id} value={industry.id}>
-                    {industry.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              label="Default checklist (optional)"
-              hint={
-                zoneRows.length === 0
-                  ? 'No Zones to give it to. Each Zone can be given one later.'
-                  : `Each of the ${zoneRows.length} new Zone${zoneRows.length === 1 ? '' : 's'} starts with it. Missing one? Link it to the industry on Industries.`
-              }
-            >
-              <Select
-                value={template?.id ?? ''}
-                disabled={zoneRows.length === 0 || allZonesMade}
-                onChange={(event) => setTemplateId(event.target.value)}
-              >
-                <option value="">None</option>
-                {offered.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            {(industries.error || templates.error) && <ErrorNotice error={industries.error ?? templates.error} />}
-          </>
-        )}
+              {step === 2 && (
+                <>
+                  <Field
+                    label="Industry (optional)"
+                    hint={unitLocked ? 'Created. Change it later with Edit on its row.' : 'Decides which checklists this Unit is offered. “Not set” offers every checklist.'}
+                  >
+                    <Select value={industryId} disabled={unitLocked} onChange={(event) => setIndustryId(event.target.value)}>
+                      <option value="">Not set</option>
+                      {(industries.data ?? []).map((industry) => (
+                        <option key={industry.id} value={industry.id}>
+                          {industry.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field
+                    label="Default checklist (optional)"
+                    hint={
+                      zoneRows.length === 0
+                        ? 'No Zones to give it to. Each Zone can be given one later.'
+                        : `Each of the ${zoneRows.length} new Zone${zoneRows.length === 1 ? '' : 's'} starts with it. Missing one? Link it to the industry on Industries.`
+                    }
+                  >
+                    <Select
+                      value={template?.id ?? ''}
+                      disabled={zoneRows.length === 0 || allZonesMade}
+                      onChange={(event) => setTemplateId(event.target.value)}
+                    >
+                      <option value="">None</option>
+                      {offered.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  {(industries.error || templates.error) && <ErrorNotice error={industries.error ?? templates.error} />}
+                </>
+              )}
 
-        {step === 3 && (
-          <>
-            <fieldset disabled={Boolean(created.coordinator)}>
-              <legend className="sr-only">Who runs this Unit?</legend>
-              <div className="gb-choice">
-                <label>
-                  <input type="radio" name="coordinator" checked={mode === 'new'} onChange={() => setMode('new')} />
-                  <b>Add a new person</b>
-                  <span>They get a login ID; their mobile number is the first password.</span>
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="coordinator"
-                    checked={mode === 'existing'}
-                    disabled={freeCoordinators.length === 0}
-                    onChange={() => setMode('existing')}
-                  />
-                  <b>Someone already here</b>
-                  <span>
-                    {freeCoordinators.length
-                      ? `${freeCoordinators.length} Coordinator${freeCoordinators.length === 1 ? '' : 's'} without a Unit.`
-                      : 'Every Coordinator already runs a Unit.'}
-                  </span>
-                </label>
-                <label>
-                  <input type="radio" name="coordinator" checked={mode === 'later'} onChange={() => setMode('later')} />
-                  <b>Later</b>
-                  <span>Nobody runs it yet; add one from Users.</span>
-                </label>
-              </div>
-            </fieldset>
-            {mode === 'new' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Full name" error={shown(person.fullName.trim() ? undefined : coordinatorError)}>
-                  <Input
-                    value={person.fullName}
-                    disabled={Boolean(created.coordinator)}
-                    placeholder="Rahul Sharma"
-                    onChange={(event) => setPerson({ ...person, fullName: event.target.value })}
-                  />
-                </Field>
-                <Field
-                  label="Mobile number"
-                  hint="10 digits. Also the temporary password, for 72 hours."
-                  error={shown(person.fullName.trim() ? coordinatorError : undefined)}
-                >
-                  <Input
-                    type="tel"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={10}
-                    placeholder="9876543210"
-                    value={person.phone}
-                    disabled={Boolean(created.coordinator)}
-                    onChange={(event) => setPerson({ ...person, phone: event.target.value.replace(/\D/g, '').slice(0, 10) })}
-                  />
-                </Field>
-                <Field label="Email (optional)">
-                  <Input
-                    type="email"
-                    value={person.email}
-                    disabled={Boolean(created.coordinator)}
-                    onChange={(event) => setPerson({ ...person, email: event.target.value })}
-                  />
-                </Field>
-              </div>
-            )}
-            {mode === 'existing' && (
-              <Field label="Coordinator" error={shown(coordinatorError)}>
-                <Select value={existingId} disabled={Boolean(created.coordinator)} onChange={(event) => setExistingId(event.target.value)}>
-                  <option value="">Choose…</option>
-                  {freeCoordinators.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.fullName} ({user.loginId})
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            )}
-            {(coordinators.error || placed.error) && <ErrorNotice error={coordinators.error ?? placed.error} />}
-          </>
-        )}
+              {step === 3 && (
+                <>
+                  <fieldset disabled={Boolean(created.coordinator)}>
+                    <legend className="sr-only">Who runs this Unit?</legend>
+                    <div className="gb-choice">
+                      <label>
+                        <input type="radio" name="coordinator" checked={mode === 'new'} onChange={() => setMode('new')} />
+                        <b>Add a new person</b>
+                        <span>They get a login ID; their mobile number is the first password.</span>
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name="coordinator"
+                          checked={mode === 'existing'}
+                          disabled={freeCoordinators.length === 0}
+                          onChange={() => setMode('existing')}
+                        />
+                        <b>Someone already here</b>
+                        <span>
+                          {freeCoordinators.length
+                            ? `${freeCoordinators.length} Coordinator${freeCoordinators.length === 1 ? '' : 's'} without a Unit.`
+                            : 'Every Coordinator already runs a Unit.'}
+                        </span>
+                      </label>
+                      <label>
+                        <input type="radio" name="coordinator" checked={mode === 'later'} onChange={() => setMode('later')} />
+                        <b>Later</b>
+                        <span>Nobody runs it yet; add one from Users.</span>
+                      </label>
+                    </div>
+                  </fieldset>
+                  {mode === 'new' && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Full name" error={shown(person.fullName.trim() ? undefined : coordinatorError)}>
+                        <Input
+                          value={person.fullName}
+                          disabled={Boolean(created.coordinator)}
+                          placeholder="Rahul Sharma"
+                          onChange={(event) => setPerson({ ...person, fullName: event.target.value })}
+                        />
+                      </Field>
+                      <Field
+                        label="Mobile number"
+                        hint="10 digits. Also the temporary password, for 72 hours."
+                        error={shown(person.fullName.trim() ? coordinatorError : undefined)}
+                      >
+                        <Input
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={10}
+                          placeholder="9876543210"
+                          value={person.phone}
+                          disabled={Boolean(created.coordinator)}
+                          onChange={(event) => setPerson({ ...person, phone: event.target.value.replace(/\D/g, '').slice(0, 10) })}
+                        />
+                      </Field>
+                      <Field label="Email (optional)">
+                        <Input
+                          type="email"
+                          value={person.email}
+                          disabled={Boolean(created.coordinator)}
+                          onChange={(event) => setPerson({ ...person, email: event.target.value })}
+                        />
+                      </Field>
+                    </div>
+                  )}
+                  {mode === 'existing' && (
+                    <Field label="Coordinator" error={shown(coordinatorError)}>
+                      <Select value={existingId} disabled={Boolean(created.coordinator)} onChange={(event) => setExistingId(event.target.value)}>
+                        <option value="">Choose…</option>
+                        {freeCoordinators.map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.fullName} ({user.loginId})
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
+                  {(coordinators.error || placed.error) && <ErrorNotice error={coordinators.error ?? placed.error} />}
+                </>
+              )}
 
-        {step === 4 && (
-          <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm sm:grid-cols-[10rem_1fr_auto]">
-            <Review label="Unit" onChange={() => goTo(0)} done={unitLocked}>
-              {trimmedName}
-              {city.trim() ? `, ${city.trim()}` : ''}
-            </Review>
-            <Review label="Zones" onChange={() => goTo(1)} done={allZonesMade}>
-              {zoneRows.length
-                ? zoneRows.map((zone) => (
-                    <span key={zone.id} className="block">
-                      {created.zones[zone.id] ? '✓ ' : ''}
-                      {zoneDisplayLabel(zoneCodeForLabel(zone.number) ?? zone.number, zone.name.trim())}
-                    </span>
-                  ))
-                : 'None yet. An auditor can name them in the field.'}
-            </Review>
-            <Review label="Industry" onChange={() => goTo(2)} done={unitLocked}>
-              {industryName ?? 'Not set: every checklist is offered'}
-            </Review>
-            <Review label="Default checklist" onChange={() => goTo(2)} done={allZonesMade}>
-              {zoneRows.length ? (template?.name ?? 'None') : '—'}
-            </Review>
-            <Review label="Coordinator" onChange={() => goTo(3)} done={Boolean(created.coordinator)}>
-              {mode === 'new'
-                ? `${person.fullName.trim()}, new (${phoneDigits})`
-                : mode === 'existing'
-                  ? existingName
-                  : 'Later'}
-            </Review>
-          </dl>
-        )}
+              {step === 4 && (
+                <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm sm:grid-cols-[10rem_1fr_auto]">
+                  <Review label="Unit" onChange={() => goTo(0)} done={unitLocked}>
+                    {trimmedName}
+                    {city.trim() ? `, ${city.trim()}` : ''}
+                  </Review>
+                  <Review label="Zones" onChange={() => goTo(1)} done={allZonesMade}>
+                    {zoneRows.length
+                      ? zoneRows.map((zone) => (
+                          <span key={zone.id} className="block">
+                            {created.zones[zone.id] ? '✓ ' : ''}
+                            {zoneDisplayLabel(zoneCodeForLabel(zone.number) ?? zone.number, zone.name.trim())}
+                          </span>
+                        ))
+                      : 'None yet. An auditor can name them in the field.'}
+                  </Review>
+                  <Review label="Industry" onChange={() => goTo(2)} done={unitLocked}>
+                    {industryName ?? 'Not set: every checklist is offered'}
+                  </Review>
+                  <Review label="Default checklist" onChange={() => goTo(2)} done={allZonesMade}>
+                    {zoneRows.length ? (template?.name ?? 'None') : '—'}
+                  </Review>
+                  <Review label="Coordinator" onChange={() => goTo(3)} done={Boolean(created.coordinator)}>
+                    {mode === 'new'
+                      ? `${person.fullName.trim()}, new (${phoneDigits})`
+                      : mode === 'existing'
+                        ? existingName
+                        : 'Later'}
+                  </Review>
+                </dl>
+              )}
+            </Step>
+          </AnimatePresence>
+        </div>
 
         {failure ? (
           <div className="space-y-2">
@@ -603,6 +617,34 @@ function Review({
         )}
       </dd>
     </>
+  );
+}
+
+const stepVariants = {
+  enter: (d: number) => ({ opacity: 0, x: 12 * d }),
+  center: () => ({ opacity: 1, x: 0, transition: ledgerMotion().short }),
+  exit: (d: number) => ({ opacity: 0, x: -12 * d, transition: ledgerMotion().micro }),
+};
+
+/** One step's fields. The leaving one is inert, so its fields can't be clicked or tabbed into. */
+// `ref` is passed through because AnimatePresence's popLayout measures the leaving step by it.
+function Step({ direction, children, ref }: { direction: number; children: ReactNode; ref?: Ref<HTMLDivElement> }) {
+  const present = useIsPresent();
+  // Reduced motion: the steps only fade (MotionConfig snaps the 12px, which would still jump).
+  const offset = useReducedMotion() ? 0 : direction;
+  return (
+    <m.div
+      ref={ref}
+      className="grid gap-3"
+      custom={offset}
+      variants={stepVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      inert={!present}
+    >
+      {children}
+    </m.div>
   );
 }
 
