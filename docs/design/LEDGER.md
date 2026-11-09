@@ -33,7 +33,8 @@ DECISIONS.md R-76). It replaces the Gemba Board in full. Tokens:
    `--dur-short` 220ms (panels, sheets), ease-out. A press is a short scale/opacity change,
    never a translate. Reduced motion keeps feedback, drops movement. Motion (`motion/react`)
    is used only for exits and layout slides; it takes its timings from these tokens through
-   `apps/admin-web/src/lib/motion.ts`.
+   `apps/admin-web/src/lib/motion.ts`. One exception: the phone's segmented pill also animates its
+   width, because a scale would stretch its corners (plans/007).
 10. **One fact per element.** No middle-dot strings ("Plant 2 · Pune" is two elements). A ▲/▼
     trend appears only where the app already computes that change.
 11. **Controls:** 36–40px tall with 44px hit targets on the web, ≥48dp on the phone. One
