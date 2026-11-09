@@ -700,7 +700,14 @@ function ZonesTable({
             const made = Boolean(created[zone.id]);
             const errors = showErrors && zone.name.trim() ? errorsOf(zone) : {};
             return (
-              <tr key={zone.id} className="align-top">
+              // Rows below a removed one slide up. Measured only when the count changes, not per keystroke.
+              <m.tr
+                key={zone.id}
+                className="align-top"
+                layout="position"
+                layoutDependency={zones.length}
+                transition={ledgerMotion().short}
+              >
                 <td className="pr-2 pb-2">
                   <Input
                     aria-label={`Zone ${index + 1} number`}
@@ -751,7 +758,7 @@ function ZonesTable({
                     </Button>
                   )}
                 </td>
-              </tr>
+              </m.tr>
             );
           })}
         </tbody>
