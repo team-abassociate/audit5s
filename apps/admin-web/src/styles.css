@@ -3157,18 +3157,34 @@ li:has(> .gb-menu-item--danger) {
   font-weight: 600;
   padding: 5px 12px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-chip);
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background-color var(--dur-micro) var(--ease-out);
+  position: relative;
+  /* The label's colour follows the pill, so it is never white on --surface. */
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
 }
 .gb-seg button:hover:not([aria-pressed='true']) {
   background: var(--chip);
 }
 .gb-seg button[aria-pressed='true'] {
-  background: var(--primary);
   color: var(--on-primary);
+}
+/* The maroon fill; Motion slides it to the chosen option. */
+.gb-seg-pill {
+  position: absolute;
+  inset: 0;
+  background: var(--primary);
+}
+.gb-seg-label {
+  position: relative;
+}
+/* ZoneRun's section tabs share the look but not the pill: tabs don't slide. */
+.gb-seg[role='tablist'] button[aria-pressed='true'] {
+  background: var(--primary);
 }
 .gb-module {
   padding: 0 14px 12px;
