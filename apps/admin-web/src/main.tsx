@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { LazyMotion, MotionConfig } from 'motion/react';
 import {
   RouterProvider,
   createRootRoute,
@@ -442,10 +443,16 @@ declare module '@tanstack/react-router' {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <SessionProvider>
-        <RouterProvider router={router} />
-      </SessionProvider>
-    </QueryClientProvider>
+    {/* Reduced motion drops movement and keeps fades (LEDGER rule 9). `strict` keeps the full
+        `motion.*` component out of the bundle: components use `m.*` from motion/react-m. */}
+    <MotionConfig reducedMotion="user">
+      <LazyMotion features={() => import('@/lib/motion-features').then((r) => r.default)} strict>
+        <QueryClientProvider client={queryClient}>
+          <SessionProvider>
+            <RouterProvider router={router} />
+          </SessionProvider>
+        </QueryClientProvider>
+      </LazyMotion>
+    </MotionConfig>
   </StrictMode>,
 );
