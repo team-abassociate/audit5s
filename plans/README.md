@@ -27,7 +27,8 @@ line numbers inside each plan describe the code before S1 and are left as writte
 | 003 | [One press: a --press token of 3px](003-press-token.md) — press feedback | LOW | DONE (S1) |
 | 004 | [Gate hover shadows to real pointers](004-hover-gate.md) — hover effect on touch | LOW | DONE (S1) |
 | 005 | [Arrival highlight as a transition](005-arrival-transition.md) — interruptible animation | LOW | DONE (S1) |
-| 006 | [Motion in admin-web: `lib/motion.ts` and the four places it moves](006-motion-library.md) — exits and layout slides | — | DONE, awaiting release |
+| 006 | [Motion in admin-web: `lib/motion.ts` and the four places it moves](006-motion-library.md) — exits and layout slides | — | DONE (#202) |
+| 007 | [Every Motion feature against both apps, and the phone's two moves](007-motion-survey.md) — segmented pill, Zone chips | — | DONE, awaiting release |
 
 ## Order and dependencies
 
