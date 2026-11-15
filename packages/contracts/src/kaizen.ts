@@ -106,6 +106,32 @@ export const rupeesSchema = z.number().nonnegative().max(999_999_999_999.99);
 const shortText = z.string().trim().max(200);
 const longText = z.string().trim().max(4000);
 
+/** The savings calculator's saving types (`packages/domain` kaizen-savings), in its order. */
+export const KAIZEN_SAVING_TYPES = [
+  'manpower', 'jobtime', 'headcount', 'motion', 'waiting', 'process', 'overproc', 'overprod', 'inventory',
+  'rejection', 'otd', 'material', 'unitcost', 'electricity', 'environment', 'space', 'safety', 'other',
+] as const;
+export const kaizenSavingTypeSchema = z.enum(KAIZEN_SAVING_TYPES);
+export type KaizenSavingType = z.infer<typeof kaizenSavingTypeSchema>;
+
+/** One calculator line: a saving type and the inputs as the operator typed them. */
+export const kaizenSavingLineSchema = z.object({
+  type: kaizenSavingTypeSchema,
+  values: z.record(z.string().max(40), z.union([z.string().max(300), z.number()])),
+});
+export type KaizenSavingLine = z.infer<typeof kaizenSavingLineSchema>;
+
+/**
+ * How the annual saving was worked out (owner, 2026-11-15): the calculator's lines, so the
+ * leader can reopen them, and its working as printed, so a reviewer sees the steps. The
+ * working is kept as written: a later change to a reference figure never rewrites it.
+ */
+export const kaizenSavingCalcSchema = z.object({
+  lines: z.array(kaizenSavingLineSchema).min(1).max(20),
+  working: z.string().max(16000),
+});
+export type KaizenSavingCalc = z.infer<typeof kaizenSavingCalcSchema>;
+
 export const kaizenPhotoSchema = z.object({
   id: uuidSchema,
   kaizenId: uuidSchema,
@@ -203,6 +229,8 @@ export const kaizenSchema = z.object({
   annualSaving: rupeesSchema.nullable(),
   /** What it cost to put in, ₹. 0 is an answer (it cost nothing); null is "not stated". */
   implementationCost: rupeesSchema.nullable(),
+  /** The calculator's lines and working, when the saving came from it; null when typed. */
+  savingCalc: kaizenSavingCalcSchema.nullable(),
   ideaBy: z.string().nullable(),
   implementedBy: z.string().nullable(),
 
@@ -251,6 +279,7 @@ export const kaizenFieldsSchema = z.object({
   benefits: clearable(longText),
   annualSaving: rupeesSchema.nullable().optional(),
   implementationCost: rupeesSchema.nullable().optional(),
+  savingCalc: kaizenSavingCalcSchema.nullable().optional(),
   ideaBy: clearable(shortText),
   implementedBy: clearable(shortText),
 });

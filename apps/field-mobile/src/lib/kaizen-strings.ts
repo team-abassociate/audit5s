@@ -184,6 +184,21 @@ export interface KaizenStrings {
   newUnit: string;
   newPerson: string;
   badSaving: string;
+  /** The savings calculator in the Benefits step. Its saving types and inputs are English (domain). */
+  calc: {
+    open: string;
+    edit: string;
+    intro: string;
+    type: string;
+    add: string;
+    remove: string;
+    missing: string;
+    total: string;
+    cost: string;
+    use: string;
+    close: string;
+    working: string;
+  };
   submittedNote: string;
 
   // the Coordinator (step 6)
@@ -442,6 +457,20 @@ const EN: KaizenStrings = {
   newUnit: 'New Unit',
   newPerson: 'New person',
   badSaving: 'Enter the saving in rupees, digits only.',
+  calc: {
+    open: 'Calculate the saving',
+    edit: 'Change the calculation',
+    intro: 'Pick what the Kaizen saved and fill in the numbers. The working is kept with the Kaizen, so the reviewer can see it.',
+    type: 'What did it save?',
+    add: 'Add another saving',
+    remove: 'Remove this saving',
+    missing: 'Still to fill:',
+    total: 'Annual saving',
+    cost: 'Cost to implement',
+    use: 'Use this saving',
+    close: 'Close',
+    working: 'How the saving was worked out',
+  },
   submittedNote: 'Submitted. It reaches your Coordinator when there is signal.',
 
   kaizens: 'Kaizens',
@@ -695,6 +724,20 @@ const HI: KaizenStrings = {
   newUnit: 'नई यूनिट',
   newPerson: 'नया व्यक्ति',
   badSaving: 'बचत रुपयों में लिखें, केवल अंक।',
+  calc: {
+    open: 'बचत की गणना करें',
+    edit: 'गणना बदलें',
+    intro: 'काइज़ेन से क्या बचा, वह चुनें और अंक भरें। गणना काइज़ेन के साथ रखी जाती है, ताकि समीक्षक उसे देख सकें।',
+    type: 'किस चीज़ की बचत हुई?',
+    add: 'एक और बचत जोड़ें',
+    remove: 'यह बचत हटाएँ',
+    missing: 'अभी भरना है:',
+    total: 'वार्षिक बचत',
+    cost: 'लागू करने की लागत',
+    use: 'यह बचत लें',
+    close: 'बंद करें',
+    working: 'बचत की गणना कैसे हुई',
+  },
   submittedNote: 'जमा हो गया। सिग्नल मिलने पर यह आपके कोऑर्डिनेटर तक पहुँचेगा।',
 
   kaizens: 'काइज़ेन',
@@ -948,6 +991,20 @@ const MR: KaizenStrings = {
   newUnit: 'नवीन युनिट',
   newPerson: 'नवीन व्यक्ती',
   badSaving: 'बचत रुपयांत लिहा, फक्त अंक.',
+  calc: {
+    open: 'बचतीची गणना करा',
+    edit: 'गणना बदला',
+    intro: 'काइझेनमुळे काय वाचले ते निवडा आणि आकडे भरा. गणना काइझेनसोबत ठेवली जाते, म्हणजे तपासणाऱ्याला ती दिसते.',
+    type: 'कशाची बचत झाली?',
+    add: 'आणखी एक बचत जोडा',
+    remove: 'ही बचत काढा',
+    missing: 'अजून भरायचे:',
+    total: 'वार्षिक बचत',
+    cost: 'अंमलबजावणीचा खर्च',
+    use: 'ही बचत घ्या',
+    close: 'बंद करा',
+    working: 'बचतीची गणना कशी झाली',
+  },
   submittedNote: 'सादर झाले. सिग्नल मिळाल्यावर ते तुमच्या कोऑर्डिनेटरकडे पोहोचेल.',
 
   kaizens: 'कायझेन',

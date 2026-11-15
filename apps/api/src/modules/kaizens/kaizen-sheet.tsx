@@ -234,6 +234,12 @@ function KaizenSheet({ kaizen, photos }: { kaizen: KaizenDetail; photos: KaizenS
               />
             </div>
             <div className="kz-summary"><Text value={kaizen.benefits} /></div>
+            {kaizen.savingCalc ? (
+              <div className="kz-working">
+                <div className="kz-label">How the saving was worked out</div>
+                <span>{kaizen.savingCalc.working}</span>
+              </div>
+            ) : null}
           </section>
         </div>
       </main>

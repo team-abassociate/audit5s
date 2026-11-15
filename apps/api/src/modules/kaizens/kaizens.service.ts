@@ -800,7 +800,16 @@ function sameSheet(row: KaizenRow, fields: KaizenFields): boolean {
   const stored = kaizenColumnsOf(sheetOf(row));
   const incoming = kaizenColumnsOf(fields);
   return (Object.keys(incoming) as (keyof typeof incoming)[]).every(
-    (key) => JSON.stringify(incoming[key] ?? null) === JSON.stringify(stored[key] ?? null),
+    (key) => canonical(incoming[key] ?? null) === canonical(stored[key] ?? null),
+  );
+}
+
+/** JSON with object keys sorted: Postgres returns a `jsonb` (the saving's working) in its own key order. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, x: unknown) =>
+    x && typeof x === 'object' && !Array.isArray(x)
+      ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : x,
   );
 }
 
@@ -889,6 +898,7 @@ function toKaizen(
     benefits: row.benefits,
     annualSaving: row.annualSaving === null ? null : Number(row.annualSaving),
     implementationCost: row.implementationCost === null ? null : Number(row.implementationCost),
+    savingCalc: row.savingCalc ?? null,
     ideaBy: row.ideaBy,
     implementedBy: row.implementedBy,
     status: row.status,

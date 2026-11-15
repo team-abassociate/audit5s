@@ -53,4 +53,11 @@ describe('Kaizen sheet', () => {
       writeFileSync(process.env.KAIZEN_SHEET_OUT, renderKaizenSheetHtml(kaizen, { before: null, after: null }));
     }
   });
+
+  it("prints the savings calculator's working only when the saving came from it", () => {
+    const working = 'Saving 1 – Manpower / labour time saved (Soft saving)\n   Per year = Rs 35,000 × 12 = Rs 4,20,000';
+    const lines = [{ type: 'manpower' as const, values: { t: 1 } }];
+    expect(renderKaizenSheetHtml({ ...kaizen, savingCalc: { lines, working } }, { before: null, after: null })).toContain('Rs 4,20,000');
+    expect(renderKaizenSheetHtml({ ...kaizen, savingCalc: null }, { before: null, after: null })).not.toContain('How the saving was worked out');
+  });
 });

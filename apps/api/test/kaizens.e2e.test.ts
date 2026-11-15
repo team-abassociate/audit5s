@@ -374,6 +374,21 @@ describe('the author’s moves', () => {
     expect((await create(world.actors.ZONE_LEADER, { id: kaizen.id, ...COMPLETE_SHEET })).status).toBe(201);
     expect((await create(world.actors.ZONE_LEADER, { id: kaizen.id, machine: 'Other' })).status).toBe(409);
   });
+
+  it('keeps the savings calculator’s lines and working as sent, and a late copy of them is a replay (0068)', async () => {
+    const savingCalc = {
+      lines: [{ type: 'manpower', values: { t: '2', tUnit: 'hr', ops: 2, wage: 800, shift: 12, days: 26, inv: 0 } }],
+      working: 'Saving 1 – Manpower / labour time saved (Soft saving)\n   Per year = Rs 6,933.33 × 12 = Rs 83,200',
+    };
+    const kaizen = await draft(world.actors.ZONE_LEADER, world.zoneA, { ...COMPLETE_SHEET, annualSaving: 83200, savingCalc });
+    expect(kaizen.savingCalc).toEqual(savingCalc);
+    expect((await submit(world.actors.ZONE_LEADER, kaizen.id)).status).toBe(200);
+    // Postgres hands the jsonb back in its own key order; the replay still matches.
+    const replay = await create(world.actors.ZONE_LEADER, { id: kaizen.id, ...COMPLETE_SHEET, annualSaving: 83200, savingCalc });
+    expect(replay.status).toBe(201);
+    expect((await create(world.actors.ZONE_LEADER, { id: kaizen.id, ...COMPLETE_SHEET, annualSaving: 83200, savingCalc: null })).status).toBe(409);
+    expect((await create(world.actors.ZONE_LEADER, { savingCalc: { lines: [{ type: 'nope', values: {} }], working: '' } })).status).toBe(400);
+  });
 });
 
 describe('the review transaction', () => {
