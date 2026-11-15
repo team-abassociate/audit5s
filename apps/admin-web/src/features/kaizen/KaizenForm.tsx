@@ -20,6 +20,7 @@ import { api } from '@/lib/api';
 import { KAIZEN_PARAMETER_LABEL, KAIZEN_WASTE_LABEL } from '@/lib/labels';
 import { PhotoPicker, putObject, sha256Hex } from '@/lib/photo';
 import { useSession } from '@/lib/session';
+import { SavingCalculator } from './SavingCalculator';
 
 /**
  * New Kaizen and Edit & resubmit on the web: the phone's twelve steps
@@ -429,6 +430,14 @@ function Form({ initial }: { initial?: KaizenDetail }) {
       </Step>
       <Step n={11} title="Benefits / saving" state={stepState(['benefits', 'annualSaving', 'implementationCost'], missing, sheet)}>
         {text('benefits')}
+        <SavingCalculator
+          initial={sheet.savingCalc?.lines ?? null}
+          onUse={({ annualSaving, implementationCost, savingCalc }) => {
+            set('annualSaving', annualSaving);
+            set('implementationCost', implementationCost);
+            set('savingCalc', savingCalc);
+          }}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           {rupees('annualSaving')}
           {rupees('implementationCost')}

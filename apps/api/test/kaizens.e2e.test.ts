@@ -387,7 +387,7 @@ describe('the author’s moves', () => {
     const replay = await create(world.actors.ZONE_LEADER, { id: kaizen.id, ...COMPLETE_SHEET, annualSaving: 83200, savingCalc });
     expect(replay.status).toBe(201);
     expect((await create(world.actors.ZONE_LEADER, { id: kaizen.id, ...COMPLETE_SHEET, annualSaving: 83200, savingCalc: null })).status).toBe(409);
-    expect((await create(world.actors.ZONE_LEADER, { savingCalc: { lines: [{ type: 'nope', values: {} }], working: '' } })).status).toBe(400);
+    expect((await create(world.actors.ZONE_LEADER, { savingCalc: { lines: [{ type: 'nope', values: {} }], working: '' } })).status).toBe(422);
   });
 });
 
