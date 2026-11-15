@@ -51,6 +51,7 @@ const EMPTY: Sheet = {
   benefits: null,
   annualSaving: null,
   implementationCost: null,
+  savingCalc: null,
   ideaBy: null,
   implementedBy: null,
 };
@@ -61,7 +62,7 @@ function sheetOf(kaizen: KaizenDetail): Sheet {
   return sheet;
 }
 
-type TextKey = Exclude<keyof Sheet, 'wastes' | 'parameters' | 'horizontalDeployment' | 'annualSaving' | 'implementationCost'>;
+type TextKey = Exclude<keyof Sheet, 'wastes' | 'parameters' | 'horizontalDeployment' | 'annualSaving' | 'implementationCost' | 'savingCalc'>;
 
 /** The phone's words (`kaizen-strings.ts`, English), so a step reads the same on both. */
 const LABEL: Record<TextKey | 'annualSaving' | 'implementationCost', string> = {
@@ -261,6 +262,9 @@ function Form({ initial }: { initial?: KaizenDetail }) {
           const raw = event.target.value.replace(/[,₹\s]/g, '');
           if (raw === '') set(key, null);
           else if (/^\d{0,12}(\.\d{0,2})?$/.test(raw)) set(key, Number(raw));
+          else return;
+          // A saving typed by hand no longer matches the phone calculator's working.
+          if (key === 'annualSaving') set('savingCalc', null);
         }}
       />
     </Field>
@@ -372,6 +376,11 @@ function Form({ initial }: { initial?: KaizenDetail }) {
           {rupees('annualSaving')}
           {rupees('implementationCost')}
         </div>
+        {sheet.savingCalc ? (
+          <Field label="How the saving was worked out">
+            <pre className="whitespace-pre-wrap text-sm text-ink-2">{sheet.savingCalc.working}</pre>
+          </Field>
+        ) : null}
       </Step>
       <Step n={12} title="Root cause & people" state={stepState(['rootCause4m', 'analysis7qc', 'ideaBy', 'implementedBy'], missing, sheet)}>
         {text('rootCause4m')}

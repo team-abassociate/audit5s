@@ -202,6 +202,7 @@ export default function KaizenDetailScreen() {
           {row('annualSaving', sheet.annualSaving ? formatRupees(sheet.annualSaving) : null)}
           {/* ₹0 is an answer: it cost nothing. */}
           {row('implementationCost', typeof sheet.implementationCost === 'number' ? formatRupees(sheet.implementationCost) : null)}
+          {listRow(t.calc.working, sheet.savingCalc?.working ?? null)}
           {row('ideaBy', sheet.ideaBy)}
           {row('implementedBy', sheet.implementedBy)}
         </Card>

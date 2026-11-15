@@ -11,12 +11,13 @@ import {
   KAIZEN_WASTES,
   isoDateSchema,
   type KaizenFields,
+  type KaizenSavingCalc,
   type KaizenParameter,
   type KaizenPhotoKind,
   type KaizenRequiredField,
   type KaizenWaste,
 } from '@audit5s/contracts';
-import { formatDate, istDateKey, zoneDisplayLabel } from '@audit5s/domain';
+import { formatDate, istDateKey, savingSummary, zoneDisplayLabel } from '@audit5s/domain';
 import type { ProcessedImage } from '../lib/capture/media';
 import { pickFromGallery } from '../lib/capture/gallery';
 import {
@@ -42,6 +43,7 @@ import { useSync } from '../lib/sync/provider';
 import { createThemedStyles, tabBarStyle, useTheme } from '../lib/theme';
 import { CameraCapture } from './camera-capture';
 import { KaizenPhotoViewer } from './kaizen-photo-viewer';
+import { SavingCalculator } from './saving-calculator';
 import {
   Button,
   Card,
@@ -122,6 +124,8 @@ export function KaizenForm({
   const saving = useRef<Promise<unknown>>(Promise.resolve());
   // The tick lists as last written; the query cache lags a save behind on quick taps.
   const ticks = useRef<Pick<KaizenFields, 'wastes' | 'parameters'>>({});
+  // The calculator's lines and working as last written (undefined: as saved), for the same reason.
+  const calcRef = useRef<KaizenSavingCalc | null | undefined>(undefined);
   const [texts, setTexts] = useState<Texts | null>(null);
   // The latest typing, for a save that fires after this render (a timer, the app leaving).
   const textsRef = useRef<Texts | null>(null);
@@ -201,6 +205,7 @@ export function KaizenForm({
 
   /** The one write path: the first save creates the draft, every later one merges into it. */
   function persist(fields: KaizenFields): Promise<string> {
+    fields = withWorking(fields);
     const run = saving.current.then(() => write(fields));
     saving.current = run.catch(() => undefined);
     return run;
@@ -333,6 +338,24 @@ export function KaizenForm({
       afterOpen.current = { index, run: reveal };
       setOpen(index);
     }
+  }
+
+  /** The calculator's working as last written, or as saved. */
+  function savedCalc(): KaizenSavingCalc | null {
+    return calcRef.current !== undefined ? calcRef.current : (savedRef.current.savingCalc ?? null);
+  }
+
+  /**
+   * An annual saving typed by hand drops the calculator's working, which no longer explains
+   * it; one that still equals the calculator's total (a late save of the same figure) keeps it.
+   */
+  function withWorking(fields: KaizenFields): KaizenFields {
+    const calc = savedCalc();
+    if (fields.savingCalc === undefined && fields.annualSaving !== undefined && calc) {
+      if (savingSummary(calc.lines)?.annualSaving !== fields.annualSaving) fields = { ...fields, savingCalc: null };
+    }
+    if (fields.savingCalc !== undefined) calcRef.current = fields.savingCalc;
+    return fields;
   }
 
   /** A text box's value as the sheet stores it; `undefined` ⇒ it cannot be saved as typed. */
@@ -594,6 +617,20 @@ export function KaizenForm({
         return (
           <>
             {textField('benefits')}
+            <SavingCalculator
+              initial={savedCalc()?.lines ?? null}
+              t={t.calc}
+              onUse={({ annualSaving, implementationCost, savingCalc }) => {
+                for (const field of ['annualSaving', 'implementationCost'] as const) {
+                  clearTimeout(timers.current.get(field));
+                  timers.current.delete(field);
+                  dirty.current.delete(field);
+                }
+                setTexts((all) => (all ? { ...all, annualSaving: String(annualSaving), implementationCost: String(implementationCost) } : all));
+                setFieldError((errors) => ({ ...errors, annualSaving: undefined, implementationCost: undefined }));
+                save.mutate({ annualSaving, implementationCost, savingCalc });
+              }}
+            />
             {textField('annualSaving')}
             {textField('implementationCost')}
           </>

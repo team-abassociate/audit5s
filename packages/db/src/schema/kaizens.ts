@@ -5,6 +5,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   smallint,
@@ -21,6 +22,7 @@ import {
   kaizenWasteEnum,
   roleEnum,
 } from './enums';
+import type { KaizenSavingCalc } from '@audit5s/contracts';
 import { units, users } from './identity';
 import { zones } from './zones';
 
@@ -76,6 +78,8 @@ export const kaizens = pgTable(
     annualSaving: numeric('annual_saving', { precision: 14, scale: 2 }),
     /** Owner, 2026-10-11 (0046). Zero is an answer; NULL is "not stated". */
     implementationCost: numeric('implementation_cost', { precision: 14, scale: 2 }),
+    /** Owner, 2026-11-15 (0068). The savings calculator's lines and working; NULL when typed. */
+    savingCalc: jsonb('saving_calc').$type<KaizenSavingCalc>(),
     ideaBy: text('idea_by'),
     implementedBy: text('implemented_by'),
 

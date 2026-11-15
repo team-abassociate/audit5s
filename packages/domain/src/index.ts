@@ -16,4 +16,5 @@ export * from './sync-policy';
 export * from './datetime';
 export * from './kaizen';
 export * from './kaizen-display';
+export * from './kaizen-savings';
 export * from './uuid';

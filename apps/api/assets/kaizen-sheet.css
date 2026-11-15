@@ -95,3 +95,6 @@ width:210mm;height:297mm;margin:24px auto;box-sizing:border-box;padding:26px 28p
 .kz-fill{overflow:visible}
 .kz-text{white-space:pre-line;overflow-wrap:anywhere}
 .kz-box,.kz-ba,.kz-callout{break-inside:avoid}
+/* The savings calculator's working (0068): its own indentation kept, never cut off. */
+.kz-working{margin-top:6px;border-top:1px solid var(--green-line);padding-top:5px}
+.kz-working span{display:block;margin-top:2px;font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-size:8.5px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}

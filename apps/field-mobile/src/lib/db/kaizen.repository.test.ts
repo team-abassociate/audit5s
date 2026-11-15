@@ -365,6 +365,7 @@ function server(
     benefits: null,
     annualSaving: null,
     implementationCost: null,
+    savingCalc: null,
     ideaBy: null,
     implementedBy: null,
     status: input.status,
