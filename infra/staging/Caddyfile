@@ -16,6 +16,12 @@ http://staging.leanstack.tech {
     Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://objects-staging.leanstack.tech; connect-src 'self' https://objects-staging.leanstack.tech; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
   }
 
+  # A page is checked on every open (ETag, so an unchanged one is a 304), so a deploy reaches a
+  # phone's browser at once. The hashed bundles keep their cache: a new build has new names.
+  # The API sets its own caching.
+  @page not path /api/* /assets/* /field/_expo/static/*
+  header @page Cache-Control "no-cache"
+
   handle /api/* {
     reverse_proxy staging-api:3000
   }
