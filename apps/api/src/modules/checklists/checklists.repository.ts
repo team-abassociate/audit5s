@@ -307,7 +307,7 @@ export class ChecklistsRepository extends BaseRepository {
         .limit(1);
 
       if (!version) return { outcome: 'NOT_FOUND' as const };
-      if (version.status !== 'DRAFT') return { outcome: 'NOT_DRAFT' as const, status: version.status };
+      if (version.status === 'PUBLISHED') return { outcome: 'NOT_DRAFT' as const, status: version.status };
 
       const [previous] = await tx
         .select({ id: checklistVersions.id })
@@ -331,9 +331,15 @@ export class ChecklistsRepository extends BaseRepository {
           .where(eq(checklistVersions.id, previous.id));
       }
 
+      // A draft is stamped on its first publish. A superseded or deactivated version going
+      // back into use keeps its original stamp: CV-1 lets only its status columns change.
       await tx
         .update(checklistVersions)
-        .set({ status: 'PUBLISHED', publishedAt: sql`now()`, publishedByUserId })
+        .set(
+          version.status === 'DRAFT'
+            ? { status: 'PUBLISHED', publishedAt: sql`now()`, publishedByUserId }
+            : { status: 'PUBLISHED', supersededAt: null, supersededByVersionId: null },
+        )
         .where(eq(checklistVersions.id, versionId));
 
       await afterWrite?.(tx as Transaction);

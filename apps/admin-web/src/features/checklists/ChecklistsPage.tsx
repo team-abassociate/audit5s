@@ -227,6 +227,9 @@ function TemplateDetail({
 }) {
   const { can } = useSession();
   const queryClient = useQueryClient();
+  // Which version's questions are shown below; the published one until another is picked.
+  const [viewing, setViewing] = useState<string | null>(null);
+  const shownVersionId = viewing ?? template.publishedVersionId;
 
   const versions = useQuery({
     queryKey: ['checklist-versions', template.id],
@@ -273,38 +276,54 @@ function TemplateDetail({
                 <Th>Version</Th>
                 <Th>Status</Th>
                 <Th>Published</Th>
+                <Th>Questions</Th>
                 <Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
               {versions.data.data.map((version) => (
                 <tr key={version.id}>
-                  <Td>v{version.versionNumber}</Td>
+                  <Td>
+                    v{version.versionNumber}
+                    {version.id === shownVersionId && (
+                      <span className="ml-2 text-xs text-muted">shown below</span>
+                    )}
+                  </Td>
                   <Td>
                     <StatusChip kind="checklist" status={version.status} />
                   </Td>
                   <Td>
                     {formatDate(version.publishedAt)}
                   </Td>
+                  <Td>{version.totalQuestions}</Td>
                   <Td>
                     <RowActions
                       subject={`${template.name} v${version.versionNumber}`}
                       primary={
-                        can('checklist_version', 'publish') && version.status === 'DRAFT' ? (
+                        // An earlier version can be published again: that is how a department
+                        // switches back. Audits already started keep the version they began on.
+                        can('checklist_version', 'publish') && version.status !== 'PUBLISHED' ? (
                           <Button
+                            variant={version.status === 'DRAFT' ? 'primary' : 'secondary'}
                             disabled={publish.isPending}
-                            onClick={() => publish.mutate(version.id)}
+                            onClick={() => {
+                              publish.mutate(version.id);
+                              setViewing(null);
+                            }}
                           >
-                            Publish
+                            {version.status === 'DRAFT' ? 'Publish' : 'Use this version'}
                           </Button>
                         ) : null
                       }
-                      items={
-                        can('checklist_version', 'deactivate') && version.status === 'PUBLISHED'
+                      items={[
+                        ...(version.id !== shownVersionId
+                          ? [{ label: 'Show questions', onSelect: () => setViewing(version.id) }]
+                          : []),
+                        ...(can('checklist_version', 'deactivate') && version.status === 'PUBLISHED'
                           ? [
                               {
                                 label: 'Deactivate',
-                                danger: true,
+                                danger: true as const,
                                 confirm: {
                                   title: `Deactivate ${template.name} v${version.versionNumber}?`,
                                   body: 'New audits can no longer use this checklist until another version is published. Audits already started keep it.',
@@ -314,8 +333,8 @@ function TemplateDetail({
                                 },
                               },
                             ]
-                          : []
-                      }
+                          : []),
+                      ]}
                     />
                   </Td>
                 </tr>
@@ -326,9 +345,7 @@ function TemplateDetail({
         {publish.error && <ErrorNotice error={publish.error} />}
       </div>
 
-      {template.publishedVersionId && (
-        <QuestionList versionId={template.publishedVersionId} />
-      )}
+      {shownVersionId && <QuestionList versionId={shownVersionId} />}
     </div>
   );
 }
