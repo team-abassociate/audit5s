@@ -1,5 +1,5 @@
+import type { SSection } from '@audit5s/contracts';
 import {
-  QUESTIONS_PER_SECTION,
   S_SECTION_LABELS,
   S_SECTION_ORDER,
   normalizeQuestionText,
@@ -13,21 +13,34 @@ import {
  * The blank import workbook (CL1), built from the import profile itself (R-6d,
  * `packages/domain` checklist-import): the `A1` title the importer looks for, the `Sr.` header
  * row with the optional translation columns, the five section headers exactly as the
- * importer matches them, and `Sr.` 1–50 with the Check Points left blank to fill in.
+ * importer matches them, and a few numbered rows per section with the Check Points left blank.
  * Change the profile and the template follows; `template.test.ts` holds the two together.
  */
 export const TEMPLATE_SHEET_NAME = 'Department';
 
 /**
  * A checklist written in the in-app editor (D13): the department (the sheet name) and the
- * 50 Check Points in `Sr.` order, each with optional Hindi and Marathi. It travels as the
+ * Check Points in `Sr.` order, grouped by section, each with optional Hindi and Marathi. It travels as the
  * very workbook a person could have uploaded, so the import validates, diffs, commits and
  * audit-logs it under the same rules — there is no second way to make a checklist.
  */
+export interface DraftQuestion {
+  section: SSection;
+  text: string;
+  hi: string;
+  mr: string;
+  /** The wording as copied, to flag a translation left behind its English. */
+  was?: { text: string; hi: string; mr: string };
+}
+
 export interface ChecklistDraft {
   name: string;
-  questions: Array<{ text: string; hi: string; mr: string }>;
+  /** Kept in section order, so a question's index is its `Sr.` − 1. */
+  questions: DraftQuestion[];
 }
+
+/** Rows a blank checklist, or the downloadable template, starts each section with. */
+export const BLANK_ROWS_PER_SECTION = 5;
 
 export function templateRows(draft?: ChecklistDraft): CellValue[][] {
   const rows: CellValue[][] = [
@@ -36,7 +49,8 @@ export function templateRows(draft?: ChecklistDraft): CellValue[][] {
       ? []
       : [
           'One sheet per department: name the sheet after the department and copy it for each ' +
-            'one. Fill in all 50 Check Points. The Hindi and Marathi columns are optional.',
+            'one. Add or delete rows in any section as needed; keep Sr. running 1, 2, 3… ' +
+            'The SAFETY section is optional. The Hindi and Marathi columns are optional.',
         ],
     [],
     ['Sr.', 'Check Point', 'Check Point (Hindi)', 'Check Point (Marathi)'],
@@ -47,12 +61,12 @@ export function templateRows(draft?: ChecklistDraft): CellValue[][] {
   let sr = 0;
   for (const section of S_SECTION_ORDER) {
     rows.push([S_SECTION_LABELS[section]]);
-    for (let n = 0; n < QUESTIONS_PER_SECTION; n += 1) {
-      const question = draft?.questions[sr];
-      sr += 1;
-      rows.push(
-        question ? [sr, clean(question.text), clean(question.hi), clean(question.mr)] : [sr],
-      );
+    if (!draft) {
+      for (let n = 0; n < BLANK_ROWS_PER_SECTION; n += 1) rows.push([(sr += 1)]);
+      continue;
+    }
+    for (const question of draft.questions.filter((q) => q.section === section)) {
+      rows.push([(sr += 1), clean(question.text), clean(question.hi), clean(question.mr)]);
     }
   }
   return rows;

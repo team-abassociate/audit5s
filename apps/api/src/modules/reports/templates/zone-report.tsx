@@ -1,4 +1,4 @@
-import { S_SECTION_ORDER, S_SECTION_LABELS, S_SECTION_SHORT_LABELS, formatMonthYear, reportZoneLabel, sectionLabel } from '@audit5s/domain';
+import { S_SECTION_ORDER, S_SECTION_LABELS, S_SECTION_SHORT_LABELS, formatMonthYear, reportZoneLabel, sectionLabel, sectionsPresent } from '@audit5s/domain';
 import type { SSection } from '@audit5s/contracts';
 import type {
   ReportNonconformity,
@@ -327,7 +327,8 @@ function SectionHistoryTable({ zone, payload }: { zone: ReportZone; payload: Rep
       },
       { raised: 0, closed: 0 },
     );
-  const total = S_SECTION_ORDER.map(ncsOf).reduce(
+  const shown = sectionsPresent(history.map((point) => point.sections));
+  const total = shown.map(ncsOf).reduce(
     (sum, row) => ({ raised: sum.raised + row.raised, closed: sum.closed + row.closed }),
     { raised: 0, closed: 0 },
   );
@@ -363,11 +364,11 @@ function SectionHistoryTable({ zone, payload }: { zone: ReportZone; payload: Rep
           </tr>
         </thead>
         <tbody>
-          {S_SECTION_ORDER.map((section, index) => {
+          {shown.map((section, index) => {
             const ncs = ncsOf(section);
             return (
               <tr key={section}>
-                {index === 0 ? <td rowSpan={S_SECTION_ORDER.length + 1}>{reportZoneLabel(zone)}</td> : null}
+                {index === 0 ? <td rowSpan={shown.length + 1}>{reportZoneLabel(zone)}</td> : null}
                 <td>{S_SECTION_SHORT_LABELS[section]}</td>
                 {history.map((point) =>
                   pctCell(point.auditZoneId, point.sections!.find((entry) => entry.section === section)?.pct ?? null),

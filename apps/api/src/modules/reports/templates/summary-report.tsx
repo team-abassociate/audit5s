@@ -1,4 +1,4 @@
-import { S_SECTION_ORDER, S_SECTION_SHORT_LABELS, reportZoneLabel } from '@audit5s/domain';
+import { S_SECTION_SHORT_LABELS, reportZoneLabel, sectionsPresent } from '@audit5s/domain';
 import type { ReportPayload, ReportZone } from './payload-types';
 import {
   Footer,
@@ -175,20 +175,21 @@ export function SummaryReport({
 }
 
 /**
- * §4.3 item 6: `ZONE | DEPARTMENT | 1S…5S | TOTAL | %`.
+ * §4.3 item 6: `ZONE | DEPARTMENT | 1S…5S (Safety where asked) | TOTAL | %`.
  *
  * Each S cell is `a/b` **tinted by its own band**, which is what makes the table readable
  * at a glance — a Zone at 61 % overall with one S at 30 % shows the weak S as a red cell
  * rather than hiding inside an amber row.
  */
 function ZoneMatrix({ payload }: { payload: ReportPayload }) {
+  const shown = sectionsPresent(payload.zones.map((zone) => zone.sections));
   return (
     <table>
       <thead>
         <tr>
           <th>Zone</th>
           <th>Department</th>
-          {S_SECTION_ORDER.map((section) => (
+          {shown.map((section) => (
             <th key={section} className="centre">
               {S_SECTION_SHORT_LABELS[section]}
             </th>
@@ -202,7 +203,7 @@ function ZoneMatrix({ payload }: { payload: ReportPayload }) {
           <tr key={zone.auditZoneId}>
             <td>{reportZoneLabel(zone)}</td>
             <td>{zone.departmentName ?? '—'}</td>
-            {S_SECTION_ORDER.map((section) => {
+            {shown.map((section) => {
               const score = zone.sections.find((entry) => entry.section === section);
               const band = bandOf(payload.bands, score?.pct ?? null);
               return (

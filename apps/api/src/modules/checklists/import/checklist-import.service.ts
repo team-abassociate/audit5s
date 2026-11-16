@@ -17,9 +17,9 @@ import type {
   ValidateChecklistImportRequest,
 } from '@audit5s/contracts';
 import {
-  QUESTIONS_PER_SECTION,
   canonicalChecklistSignature,
   diffChecklistQuestions,
+  S_SECTION_ORDER,
   isChecklistSheet,
   parseChecklistSheet,
   templateCodeForSheet,
@@ -512,7 +512,10 @@ export class ChecklistImportService {
         // A new department goes to the end; a known one keeps the order it already has.
         sortOrder: sheet.templateId ? 0 : nextSortOrder,
         contentHash: sheet.contentHash,
-        questionsPerSection: QUESTIONS_PER_SECTION,
+        // Informational only since 0066: the largest section's count.
+        questionsPerSection: Math.max(
+          ...S_SECTION_ORDER.map((s) => questions.filter((q) => q.section === s).length),
+        ),
         questions,
         industries,
       });

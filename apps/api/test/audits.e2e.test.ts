@@ -19,7 +19,7 @@ import {
   type ResponseValue,
   type ZoneLocksResponse,
 } from '@audit5s/contracts';
-import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
+import { S_SECTION_ORDER as ALL_SECTIONS, scoreZone } from '@audit5s/domain';
 import {
   FIXTURE_PASSWORD,
   captureEvidence,
@@ -31,6 +31,10 @@ import {
 } from './harness';
 import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
 import { ScorecardWorker } from '../src/modules/scorecards/scorecard.worker';
+
+/** The fixture checklists are 1S–5S only; Safety is covered in checklist-import.e2e. */
+const S_SECTION_ORDER = ALL_SECTIONS.filter((section) => section !== 'SAFETY');
+const TOTAL_QUESTIONS = S_SECTION_ORDER.length * 10;
 
 /**
  * The audit engine (PART 14, Phase 3 tests row).

@@ -3109,3 +3109,21 @@ siblings into the gap. Plan: [`plans/006-motion-library.md`](plans/006-motion-li
   drive it (table in the plan). The side panel keeps its CSS exit.
 - **field-mobile keeps Reanimated.** Motion is web only.
 
+
+## R-86 — Any number of questions per S, and a Safety section after 5S
+
+**Settled 2026-11-16; owner's ruling.** Supersedes CQ-1's five-by-ten shape (A1).
+
+- **No count is required.** A checklist may hold any number of questions in each S, including
+  none; the import, the publish check and the database refuse only an empty version or a `Sr.`
+  sequence with gaps. A missing 1S–5S header is a warning, not an error. The editor adds and
+  removes questions per section; a blank checklist starts with five per section.
+- **Safety follows 5S** as a sixth section (`SAFETY`, migration 0066). It is read from the
+  workbook's `6S – SAFETY` block, and the `6S AUDIT CHECK SHEET` title is accepted beside `5S`.
+  The app never calls it "6S": it is labelled Safety.
+- **Safety is scored like any S** and counts toward the Zone and audit totals, as the workbook's
+  "Max score = 60" does.
+- **Safety appears only where it was asked.** A Zone whose checklist had no Safety questions
+  has no Safety row, so audits taken before this ruling, and their reports, are unchanged.
+- **Published versions are untouched.** New questions arrive as new versions through the import
+  (`New 6S_audit_checklist_30_questions_revised.xlsx`: eleven departments, 5 per S + 5 Safety).

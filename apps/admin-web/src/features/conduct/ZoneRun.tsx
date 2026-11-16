@@ -11,7 +11,7 @@ import {
   type ResponseValue,
   type SSection,
 } from '@audit5s/contracts';
-import { RESPONSE_TOKENS, S_SECTION_ORDER, formatScore, scoreZone, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
+import { RESPONSE_TOKENS, S_SECTION_ORDER, S_SECTION_SHORT_LABELS, formatScore, scoreZone, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
 import { BandLabel } from '@/components/Status';
 import { Button, Card, CardHeader, Dialog, DialogActions, ErrorNotice, Field, Input, Segmented, Select, Slip, Spinner } from '@/components/ui';
@@ -31,6 +31,7 @@ const SECTION_TITLE: Record<SSection, string> = {
   S3_SHINE: '3S – SEISO (SHINE)',
   S4_STANDARDIZE: '4S – SEIKETSU (STANDARDIZE)',
   S5_SUSTAIN: '5S – SHITSUKE (SUSTAIN)',
+  SAFETY: 'SAFETY',
 };
 const RESPONSES: ResponseValue[] = ['SCORE_2', 'SCORE_1', 'SCORE_0', 'NA'];
 const LANG_KEY = 'audit5s.question-language';
@@ -114,7 +115,7 @@ function Questionnaire({ audit, zone, evidence, editable, client }: ZoneProps) {
   const [answers, setAnswers] = useState<Record<string, { id: string; value: ResponseValue | null; remark: string | null }>>(() =>
     Object.fromEntries(zone.responses.map((r) => [r.checklistQuestionId, { id: r.id, value: r.value, remark: r.remark }])),
   );
-  const [section, setSection] = useState<SSection>(S_SECTION_ORDER[0]!);
+  const [picked, setSection] = useState<SSection | null>(null);
   const [showMissing, setShowMissing] = useState(false);
   const [remark, setRemark] = useState(zone.zoneRemark ?? '');
   const [previousNcs, setPreviousNcs] = useState(zone.previousNcsAnswer ?? '');
@@ -199,7 +200,10 @@ function Questionnaire({ audit, zone, evidence, editable, client }: ZoneProps) {
   const photos = evidence.filter((e) => isZoneAuditPhoto(e.kind));
   const full = photos.length >= ZONE_PHOTO_LIMIT;
   const unanswered = questions.filter((q) => !answers[q.id]?.value);
-  const sectionIndex = S_SECTION_ORDER.indexOf(section);
+  // Only the sections this checklist has, in order: any may be empty (owner, 2026-11-16).
+  const sections = S_SECTION_ORDER.filter((s) => bySection.has(s));
+  const section = picked && sections.includes(picked) ? picked : (sections[0] ?? 'S1_SORT');
+  const sectionIndex = sections.indexOf(section);
   const reviewing = editable && zone.status === 'COMPLETED';
   // The phone's live figure: `scoreZone` from the domain package, the function the server runs.
   const local = scoreZone(
@@ -245,12 +249,12 @@ function Questionnaire({ audit, zone, evidence, editable, client }: ZoneProps) {
       </Card>
 
       <div className="gb-seg flex-wrap" role="tablist" aria-label="Sections">
-        {S_SECTION_ORDER.map((s) => {
+        {sections.map((s) => {
           const list = bySection.get(s) ?? [];
           const done = list.filter((q) => answers[q.id]?.value).length;
           return (
             <button key={s} type="button" role="tab" aria-pressed={s === section} aria-selected={s === section} onClick={() => setSection(s)}>
-              {s.slice(0, 2)} · {done}/{list.length}
+              {S_SECTION_SHORT_LABELS[s]} · {done}/{list.length}
             </button>
           );
         })}
@@ -311,11 +315,11 @@ function Questionnaire({ audit, zone, evidence, editable, client }: ZoneProps) {
           })}
         </ol>
         <div className="flex justify-between gap-2 p-4">
-          <Button variant="secondary" disabled={sectionIndex === 0} onClick={() => setSection(S_SECTION_ORDER[sectionIndex - 1]!)}>
+          <Button variant="secondary" disabled={sectionIndex === 0} onClick={() => setSection(sections[sectionIndex - 1]!)}>
             Previous
           </Button>
-          {sectionIndex < S_SECTION_ORDER.length - 1 ? (
-            <Button onClick={() => setSection(S_SECTION_ORDER[sectionIndex + 1]!)}>Next</Button>
+          {sectionIndex < sections.length - 1 ? (
+            <Button onClick={() => setSection(sections[sectionIndex + 1]!)}>Next</Button>
           ) : null}
         </div>
       </Card>

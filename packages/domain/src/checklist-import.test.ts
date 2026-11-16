@@ -20,6 +20,7 @@ const SECTION_HEADERS = [
   '3S – SEISO (SHINE)',
   '4S – SEIKETSU (STANDARDIZE)',
   '5S – SHITSUKE (SUSTAIN)',
+  '6S – SAFETY',
 ];
 
 /**
@@ -49,7 +50,7 @@ function buildSheet(
   ];
 
   let sr = 0;
-  for (let section = 1; section <= 5; section += 1) {
+  for (let section = 1; section <= counts.length; section += 1) {
     if (options.dropSection === section) continue;
     rows.push([SECTION_HEADERS[section - 1]!, null, null, null, null]);
     for (let position = 1; position <= (counts[section - 1] ?? 10); position += 1) {
@@ -94,6 +95,8 @@ describe('section headers', () => {
     ]);
     expect(sectionForHeaderRow('3S - SEISO (SHINE)')).toBe('S3_SHINE');
     expect(sectionForHeaderRow('3S—SEISO')).toBe('S3_SHINE');
+    expect(sectionForHeaderRow('6S - Safety')).toBe('SAFETY');
+    expect(sectionForHeaderRow('SAFETY')).toBe('SAFETY');
   });
 
   it('is not fooled by a sub-total or a totals row', () => {
@@ -207,33 +210,38 @@ describe('validation (§8.5 stage 3, CQ-1)', () => {
     expect(validated.questions).toHaveLength(50);
   });
 
-  it('rejects a missing section', () => {
+  it('warns about, but accepts, a missing S', () => {
     const validated = validateChecklistSheet(
       parseChecklistSheet(buildSheet('Premises', { dropSection: 3 })),
     );
-    expect(validated.severity).toBe('ERROR');
-    expect(validated.messages).toContain('Section S3_SHINE is missing from this sheet');
-    expect(validated.questions).toEqual([]);
+    expect(validated.severity).toBe('WARNING');
+    expect(validated.messages).toEqual(['Section S3_SHINE is missing from this sheet']);
+    expect(validated.questions).toHaveLength(40);
   });
 
-  it('rejects 9 questions in a section', () => {
+  it('accepts any number of questions per section, Safety included (owner, 2026-11-16)', () => {
     const validated = validateChecklistSheet(
-      parseChecklistSheet(buildSheet('Premises', { questionsPerSection: [9, 10, 10, 10, 10] })),
+      parseChecklistSheet(buildSheet('Premises', { questionsPerSection: [9, 11, 1, 3, 10, 5] })),
     );
-    expect(validated.severity).toBe('ERROR');
-    expect(validated.messages).toContain(
-      'Section S1_SORT has 9 questions; exactly 10 are required',
-    );
+    expect(validated.messages).toEqual([]);
+    expect(validated.severity).toBe('OK');
+    expect(validated.questions).toHaveLength(39);
+    expect(validated.questions.at(-1)).toMatchObject({ section: 'SAFETY', orderInSection: 5, globalOrder: 39 });
   });
 
-  it('rejects 11 questions in a section', () => {
+  it('reads the 6S workbook title, and needs no Safety section', () => {
+    const grid = buildSheet('Office', { questionsPerSection: [5, 5, 5, 5, 5] });
+    grid.rows[0] = ['6S AUDIT CHECK SHEET – OFFICE'];
+    expect(isChecklistSheet(grid)).toBe(true);
+    expect(validateChecklistSheet(parseChecklistSheet(grid)).severity).toBe('OK');
+  });
+
+  it('rejects a sheet with no questions', () => {
     const validated = validateChecklistSheet(
-      parseChecklistSheet(buildSheet('Premises', { questionsPerSection: [11, 10, 10, 10, 10] })),
+      parseChecklistSheet(buildSheet('Premises', { questionsPerSection: [0, 0, 0, 0, 0] })),
     );
     expect(validated.severity).toBe('ERROR');
-    expect(validated.messages).toContain(
-      'Section S1_SORT has 11 questions; exactly 10 are required',
-    );
+    expect(validated.messages).toContain('This sheet has no questions');
   });
 
   it('rejects a Sr. sequence with a gap', () => {

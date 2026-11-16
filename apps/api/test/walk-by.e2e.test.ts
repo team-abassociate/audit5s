@@ -10,7 +10,7 @@ import {
   type EvidenceViewUrl,
   type Page,
 } from '@audit5s/contracts';
-import { S_SECTION_ORDER } from '@audit5s/domain';
+import { S_SECTION_ORDER as ALL_SECTIONS } from '@audit5s/domain';
 import {
   captureEvidence,
   loginFromDevice,
@@ -18,6 +18,9 @@ import {
   stopWorld,
   type TestWorld,
 } from './harness';
+
+/** The fixture checklists are 1S–5S only; Safety is covered in checklist-import.e2e. */
+const S_SECTION_ORDER = ALL_SECTIONS.filter((section) => section !== 'SAFETY');
 
 /**
  * The walk-by audit (§2.7), end to end through the real endpoints.

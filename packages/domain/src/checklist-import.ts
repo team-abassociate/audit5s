@@ -5,13 +5,13 @@ import type {
   SSection,
   TranslatedLanguage,
 } from '@audit5s/contracts';
-import { QUESTIONS_PER_SECTION, S_SECTION_ORDER, TOTAL_QUESTIONS } from './sections';
+import { S_SECTION_ORDER } from './sections';
 
 /**
  * The `ChecklistImportProfile` of ARCHITECTURE.md §8.5, as pure functions.
  *
  * The real department workbook is **not** a flat one-row-per-question table: it is one
- * sheet per department, with section-header rows between blocks of ten questions
+ * sheet per department, with section-header rows between blocks of questions
  * (DECISIONS.md R-6d). Everything here works on a plain grid of cell
  * values, so the rules are testable without a spreadsheet and the reader that produces the
  * grid is the only part that touches a file.
@@ -35,11 +35,14 @@ export interface SheetGrid {
  * A sheet is a checklist only if `A1` says so. Every other sheet is skipped, which is how
  * the workbook's three legacy planning tabs are excluded without naming them (Q7).
  */
-export const CHECKLIST_SHEET_TITLE_PATTERN = /^5S\s+AUDIT\s+CHECK\s+SHEET\s*[–—-]\s*(.+)$/i;
+export const CHECKLIST_SHEET_TITLE_PATTERN = /^[56]S\s+AUDIT\s+CHECK\s+SHEET\s*[–—-]\s*(.+)$/i;
 
 /** En dash, em dash and hyphen all appear in the wild; all three are accepted. */
 export const SECTION_HEADER_PATTERN =
   /^([1-5])S\s*[–—-]\s*(SEIRI|SEITON|SEISO|SEIKETSU|SHITSUKE)\b/i;
+
+/** The workbook's `6S – SAFETY` block. Stored as SAFETY; the app never calls it 6S. */
+export const SAFETY_HEADER_PATTERN = /^(?:6S\s*[–—-]\s*)?SAFETY\b/i;
 
 export const MAX_QUESTION_TEXT_LENGTH = 500;
 
@@ -109,7 +112,9 @@ export function isChecklistSheet(grid: SheetGrid): boolean {
 }
 
 export function sectionForHeaderRow(value: CellValue | undefined): SSection | null {
-  const match = SECTION_HEADER_PATTERN.exec(cellText(value).trim());
+  const text = cellText(value).trim();
+  if (SAFETY_HEADER_PATTERN.test(text)) return 'SAFETY';
+  const match = SECTION_HEADER_PATTERN.exec(text);
   if (!match) return null;
   return SECTION_BY_NUMBER[match[1] ?? ''] ?? null;
 }
@@ -170,7 +175,7 @@ export interface ParsedQuestionRow {
   sourceRowNumber: number;
   /** Null when the row appears before any section header — an ERROR at stage 3. */
   section: SSection | null;
-  /** Position within the current section, 1…10. Null when there is no section yet. */
+  /** Position within the current section, from 1. Null when there is no section yet. */
   orderInSection: number | null;
   /** The `Sr.` value, i.e. the global order the sheet claims. */
   globalOrder: number;
@@ -359,11 +364,8 @@ function worst(a: ImportSeverity, b: ImportSeverity): ImportSeverity {
 }
 
 /**
- * Stage 3, plus the 5×10 shape check (CQ-1).
- *
- * Nine or eleven questions in a section is an ERROR, not a warning: a version that reached
- * `PUBLISHED` with the wrong shape would make every historical percentage incomparable,
- * and the `total_questions` check constraint would refuse it at the database anyway.
+ * Stage 3. A section may hold any number of questions (owner, 2026-11-16); `Sr.` must
+ * still run 1…N without gaps, and a missing 1S–5S header is worth a warning.
  */
 export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
   const rows: ValidatedRow[] = [];
@@ -419,20 +421,11 @@ export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
 
     expectedSr += 1;
     if (question.globalOrder !== expectedSr) {
-      rowMessages.push(`Sr. is ${question.globalOrder}; expected ${expectedSr} (Sr. must run 1…${TOTAL_QUESTIONS} without gaps)`);
+      rowMessages.push(`Sr. is ${question.globalOrder}; expected ${expectedSr} (Sr. must run from 1 without gaps)`);
       rowSeverity = 'ERROR';
     }
 
     if (question.section && question.orderInSection !== null) {
-      const sectionIndex = S_SECTION_ORDER.indexOf(question.section);
-      const impliedGlobal = sectionIndex * QUESTIONS_PER_SECTION + question.orderInSection;
-      if (sectionIndex >= 0 && question.globalOrder !== impliedGlobal) {
-        rowMessages.push(
-          `Sr. ${question.globalOrder} disagrees with the position in the section, which implies ${impliedGlobal}`,
-        );
-        rowSeverity = 'ERROR';
-      }
-
       const key = question.text.toLowerCase();
       const withinSection = seenInSection.get(question.section) ?? new Set<string>();
       if (withinSection.has(key)) {
@@ -460,26 +453,11 @@ export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
     });
   }
 
-  // CQ-1: five sections, ten questions each, contiguous 1…10.
   for (const section of S_SECTION_ORDER) {
-    const inSection = parsed.questions.filter((question) => question.section === section);
+    if (section === 'SAFETY') continue;
     if (!parsed.sectionsSeen.some((seen) => seen.section === section)) {
       messages.push(`Section ${section} is missing from this sheet`);
-      severity = 'ERROR';
-      continue;
-    }
-    if (inSection.length !== QUESTIONS_PER_SECTION) {
-      messages.push(
-        `Section ${section} has ${inSection.length} questions; exactly ${QUESTIONS_PER_SECTION} are required`,
-      );
-      severity = 'ERROR';
-      continue;
-    }
-    const orders = inSection.map((question) => question.orderInSection);
-    const contiguous = orders.every((order, index) => order === index + 1);
-    if (!contiguous) {
-      messages.push(`Section ${section} order is not contiguous 1…${QUESTIONS_PER_SECTION}`);
-      severity = 'ERROR';
+      severity = worst(severity, 'WARNING');
     }
   }
 
@@ -491,10 +469,8 @@ export function validateChecklistSheet(parsed: ParsedSheet): ValidatedSheet {
     severity = 'ERROR';
   }
 
-  if (parsed.questions.length !== TOTAL_QUESTIONS) {
-    messages.push(
-      `This sheet has ${parsed.questions.length} questions; exactly ${TOTAL_QUESTIONS} are required`,
-    );
+  if (parsed.questions.length === 0) {
+    messages.push('This sheet has no questions');
     severity = 'ERROR';
   }
 

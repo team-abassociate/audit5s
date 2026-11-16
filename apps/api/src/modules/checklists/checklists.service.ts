@@ -13,7 +13,7 @@ import type {
   UpdateQuestionTranslationRequest,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
-import { QUESTIONS_PER_SECTION, S_SECTION_ORDER, TOTAL_QUESTIONS } from '@audit5s/domain';
+import { S_SECTION_ORDER } from '@audit5s/domain';
 import { AppError } from '../../common/errors';
 import { AuditLogService } from '../../common/audit-log/audit-log.service';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
@@ -200,7 +200,7 @@ export class ChecklistsService {
     }
 
     const questions = await this.repository.listQuestions(scope, [versionId]);
-    assertFiveByTen(questions, version.questionsPerSection);
+    assertShape(questions);
 
     const result = await this.repository.publish(scope, versionId, scope.actor.userId, (tx) =>
       this.events.emit(tx, {
@@ -262,35 +262,23 @@ export class ChecklistsService {
   }
 }
 
-/** Invariant CQ-1: five sections, ten each, contiguous 1…10. */
-function assertFiveByTen(questions: ChecklistQuestionRow[], questionsPerSection: number): void {
+/** CQ-1, relaxed 2026-11-16: any count per section, but at least one question and no gaps. */
+function assertShape(questions: ChecklistQuestionRow[]): void {
   const problems: string[] = [];
-
-  if (questions.length !== S_SECTION_ORDER.length * questionsPerSection) {
-    problems.push(
-      `${questions.length} questions; ${S_SECTION_ORDER.length * questionsPerSection} are required`,
-    );
-  }
+  if (questions.length === 0) problems.push('it has no questions');
 
   for (const section of S_SECTION_ORDER) {
-    const inSection = questions
+    const orders = questions
       .filter((question) => question.section === section)
-      .sort((a, b) => a.orderInSection - b.orderInSection);
-
-    if (inSection.length !== questionsPerSection) {
-      problems.push(`${section} has ${inSection.length} questions; ${questionsPerSection} required`);
-      continue;
-    }
-    if (!inSection.every((question, index) => question.orderInSection === index + 1)) {
-      problems.push(`${section} order is not contiguous 1…${questionsPerSection}`);
+      .map((question) => question.orderInSection)
+      .sort((x, y) => x - y);
+    if (!orders.every((order, index) => order === index + 1)) {
+      problems.push(`${section} order is not contiguous from 1`);
     }
   }
 
   if (problems.length > 0) {
-    throw AppError.validation(
-      `This version does not have the required ${S_SECTION_ORDER.length}×${QUESTIONS_PER_SECTION} shape ` +
-        `(${TOTAL_QUESTIONS} questions): ${problems.join('; ')}`,
-    );
+    throw AppError.validation(`This version cannot be published: ${problems.join('; ')}`);
   }
 }
 

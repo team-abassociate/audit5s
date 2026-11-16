@@ -22,7 +22,7 @@ import { api, fetchAll } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useUnitScope } from '@/lib/scope';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, SECTION_SHORT_LABEL, nameLang } from '@/lib/labels';
-import { RATING_BANDS, daysBetween, formatDate, formatDateTime, formatDayMonth, formatTime, formatScore, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
+import { RATING_BANDS, daysBetween, isSectionShown, formatDate, formatDateTime, formatDayMonth, formatTime, formatScore, zoneDisplayLabel, zoneLabelFromCode } from '@audit5s/domain';
 import {
   TARGET,
   awaitingRollup,
@@ -198,6 +198,9 @@ export function DashboardPage() {
   const board = useMemo(
     () => mergeBoard(zones.data?.data ?? [], ranking.data ?? [], latest),
     [zones.data, ranking.data, latest],
+  );
+  const matrixSections = S_SECTIONS.filter((section) =>
+    isSectionShown(section, board.some((zone) => zone.sections?.some((row) => row.section === section))),
   );
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const selected = board.find((zone) => zone.code === selectedCode) ?? board[worstIndex(board)];
@@ -711,7 +714,7 @@ export function DashboardPage() {
                 <thead>
                   <tr>
                     <th>Zone</th>
-                    {S_SECTIONS.map((section) => (
+                    {matrixSections.map((section) => (
                       <th key={section} className="gb-c">
                         {SECTION_SHORT_LABEL[section]}
                       </th>
@@ -726,7 +729,7 @@ export function DashboardPage() {
                       <td className={rail(zone.score !== null && zone.score < TARGET ? 'crit' : 'none')} lang={nameLang(zone.name)}>
                         {zone.name}
                       </td>
-                      {S_SECTIONS.map((section) => {
+                      {matrixSections.map((section) => {
                         const cell = zone.sections?.find((row) => row.section === section);
                         if (!cell) return <MatrixCell key={section} />;
                         return <MatrixCell key={section} section={cell} />;
@@ -1097,7 +1100,9 @@ function DetailPanel({
       <div className="gb-detail-body">
         <span className="gb-label">Section breakdown</span>
         <div className="gb-sections">
-          {S_SECTIONS.map((section) => {
+          {S_SECTIONS.filter((section) =>
+            isSectionShown(section, Boolean(zone.sections?.some((row) => row.section === section))),
+          ).map((section) => {
             const row = zone.sections?.find((candidate) => candidate.section === section);
             const band = row ? bandOf(row.pct) : 'none';
             return (

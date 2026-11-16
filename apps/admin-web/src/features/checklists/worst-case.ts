@@ -5,7 +5,9 @@ import type {
   Industry,
   Page,
 } from '@audit5s/contracts';
-import { QUESTIONS_PER_SECTION, S_SECTION_ORDER } from '@audit5s/domain';
+import { S_SECTION_ORDER } from '@audit5s/domain';
+
+const QUESTIONS_PER_SECTION = 10;
 
 /** Dev-only worst case for Checklists and Industries (`?data=worst`, break-ui). */
 export const isWorstCase = () =>
@@ -75,7 +77,7 @@ const version = (n: number, status: ChecklistVersion['status']): ChecklistVersio
   versionNumber: n,
   status,
   questionsPerSection: QUESTIONS_PER_SECTION,
-  totalQuestions: 50,
+  totalQuestions: QUESTIONS_PER_SECTION * S_SECTION_ORDER.length,
   publishedAt: status === 'DRAFT' ? null : AT,
   publishedByUserId: null,
   supersededAt: null,

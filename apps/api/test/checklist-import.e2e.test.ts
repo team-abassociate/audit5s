@@ -186,30 +186,41 @@ describe('stages 2–5 on a valid workbook', () => {
 describe('stage 3 — validation findings', () => {
   beforeEach(clearChecklists);
 
-  it('rejects a missing section', async () => {
+  it('warns about, but accepts, a missing section', async () => {
     const result = await run(await buildWorkbook([{ name: 'Premises', dropSection: 3 }]));
-    expect(result.sheets[0]?.severity).toBe('ERROR');
+    expect(result.sheets[0]?.severity).toBe('WARNING');
     expect(result.sheets[0]?.messages).toContain('Section S3_SHINE is missing from this sheet');
   });
 
-  it('rejects 9 questions in a section', async () => {
+  it('accepts any number of questions per section, Safety included (owner, 2026-11-16)', async () => {
     const result = await run(
-      await buildWorkbook([{ name: 'Premises', counts: [9, 10, 10, 10, 10] }]),
+      await buildWorkbook([{ name: 'Premises', counts: [9, 11, 5, 5, 5, 5] }]),
     );
-    expect(result.sheets[0]?.severity).toBe('ERROR');
-    expect(result.sheets[0]?.messages).toContain(
-      'Section S1_SORT has 9 questions; exactly 10 are required',
-    );
+    expect(result.sheets[0]?.messages).toEqual([]);
+    expect(result.sheets[0]?.severity).toBe('OK');
+    expect(result.sheets[0]?.questionCount).toBe(40);
   });
 
-  it('rejects 11 questions in a section', async () => {
-    const result = await run(
-      await buildWorkbook([{ name: 'Premises', counts: [11, 10, 10, 10, 10] }]),
-    );
-    expect(result.sheets[0]?.severity).toBe('ERROR');
-    expect(result.sheets[0]?.messages).toContain(
-      'Section S1_SORT has 11 questions; exactly 10 are required',
-    );
+  it('commits and publishes a 6S-style sheet with its Safety section', async () => {
+    const workbook = await buildWorkbook([
+      { name: 'Office', counts: [5, 5, 5, 5, 5, 5], title: '6S AUDIT CHECK SHEET – OFFICE' },
+    ]);
+    const uploaded = await upload(workbook);
+    const jobId = (uploaded.body as ChecklistImportJob).id;
+    await validate(jobId);
+    const committed = await world.request('POST', `${base}/checklist-imports/${jobId}/commit`, {
+      token: token(),
+      body: { publish: true },
+    });
+    expect(committed.status, JSON.stringify(committed.body)).toBe(201);
+    const version = (committed.body as CommitChecklistImportResponse).versions[0]!;
+    expect(version).toMatchObject({ status: 'PUBLISHED', totalQuestions: 30 });
+
+    const detail = await world.request('GET', `${base}/checklist-versions/${version.id}`, { token: token() });
+    const safety = (detail.body as ChecklistVersionDetail).questions.filter((q) => q.section === 'SAFETY');
+    expect(safety.map((q) => [q.orderInSection, q.globalOrder])).toEqual([
+      [1, 26], [2, 27], [3, 28], [4, 29], [5, 30],
+    ]);
   });
 
   it('rejects a Sr. sequence with a gap, naming the row', async () => {
@@ -261,7 +272,9 @@ describe('stage 3 — validation findings', () => {
   });
 
   it('refuses to commit a sheet that has errors', async () => {
-    const uploaded = await upload(await buildWorkbook([{ name: 'Premises', dropSection: 3 }]));
+    const uploaded = await upload(
+      await buildWorkbook([{ name: 'Premises', sr: (sr) => (sr >= 20 ? sr + 1 : sr) }]),
+    );
     const jobId = (uploaded.body as ChecklistImportJob).id;
     await validate(jobId);
 

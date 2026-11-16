@@ -17,11 +17,12 @@ const SECTION_HEADERS = [
   '3S – SEISO (SHINE)',
   '4S – SEIKETSU (STANDARDIZE)',
   '5S – SHITSUKE (SUSTAIN)',
+  '6S – SAFETY',
 ];
 
 export interface SheetSpec {
   name: string;
-  /** Per-section question counts. Anything but ten is a CQ-1 error. */
+  /** Per-section question counts, 1S onward; a sixth entry adds a Safety section. */
   counts?: number[];
   /** Omit a section header entirely. */
   dropSection?: number;
@@ -64,7 +65,7 @@ export function buildWorkbook(sheets: SheetSpec[]): Promise<Buffer> {
     const text = spec.text ?? ((section, position) => `${spec.name} S${section} Q${position}`);
 
     let sr = 0;
-    for (let section = 1; section <= 5; section += 1) {
+    for (let section = 1; section <= counts.length; section += 1) {
       if (spec.dropSection === section) continue;
       worksheet.addRow([SECTION_HEADERS[section - 1]]);
       for (let position = 1; position <= (counts[section - 1] ?? 10); position += 1) {

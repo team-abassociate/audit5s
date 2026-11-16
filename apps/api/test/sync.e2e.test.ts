@@ -12,9 +12,12 @@ import {
   type SyncConflictSummary,
   type SyncStatus,
 } from '@audit5s/contracts';
-import { S_SECTION_ORDER } from '@audit5s/domain';
+import { S_SECTION_ORDER as ALL_SECTIONS } from '@audit5s/domain';
 import { FIXTURE_PASSWORD, captureEvidence, loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 import { RateLimitService } from '../src/common/rate-limit/rate-limit.service';
+
+/** The fixture checklists are 1S–5S only; Safety is covered in checklist-import.e2e. */
+const S_SECTION_ORDER = ALL_SECTIONS.filter((section) => section !== 'SAFETY');
 
 /**
  * `POST /sync/batch` and everything around it (§8.11, §9.3, §9.5).

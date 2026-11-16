@@ -1,5 +1,5 @@
 import type { ResponseValue, SSection } from '@audit5s/contracts';
-import { MAX_MARKS_PER_QUESTION, S_SECTION_ORDER, responseMarks } from './sections';
+import { MAX_MARKS_PER_QUESTION, S_SECTION_ORDER, isSectionShown, responseMarks } from './sections';
 
 /**
  * Scoring (D3/D4/D5), pure and shared.
@@ -117,7 +117,7 @@ export function scoreResponses(responses: readonly ScorableResponse[]): ScoreTot
 }
 
 /**
- * A Zone's score: five section rows plus the Zone totals.
+ * A Zone's score: a row per S (Safety only when it was asked) plus the Zone totals.
  *
  * The Zone total is `Σraw / Σmax` over the responses, **not** the mean of the five section
  * percentages. Those differ whenever sections have different applicable counts, and the
@@ -134,7 +134,9 @@ export function scoreZone(responses: readonly ScorableResponse[]): ScoreBreakdow
     bySection.get(response.section)?.push(response);
   }
 
-  const sections = S_SECTION_ORDER.map((section) => ({
+  const sections = S_SECTION_ORDER.filter((section) =>
+    isSectionShown(section, (bySection.get(section) ?? []).length > 0),
+  ).map((section) => ({
     section,
     ...scoreResponses(bySection.get(section) ?? []),
   }));
@@ -166,7 +168,9 @@ export function sumTotals(parts: readonly ScoreTotals[]): ScoreTotals {
 
 /** The same roll-up, per S, across several Zones. The summary report's S-wise table. */
 export function sumSections(breakdowns: readonly ScoreBreakdown[]): SectionScore[] {
-  return S_SECTION_ORDER.map((section) => ({
+  const asked = (section: SSection) =>
+    breakdowns.some((breakdown) => breakdown.sections.some((s) => s.section === section));
+  return S_SECTION_ORDER.filter((section) => isSectionShown(section, asked(section))).map((section) => ({
     section,
     ...sumTotals(
       breakdowns.map(

@@ -63,6 +63,8 @@ export const S_SECTIONS = [
   'S3_SHINE',
   'S4_STANDARDIZE',
   'S5_SUSTAIN',
+  /** Follows 5S; scored like any S. Never shown as "6S" (owner, 2026-11-16). */
+  'SAFETY',
 ] as const;
 export const sSectionSchema = z.enum(S_SECTIONS);
 export type SSection = z.infer<typeof sSectionSchema>;

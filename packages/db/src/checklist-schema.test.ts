@@ -174,13 +174,19 @@ describe('checklist version constraints (§5.4)', () => {
     ).rejects.toThrow(/checklist_version_content_key/);
   });
 
-  it('refuses a total_questions that is not 5 × questions_per_section (CQ-1)', async () => {
+  it('accepts any question count but refuses an empty version (CQ-1, relaxed by 0066)', async () => {
     const { templateId } = await seedChecklistFixture(owner);
+    await owner.query(
+      `INSERT INTO checklist_version (template_id, version_number, questions_per_section,
+                                      total_questions, content_hash)
+       VALUES ($1, 2, 5, 30, 'h30')`,
+      [templateId],
+    );
     await expect(
       owner.query(
         `INSERT INTO checklist_version (template_id, version_number, questions_per_section,
                                         total_questions, content_hash)
-         VALUES ($1, 2, 10, 45, 'h45')`,
+         VALUES ($1, 3, 10, 0, 'h0')`,
         [templateId],
       ),
     ).rejects.toThrow(/checklist_version_shape/);

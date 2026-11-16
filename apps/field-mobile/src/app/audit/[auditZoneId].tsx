@@ -12,7 +12,6 @@ import {
 import {
   RESPONSE_TOKENS,
   S_SECTION_SHORT_LABELS,
-  TOTAL_QUESTIONS,
   bandFor,
   latePhotoWindowEndsAt,
   zoneDisplayLabel,
@@ -80,8 +79,21 @@ import { leaveScreen } from '../../lib/leave-screen';
 import { useRequiredFields } from '../../lib/required-fields';
 import { useSession } from '../../lib/session';
 
-/** Ten questions to a page: with a five-by-ten checklist, a page is one S. */
-const PAGE_SIZE = 10;
+/** One page per section, however many questions it holds. Each page's first row index. */
+function pageStarts(rows: readonly { section: string }[]): number[] {
+  return rows.flatMap((row, index) => (index === 0 || row.section !== rows[index - 1]!.section ? [index] : []));
+}
+
+/** The rows of one page. Rows arrive in checklist order, so a section is one run. */
+function rowsOfPage<T extends { section: string }>(rows: readonly T[], page: number): T[] {
+  const starts = pageStarts(rows);
+  return rows.slice(starts[page] ?? rows.length, starts[page + 1] ?? rows.length);
+}
+
+/** The page holding the row at `index`. */
+function pageOfRow(rows: readonly { section: string }[], index: number): number {
+  return pageStarts(rows).filter((start) => start <= index).length - 1;
+}
 /** An answer reaches the server this long after the last tap, so a page of taps is one push. */
 const SYNC_DEBOUNCE_MS = 1_500;
 
@@ -91,7 +103,7 @@ const MIN_JUSTIFICATION = 10;
 type Row = Awaited<ReturnType<typeof listQuestionsWithAnswers>>[number];
 
 /**
- * The questionnaire: ten scrollable questions a page, Previous and Next, and Submit on the
+ * The questionnaire: one section a page, Previous and Next, and Submit on the
  * last page.
  *
  * **Nothing here awaits the network.** Every tap writes to SQLite first — the answer shows
@@ -185,7 +197,7 @@ export default function QuestionnaireScreen() {
     resumed.current = true;
     const cursor = zone.data?.resumeQuestionId;
     const position = cursor ? rows.findIndex((row) => row.questionId === cursor) : -1;
-    if (position >= 0) setPage(Math.floor(position / PAGE_SIZE));
+    if (position >= 0) setPage(pageOfRow(rows, position));
   }, [questions.data, zone.data?.resumeQuestionId]);
 
   useEffect(() => {
@@ -358,9 +370,7 @@ export default function QuestionnaireScreen() {
   useEffect(() => {
     const rows = questions.data;
     if (!scrollTo || !rows) return;
-    const index = rows
-      .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-      .findIndex((row) => row.questionId === scrollTo);
+    const index = rowsOfPage(rows, page).findIndex((row) => row.questionId === scrollTo);
     setScrollTo(null);
     if (index < 0) return;
     requestAnimationFrame(() =>
@@ -434,9 +444,9 @@ export default function QuestionnaireScreen() {
   }
 
   const valueOf = (row: Row) => picked[row.questionId] ?? (row.value as ResponseValue | null);
-  const pageCount = Math.ceil(rows.length / PAGE_SIZE);
-  const lastPage = page >= pageCount - 1;
-  const pageRows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const starts = pageStarts(rows);
+  const lastPage = page >= starts.length - 1;
+  const pageRows = rowsOfPage(rows, page);
   const answered = rows.filter((row) => valueOf(row) !== null).length;
   const pageAnswered = pageRows.filter((row) => valueOf(row) !== null).length;
   const unanswered = rows.length - answered;
@@ -509,7 +519,7 @@ export default function QuestionnaireScreen() {
     if (missing.length > 0) {
       setShowMissing(true);
       setBlockedOn(missing.map((row) => row.globalOrder));
-      const firstPage = Math.floor(rows.indexOf(missing[0]!) / PAGE_SIZE);
+      const firstPage = pageOfRow(rows, rows.indexOf(missing[0]!));
       if (firstPage !== page) goTo(firstPage);
       setScrollTo(missing[0]!.questionId);
       return;
@@ -548,9 +558,9 @@ export default function QuestionnaireScreen() {
         <SectionHead
           title={section ? t.sectionTitle[section] : t.questions}
           description={t.questionRange(
-            page * PAGE_SIZE + 1,
-            page * PAGE_SIZE + pageRows.length,
-            rows.length || TOTAL_QUESTIONS,
+            (starts[page] ?? 0) + 1,
+            (starts[page] ?? 0) + pageRows.length,
+            rows.length,
           )}
         />
         <View

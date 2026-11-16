@@ -239,7 +239,7 @@ export function syncEntityLabel(type: string): string {
 }
 
 /**
- * The five 5S sections, named one way everywhere in the portal: "S1 Sort (Seiri)" (AU7).
+ * The five 5S sections and Safety, named one way everywhere in the portal: "S1 Sort (Seiri)" (AU7).
  * The PDF keeps the workbook's own "1S – SEIRI (SORT)" (`S_SECTION_LABELS` in
  * `@audit5s/domain`), which is what the client's paper copy prints.
  */
@@ -249,6 +249,7 @@ export const SECTION_LABEL: Record<SSection, string> = {
   S3_SHINE: 'S3 Shine (Seiso)',
   S4_STANDARDIZE: 'S4 Standardize (Seiketsu)',
   S5_SUSTAIN: 'S5 Sustain (Shitsuke)',
+  SAFETY: 'Safety',
 };
 
 /** The same names without the Japanese word, where a column or a chart axis is narrow. */
@@ -258,6 +259,7 @@ export const SECTION_SHORT_LABEL: Record<SSection, string> = {
   S3_SHINE: 'S3 Shine',
   S4_STANDARDIZE: 'S4 Standardize',
   S5_SUSTAIN: 'S5 Sustain',
+  SAFETY: 'Safety',
 };
 
 /** `SOME_TOKEN` → "Some token", the last resort for a value no map knows yet. */

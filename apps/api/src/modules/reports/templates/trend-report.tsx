@@ -1,4 +1,4 @@
-import { S_SECTION_ORDER, S_SECTION_SHORT_LABELS } from '@audit5s/domain';
+import { S_SECTION_SHORT_LABELS, sectionsPresent } from '@audit5s/domain';
 import type { ReportPayload, ReportTrend } from './payload-types';
 import {
   BandHistogram,
@@ -41,6 +41,7 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
   const zoneWise = trend.scope === 'ZONE';
   // Unit-wise from audits rather than from Summary reports: each point is one audit.
   const byAudit = zoneWise || trend.points.some((point) => point.auditType);
+  const shown = sectionsPresent([payload.sections, ...trend.points.map((point) => point.sections)]);
   const label = (point: ReportTrend['points'][number]) => spanLabel(point.from, point.to);
   // The table and the webs say which audit; the bars keep to the date, for room.
   const named = (point: ReportTrend['points'][number]) =>
@@ -84,7 +85,7 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
 
       <h2 className="section-title">S-wise trend</h2>
       <div className="s-trend-grid">
-        {S_SECTION_ORDER.map((section) => (
+        {shown.map((section) => (
           <div className="avoid-break" key={section}>
             <div className="photo-caption">{S_SECTION_SHORT_LABELS[section]}</div>
             <TrendBars
@@ -107,7 +108,7 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
           <tr>
             <th>{byAudit ? 'Audit' : 'Period'}</th>
             {zoneWise ? null : <th className="centre">Zones</th>}
-            {S_SECTION_ORDER.map((section) => (
+            {shown.map((section) => (
               <th key={section} className="centre">
                 {S_SECTION_SHORT_LABELS[section]}
               </th>
@@ -121,7 +122,7 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
             <tr key={point.id}>
               <td>{named(point)}</td>
               {zoneWise ? null : <td className="centre">{point.zoneCount}</td>}
-              {S_SECTION_ORDER.map((section) => {
+              {shown.map((section) => {
                 const score = point.sections.find((entry) => entry.section === section);
                 const band = bandOf(payload.bands, score?.pct ?? null);
                 return (
@@ -138,9 +139,9 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
           ))}
           <tr className="total-row">
             <td colSpan={zoneWise ? 1 : 2}>Overall</td>
-            {payload.sections.map((section) => (
-              <td key={section.section} className="centre">
-                {formatPercentage(section.pct)}
+            {shown.map((section) => (
+              <td key={section} className="centre">
+                {formatPercentage(payload.sections.find((entry) => entry.section === section)?.pct ?? null)}
               </td>
             ))}
             <td className="centre">{formatMarks(payload.totals.rawScore, payload.totals.maxScore)}</td>
@@ -149,7 +150,7 @@ export function TrendReport({ payload }: { payload: ReportPayload }) {
         </tbody>
       </table>
 
-      <h2 className="section-title">5S performance webs</h2>
+      <h2 className="section-title">Performance webs</h2>
       <div className="web-grid">
         <div className="web-cell">
           <RadarWeb sections={payload.sections} bands={payload.bands} brand={payload.brand} size={190} />

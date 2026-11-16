@@ -95,6 +95,7 @@ const EN: AuditStrings = {
     S3_SHINE: '3S – SEISO (SHINE)',
     S4_STANDARDIZE: '4S – SEIKETSU (STANDARDIZE)',
     S5_SUSTAIN: '5S – SHITSUKE (SUSTAIN)',
+    SAFETY: 'SAFETY',
   },
   questionRange: (from, to, total) => `Questions ${from}–${to} of ${total}`,
   progress: (section) => `${section} progress`,
@@ -128,7 +129,7 @@ const EN: AuditStrings = {
   close: 'Close',
   unanswered: (count) =>
     `${count} question${count === 1 ? '' : 's'} still need${count === 1 ? 's' : ''} an answer. ${count === 1 ? 'It is' : 'They are'} marked in red.`,
-  zonePhotos: (count, limit) => `${count} / ${limit} photos in this Zone — shared across all 50 questions.`,
+  zonePhotos: (count, limit) => `${count} / ${limit} photos in this Zone — shared across all its questions.`,
   tooManyPhotos: (count, limit) =>
     `This Zone has ${count} photos. Remove ${count - limit} to meet the ${limit}-photo limit. Remove another to take a new photo.`,
   photoLimitReached: (limit) =>
@@ -188,6 +189,7 @@ const HI: AuditStrings = {
     S3_SHINE: '3S – SEISO (सफ़ाई)',
     S4_STANDARDIZE: '4S – SEIKETSU (मानकीकरण)',
     S5_SUSTAIN: '5S – SHITSUKE (अनुशासन बनाए रखना)',
+    SAFETY: 'SAFETY (सुरक्षा)',
   },
   questionRange: (from, to, total) => `प्रश्न ${from}–${to} (कुल ${total})`,
   progress: (section) => `${section} प्रगति`,
@@ -223,7 +225,7 @@ const HI: AuditStrings = {
     count === 1
       ? '1 प्रश्न का उत्तर अभी बाक़ी है। उसे लाल रंग से दिखाया गया है।'
       : `${count} प्रश्नों के उत्तर अभी बाक़ी हैं। उन्हें लाल रंग से दिखाया गया है।`,
-  zonePhotos: (count, limit) => `इस ज़ोन में ${count} / ${limit} फ़ोटो — सभी 50 प्रश्नों के लिए मिलाकर।`,
+  zonePhotos: (count, limit) => `इस ज़ोन में ${count} / ${limit} फ़ोटो — सभी प्रश्नों के लिए मिलाकर।`,
   tooManyPhotos: (count, limit) =>
     `इस ज़ोन में ${count} फ़ोटो हैं। ${limit} फ़ोटो की सीमा में आने के लिए ${count - limit} फ़ोटो हटाएँ। नई फ़ोटो लेने के लिए एक और हटाएँ।`,
   photoLimitReached: (limit) =>
@@ -283,6 +285,7 @@ const MR: AuditStrings = {
     S3_SHINE: '3S – SEISO (स्वच्छता)',
     S4_STANDARDIZE: '4S – SEIKETSU (प्रमाणीकरण)',
     S5_SUSTAIN: '5S – SHITSUKE (शिस्त टिकवणे)',
+    SAFETY: 'SAFETY (सुरक्षितता)',
   },
   questionRange: (from, to, total) => `प्रश्न ${from}–${to} (एकूण ${total})`,
   progress: (section) => `${section} प्रगती`,
@@ -318,7 +321,7 @@ const MR: AuditStrings = {
     count === 1
       ? '1 प्रश्नाचे उत्तर अजून बाकी आहे. तो लाल रंगात दाखवला आहे.'
       : `${count} प्रश्नांची उत्तरे अजून बाकी आहेत. ते लाल रंगात दाखवले आहेत.`,
-  zonePhotos: (count, limit) => `या झोनमध्ये ${count} / ${limit} फोटो — सर्व 50 प्रश्नांसाठी मिळून.`,
+  zonePhotos: (count, limit) => `या झोनमध्ये ${count} / ${limit} फोटो — सर्व प्रश्नांसाठी मिळून.`,
   tooManyPhotos: (count, limit) =>
     `या झोनमध्ये ${count} फोटो आहेत. ${limit} फोटोंच्या मर्यादेत येण्यासाठी ${count - limit} फोटो काढा. नवीन फोटो घेण्यासाठी आणखी एक काढा.`,
   photoLimitReached: (limit) =>
