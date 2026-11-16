@@ -920,8 +920,13 @@ export function KaizenForm({
             />
           </View>
         ) : null}
-        {/* Drizzle's message is only the query; the database's own error is its `cause`. */}
-        <ErrorBanner message={error ? (error.cause ? String(error.cause) : error.message) : null} />
+        {/* A `cause` is the phone's own database failing (Drizzle's message is only the query):
+            a sentence the person can act on, with the database's words beneath for whoever
+            reads the screenshot. Any other error is already written for people. */}
+        <ErrorBanner
+          message={error ? (error.cause ? t.notSaved : error.message) : null}
+          detail={error?.cause ? String(error.cause) : null}
+        />
         <View style={styles.submit}>
           <Button testID="kaizen-submit" quiet title={submitTitle} icon="send" busy={submit.isPending} onPress={() => submit.mutate()} />
         </View>

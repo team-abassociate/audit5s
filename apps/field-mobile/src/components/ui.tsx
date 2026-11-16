@@ -772,12 +772,18 @@ export function Button({
  * `gb-notice`: a problem rendered where the user is looking — a crit rail, not a yellow
  * slip. The slip is reserved for the one thing someone must act on.
  */
-export function ErrorBanner({ message }: { message: string | null }) {
+/** `detail` is the technical cause, small beneath the sentence: there for a screenshot, not to be read. */
+export function ErrorBanner({ message, detail }: { message: string | null; detail?: string | null }) {
   const styles = useStyles();
   if (!message) return null;
   return (
     <View style={styles.notice} accessibilityRole="alert" accessibilityLiveRegion="polite">
       <Text style={styles.noticeText}>{message}</Text>
+      {detail ? (
+        <Text style={styles.muted} selectable>
+          {detail}
+        </Text>
+      ) : null}
     </View>
   );
 }

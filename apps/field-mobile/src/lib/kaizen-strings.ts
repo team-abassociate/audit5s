@@ -184,6 +184,8 @@ export interface KaizenStrings {
   newUnit: string;
   newPerson: string;
   badSaving: string;
+  /** The phone could not save the Kaizen to its own storage. */
+  notSaved: string;
   /** The savings calculator in the Benefits step. Its saving types and inputs are English (domain). */
   calc: {
     open: string;
@@ -457,6 +459,7 @@ const EN: KaizenStrings = {
   newUnit: 'New Unit',
   newPerson: 'New person',
   badSaving: 'Enter the saving in rupees, digits only.',
+  notSaved: 'This phone could not save the Kaizen. Try again; if it keeps failing, send a screenshot of this message to your Coordinator.',
   calc: {
     open: 'Calculate the saving',
     edit: 'Change the calculation',
@@ -724,6 +727,7 @@ const HI: KaizenStrings = {
   newUnit: 'नई यूनिट',
   newPerson: 'नया व्यक्ति',
   badSaving: 'बचत रुपयों में लिखें, केवल अंक।',
+  notSaved: 'यह फ़ोन काइज़ेन सहेज नहीं सका। फिर से कोशिश करें; बार-बार ऐसा हो तो इस संदेश का स्क्रीनशॉट अपने कोऑर्डिनेटर को भेजें।',
   calc: {
     open: 'बचत की गणना करें',
     edit: 'गणना बदलें',
@@ -991,6 +995,7 @@ const MR: KaizenStrings = {
   newUnit: 'नवीन युनिट',
   newPerson: 'नवीन व्यक्ती',
   badSaving: 'बचत रुपयांत लिहा, फक्त अंक.',
+  notSaved: 'हा फोन काइझेन जतन करू शकला नाही. पुन्हा प्रयत्न करा; वारंवार असे झाल्यास या संदेशाचा स्क्रीनशॉट तुमच्या कोऑर्डिनेटरला पाठवा.',
   calc: {
     open: 'बचतीची गणना करा',
     edit: 'गणना बदला',
