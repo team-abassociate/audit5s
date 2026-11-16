@@ -191,7 +191,7 @@ export function ChecklistsPage() {
                           <StatusChip shape="open">No published version</StatusChip>
                         )}
                       </Td>
-                      <Td>50</Td>
+                      <Td>{template.publishedTotalQuestions ?? '—'}</Td>
                     </tr>
                     {open && (
                       <tr className="gb-row-expand">
