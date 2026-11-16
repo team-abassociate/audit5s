@@ -13,6 +13,7 @@ import {
   View,
   useWindowDimensions,
   type ColorValue,
+  type LayoutRectangle,
   type PressableProps,
   type StyleProp,
   type TextInputProps,
@@ -953,10 +954,17 @@ export function SearchField({
 }
 
 /**
- * One of a few views of the same list. Selected is ink, like a pressed button.
+ * One of a few views of the same list. The chosen one is filled maroon.
  *
  * `scrolls`: each option is as wide as its word (at least 88) and the strip scrolls sideways
  * when they do not fit, rather than truncating a label to "वापस …".
+ *
+ * The fill is one pill behind the labels that glides to the chosen segment over `--dur-micro`
+ * (web: `layoutId` in admin-web `Segmented`). It is drawn only once that segment has been
+ * measured, so a screen opens with it in place. In a `scrolls` strip the segments differ in
+ * width, so the pill's width moves too: a leaf with no children, animated on the UI thread,
+ * the one exception to transform-only (a scaleX would stretch its corners). Under reduced
+ * motion it jumps; the label colour still fades.
  */
 export function Segmented<T extends string>({
   options,
@@ -970,8 +978,29 @@ export function Segmented<T extends string>({
   scrolls?: boolean;
 }) {
   const styles = useStyles();
+  const theme = useTheme();
+  const reduced = useReducedMotion();
+  const [frames, setFrames] = useState<Partial<Record<string, LayoutRectangle>>>({});
+  const frame = frames[value];
   const strip = (
     <View style={[styles.segmented, scrolls && styles.segmentedScrolls]} accessibilityRole="tablist">
+      {frame ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.segmentPill,
+            {
+              top: frame.y,
+              height: frame.height,
+              width: frame.width,
+              transform: [{ translateX: frame.x }],
+              transitionProperty: ['transform', 'width'],
+              ...transition,
+              transitionDuration: reduced ? 0 : theme.dur.micro,
+            },
+          ]}
+        />
+      ) : null}
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -980,15 +1009,15 @@ export function Segmented<T extends string>({
             accessibilityRole="tab"
             accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
-            style={[
-              styles.segment,
-              scrolls && styles.segmentScrolls,
-              selected && styles.segmentSelected,
-            ]}
+            onLayout={({ nativeEvent: { layout } }) => setFrames((all) => ({ ...all, [option.value]: layout }))}
+            style={[styles.segment, scrolls && styles.segmentScrolls]}
           >
-            <Text numberOfLines={1} style={[styles.segmentText, selected && styles.segmentTextSelected]}>
+            <Animated.Text
+              numberOfLines={1}
+              style={[styles.segmentText, selected && styles.segmentTextSelected, { transitionProperty: 'color', ...transition }]}
+            >
               {option.label}
-            </Text>
+            </Animated.Text>
           </Pressable>
         );
       })}
@@ -1713,7 +1742,7 @@ const useStyles = createThemedStyles((theme) => ({
   segmentScroller: { flexGrow: 1 },
   segmentedScrolls: { flexGrow: 1 },
   segmentScrolls: { flex: 0, flexGrow: 1, flexBasis: 'auto', minWidth: 88, paddingHorizontal: 12 },
-  segmentSelected: { backgroundColor: theme.color.primary },
+  segmentPill: { position: 'absolute', left: 0, backgroundColor: theme.color.primary, borderRadius: theme.radius.control },
   segmentText: { fontFamily: theme.family.semibold, fontSize: 13, color: theme.color.ink2 },
   segmentTextSelected: { color: theme.color.onPrimary },
   choices: { gap: theme.space.sm, marginBottom: theme.space.md },

@@ -1,5 +1,8 @@
 import type { SyncCatalogue } from '@audit5s/contracts';
-import { S_SECTION_ORDER, TOTAL_QUESTIONS } from '@audit5s/domain';
+import { S_SECTION_ORDER } from '@audit5s/domain';
+
+/** The fixture checklist: ten questions in every section, Safety included. */
+const TOTAL_QUESTIONS = S_SECTION_ORDER.length * 10;
 
 /**
  * The catalogue fixture the device-store suites share.

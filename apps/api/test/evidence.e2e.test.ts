@@ -8,7 +8,7 @@ import {
   type Page,
   type UploadIntentResponse,
 } from '@audit5s/contracts';
-import { S_SECTION_ORDER } from '@audit5s/domain';
+import { S_SECTION_ORDER as ALL_SECTIONS } from '@audit5s/domain';
 import {
   TINY_JPEG,
   captureEvidence,
@@ -18,6 +18,9 @@ import {
   stopWorld,
   type TestWorld,
 } from './harness';
+
+/** The fixture checklists are 1S–5S only; Safety is covered in checklist-import.e2e. */
+const S_SECTION_ORDER = ALL_SECTIONS.filter((section) => section !== 'SAFETY');
 
 /**
  * The evidence surface (§8.7), the two-phase media commit (§9.4) and the upload controls

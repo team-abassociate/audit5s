@@ -7,7 +7,10 @@ import {
   type ReportZone,
   type SSection,
 } from '@audit5s/contracts';
-import { BRAND_TOKENS, RATING_BANDS, RESPONSE_TOKENS, S_SECTION_ORDER } from '@audit5s/domain';
+import { BRAND_TOKENS, RATING_BANDS, RESPONSE_TOKENS, S_SECTION_ORDER as ALL_SECTIONS } from '@audit5s/domain';
+
+/** The fixture audits predate Safety: 1S–5S only, so no Safety row may print. */
+const S_SECTION_ORDER = ALL_SECTIONS.filter((section) => section !== 'SAFETY');
 
 /**
  * **The fixed payload** the byte-stability suite renders (PART 15.7).

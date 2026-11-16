@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ResponseValue } from '@audit5s/contracts';
-import { S_SECTION_ORDER, TOTAL_QUESTIONS, scoreZone } from '@audit5s/domain';
+import { S_SECTION_ORDER, scoreZone } from '@audit5s/domain';
 import {
   abortLocalAudit,
   addLocalZone,
@@ -40,6 +40,9 @@ import {
   FIXTURE_ZONE_A as ZONE_A,
   catalogue,
 } from './test-fixtures';
+
+/** The fixture checklist: ten questions in every section, Safety included. */
+const TOTAL_QUESTIONS = S_SECTION_ORDER.length * 10;
 
 /**
  * The device's audit store, against **real SQLite**.
@@ -914,16 +917,16 @@ describe('a complete offline Zone — the Phase 3 acceptance row, device half', 
     );
     // Fifty answers, forty-seven of them applicable: `COUNT(numeric_score)` *is* the
     // applicable count on the device too, exactly as QR-1 makes it on the server.
-    expect(answered[0]).toEqual([50, 47]);
+    expect(answered[0]).toEqual([TOTAL_QUESTIONS, TOTAL_QUESTIONS - 3]);
 
     const onDevice = await scoreLocalZone(database, auditZoneId);
-    expect(onDevice.totals.applicableQuestions).toBe(47);
+    expect(onDevice.totals.applicableQuestions).toBe(TOTAL_QUESTIONS - 3);
     expect(onDevice.totals.naQuestions).toBe(3);
     expect(onDevice.totals.scorePercentage).not.toBeNull();
 
     // Everything the server has to hear about is queued, and nothing waited for it.
     const queued = await listOutbox(database);
-    expect(queued.filter((item) => item.entityType === 'question_response')).toHaveLength(50);
+    expect(queued.filter((item) => item.entityType === 'question_response')).toHaveLength(TOTAL_QUESTIONS);
     expect(queued.some((item) => item.entityType === 'audit' && item.operation === 'complete')).toBe(
       true,
     );

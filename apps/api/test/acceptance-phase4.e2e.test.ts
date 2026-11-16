@@ -14,7 +14,7 @@ import {
   type SyncStatus,
   type UploadIntentResponse,
 } from '@audit5s/contracts';
-import { S_SECTION_ORDER, TOTAL_QUESTIONS } from '@audit5s/domain';
+import { S_SECTION_ORDER as ALL_SECTIONS } from '@audit5s/domain';
 import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 
 // The **real device store and the real sync engine**, imported from the mobile app rather
@@ -46,6 +46,10 @@ import { createNodeExecutor } from '../../field-mobile/src/lib/db/node-executor'
 import { runSync } from '../../field-mobile/src/lib/sync/engine';
 import { TransportError, type SyncTransport } from '../../field-mobile/src/lib/sync/transport';
 import { checkLogoutGate, readSyncStatus } from '../../field-mobile/src/lib/sync/status';
+
+/** The fixture checklists are 1S–5S only; Safety is covered in checklist-import.e2e. */
+const S_SECTION_ORDER = ALL_SECTIONS.filter((section) => section !== 'SAFETY');
+const TOTAL_QUESTIONS = S_SECTION_ORDER.length * 10;
 
 /**
  * **The Phase 4 acceptance row**, verified literally:

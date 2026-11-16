@@ -259,31 +259,20 @@ export default function AuditsScreen() {
             ) : null,
         }}
       />
-      {board === 'ASSIGNED' ? (
-        <SectionList
-          key="assigned"
-          sections={assignmentSections}
-          keyExtractor={(assignment) => assignment.id}
-          renderItem={renderAssignment}
-          renderSectionHeader={sectionHead}
-          stickySectionHeadersEnabled={false}
-          ListHeaderComponent={header}
-          ListEmptyComponent={empty}
-          refreshControl={refresh}
-        />
-      ) : (
-        <SectionList
-          key={board}
-          sections={auditSections}
-          keyExtractor={(audit) => audit.id}
-          renderItem={renderAudit}
-          renderSectionHeader={sectionHead}
-          stickySectionHeadersEnabled={false}
-          ListHeaderComponent={header}
-          ListEmptyComponent={empty}
-          refreshControl={refresh}
-        />
-      )}
+      {/* One list for every board, not one per board: a remount would rebuild the header and
+          the board switch's pill could not glide (plans/007). */}
+      <SectionList<Audit | AuditAssignment, { zone: ZoneOption | null }>
+        sections={board === 'ASSIGNED' ? assignmentSections : auditSections}
+        keyExtractor={(row) => row.id}
+        renderItem={({ item }) =>
+          board === 'ASSIGNED' ? renderAssignment({ item: item as AuditAssignment }) : renderAudit({ item: item as Audit })
+        }
+        renderSectionHeader={sectionHead}
+        stickySectionHeadersEnabled={false}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        refreshControl={refresh}
+      />
       <ActionSheet visible={adding} title="New audit" onClose={() => setAdding(false)} actions={newAudit} />
       <CallCrossAuditSheet unitId={ownUnitId} visible={callingCross} onClose={() => setCallingCross(false)} />
       <ZoneFilterSheet

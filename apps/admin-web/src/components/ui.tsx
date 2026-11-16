@@ -17,7 +17,11 @@ import type {
   RefObject,
   SelectHTMLAttributes,
 } from 'react';
+import { LayoutGroup } from 'motion/react';
+import * as m from 'motion/react-m';
 import { cn } from '@/lib/cn';
+import { ledgerMotion } from '@/lib/motion';
+import { useToken } from '@/lib/tokens';
 
 export { SidePanel, useRoutedPanel } from './SidePanel';
 export { StatusChip, BandLabel, type StatusShape } from './Status';
@@ -275,19 +279,31 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
   label: string;
 }) {
+  // Each control gets its own pill: two on one screen must not fly theirs between them.
+  const group = useId();
+  // Set through `style` so Motion corrects the radius while the pill stretches.
+  const radius = useToken()('--radius-chip');
   return (
-    <div className="gb-seg" role="group" aria-label={label}>
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-pressed={option.value === value}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <LayoutGroup id={group}>
+      <div className="gb-seg" role="group" aria-label={label}>
+        {options.map((option) => {
+          const on = option.value === value;
+          return (
+            <button key={option.value} type="button" aria-pressed={on} onClick={() => onChange(option.value)}>
+              {on && (
+                <m.span
+                  layoutId="pill"
+                  className="gb-seg-pill"
+                  transition={ledgerMotion().micro}
+                  style={{ borderRadius: radius }}
+                />
+              )}
+              <span className="gb-seg-label">{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </LayoutGroup>
   );
 }
 

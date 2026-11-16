@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ResponseValue, SSection } from '@audit5s/contracts';
-import { S_SECTION_ORDER, QUESTIONS_PER_SECTION, TOTAL_QUESTIONS } from './sections';
+import { S_SECTION_ORDER } from './sections';
 import {
   formatScore,
   numericScoreFor,
@@ -21,6 +21,9 @@ import {
  * its parent rather than dragging it to zero, and that a roll-up sums marks rather than
  * averaging percentages.
  */
+
+const QUESTIONS_PER_SECTION = 10;
+const TOTAL_QUESTIONS = S_SECTION_ORDER.length * QUESTIONS_PER_SECTION;
 
 function responses(section: SSection, values: readonly ResponseValue[]): ScorableResponse[] {
   return values.map((value) => ({ section, value }));
@@ -124,10 +127,20 @@ describe('a fully-NA section is null, not zero (D4)', () => {
 });
 
 describe('scoreZone', () => {
-  it('always returns all five sections in workbook order, even with no responses', () => {
+  it('always returns 1S–5S in workbook order, even with no responses, and no unasked Safety', () => {
     const zone = scoreZone([]);
-    expect(zone.sections.map((s) => s.section)).toEqual([...S_SECTION_ORDER]);
+    expect(zone.sections.map((s) => s.section)).toEqual(
+      S_SECTION_ORDER.filter((s) => s !== 'SAFETY'),
+    );
     expect(zone.totals.scorePercentage).toBeNull();
+  });
+
+  it('scores Safety like any S and counts it in the Zone total (owner, 2026-11-16)', () => {
+    const zone = scoreZone([...section('S1_SORT', 'SCORE_2'), ...section('SAFETY', 'SCORE_0')]);
+    expect(zone.sections.map((s) => s.section).at(-1)).toBe('SAFETY');
+    expect(zone.sections.find((s) => s.section === 'SAFETY')?.scorePercentage).toBe(0);
+    expect(zone.totals).toMatchObject({ rawScore: 20, maxScore: 40, scorePercentage: 50 });
+    expect(sumSections([zone, scoreZone(section('S1_SORT', 'SCORE_2'))]).at(-1)?.maxScore).toBe(20);
   });
 
   it('produces the §8.6 worked example', () => {
@@ -172,7 +185,9 @@ describe('roll-ups sum marks, never average percentages (§10.3-C)', () => {
     // One perfect ten-question Zone and one all-zero fifty-question Zone. The mean of the
     // percentages is 50%; the correct answer is 20/120 = 16.667%.
     const small = scoreZone(section('S1_SORT', 'SCORE_2'));
-    const large = scoreZone(S_SECTION_ORDER.flatMap((s) => section(s, 'SCORE_0')));
+    const large = scoreZone(
+      S_SECTION_ORDER.filter((s) => s !== 'SAFETY').flatMap((s) => section(s, 'SCORE_0')),
+    );
 
     const audit = rollUpBreakdowns([small, large]);
     expect(audit.totals.rawScore).toBe(20);

@@ -2595,7 +2595,15 @@ li:has(> .gb-menu-item--danger) {
 }
 
 /* The auditors picked for one assignment: removable tags under the search box. */
+/* New Unit's steps. The clip keeps a taller leaving step inside the dialog; its margin keeps
+   the focus ring (2px at a 2px offset) visible. */
+.gb-steps {
+  position: relative;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
 .gb-picked {
+  position: relative; /* Motion's popLayout places a leaving chip against it */
   list-style: none;
   margin: 8px 0 0;
   padding: 0;
@@ -3149,18 +3157,34 @@ li:has(> .gb-menu-item--danger) {
   font-weight: 600;
   padding: 5px 12px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-chip);
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background-color var(--dur-micro) var(--ease-out);
+  position: relative;
+  /* The label's colour follows the pill, so it is never white on --surface. */
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
 }
 .gb-seg button:hover:not([aria-pressed='true']) {
   background: var(--chip);
 }
 .gb-seg button[aria-pressed='true'] {
-  background: var(--primary);
   color: var(--on-primary);
+}
+/* The maroon fill; Motion slides it to the chosen option. */
+.gb-seg-pill {
+  position: absolute;
+  inset: 0;
+  background: var(--primary);
+}
+.gb-seg-label {
+  position: relative;
+}
+/* ZoneRun's section tabs share the look but not the pill: tabs don't slide. */
+.gb-seg[role='tablist'] button[aria-pressed='true'] {
+  background: var(--primary);
 }
 .gb-module {
   padding: 0 14px 12px;

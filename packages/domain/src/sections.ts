@@ -11,15 +11,17 @@ export const S_SECTION_LABELS: Readonly<Record<SSection, string>> = {
   S3_SHINE: '3S – SEISO (SHINE)',
   S4_STANDARDIZE: '4S – SEIKETSU (STANDARDIZE)',
   S5_SUSTAIN: '5S – SHITSUKE (SUSTAIN)',
+  SAFETY: 'SAFETY',
 } as const;
 
-/** Short axis labels for the 5S performance web. */
+/** Short axis labels for the performance web. */
 export const S_SECTION_SHORT_LABELS: Readonly<Record<SSection, string>> = {
   S1_SORT: '1S',
   S2_SET_IN_ORDER: '2S',
   S3_SHINE: '3S',
   S4_STANDARDIZE: '4S',
   S5_SUSTAIN: '5S',
+  SAFETY: 'Safety',
 } as const;
 
 /** Workbook and report order. */
@@ -29,12 +31,29 @@ export const S_SECTION_ORDER: readonly SSection[] = [
   'S3_SHINE',
   'S4_STANDARDIZE',
   'S5_SUSTAIN',
+  'SAFETY',
 ] as const;
 
-/** Confirmed against the real workbook: 5 sections × 10 = 50. */
-export const QUESTIONS_PER_SECTION = 10;
-export const TOTAL_QUESTIONS = S_SECTION_ORDER.length * QUESTIONS_PER_SECTION;
+/** Any number of questions per section, including none (owner, 2026-11-16). */
 export const MAX_MARKS_PER_QUESTION = 2;
+
+/**
+ * Whether a section belongs in a breakdown. 1S–5S always do (an all-NA S still shows, as
+ * excluded); Safety only where its checklist asked it, so an audit taken before Safety
+ * existed shows no empty Safety row.
+ */
+export function isSectionShown(section: SSection, asked: boolean): boolean {
+  return section !== 'SAFETY' || asked;
+}
+
+/** The sections, in order, that appear in any of these breakdowns. */
+export function sectionsPresent(
+  breakdowns: Iterable<readonly { section: SSection }[] | undefined>,
+): SSection[] {
+  const seen = new Set<SSection>();
+  for (const list of breakdowns) for (const entry of list ?? []) seen.add(entry.section);
+  return S_SECTION_ORDER.filter((section) => seen.has(section));
+}
 
 export function sectionLabel(section: SSection): string {
   return S_SECTION_LABELS[section];

@@ -94,7 +94,7 @@ describe('Phase 2 acceptance', () => {
     // therefore no longer runs 1…50.
     const broken = await buildWorkbook([
       { name: 'Premises' },
-      { name: 'Office', counts: [10, 10, 9, 10, 10] },
+      { name: 'Office', sr: (sr) => (sr >= 20 ? sr + 1 : sr) },
     ]);
     const brokenJobId = await uploadAndValidate(broken, 'workbook-draft.xlsx');
 
@@ -108,9 +108,7 @@ describe('Phase 2 acceptance', () => {
 
     const office = report.sheets.find((sheet) => sheet.sheetName === 'Office')!;
     expect(office.severity).toBe('ERROR');
-    expect(office.messages).toContain(
-      'Section S3_SHINE has 9 questions; exactly 10 are required',
-    );
+    expect(report.errors.some((row) => row.messages.join(' ').includes('expected 20'))).toBe(true);
 
     // Row-level, not merely a verdict on the file: each error names the sheet row it came
     // from, which is what makes the report usable in front of the spreadsheet.

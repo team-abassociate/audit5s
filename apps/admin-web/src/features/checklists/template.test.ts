@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isChecklistSheet, parseChecklistSheet, validateChecklistSheet } from '@audit5s/domain';
+import {
+  S_SECTION_ORDER,
+  isChecklistSheet,
+  parseChecklistSheet,
+  validateChecklistSheet,
+} from '@audit5s/domain';
 import { TEMPLATE_SHEET_NAME, checkDraft, templateRows, xlsx } from './template';
 
 describe('the checklist template', () => {
@@ -17,13 +22,15 @@ describe('the checklist template', () => {
     const validated = validateChecklistSheet(parsed);
     expect(validated.messages).toEqual([]);
     expect(validated.severity).toBe('OK');
-    expect(parsed.questions).toHaveLength(50);
+    expect(parsed.questions).toHaveLength(30);
+    expect(parsed.questions.filter((q) => q.section === 'SAFETY')).toHaveLength(5);
   });
 
   it('carries an editor draft into exactly the questions the import would commit', () => {
     const draft = {
       name: 'Paint Shop',
       questions: Array.from({ length: 50 }, (_, i) => ({
+        section: S_SECTION_ORDER[Math.floor(i / 10)]!,
         text: ` Check  point\n${i + 1} `,
         hi: i % 2 ? `जाँच ${i + 1}` : '',
         mr: '',
@@ -47,9 +54,15 @@ describe('the checklist template', () => {
   });
 
   it('names the blank and the duplicate questions, and only those', () => {
-    const questions = Array.from({ length: 50 }, (_, i) => ({ text: `Q${i + 1}`, hi: '', mr: '' }));
-    questions[2] = { text: '  ', hi: '', mr: '' };
-    questions[4] = { text: 'Q4', hi: '', mr: 'not devanagari' };
+    const section = S_SECTION_ORDER[0]!;
+    const questions = Array.from({ length: 50 }, (_, i) => ({
+      section: S_SECTION_ORDER[Math.floor(i / 10)]!,
+      text: `Q${i + 1}`,
+      hi: '',
+      mr: '',
+    }));
+    questions[2] = { section, text: '  ', hi: '', mr: '' };
+    questions[4] = { section, text: 'Q4', hi: '', mr: 'not devanagari' };
     const check = checkDraft({ name: 'Bad/Name', questions });
     expect(check.name).toMatch(/Leave out/);
     expect(check.errors.filter(Boolean)).toEqual(['Write the question in English']);

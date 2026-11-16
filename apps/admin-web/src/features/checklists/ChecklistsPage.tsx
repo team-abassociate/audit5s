@@ -91,7 +91,7 @@ export function ChecklistsPage() {
       <Card>
         <CardHeader
           title="Checklists"
-          description="One template per department, five sections of ten questions each."
+          description="One template per department: 1S to 5S, then Safety, with any number of questions in each."
           action={
             can('checklist_import', 'upload') ? (
               <div className="flex flex-wrap gap-2">
@@ -354,7 +354,9 @@ function QuestionList({ versionId }: { versionId: string }) {
           here.
         </p>
       </div>
-      {S_SECTION_ORDER.map((section) => (
+      {S_SECTION_ORDER.filter((section) =>
+        detail.data!.questions.some((question) => question.section === section),
+      ).map((section) => (
         <div key={section}>
           <p className="text-xs font-semibold tracking-wide text-muted uppercase">
             {SECTION_LABEL[section]}

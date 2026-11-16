@@ -22,6 +22,7 @@ import {
   S_SECTION_ORDER,
   awaitsResponse,
   bandFor,
+  isSectionShown,
   istDateKey,
   percentageOf,
   reportZoneLabel,
@@ -162,12 +163,12 @@ export function freezePayload(input: FreezeInput): ReportPayload {
 
 // ------------------------------------------------------------------------------- zones
 
-/** One audit Zone's five S scores, in S order; an S with no row is all zeros. */
+/** One audit Zone's S scores, in S order; an S with no row is all zeros, an unasked Safety absent. */
 function sectionsOf(auditZoneId: string, sectionScores: FreezeInput['sectionScores']): SectionScorePayload[] {
-  return S_SECTION_ORDER.map((section) => {
-    const row = sectionScores.find(
-      (score) => score.auditZoneId === auditZoneId && score.section === section,
-    );
+  const rowOf = (section: SSection) =>
+    sectionScores.find((score) => score.auditZoneId === auditZoneId && score.section === section);
+  return S_SECTION_ORDER.filter((section) => isSectionShown(section, Boolean(rowOf(section)))).map((section) => {
+    const row = rowOf(section);
     return {
       section,
       applicable: row?.applicable ?? 0,
@@ -615,7 +616,8 @@ export function unitTrend(summaries: Rows<'readIssuedSummaries'>): ReportTrend {
 function sumSectionsAcross(
   zones: readonly { sections: readonly SectionScorePayload[] }[],
 ): SectionScorePayload[] {
-  return S_SECTION_ORDER.map((section) => {
+  const asked = (section: SSection) => zones.some((zone) => zone.sections.some((s) => s.section === section));
+  return S_SECTION_ORDER.filter((section) => isSectionShown(section, asked(section))).map((section) => {
     const parts = zones.map((zone) => zone.sections.find((s) => s.section === section));
     const applicable = parts.reduce((sum, part) => sum + (part?.applicable ?? 0), 0);
     const na = parts.reduce((sum, part) => sum + (part?.na ?? 0), 0);

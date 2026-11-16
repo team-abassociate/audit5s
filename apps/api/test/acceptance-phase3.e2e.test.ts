@@ -8,7 +8,7 @@ import {
   type SSection,
   type SyncCatalogue,
 } from '@audit5s/contracts';
-import { S_SECTION_ORDER, TOTAL_QUESTIONS } from '@audit5s/domain';
+import { S_SECTION_ORDER as ALL_SECTIONS } from '@audit5s/domain';
 import { loginFromDevice, startWorld, stopWorld, type TestWorld } from './harness';
 
 // The **real device store**, imported from the mobile app rather than reimplemented here.
@@ -40,6 +40,10 @@ import {
   type LocalDatabase,
 } from '../../field-mobile/src/lib/db/local-database';
 import { createNodeExecutor } from '../../field-mobile/src/lib/db/node-executor';
+
+/** The fixture checklists are 1S–5S only; Safety is covered in checklist-import.e2e. */
+const S_SECTION_ORDER = ALL_SECTIONS.filter((section) => section !== 'SAFETY');
+const TOTAL_QUESTIONS = S_SECTION_ORDER.length * 10;
 
 /**
  * **The Phase 3 acceptance row**, verified literally:

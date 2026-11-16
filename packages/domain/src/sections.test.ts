@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  QUESTIONS_PER_SECTION,
   S_SECTION_LABELS,
   S_SECTION_ORDER,
-  TOTAL_QUESTIONS,
   responseMarks,
   sectionLabel,
 } from './sections';
@@ -15,20 +13,15 @@ describe('section labels', () => {
     expect(sectionLabel('S3_SHINE')).toBe('3S – SEISO (SHINE)');
     expect(sectionLabel('S4_STANDARDIZE')).toBe('4S – SEIKETSU (STANDARDIZE)');
     expect(sectionLabel('S5_SUSTAIN')).toBe('5S – SHITSUKE (SUSTAIN)');
+    expect(sectionLabel('SAFETY')).not.toMatch(/6S/);
   });
 
   it('covers every section in workbook order', () => {
-    expect(S_SECTION_ORDER).toHaveLength(5);
+    expect(S_SECTION_ORDER).toHaveLength(6);
+    expect(S_SECTION_ORDER.at(-1)).toBe('SAFETY');
     for (const section of S_SECTION_ORDER) {
       expect(S_SECTION_LABELS[section]).toBeTruthy();
     }
-  });
-});
-
-describe('question counts', () => {
-  it('is 5 × 10 = 50, confirmed against the real workbook (A1)', () => {
-    expect(QUESTIONS_PER_SECTION).toBe(10);
-    expect(TOTAL_QUESTIONS).toBe(50);
   });
 });
 

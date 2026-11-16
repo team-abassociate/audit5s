@@ -62,6 +62,8 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-86 | A phone opening the portal goes to the field app, with a way back | Settled |
 | R-88 | A Kaizen has a Zone, a department or both; a Coordinator may record one; photos can be edited | Settled |
 
+| R-85 | Motion in admin-web, for exits and layout only | Settled |
+
 ---
 
 ## R-1 — Document precedence
@@ -3148,3 +3150,43 @@ one. **Changes R-48(b), (e), (i) and R-85's "a Kaizen keeps its Zone".** (R-87 i
   a later "Edit photo" can undo earlier marks, crops and turns. It reopens on the whole photo, with
   the saved crop as a box to adjust or undo. A photo edited before v17 opens flattened, as it has no
   original. An Erase tool removes any one mark, whichever order it was made in.
+
+## R-85 — Motion in admin-web, for exits and layout only
+
+**Settled 2026-11-09; owner approved.** admin-web uses Motion (`motion@14.10.1`, `motion/react`)
+for the two things CSS cannot do: animate an element after React has removed it, and slide its
+siblings into the gap. Plan: [`plans/006-motion-library.md`](plans/006-motion-library.md).
+
+- **Where:** the Schedule-audit chips (exit fade, the rest slide in), the New Unit steps (slide
+  12px with a fade, by direction), the New Unit Zone rows (rows below a removed one slide up), and
+  the segmented-control pill (glides to the new choice). ZoneRun's section tabs keep a plain fill.
+- **Timings come from the tokens.** `apps/admin-web/src/lib/motion.ts` reads `--dur-micro`,
+  `--dur-short` and `--ease-out` from `ledger-tokens.css` at runtime; there are no durations in
+  TypeScript (LEDGER rule 1). A test fails if those tokens are renamed.
+- **Bundle:** `LazyMotion` with `strict` at the root; components use `m.*` from
+  `motion/react-m`, and `domMax` loads in its own async chunk.
+- **Reduced motion:** `MotionConfig reducedMotion="user"` drops movement and keeps fades (rule 9).
+- **Declined:** variants and stagger, springs, `whileTap`/`whileHover`, drag and `Reorder`,
+  scroll effects, motion values and `useAnimate`, the dashboard line draw-in, view transitions and
+  Motion+. Each makes people wait on screens they open all day, duplicates CSS, or has nothing to
+  drive it (table in the plan). The side panel keeps its CSS exit.
+- **field-mobile keeps Reanimated.** Motion is web only.
+
+
+## R-86 — Any number of questions per S, and a Safety section after 5S
+
+**Settled 2026-11-16; owner's ruling.** Supersedes CQ-1's five-by-ten shape (A1).
+
+- **No count is required.** A checklist may hold any number of questions in each S, including
+  none; the import, the publish check and the database refuse only an empty version or a `Sr.`
+  sequence with gaps. A missing 1S–5S header is a warning, not an error. The editor adds and
+  removes questions per section; a blank checklist starts with five per section.
+- **Safety follows 5S** as a sixth section (`SAFETY`, migration 0066). It is read from the
+  workbook's `6S – SAFETY` block, and the `6S AUDIT CHECK SHEET` title is accepted beside `5S`.
+  The app never calls it "6S": it is labelled Safety.
+- **Safety is scored like any S** and counts toward the Zone and audit totals, as the workbook's
+  "Max score = 60" does.
+- **Safety appears only where it was asked.** A Zone whose checklist had no Safety questions
+  has no Safety row, so audits taken before this ruling, and their reports, are unchanged.
+- **Published versions are untouched.** New questions arrive as new versions through the import
+  (`New 6S_audit_checklist_30_questions_revised.xlsx`: eleven departments, 5 per S + 5 Safety).

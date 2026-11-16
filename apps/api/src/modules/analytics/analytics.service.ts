@@ -19,7 +19,7 @@ import {
   type ZoneLeaderActivity,
   type ZoneRankingItem,
 } from '@audit5s/contracts';
-import { S_SECTION_ORDER, sumTotals, type ScopeContext, type ScoreTotals } from '@audit5s/domain';
+import { S_SECTION_ORDER, isSectionShown, sumTotals, type ScopeContext, type ScoreTotals } from '@audit5s/domain';
 import { QueueService } from '../../infrastructure/queue/queue.service';
 import { AppError } from '../../common/errors';
 import { localDay } from './analytics-rollup.worker';
@@ -193,7 +193,7 @@ export class AnalyticsService {
         currentScorePercentage: latestScore(latest, section, 1),
         previousScorePercentage: latestScore(latest, section, 2),
         sampleCount: rows.filter((row) => row.section === section).reduce((sum, row) => sum + row.sampleCount, 0),
-      })),
+      })).filter((axis) => isSectionShown(axis.section, axis.sampleCount > 0)),
       trend,
     };
   }
