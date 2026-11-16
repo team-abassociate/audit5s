@@ -42,6 +42,8 @@ export const checklistTemplateSchema = z.object({
   /** The currently published version, when there is one. At most one exists per template. */
   publishedVersionId: uuidSchema.nullable(),
   publishedVersionNumber: z.number().int().nullable(),
+  /** How many questions the published version holds; absent from older servers. */
+  publishedTotalQuestions: z.number().int().nullable().optional(),
 });
 export type ChecklistTemplate = z.infer<typeof checklistTemplateSchema>;
 

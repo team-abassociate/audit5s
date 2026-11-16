@@ -171,6 +171,7 @@ describe('publishing', () => {
     )!;
     expect(template.publishedVersionId).toBe(draft.id);
     expect(template.publishedVersionNumber).toBe(1);
+    expect(template.publishedTotalQuestions).toBe(50);
   });
 });
 

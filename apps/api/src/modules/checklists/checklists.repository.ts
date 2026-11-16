@@ -75,6 +75,7 @@ export class ChecklistsRepository extends BaseRepository {
           updatedAt: checklistTemplates.updatedAt,
           publishedVersionId: published.id,
           publishedVersionNumber: published.versionNumber,
+          publishedTotalQuestions: published.totalQuestions,
         })
         .from(checklistTemplates)
         // At most one published version per template, so the join cannot fan out — that
@@ -126,6 +127,7 @@ export class ChecklistsRepository extends BaseRepository {
           updatedAt: checklistTemplates.updatedAt,
           publishedVersionId: published.id,
           publishedVersionNumber: published.versionNumber,
+          publishedTotalQuestions: published.totalQuestions,
         })
         .from(checklistTemplates)
         // At most one published version per template, so the join cannot fan out — that

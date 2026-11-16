@@ -310,6 +310,7 @@ function toTemplate(row: ChecklistTemplateRow): ChecklistTemplate {
     updatedAt: row.updatedAt.toISOString(),
     publishedVersionId: row.publishedVersionId,
     publishedVersionNumber: row.publishedVersionNumber,
+    publishedTotalQuestions: row.publishedTotalQuestions,
   };
 }
 
