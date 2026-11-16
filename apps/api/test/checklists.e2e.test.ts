@@ -132,6 +132,31 @@ describe('publishing', () => {
     expect(superseded.supersededAt).not.toBeNull();
   });
 
+  it('switches back to an earlier version by publishing it again', async () => {
+    const v1 = await importDraft('Premises');
+    await world.request('POST', `${base}/checklist-versions/${v1.id}/publish`, { token: token() });
+    const v2 = await importDraft('Premises', (section, position) =>
+      section === 1 && position === 1 ? 'Premises S1 Q1 revised' : `Premises S${section} Q${position}`,
+    );
+    await world.request('POST', `${base}/checklist-versions/${v2.id}/publish`, { token: token() });
+
+    const back = await world.request('POST', `${base}/checklist-versions/${v1.id}/publish`, {
+      token: token(),
+    });
+    expect(back.status, JSON.stringify(back.body)).toBe(201);
+
+    const listed = await world.request(
+      'GET',
+      `${base}/checklist-versions?templateId=${v1.templateId}&limit=50`,
+      { token: token() },
+    );
+    const versions = (listed.body as Page<ChecklistVersion>).data;
+    const first = versions.find((version) => version.id === v1.id)!;
+    expect(first.status).toBe('PUBLISHED');
+    expect(first.supersededByVersionId).toBeNull();
+    expect(versions.find((version) => version.id === v2.id)!.status).toBe('SUPERSEDED');
+  });
+
   it('shows the template’s currently published version in the catalogue', async () => {
     const draft = await importDraft('Premises');
     await world.request('POST', `${base}/checklist-versions/${draft.id}/publish`, {

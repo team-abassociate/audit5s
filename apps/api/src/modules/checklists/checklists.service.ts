@@ -183,7 +183,9 @@ export class ChecklistsService {
   }
 
   /**
-   * `DRAFT → PUBLISHED`, with the 5×10 check (CQ-1) applied one last time.
+   * `DRAFT → PUBLISHED`, with the shape check (CQ-1) applied one last time. A SUPERSEDED or
+   * ARCHIVED version may be published again too (owner, 2026-11-16): that is how a Super
+   * Admin switches a department back to an earlier checklist.
    *
    * The importer already refuses a malformed sheet, and the database refuses a bad
    * `total_questions`. This check is neither of those made redundant: it is the guard on
@@ -192,10 +194,10 @@ export class ChecklistsService {
    */
   async publish(scope: ScopeContext, versionId: string): Promise<ChecklistVersion> {
     const version = await this.getVersion(scope, versionId);
-    if (version.status !== 'DRAFT') {
+    if (version.status === 'PUBLISHED') {
       throw AppError.conflict(
         'CHECKLIST_VERSION_NOT_DRAFT',
-        `Only a draft may be published; this version is ${version.status}`,
+        'This version is already the published one',
       );
     }
 
@@ -218,7 +220,7 @@ export class ChecklistsService {
     if (result.outcome === 'NOT_DRAFT') {
       throw AppError.conflict(
         'CHECKLIST_VERSION_NOT_DRAFT',
-        `Only a draft may be published; this version is ${result.status}`,
+        'This version is already the published one',
       );
     }
 
