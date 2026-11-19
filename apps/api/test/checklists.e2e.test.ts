@@ -157,6 +157,31 @@ describe('publishing', () => {
     expect(versions.find((version) => version.id === v2.id)!.status).toBe('SUPERSEDED');
   });
 
+  it('publishes two versions chosen at once one after the other, never two at a time', async () => {
+    const v1 = await importDraft('Premises');
+    await world.request('POST', `${base}/checklist-versions/${v1.id}/publish`, { token: token() });
+    const v2 = await importDraft('Premises', (section, position) =>
+      section === 1 && position === 1 ? 'Premises S1 Q1 revised' : `Premises S${section} Q${position}`,
+    );
+    await world.request('POST', `${base}/checklist-versions/${v2.id}/publish`, { token: token() });
+    const v3 = await importDraft('Premises', (section, position) =>
+      section === 2 && position === 1 ? 'Premises S2 Q1 revised' : `Premises S${section} Q${position}`,
+    );
+
+    const both = await Promise.all(
+      [v1, v3].map((version) =>
+        world.request('POST', `${base}/checklist-versions/${version.id}/publish`, { token: token() }),
+      ),
+    );
+    expect(both.map((response) => response.status)).toEqual([201, 201]);
+
+    const { rows } = await world.owner.query(
+      `SELECT count(*)::int AS n FROM checklist_version WHERE template_id = $1 AND status = 'PUBLISHED'`,
+      [v1.templateId],
+    );
+    expect(rows[0].n).toBe(1);
+  });
+
   it('shows the template’s currently published version in the catalogue', async () => {
     const draft = await importDraft('Premises');
     await world.request('POST', `${base}/checklist-versions/${draft.id}/publish`, {

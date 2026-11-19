@@ -309,6 +309,20 @@ export class ChecklistsRepository extends BaseRepository {
         .limit(1);
 
       if (!version) return { outcome: 'NOT_FOUND' as const };
+
+      // One publish per template at a time: two at once (two versions chosen together) would
+      // both supersede the same row, and the second would trip `checklist_version_one_published`.
+      // The status is read again after the lock, so a double click finds it already published.
+      await tx
+        .select({ id: checklistTemplates.id })
+        .from(checklistTemplates)
+        .where(eq(checklistTemplates.id, version.templateId))
+        .for('update');
+      const [current] = await tx
+        .select({ status: checklistVersions.status })
+        .from(checklistVersions)
+        .where(eq(checklistVersions.id, versionId));
+      version.status = current!.status;
       if (version.status === 'PUBLISHED') return { outcome: 'NOT_DRAFT' as const, status: version.status };
 
       const [previous] = await tx

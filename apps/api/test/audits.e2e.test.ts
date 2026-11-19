@@ -888,6 +888,26 @@ describe('question responses', () => {
     expect(rows[0].n).toBe(1);
   });
 
+  it('takes copies of one answer that arrive together, as a retry overlapping the original', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-53', 'Overlapping retry zone');
+    const { auditZoneId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+    const responseId = randomUUID();
+    const body = { checklistQuestionId: questionIds[0], value: 'SCORE_1' as const, answeredAt: new Date().toISOString() };
+
+    const copies = await Promise.all(
+      [1, 2, 3, 4].map(() =>
+        world.request('PUT', `${base}/audit-zones/${auditZoneId}/responses/${responseId}`, { token: consultantToken, body }),
+      ),
+    );
+    expect(copies.map((copy) => copy.status)).toEqual([200, 200, 200, 200]);
+  });
+
   it('derives numeric_score from the enum, never from the client (QR-1)', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
     const zoneId = await createZone('Z-36', 'QR-1 zone');

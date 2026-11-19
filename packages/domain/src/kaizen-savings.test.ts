@@ -131,4 +131,11 @@ describe('kaizen savings calculator', () => {
   it('never fills a negative saving', () => {
     expect(savingSummary([{ type: 'jobtime', values: { tb: 10, ta: 20, jUnit: 'sec', qty: 10, rate: 100 } }])!.annualSaving).toBe(0);
   });
+
+  it('offers no figure the sheet cannot hold: a 0 shift divides by zero, a huge one overflows', () => {
+    const manpower = (values: Values) => savingSummary([{ type: 'manpower', values } as KaizenSavingLine]);
+    expect(manpower({ t: 1, ops: 1, wage: 800, shift: 0, days: 26 })).toBeNull();
+    expect(manpower({ t: 0, ops: 1, wage: 800, shift: 0, days: 26 })).toBeNull();
+    expect(manpower({ t: 1e12, ops: 1e6, wage: 1e6, shift: 1, days: 31 })).toBeNull();
+  });
 });

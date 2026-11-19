@@ -283,9 +283,13 @@ export class KaizensService {
         );
       });
     } catch (error) {
-      // The id is someone else's Kaizen this actor cannot see. Said as a conflict rather
-      // than a 500, and without saying whose.
       if (isUniqueViolation(error, 'kaizen_pkey')) {
+        // Two copies of a new draft at once (a retry overlapping a slow first save): the
+        // other copy created it, so this one is a replay of the author's own and goes
+        // through the update path, once.
+        if (await this.repository.findById(write, id)) return this.create(scope, request);
+        // Otherwise the id is someone else's Kaizen this actor cannot see. Said as a
+        // conflict rather than a 500, and without saying whose.
         throw AppError.conflict('CONFLICT', 'A Kaizen already exists with this id');
       }
       throw error;

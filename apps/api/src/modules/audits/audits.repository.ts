@@ -28,6 +28,7 @@ import type {
   SSection,
 } from '@audit5s/contracts';
 import { BaseRepository } from '../../common/repository/base.repository';
+import { isUniqueViolation } from '../../common/pg-errors';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
 import { scopeFor } from '../../common/auth/scope-for';
@@ -731,6 +732,18 @@ export class AuditsRepository extends BaseRepository {
       clientUpdatedAt: Date;
     },
   ): Promise<string> {
+    try {
+      return await this.upsertResponseOnce(scope, input);
+    } catch (error) {
+      // Two copies of one answer at the same instant (a retry overlapping the original):
+      // Postgres arbitrates only the (zone, question) key, so the loser trips the primary
+      // key instead. The winner has committed by now, so a second try lands on its row.
+      if (isUniqueViolation(error, 'question_response_pkey')) return this.upsertResponseOnce(scope, input);
+      throw error;
+    }
+  }
+
+  private async upsertResponseOnce(scope: ScopeContext, input: Parameters<AuditsRepository['upsertResponse']>[1]): Promise<string> {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [row] = await tx
