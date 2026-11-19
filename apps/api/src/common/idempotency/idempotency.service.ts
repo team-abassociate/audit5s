@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppError } from '../errors';
+import { isUniqueViolation } from '../pg-errors';
 import { IdempotencyRepository } from './idempotency.repository';
 
 export interface StoredResponse {
@@ -35,7 +36,7 @@ export class IdempotencyService {
     userId: string;
     endpoint: string;
     requestHash: string;
-  }): Promise<StoredResponse | null> {
+  }, retried = false): Promise<StoredResponse | null> {
     const existing = await this.repository.find(input.userId, input.key);
 
     if (existing) {
@@ -54,7 +55,16 @@ export class IdempotencyService {
       throw AppError.conflict('CONFLICT', 'A request with this Idempotency-Key is in progress');
     }
 
-    await this.repository.claim(input);
+    try {
+      await this.repository.claim(input);
+    } catch (error) {
+      if (!isUniqueViolation(error, 'idempotency_key_pkey')) throw error;
+      // Two requests with one key at the same instant: the other claimed it a moment ago,
+      // so this one is the in-flight case (or a replay). Once only: a key another user
+      // holds is invisible here (RLS) and would conflict forever.
+      if (!retried) return this.claim(input, true);
+      throw AppError.conflict('CONFLICT', 'A request with this Idempotency-Key is in progress');
+    }
     return null;
   }
 
