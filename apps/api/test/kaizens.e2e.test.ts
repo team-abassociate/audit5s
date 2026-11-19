@@ -110,6 +110,15 @@ describe('a DRAFT and its number', () => {
     expect(Number(next.kaizenNo.slice(-3))).toBe(Number(kaizen.kaizenNo.slice(-3)) + 1);
   });
 
+  it('takes copies of a new draft that arrive together as replays, not conflicts', async () => {
+    const id = uuidv7();
+    const copies = await Promise.all(
+      [1, 2, 3, 4].map((n) => create(world.actors.ZONE_LEADER, { id, machine: `Lathe ${n}` })),
+    );
+    expect(copies.map((copy) => copy.status)).toEqual([201, 201, 201, 201]);
+    expect(new Set(copies.map((copy) => (copy.body as KaizenDetail).kaizenNo)).size).toBe(1);
+  });
+
   it('refuses an id that is somebody else’s, without saying whose', async () => {
     const mine = await draft(world.actors.ZONE_LEADER);
     const theirs = await create(otherLeader, { id: mine.id });

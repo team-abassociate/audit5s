@@ -1,4 +1,4 @@
-import type { KaizenSavingLine, KaizenSavingType } from '@audit5s/contracts';
+import { rupeesSchema, type KaizenSavingLine, type KaizenSavingType } from '@audit5s/contracts';
 
 /**
  * The Kaizen savings calculator (plans/kaizen-module.md), ported unchanged from the owner's
@@ -668,12 +668,15 @@ export function savingsText(results: readonly (SavingResult | null)[]): string {
 /**
  * What the calculator hands the sheet: its lines, the working, and the two rupee boxes it
  * fills. `annualSaving` is hard + soft per year (a negative total is 0: the box takes ₹0 up);
- * `implementationCost` is the investment across lines. Null when no line calculates.
+ * `implementationCost` is the investment across lines. Null when no line calculates, or
+ * when a total is no rupee figure the sheet can hold (a 0 shift or wage divides by zero).
  */
 export function savingSummary(lines: readonly KaizenSavingLine[]): { annualSaving: number; implementationCost: number; working: string } | null {
   const results = lines.map(calcSavingLine);
   if (!results.some(Boolean)) return null;
   const t = savingTotals(results);
   const round = (x: number) => Math.round(Math.max(0, x) * 100) / 100;
-  return { annualSaving: round(t.total), implementationCost: round(t.inv), working: savingsText(results) };
+  const annualSaving = round(t.total), implementationCost = round(t.inv);
+  if (!rupeesSchema.safeParse(annualSaving).success || !rupeesSchema.safeParse(implementationCost).success) return null;
+  return { annualSaving, implementationCost, working: savingsText(results) };
 }
