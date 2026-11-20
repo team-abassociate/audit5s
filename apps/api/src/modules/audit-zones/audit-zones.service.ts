@@ -161,9 +161,17 @@ export class AuditZonesService {
     const checklistVersionId = usesChecklist
       ? (request.checklistVersionId ?? audit.checklistVersionId ?? null)
       : null;
-    const templateName = checklistVersionId
+    const version = checklistVersionId
       ? await this.repository.readTemplateNameForVersion(scope, checklistVersionId)
       : null;
+    // Only a version the Super Admin published may start a Zone. A replaced one is still
+    // accepted: a phone offline through the switch started its audit on it honestly.
+    if (!existing && version?.status === 'DRAFT') {
+      throw AppError.validation('That checklist version has not been published', [
+        { field: 'checklistVersionId', message: 'A new audit Zone needs a published checklist version' },
+      ]);
+    }
+    const templateName = version?.name ?? null;
 
     // A walk-by's leader account (§2.7 step 4) wins; otherwise the typed name (R-19), and
     // failing both, the Zone's own leader.

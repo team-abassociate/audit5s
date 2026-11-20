@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gt, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
   checklistQuestionTranslations,
@@ -56,6 +56,11 @@ export class ChecklistsRepository extends BaseRepository {
   /** `organization` needs no column; the predicate is `TRUE`. */
   private everything(scope: ScopeContext, ...filters: Array<SQL | undefined>): SQL {
     return this.scoped(scope, {}, ...filters);
+  }
+
+  /** A draft is the Super Admin's work in progress: no other role may list or open one. */
+  private noDraftsUnlessSuperAdmin(scope: ScopeContext): SQL | undefined {
+    return scope.actor.role === 'SUPER_ADMIN' ? undefined : ne(checklistVersions.status, 'DRAFT');
   }
 
   async listTemplates(scope: ScopeContext, query: ListChecklistTemplatesQuery) {
@@ -171,6 +176,7 @@ export class ChecklistsRepository extends BaseRepository {
             query.status ? eq(checklistVersions.status, query.status) : undefined,
             query.templateId ? eq(checklistVersions.templateId, query.templateId) : undefined,
             query.cursor ? gt(checklistVersions.id, query.cursor) : undefined,
+            this.noDraftsUnlessSuperAdmin(scope),
           ),
         )
         .orderBy(asc(checklistTemplates.sortOrder), desc(checklistVersions.versionNumber))
@@ -185,7 +191,7 @@ export class ChecklistsRepository extends BaseRepository {
         .select(versionColumns)
         .from(checklistVersions)
         .innerJoin(checklistTemplates, eq(checklistTemplates.id, checklistVersions.templateId))
-        .where(and(eq(checklistVersions.id, versionId), this.everything(scope)))
+        .where(and(eq(checklistVersions.id, versionId), this.everything(scope, this.noDraftsUnlessSuperAdmin(scope))))
         .limit(1);
       return row ?? null;
     });

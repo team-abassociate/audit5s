@@ -695,17 +695,20 @@ export class AuditsRepository extends BaseRepository {
    * `organization` — which is still a resolver, still applied, and still built the same
    * way as every other predicate (AZ-1, AZ-4).
    */
-  async readTemplateNameForVersion(scope: ScopeContext, versionId: string): Promise<string | null> {
+  async readTemplateNameForVersion(
+    scope: ScopeContext,
+    versionId: string,
+  ): Promise<{ name: string; status: string } | null> {
     const readScope = scopeFor(scope, 'checklist_version:read');
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
       const [row] = await tx
-        .select({ name: checklistTemplates.name })
+        .select({ name: checklistTemplates.name, status: checklistVersions.status })
         .from(checklistVersions)
         .innerJoin(checklistTemplates, eq(checklistTemplates.id, checklistVersions.templateId))
         .where(and(eq(checklistVersions.id, versionId), this.scoped(readScope, {})))
         .limit(1);
-      return row?.name ?? null;
+      return row ?? null;
     });
   }
 

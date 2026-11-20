@@ -375,6 +375,23 @@ describe('who may read the catalogue (D2)', () => {
     }
   });
 
+  it('shows a draft to the Super Admin alone', async () => {
+    const draft = await importDraft('Premises', (section, position) => `Revised ${section}.${position}`);
+    const sees = await world.request('GET', `${base}/checklist-versions`, { token: token() });
+    expect((sees.body as Page<ChecklistVersion>).data.map((v) => v.id)).toContain(draft.id);
+
+    for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as Role[]) {
+      const auth = { token: world.actors[role].accessToken };
+      const list = await world.request('GET', `${base}/checklist-versions`, auth);
+      const statuses = (list.body as Page<ChecklistVersion>).data.map((v) => v.status);
+      expect(statuses, role).toEqual(['PUBLISHED']);
+      const asked = await world.request('GET', `${base}/checklist-versions?status=DRAFT`, auth);
+      expect((asked.body as Page<ChecklistVersion>).data, role).toEqual([]);
+      const detail = await world.request('GET', `${base}/checklist-versions/${draft.id}`, auth);
+      expect(detail.status, role).toBe(404);
+    }
+  });
+
   it('lets nobody but a Super Admin publish, deactivate or import', async () => {
     const versions = await world.request('GET', `${base}/checklist-versions`, { token: token() });
     const version = (versions.body as Page<ChecklistVersion>).data[0]!;
