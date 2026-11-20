@@ -427,3 +427,44 @@ describe('who may read the catalogue (D2)', () => {
     );
   });
 });
+
+describe('paging the version list', () => {
+  beforeEach(clearChecklists);
+
+  it('walks every version once, departments in order and newest first, page by page', async () => {
+    // Two departments share a sort order, so the tie-break is exercised too.
+    for (const [code, sortOrder] of [['B_DEPT', 0], ['A_DEPT', 0], ['C_DEPT', 1]] as const) {
+      const { rows } = await world.owner.query(
+        `INSERT INTO checklist_template (code, name, sort_order) VALUES ($1, $1, $2) RETURNING id`,
+        [code, sortOrder],
+      );
+      for (let n = 1; n <= 4; n += 1) {
+        await world.owner.query(
+          `INSERT INTO checklist_version (template_id, version_number, total_questions, content_hash)
+           VALUES ($1, $2, 50, $3)`,
+          [rows[0].id, n, `${code}-${n}`],
+        );
+      }
+    }
+    const { rows: expected } = await world.owner.query(
+      `SELECT v.template_id || ':' || v.version_number AS key FROM checklist_version v
+       JOIN checklist_template t ON t.id = v.template_id ORDER BY t.sort_order, t.id, v.version_number DESC`,
+    );
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = await world.request(
+        'GET',
+        `${base}/checklist-versions?limit=5${cursor ? `&cursor=${cursor}` : ''}`,
+        { token: token() },
+      );
+      const body = page.body as Page<ChecklistVersion>;
+      seen.push(...body.data.map((version) => `${version.templateId}:${version.versionNumber}`));
+      cursor = body.nextCursor;
+    } while (cursor);
+
+    expect(seen).toEqual(expected.map((row) => row.key));
+    expect(seen).toHaveLength(12);
+  });
+});
