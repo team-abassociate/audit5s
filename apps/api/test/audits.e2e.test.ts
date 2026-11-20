@@ -908,6 +908,37 @@ describe('question responses', () => {
     expect(copies.map((copy) => copy.status)).toEqual([200, 200, 200, 200]);
   });
 
+  it('starts a new Zone only on a version the Super Admin published, or one since replaced', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const { auditId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId: await createZone('Z-54', 'Draft version zone'),
+      assignmentId: assignment.id,
+    });
+    const { rows: template } = await world.owner.query(
+      `INSERT INTO checklist_template (code, name, sort_order) VALUES ('PAINT_SHOP', 'Paint Shop', 1) RETURNING id`,
+    );
+    const versionOf = async (status: string, n: number) =>
+      (
+        await world.owner.query(
+          `INSERT INTO checklist_version (template_id, version_number, total_questions, content_hash, status)
+           VALUES ($1, $2, 50, $3, $4) RETURNING id`,
+          [template[0].id, n, `paint-v${n}`, status],
+        )
+      ).rows[0].id as string;
+    const putZone = async (code: string, checklistVersionId: string) =>
+      world.request('PUT', `${base}/audits/${auditId}/zones/${randomUUID()}`, {
+        token: consultantToken,
+        body: { zoneId: await createZone(code, code), sequenceNo: 2, checklistVersionId },
+      });
+
+    const draft = await putZone('Z-55', await versionOf('DRAFT', 2));
+    expect(draft.status).toBe(422);
+    const replaced = await putZone('Z-56', await versionOf('SUPERSEDED', 1));
+    expect(replaced.status, JSON.stringify(replaced.body)).toBe(200);
+  });
+
   it('derives numeric_score from the enum, never from the client (QR-1)', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
     const zoneId = await createZone('Z-36', 'QR-1 zone');
