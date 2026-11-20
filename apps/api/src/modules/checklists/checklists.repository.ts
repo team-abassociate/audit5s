@@ -175,11 +175,17 @@ export class ChecklistsRepository extends BaseRepository {
             scope,
             query.status ? eq(checklistVersions.status, query.status) : undefined,
             query.templateId ? eq(checklistVersions.templateId, query.templateId) : undefined,
-            query.cursor ? gt(checklistVersions.id, query.cursor) : undefined,
+            // The cursor is the last row's id, but the page continues in the list's own order
+            // (department, then newest version first), not in id order.
+            query.cursor
+              ? sql`(${checklistTemplates.sortOrder}, ${checklistTemplates.id}, -${checklistVersions.versionNumber}) >
+                  (select t.sort_order, t.id, -v.version_number from checklist_version v
+                   join checklist_template t on t.id = v.template_id where v.id = ${query.cursor})`
+              : undefined,
             this.noDraftsUnlessSuperAdmin(scope),
           ),
         )
-        .orderBy(asc(checklistTemplates.sortOrder), desc(checklistVersions.versionNumber))
+        .orderBy(asc(checklistTemplates.sortOrder), asc(checklistTemplates.id), desc(checklistVersions.versionNumber))
         .limit(query.limit + 1);
     });
   }

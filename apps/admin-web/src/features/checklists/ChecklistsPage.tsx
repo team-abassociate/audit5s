@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ChecklistQuestion,
   ChecklistTemplate,
@@ -231,12 +231,16 @@ function TemplateDetail({
   const [viewing, setViewing] = useState<string | null>(null);
   const shownVersionId = viewing ?? template.publishedVersionId;
 
-  const versions = useQuery({
+  const versions = useInfiniteQuery({
     queryKey: ['checklist-versions', template.id],
-    queryFn: () =>
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
       isWorstCase()
         ? Promise.resolve(worstVersions())
-        : api.get<Page<ChecklistVersion>>(`/checklist-versions?templateId=${template.id}&limit=50`),
+        : api.get<Page<ChecklistVersion>>(
+            `/checklist-versions?templateId=${template.id}&limit=50${pageParam ? `&cursor=${pageParam}` : ''}`,
+          ),
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
 
   const publish = useMutation({
@@ -281,7 +285,7 @@ function TemplateDetail({
               </tr>
             </thead>
             <tbody>
-              {versions.data.data.map((version) => (
+              {versions.data.pages.flatMap((page) => page.data).map((version) => (
                 <tr key={version.id}>
                   <Td>
                     v{version.versionNumber}
@@ -341,6 +345,11 @@ function TemplateDetail({
               ))}
             </tbody>
           </Table>
+        )}
+        {versions.hasNextPage && (
+          <Button variant="secondary" disabled={versions.isFetchingNextPage} onClick={() => versions.fetchNextPage()}>
+            {versions.isFetchingNextPage ? 'Loading…' : 'Show older versions'}
+          </Button>
         )}
         {publish.error && <ErrorNotice error={publish.error} />}
       </div>
