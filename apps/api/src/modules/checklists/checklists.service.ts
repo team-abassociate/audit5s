@@ -56,6 +56,17 @@ export class ChecklistsService {
     request: UpdateChecklistTemplateRequest,
   ): Promise<ChecklistTemplate> {
     const before = await this.getTemplate(scope, templateId);
+    // R-89: hiding takes the department off every phone at its next sync, questions and
+    // all, so it waits until no unfinished audit is using it.
+    if (request.isActive === false && before.isActive) {
+      const open = await this.repository.countOpenAuditsUsingTemplate(scope, templateId);
+      if (open > 0) {
+        throw AppError.conflict(
+          'RESOURCE_IN_USE',
+          `${open} unfinished audit${open === 1 ? ' uses' : 's use'} ${before.name}. Hide it once ${open === 1 ? 'it is' : 'they are'} completed or cancelled.`,
+        );
+      }
+    }
     const updated = await this.repository.updateTemplate(scope, templateId, {
       ...(request.name !== undefined ? { name: request.name } : {}),
       ...(request.description !== undefined ? { description: request.description ?? null } : {}),
