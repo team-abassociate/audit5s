@@ -12,6 +12,7 @@ import {
   type Page,
   type QuestionTranslation,
   type Role,
+  type SyncCatalogue,
 } from '@audit5s/contracts';
 import { QUEUES } from '../src/infrastructure/queue/queue.service';
 import {
@@ -357,5 +358,71 @@ describe('who may read the catalogue (D2)', () => {
     expect((response.body as ChecklistTemplate).description).toBe(
       'Outdoor areas, roads and the scrap yard',
     );
+  });
+});
+
+describe('a hidden department (R-89)', () => {
+  let template: ChecklistTemplate;
+  let version: ChecklistVersion;
+
+  beforeEach(async () => {
+    await clearChecklists();
+    const draft = await importDraft('Premises');
+    await world.request('POST', `${base}/checklist-versions/${draft.id}/publish`, {
+      token: token(),
+    });
+    const templates = await world.request('GET', `${base}/checklist-templates`, { token: token() });
+    template = (templates.body as Page<ChecklistTemplate>).data[0]!;
+    version = draft;
+  });
+
+  const hide = (isActive: boolean) =>
+    world.request('PATCH', `${base}/checklist-templates/${template.id}`, {
+      token: token(),
+      body: { isActive },
+    });
+
+  it('leaves no trace of it for anyone but a Super Admin', async () => {
+    expect((await hide(false)).status).toBe(200);
+
+    for (const role of ['CONSULTANT', 'COORDINATOR', 'ZONE_LEADER'] as Role[]) {
+      const as = { token: world.actors[role].accessToken };
+      const templates = await world.request('GET', `${base}/checklist-templates`, as);
+      expect((templates.body as Page<ChecklistTemplate>).data, `${role} templates`).toHaveLength(0);
+      const one = await world.request('GET', `${base}/checklist-templates/${template.id}`, as);
+      expect(one.status, `${role} template`).toBe(404);
+      const versions = await world.request('GET', `${base}/checklist-versions`, as);
+      expect((versions.body as Page<ChecklistVersion>).data, `${role} versions`).toHaveLength(0);
+      const detail = await world.request('GET', `${base}/checklist-versions/${version.id}`, as);
+      expect(detail.status, `${role} version`).toBe(404);
+      const catalogue = await world.request('GET', `${base}/sync/catalogue`, as);
+      expect(catalogue.status, `${role} catalogue`).toBe(200);
+      {
+        const body = catalogue.body as SyncCatalogue;
+        expect(body.checklistTemplates.map((t) => t.id), `${role} catalogue`).not.toContain(template.id);
+        expect(body.checklistVersions.map((v) => v.id), `${role} catalogue`).not.toContain(version.id);
+      }
+    }
+
+    const mine = await world.request('GET', `${base}/checklist-templates`, { token: token() });
+    const seen = (mine.body as Page<ChecklistTemplate>).data;
+    expect(seen.map((t) => [t.id, t.isActive])).toEqual([[template.id, false]]);
+  });
+
+  it('comes back for everyone when shown again', async () => {
+    await hide(false);
+    expect((await hide(true)).status).toBe(200);
+    const templates = await world.request('GET', `${base}/checklist-templates`, {
+      token: world.actors.CONSULTANT.accessToken,
+    });
+    expect((templates.body as Page<ChecklistTemplate>).data).toHaveLength(1);
+  });
+
+  it('is a Super Admin’s alone to hide', async () => {
+    const response = await world.request('PATCH', `${base}/checklist-templates/${template.id}`, {
+      token: world.actors.COORDINATOR.accessToken,
+      body: { isActive: false },
+    });
+    expect(response.status).toBe(403);
   });
 });

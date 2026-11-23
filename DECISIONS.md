@@ -3109,3 +3109,22 @@ siblings into the gap. Plan: [`plans/006-motion-library.md`](plans/006-motion-li
   drive it (table in the plan). The side panel keeps its CSS exit.
 - **field-mobile keeps Reanimated.** Motion is web only.
 
+
+## R-89 — A Super Admin can hide a department checklist
+
+**Proposed 2026-11-23; awaiting the owner's go before `main`.** A Super Admin shows or hides
+each department checklist (a `checklist_template`) from the Checklists page. It uses the
+template's existing `is_active` flag and `PATCH /checklist-templates/:id`
+(`checklist_template:update`, Super Admin only, audit-logged); no migration, no new endpoint.
+
+- **The server hides it.** For anyone but a Super Admin, a hidden department is left out of
+  `GET /checklist-templates`, `GET /checklist-templates/:id` (404), `GET /checklist-versions`
+  and the sync catalogue, so it is gone from their Checklists page, every checklist picker and
+  their phone. A Super Admin still sees it, marked Hidden, and can pick it.
+- **Audit records keep their questions.** `GET /checklist-versions/:id` still answers someone
+  who can see an audit that used that version; nothing else of the department is shown to them.
+- **Not while it is in use.** Hiding is refused (409 `RESOURCE_IN_USE`) while an audit that is
+  not yet completed or cancelled uses it, because the phone drops a hidden department's
+  questions at its next sync. An audit started offline and not yet synced cannot be seen by
+  this check.
+- **Showing it again** returns it to everyone at their next load or sync. Nothing is deleted (D8).
