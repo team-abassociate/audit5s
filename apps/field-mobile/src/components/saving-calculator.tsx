@@ -8,6 +8,7 @@ import {
   formatRupees,
   missingSavingInputs,
   savingFieldShown,
+  upgradeSavingLine,
   newSavingLine,
   savingSummary,
   type SavingField,
@@ -119,7 +120,8 @@ function SavingLineEditor({
   const type = SAVING_TYPES[line.type];
   const result = calcSavingLine(line);
   const missing = result ? [] : missingSavingInputs(line);
-  const value = (key: string, def: string | number = '') => String(line.values[key] ?? def);
+  const shown = upgradeSavingLine(line).values; // older saved lines read with today's fields
+  const value = (key: string, def: string | number = '') => String(shown[key] ?? def);
   const pickers = new Set<string>();
 
   /** A time unit converts the number already typed (30 sec → 0.5 min), as the source does. */
