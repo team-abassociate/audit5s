@@ -60,6 +60,8 @@ export type SavingOption = readonly [value: string, label: string];
 export interface SavingUnitPicker { key: string; opts: readonly SavingOption[]; time?: boolean }
 const U_TIME: SavingUnitPicker = { key: 'tUnit', opts: [['hr', 'hours'], ['min', 'minutes']], time: true };
 const U_JOB: SavingUnitPicker = { key: 'jUnit', opts: [['sec', 'sec'], ['min', 'min'], ['hr', 'hr']], time: true };
+const U_JOB_AFTER: SavingUnitPicker = { ...U_JOB, key: 'jaUnit' };
+const U_RATE: SavingUnitPicker = { key: 'rUnit', opts: [['hr', 'per hour'], ['min', 'per minute']] };
 const U_CYC: SavingUnitPicker = { key: 'cUnit', opts: [['min', 'min'], ['sec', 'sec'], ['hr', 'hr']], time: true };
 const U_QTY: SavingUnitPicker = { key: 'qtyUnit', opts: ['kg', 'litre', 'metre', 'nos', 'sheet', 'set'].map((u) => [u, u] as const) };
 const U_AREA: SavingUnitPicker = { key: 'areaUnit', opts: [['sqft', 'sq ft'], ['sqm', 'sq m']] };
@@ -163,40 +165,51 @@ export const SAVING_TYPES: Record<KaizenSavingType, SavingType> = {
     fields: [
       { id: 'mode', label: 'Enter as', opts: [['job', 'Time per job'], ['output', 'Output, before → after'], ['hours', 'Hours saved per month']], def: 'job' },
       { id: 'tb', label: 'Time per job, before', unit: 'time', units: U_JOB, def: 30, when: ['mode', 'job'] },
-      { id: 'ta', label: 'Time per job, after', unit: 'time', units: U_JOB, def: 15, when: ['mode', 'job'] },
+      { id: 'ta', label: 'Time per job, after', sub: 'can be in a different unit: 2 min before, 40 sec after', unit: 'time', units: U_JOB_AFTER, def: 15, when: ['mode', 'job'] },
       { id: 'qty', label: 'Jobs per month', sub: 'pieces, setups, checks or searches', unit: 'per month', def: 1000, when: ['mode', 'job'] },
+      { ...SHIFT, sub: 'optional: shows how many jobs fit in a shift, before and after', optional: true, when: ['mode', 'job'] },
       { id: 'ob', label: 'Output before', sub: 'pieces, metres or cycles in a fixed time: a cycle, an hour, a day', unit: 'per period', def: 45, when: ['mode', 'output'] },
       { id: 'oa', label: 'Output after', sub: 'in the same time', unit: 'per period', def: 60, when: ['mode', 'output'] },
       { id: 'runh', label: 'Running hours per day', sub: 'hours the machine or line runs: 7 one-hour cycles = 7', unit: 'hr/day', def: 8, when: ['mode', 'output'] },
       { ...DAYS, when: ['mode', 'output'] },
       { id: 'hrs', label: 'Hours saved per month', sub: 'machine or labour hours recovered', unit: 'hr/month', def: 8, when: ['mode', 'hours'] },
-      { id: 'rate', label: 'Cost per hour', sub: 'per-day wage ÷ shift hours (Rs 800 ÷ 8 = Rs 100); add the machine hour rate if the machine is freed too', unit: 'Rs/hr', def: 100 },
+      { id: 'rate', label: 'Machine running cost', sub: 'what it costs to run the machine (power, tooling, maintenance, depreciation), per hour or per minute; add the operator\'s wage if their time is freed too', unit: 'Rs', units: U_RATE, def: 100 },
       INV,
     ],
     calc: (g, s) => {
+      const perMin = s.rUnit === 'min', rateHr = perMin ? g('rate') * 60 : g('rate'), rw = rs(g('rate'), 2) + (perMin ? '/min' : '/hr');
+      const toHr = perMin ? ['Machine cost per hour = ' + rw + ' × 60 = ' + rs(rateHr, 2) + '/hr'] : [];
       if (s.mode === 'hours') {
-        const month = g('hrs') * g('rate');
-        return { month, working: ['Per month = ' + plain(g('hrs'), 2) + ' hr × ' + rs(g('rate'), 2) + '/hr = ' + rs(month, 2)], warn: g('hrs') < 0 ? 'Negative hours show a loss.' : '' };
+        const month = g('hrs') * rateHr;
+        return { month, working: [...toHr, 'Per month = ' + plain(g('hrs'), 2) + ' hr × ' + rs(rateHr, 2) + '/hr = ' + rs(month, 2)], warn: g('hrs') < 0 ? 'Negative hours show a loss.' : '' };
       }
       if (s.mode === 'output') {
-        const up = (g('oa') - g('ob')) / g('ob'), day = g('runh') * up, hrs = day * g('days'), month = hrs * g('rate');
+        const up = (g('oa') - g('ob')) / g('ob'), day = g('runh') * up, hrs = day * g('days'), month = hrs * rateHr;
         return {
           month,
-          working: ['Output up = (' + plain(g('oa')) + ' − ' + plain(g('ob')) + ') ÷ ' + plain(g('ob')) + ' = ' + plain(up * 100, 1) + '%',
+          working: [...toHr, 'Output up = (' + plain(g('oa')) + ' − ' + plain(g('ob')) + ') ÷ ' + plain(g('ob')) + ' = ' + plain(up * 100, 1) + '%',
             'Hours freed per day = ' + plain(g('runh')) + ' hr × ' + plain(up * 100, 1) + '% = ' + plain(day, 2) + ' hr (the extra output would have taken this long at the old rate)',
             'Hours freed per month = ' + plain(day, 2) + ' hr × ' + plain(g('days')) + ' days = ' + plain(hrs, 2) + ' hr',
-            'Per month = ' + plain(hrs, 2) + ' hr × ' + rs(g('rate'), 2) + '/hr = ' + rs(month, 2)],
+            'Per month = ' + plain(hrs, 2) + ' hr × ' + rs(rateHr, 2) + '/hr = ' + rs(month, 2)],
           warn: !(g('ob') > 0) ? 'Output before must be more than 0.' : up < 0 ? 'Output went down, so this shows a loss.' : '',
         };
       }
-      const u = s.jUnit || 'sec', saved = g('tb') - g('ta'), hrs = (saved * g('qty') * (SAVING_SECS[u] ?? 1)) / 3600, month = hrs * g('rate');
-      return {
-        month,
-        working: ['Time saved per job = ' + plain(g('tb')) + ' − ' + plain(g('ta')) + ' = ' + plain(saved) + ' ' + u,
-          'Time saved per month = ' + plain(saved) + ' ' + u + ' × ' + plain(g('qty'), 0) + ' jobs = ' + plain(hrs, 2) + ' hr',
-          'Per month = ' + plain(hrs, 2) + ' hr × ' + rs(g('rate'), 2) + '/hr = ' + rs(month, 2)],
-        warn: saved < 0 ? 'The time after is more than before, so this shows a loss.' : '',
-      };
+      // each time in its own unit; costs per job use the rate as the operator gave it (30 sec × Rs 100/min = Rs 50)
+      const ub = s.jUnit || 'sec', ua = s.jaUnit || ub, sb = g('tb') * (SAVING_SECS[ub] ?? 1), sa = g('ta') * (SAVING_SECS[ua] ?? 1);
+      const cb = (sb / 3600) * rateHr, ca = (sa / 3600) * rateHr, per = cb - ca, month = per * g('qty');
+      const show = (sec: number) => (sec % 3600 === 0 && sec >= 3600 ? plain(sec / 3600) + ' hr' : sec >= 60 && sec % 60 === 0 ? plain(sec / 60) + ' min' : plain(sec, 2) + ' sec');
+      const ru = perMin ? 'min' : 'hr';
+      const cost = (t: number, u: string, c: number) =>
+        (u === ru ? plain(t) + ' ' + u : plain(t) + ' ' + u + ' (' + plain((t * (SAVING_SECS[u] ?? 1)) / (SAVING_SECS[ru] ?? 1), 4) + ' ' + ru + ')') + ' × ' + rw + ' = ' + rs(c, 2);
+      const w = ['Time saved per job = ' + plain(g('tb')) + ' ' + ub + ' − ' + plain(g('ta')) + ' ' + ua + ' = ' + show(sb - sa),
+        ...toHr,
+        'Machine cost per job, before = ' + cost(g('tb'), ub, cb),
+        'Machine cost per job, after = ' + cost(g('ta'), ua, ca),
+        'Saved per job = ' + rs(cb, 2) + ' − ' + rs(ca, 2) + ' = ' + rs(per, 2)];
+      const sh = g('shift');
+      if (sh > 0 && sb > 0 && sa > 0) w.push('Jobs in one ' + plain(sh) + '-hr shift = ' + plain((sh * 3600) / sb, 1) + ' before, ' + plain((sh * 3600) / sa, 1) + ' after');
+      w.push('Per month = ' + rs(per, 2) + ' × ' + plain(g('qty'), 0) + ' jobs = ' + rs(month, 2) + ' (' + plain(((sb - sa) * g('qty')) / 3600, 2) + ' machine hours freed)');
+      return { month, working: w, warn: sb < sa ? 'The time after is more than before, so this shows a loss.' : '' };
     },
   },
   headcount: {
@@ -564,8 +577,11 @@ function upgrade(line: KaizenSavingLine): KaizenSavingLine {
   if (line.type === 'material' && v.mb === undefined && v.qty !== undefined) Object.assign(v, { mb: v.qty, ma: 0, pcs: v.days, freq: 'month' }); // old: quantity saved per day × days
   if (line.type === 'safety' && v.nb === undefined && v.lb !== undefined) Object.assign(v, { nb: OLD_PER_YEAR[Math.round(num(v.lb))] ?? 0, na: OLD_PER_YEAR[Math.round(num(v.la))] ?? 0 }); // old 1–5 likelihood
   if (line.type === 'manpower' && v.times === undefined) Object.assign(v, { times: 1, shifts: 1 }); // old: time saved per operator per day
+  if (line.type === 'jobtime' && v.jaUnit === undefined) v.jaUnit = v.jUnit ?? 'sec'; // old: one unit for both times
   return { type: line.type, values: v };
 }
+/** A saved line with older inputs brought up to the current fields, for showing on screen. */
+export const upgradeSavingLine = upgrade;
 
 /** Whether a field is shown for the line's current choices (a missing choice reads as its default). */
 export function savingFieldShown(line: KaizenSavingLine, f: SavingField): boolean {

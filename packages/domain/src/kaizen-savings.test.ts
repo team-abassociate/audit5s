@@ -170,3 +170,18 @@ describe('sample Kaizens enter as written', () => {
     eq(year('manpower', { t: 1, tUnit: 'hr', ops: 1, wage: 800, shift: 8, days: 26 }), 31200); // saved before times/shifts: 1 hr a day
   });
 });
+
+describe('time per job: units and machine cost', () => {
+  it('values the machine time per job, per minute or per hour', () => {
+    // CNC: 30 sec → 15 sec, machine Rs 100 a minute: Rs 50 → Rs 25 a job
+    const cnc = calc({ type: 'jobtime', values: { tb: 30, jUnit: 'sec', ta: 15, jaUnit: 'sec', rate: 100, rUnit: 'min', qty: 1000, shift: 8 } });
+    eq(Math.round(cnc.year), 300000);
+    ok(cnc.working.includes('Machine cost per job, before = 30 sec (0.5 min) × Rs 100/min = Rs 50'));
+    ok(cnc.working.includes('Saved per job = Rs 50 − Rs 25 = Rs 25'));
+    ok(cnc.working.includes('Jobs in one 8-hr shift = 960 before, 1,920 after'));
+    // 2 min before, 30 sec after, Rs 6,000 an hour, 100 jobs: 90 sec × 100 = 2.5 hr × 6,000
+    eq(year('jobtime', { tb: 2, jUnit: 'min', ta: 30, jaUnit: 'sec', rate: 6000, rUnit: 'hr', qty: 100 }), 180000);
+    // saved before the after-unit and rate-unit choices (KZ-Z01-001 on staging): 45 → 20 min, Rs 100/hr, 200 die changes
+    eq(year('jobtime', { tb: 45, ta: 20, jUnit: 'min', rate: 100, qty: 200 }), 100000);
+  });
+});
