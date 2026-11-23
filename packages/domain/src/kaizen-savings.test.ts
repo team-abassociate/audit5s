@@ -66,6 +66,12 @@ describe('kaizen savings calculator', () => {
     eq(year('material', { mb: 1, ma: 0.5, qtyUnit: 'kg', pcs: 10, price: 200, freq: 'month' }), 12000);
     eq(calc({ type: 'material', values: { mb: 1, ma: 0.5, pcs: 10, price: 200, freq: 'once' } }).once, 1000);
     eq(year('material', { qty: 2, qtyUnit: 'kg', price: 100, days: 26 }), 62400); // older version: 2 kg/day saved
+    // scrap (KZ-004 tandem press): 187.5 kg/month at Rs 500; disposal Rs 35 adds, a sale price of Rs 35 takes off
+    const kz4 = { mb: 2, ma: 1.9, qtyUnit: 'kg', pcs: 1875, price: 500, srate: 35, freq: 'month' };
+    eq(year('material', { ...kz4, scrap: 'pay' }), 187.5 * 535 * 12);
+    eq(year('material', { ...kz4, scrap: 'sell' }), 187.5 * 465 * 12);
+    eq(year('material', { ...kz4, scrap: 'none' }), 187.5 * 500 * 12);
+    eq(year('material', { ...kz4, scrap: undefined }), 187.5 * 500 * 12); // lines saved before the scrap choice
     // motion: 3 sec × 100 times a day, Rs 600 / 8 hr, 26 days
     eq(+calc({ type: 'motion', values: { ms: 3, mn: 100, ops: 1, wage: 600, shift: 8, days: 26 } }).year.toFixed(2), 1950);
     // waiting: 4 hr (half shift) → 0, 1 operator at Rs 600/day → Rs 300 a day

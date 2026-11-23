@@ -357,20 +357,25 @@ export const SAVING_TYPES: Record<KaizenSavingType, SavingType> = {
   material: {
     label: 'Material', title: 'Material / consumable saving', cls: 'hard',
     pqcdsm: ['Cost'],
-    note: 'Less material used for each piece. Saving = (consumption per piece before − after) × pieces × rate. 500 g = 0.5 kg. Choose One time only for a single lot.',
+    note: 'Less material used for each piece. Saving = (consumption per piece before − after) × pieces × effective rate. 500 g = 0.5 kg. If the material saved would have become scrap: add the disposal charge when you pay to get rid of the scrap, or take off the scrap value when you sell it. Choose One time only for a single lot.',
     fields: [
       { id: 'mb', label: 'Consumption per piece, before', unit: 'qty', units: U_QTY, def: 1 },
       { id: 'ma', label: 'Consumption per piece, after', unit: 'qty', units: U_QTY, def: 0.5 },
       { id: 'pcs', label: 'Pieces', sub: 'per month, or in the lot if one time', unit: 'pcs', def: 100 },
       { id: 'price', label: 'Rate per unit', sub: 'Rs per kg, litre, metre…', unit: 'Rs', def: 100 },
+      { id: 'scrap', label: 'Scrap', opts: [['none', 'No scrap'], ['pay', 'We pay to dispose of it'], ['sell', 'We sell it']], def: 'none' },
+      { id: 'srate', label: 'Scrap rate per unit', sub: 'disposal charge or scrap selling price, Rs per kg, litre…', unit: 'Rs', def: 0, optional: true },
       { id: 'freq', label: 'Saving is', opts: [['month', 'Recurring, every month'], ['once', 'One time only']], def: 'month' },
       INV,
     ],
     calc: (g, s) => {
-      const u = s.qtyUnit || 'kg', per = g('mb') - g('ma'), qty = per * g('pcs'), total = qty * g('price'), once = s.freq === 'once';
+      const u = s.qtyUnit || 'kg', per = g('mb') - g('ma'), qty = per * g('pcs'), once = s.freq === 'once';
+      const sr = or0(g('srate')), scrap = s.scrap === 'pay' ? sr : s.scrap === 'sell' ? -sr : 0, rate = g('price') + scrap, total = qty * rate;
       const w = ['Saved per piece = ' + plain(g('mb'), 4) + ' − ' + plain(g('ma'), 4) + ' = ' + plain(per, 4) + ' ' + u,
-        'Saved ' + (once ? 'in this lot' : 'per month') + ' = ' + plain(per, 4) + ' ' + u + ' × ' + plain(g('pcs'), 0) + ' pcs = ' + plain(qty, 2) + ' ' + u,
-        (once ? 'This lot' : 'Per month') + ' = ' + plain(qty, 2) + ' ' + u + ' × ' + rs(g('price'), 2) + ' = ' + rs(total, 2) + (once ? ' (not repeated, not multiplied by 12)' : '')];
+        'Saved ' + (once ? 'in this lot' : 'per month') + ' = ' + plain(per, 4) + ' ' + u + ' × ' + plain(g('pcs'), 0) + ' pcs = ' + plain(qty, 2) + ' ' + u];
+      if (scrap > 0) w.push('Effective rate = ' + rs(g('price'), 2) + ' material + ' + rs(sr, 2) + ' scrap disposal saved = ' + rs(rate, 2) + ' per ' + u);
+      if (scrap < 0) w.push('Effective rate = ' + rs(g('price'), 2) + ' material − ' + rs(sr, 2) + ' scrap sale lost = ' + rs(rate, 2) + ' per ' + u);
+      w.push((once ? 'This lot' : 'Per month') + ' = ' + plain(qty, 2) + ' ' + u + ' × ' + rs(rate, 2) + ' = ' + rs(total, 2) + (once ? ' (not repeated, not multiplied by 12)' : ''));
       const warn = per < 0 ? 'Consumption after is more than before, so this shows a loss.' : '';
       return once ? { once: total, working: w, warn } : { month: total, working: w, warn };
     },
@@ -427,7 +432,7 @@ export const SAVING_TYPES: Record<KaizenSavingType, SavingType> = {
   environment: {
     label: 'Environment', title: 'Environment: water, fuel, gas or waste disposal saved', cls: 'hard',
     pqcdsm: ['Cost', 'Morale'],
-    note: 'Resources an MSME pays for every month: water (bill or tanker), diesel for the DG set or forklift, LPG / PNG for furnaces and ovens, and fees paid to dispose of waste (oil, sludge, chemicals). CO2 is shown for fuels. For electricity use Electricity; for scrap sold use Other.',
+    note: 'Resources an MSME pays for every month: water (bill or tanker), diesel for the DG set or forklift, LPG / PNG for furnaces and ovens, and fees paid to dispose of waste (oil, sludge, chemicals). CO2 is shown for fuels. For electricity use Electricity; for scrap that comes from material saved use Material.',
     fields: [
       { id: 'rb', label: 'Used per month, before', unit: 'res', units: U_RES, def: 100 },
       { id: 'ra', label: 'Used per month, after', unit: 'res', units: U_RES, def: 80 },
