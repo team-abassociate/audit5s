@@ -145,3 +145,28 @@ describe('kaizen savings calculator', () => {
     expect(manpower({ t: 1e12, ops: 1e6, wage: 1e6, shift: 1, days: 31 })).toBeNull();
   });
 });
+
+// The sample Kaizens on staging (Insumat, Nov 2026): each one now goes in as the sheet states it, with no working by hand.
+describe('sample Kaizens enter as written', () => {
+  it('matches the annual saving on each sheet', () => {
+    eq(year('unitcost', { cb: 50, ca: 25, qty: 3000, freq: 'month' }), 900000); // Press 01: Rs 50 → 25 a sheet, 3,000 sheets
+    const out = { mode: 'output', days: 25, rate: 1000 };
+    eq(year('jobtime', { ...out, ob: 45, oa: 60, runh: 7 }), 700000); // Press 02: 45 → 60 sheets a cycle, 7 one-hour cycles (sheet rounds to 6,99,900)
+    eq(year('jobtime', { ...out, ob: 3, oa: 4, runh: 24 }), 2400000); // Press 04: 3 → 4 cycles in 24 hours
+    eq(year('jobtime', { ...out, ob: 75, oa: 90, runh: 22 }), 1320000); // VT 03: 75 → 90 metres an hour, 22 hr a day
+    eq(year('jobtime', { mode: 'hours', hrs: 8, rate: 1000 }), 96000); // VT 01 / 02: 8 hours a month (the sheets say 72,000: 8,000 × 12 is 96,000)
+    eq(year('material', { basis: 'total', qs: 187.5, qtyUnit: 'kg', price: 500, scrap: 'pay', srate: 35, freq: 'month' }), 1203750); // Press 03
+    const hr = { wUnit: 'hr', wage: 100, days: 25, tUnit: 'min' };
+    eq(year('manpower', { ...hr, t: 5, times: 10, shifts: 3, ops: 2 }), 150000); // Press 05: 5 min × 2 operators × 10 changes × 3 shifts
+    eq(year('manpower', { ...hr, t: 30, times: 1, shifts: 3, ops: 4 }), 180000); // Tube: 30 min × 4 operators × 3 shifts
+    eq(year('material', { basis: 'total', qs: 50, qtyUnit: 'kg', price: 500, scrap: 'pay', srate: 35, freq: 'month' }), 321000); // Tube: 50 kg
+    eq(year('material', { mb: 5, ma: 0, qtyUnit: 'kg', pcs: 10, price: 500, oth: 60, freq: 'month' }), 307200); // 3 Tower: 5 kg resin + Rs 60 paper, 10 changeovers
+  });
+
+  it('asks only for the inputs of the chosen mode, and keeps older lines', () => {
+    expect_deep(missingSavingInputs({ type: 'jobtime', values: { mode: 'hours', hrs: 8, rate: 1000 } } as KaizenSavingLine), []);
+    expect_deep(missingSavingInputs({ type: 'jobtime', values: { mode: 'output', rate: 1000 } } as KaizenSavingLine), ['Output before', 'Output after', 'Running hours per day', 'Working days per month']);
+    expect_deep(missingSavingInputs({ type: 'manpower', values: { t: 1, ops: 1, wage: 100, wUnit: 'hr', days: 25 } } as KaizenSavingLine), []); // no shift hours with an hourly rate
+    eq(year('manpower', { t: 1, tUnit: 'hr', ops: 1, wage: 800, shift: 8, days: 26 }), 31200); // saved before times/shifts: 1 hr a day
+  });
+});

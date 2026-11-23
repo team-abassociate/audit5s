@@ -6,6 +6,7 @@ import {
   calcSavingLine,
   formatRupees,
   missingSavingInputs,
+  savingFieldShown,
   newSavingLine,
   savingSummary,
   type SavingField,
@@ -185,7 +186,7 @@ function SavingLineEditor({
     <div className="space-y-3 border border-rule-soft p-3">
       <p className="font-bold text-ink">{type.title}</p>
       <p className="text-sm text-ink-2">{type.note}</p>
-      <div className="grid gap-4 sm:grid-cols-2">{type.fields.map(input)}</div>
+      <div className="grid gap-4 sm:grid-cols-2">{type.fields.filter((f) => savingFieldShown(line, f)).map(input)}</div>
       {result ? (
         <div className="space-y-1 border-t border-rule-soft pt-2 text-sm">
           <p className="gb-data font-semibold text-ink">{result.headline}</p>
