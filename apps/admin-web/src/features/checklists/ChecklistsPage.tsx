@@ -15,10 +15,12 @@ import {
   Button,
   Card,
   CardHeader,
+  ConfirmDialog,
   ErrorNotice,
   Field,
   Input,
   RowActions,
+  Segmented,
   Select,
   Spinner,
   Table,
@@ -50,6 +52,8 @@ import {
  */
 export function ChecklistsPage() {
   const { can } = useSession();
+  // R-89: only a Super Admin is ever sent a hidden department, so only they get the column.
+  const mayHide = can('checklist_template', 'update');
   const [importing, setImporting] = useState(false);
   /** The checklist being edited, or `'new'` for the editor's start step. */
   const [editing, setEditing] = useState<ChecklistTemplate | 'new' | null>(null);
@@ -154,6 +158,7 @@ export function ChecklistsPage() {
                 <Th>Published version</Th>
                 <Th>Status</Th>
                 <Th>Questions</Th>
+                {mayHide && <Th>Shown</Th>}
               </tr>
             </thead>
             <tbody>
@@ -192,10 +197,15 @@ export function ChecklistsPage() {
                         )}
                       </Td>
                       <Td>{template.publishedTotalQuestions ?? '—'}</Td>
+                      {mayHide && (
+                        <Td>
+                          <DepartmentVisibility template={template} />
+                        </Td>
+                      )}
                     </tr>
                     {open && (
                       <tr className="gb-row-expand">
-                        <td colSpan={6}>
+                        <td colSpan={mayHide ? 7 : 6}>
                           <TemplateDetail
                             template={template}
                             onEdit={
@@ -215,6 +225,62 @@ export function ChecklistsPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+/**
+ * Show or hide a department (R-89). The server enforces it: a hidden department is never
+ * sent to anyone but a Super Admin, so it leaves every other person's Checklists page,
+ * checklist pickers and phone at their next load or sync. Nothing is deleted, and the
+ * server refuses to hide one an unfinished audit is still using.
+ */
+function DepartmentVisibility({ template }: { template: ChecklistTemplate }) {
+  const queryClient = useQueryClient();
+  const [confirmHide, setConfirmHide] = useState(false);
+  const change = useMutation({
+    mutationFn: (isActive: boolean) =>
+      api.patch<ChecklistTemplate>(`/checklist-templates/${template.id}`, { isActive }),
+    onSuccess: async () => {
+      setConfirmHide(false);
+      await queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
+      await queryClient.invalidateQueries({ queryKey: ['sync-catalogue'] });
+    },
+  });
+
+  return (
+    <>
+      <Segmented
+        label={`Show ${template.name}`}
+        value={template.isActive ? 'shown' : 'hidden'}
+        options={[
+          { value: 'shown', label: 'Shown' },
+          { value: 'hidden', label: 'Hidden' },
+        ]}
+        onChange={(value) => {
+          if (change.isPending || (value === 'shown') === template.isActive) return;
+          if (value === 'shown') change.mutate(true);
+          else setConfirmHide(true);
+        }}
+      />
+      {change.error && !confirmHide ? <ErrorNotice error={change.error} /> : null}
+      <ConfirmDialog
+        open={confirmHide}
+        title={`Hide ${template.name}?`}
+        confirmLabel="Hide"
+        pendingLabel="Hiding…"
+        pending={change.isPending}
+        error={change.error}
+        onConfirm={() => change.mutate(false)}
+        onCancel={() => {
+          setConfirmHide(false);
+          change.reset();
+        }}
+      >
+        Only Super Admins will see {template.name}. Everyone else loses it from Checklists,
+        from every checklist choice and from the phone at its next sync. Finished audits keep
+        their questions, and nothing is deleted: show it again at any time.
+      </ConfirmDialog>
+    </>
   );
 }
 

@@ -63,6 +63,27 @@ export class ChecklistsRepository extends BaseRepository {
     return scope.actor.role === 'SUPER_ADMIN' ? undefined : ne(checklistVersions.status, 'DRAFT');
   }
 
+  /**
+   * A hidden department (R-89) exists for a Super Admin alone: everyone else is never told
+   * of it, in a list, a lookup or the phone's catalogue. Needs `checklist_template` in the
+   * query.
+   */
+  private shown(scope: ScopeContext): SQL | undefined {
+    return scope.actor.role === 'SUPER_ADMIN' ? undefined : eq(checklistTemplates.isActive, true);
+  }
+
+  /**
+   * One version, looked up by id, of a hidden department (R-89): still readable to someone
+   * who can see an audit that used it, so an audit's own record keeps its questions. The
+   * audit tables' row-level security narrows the EXISTS to the audits the caller may see.
+   */
+  private shownOrAudited(scope: ScopeContext): SQL | undefined {
+    if (scope.actor.role === 'SUPER_ADMIN') return undefined;
+    return sql`(${checklistTemplates.isActive}
+      OR EXISTS (SELECT 1 FROM audit_zone az WHERE az.checklist_version_id = ${checklistVersions.id})
+      OR EXISTS (SELECT 1 FROM audit a WHERE a.checklist_version_id = ${checklistVersions.id}))`;
+  }
+
   async listTemplates(scope: ScopeContext, query: ListChecklistTemplatesQuery) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
@@ -92,6 +113,7 @@ export class ChecklistsRepository extends BaseRepository {
         .where(
           this.everything(
             scope,
+            this.shown(scope),
             query.includeArchived ? undefined : isNull(checklistTemplates.archivedAt),
             // Unclassified templates come through every filter (0018, 0042): no industry
             // means "offered everywhere", so narrowing to Hospital must not hide a template
@@ -141,7 +163,7 @@ export class ChecklistsRepository extends BaseRepository {
           published,
           and(eq(published.templateId, checklistTemplates.id), eq(published.status, 'PUBLISHED')),
         )
-        .where(and(eq(checklistTemplates.id, templateId), this.everything(scope)))
+        .where(and(eq(checklistTemplates.id, templateId), this.everything(scope, this.shown(scope))))
         .limit(1);
       return row ?? null;
     });
@@ -163,6 +185,25 @@ export class ChecklistsRepository extends BaseRepository {
     });
   }
 
+  /**
+   * Audits not yet finished that use any version of this department (R-89). Hiding it
+   * would take its questions off a phone mid-audit, so the hide waits until this is zero.
+   */
+  async countOpenAuditsUsingTemplate(scope: ScopeContext, templateId: string): Promise<number> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const result = await tx.execute(sql`
+        SELECT count(DISTINCT a.id)::int AS n
+          FROM audit a
+          LEFT JOIN audit_zone az ON az.audit_id = a.id
+          JOIN checklist_version cv ON cv.id = coalesce(az.checklist_version_id, a.checklist_version_id)
+         WHERE cv.template_id = ${templateId}
+           AND a.status IN ('ASSIGNED', 'READY', 'IN_PROGRESS', 'PAUSED')
+           AND ${this.everything(scope)}`);
+      return (result as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0;
+    });
+  }
+
   async listVersions(scope: ScopeContext, query: ListChecklistVersionsQuery) {
     return this.db.transaction(async (tx) => {
       await setActorContext(tx, scope.actor.userId, scope.actor.role);
@@ -173,6 +214,7 @@ export class ChecklistsRepository extends BaseRepository {
         .where(
           this.everything(
             scope,
+            this.shown(scope),
             query.status ? eq(checklistVersions.status, query.status) : undefined,
             query.templateId ? eq(checklistVersions.templateId, query.templateId) : undefined,
             // The cursor is the last row's id, but the page continues in the list's own order
@@ -197,7 +239,12 @@ export class ChecklistsRepository extends BaseRepository {
         .select(versionColumns)
         .from(checklistVersions)
         .innerJoin(checklistTemplates, eq(checklistTemplates.id, checklistVersions.templateId))
-        .where(and(eq(checklistVersions.id, versionId), this.everything(scope, this.noDraftsUnlessSuperAdmin(scope))))
+        .where(
+          and(
+            eq(checklistVersions.id, versionId),
+            this.everything(scope, this.noDraftsUnlessSuperAdmin(scope), this.shownOrAudited(scope)),
+          ),
+        )
         .limit(1);
       return row ?? null;
     });
@@ -288,7 +335,7 @@ export class ChecklistsRepository extends BaseRepository {
         .select(versionColumns)
         .from(checklistVersions)
         .innerJoin(checklistTemplates, eq(checklistTemplates.id, checklistVersions.templateId))
-        .where(this.everything(scope, eq(checklistVersions.status, 'PUBLISHED')))
+        .where(this.everything(scope, this.shown(scope), eq(checklistVersions.status, 'PUBLISHED')))
         .orderBy(asc(checklistTemplates.sortOrder));
     });
   }
