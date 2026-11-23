@@ -15,7 +15,6 @@ import {
   Button,
   Card,
   CardHeader,
-  ConfirmDialog,
   ErrorNotice,
   Field,
   Input,
@@ -236,12 +235,10 @@ export function ChecklistsPage() {
  */
 function DepartmentVisibility({ template }: { template: ChecklistTemplate }) {
   const queryClient = useQueryClient();
-  const [confirmHide, setConfirmHide] = useState(false);
   const change = useMutation({
     mutationFn: (isActive: boolean) =>
       api.patch<ChecklistTemplate>(`/checklist-templates/${template.id}`, { isActive }),
     onSuccess: async () => {
-      setConfirmHide(false);
       await queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
       await queryClient.invalidateQueries({ queryKey: ['sync-catalogue'] });
     },
@@ -258,28 +255,10 @@ function DepartmentVisibility({ template }: { template: ChecklistTemplate }) {
         ]}
         onChange={(value) => {
           if (change.isPending || (value === 'shown') === template.isActive) return;
-          if (value === 'shown') change.mutate(true);
-          else setConfirmHide(true);
+          change.mutate(value === 'shown');
         }}
       />
-      {change.error && !confirmHide ? <ErrorNotice error={change.error} /> : null}
-      <ConfirmDialog
-        open={confirmHide}
-        title={`Hide ${template.name}?`}
-        confirmLabel="Hide"
-        pendingLabel="Hiding…"
-        pending={change.isPending}
-        error={change.error}
-        onConfirm={() => change.mutate(false)}
-        onCancel={() => {
-          setConfirmHide(false);
-          change.reset();
-        }}
-      >
-        Only Super Admins will see {template.name}. Everyone else loses it from Checklists,
-        from every checklist choice and from the phone at its next sync. Finished audits keep
-        their questions, and nothing is deleted: show it again at any time.
-      </ConfirmDialog>
+      {change.error ? <ErrorNotice error={change.error} /> : null}
     </>
   );
 }
