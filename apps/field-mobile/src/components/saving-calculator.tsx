@@ -7,6 +7,7 @@ import {
   calcSavingLine,
   formatRupees,
   missingSavingInputs,
+  savingFieldShown,
   newSavingLine,
   savingSummary,
   type SavingField,
@@ -175,7 +176,7 @@ function SavingLineEditor({
     <View style={styles.line}>
       <Text style={styles.title}>{type.title}</Text>
       <Muted>{type.note}</Muted>
-      {type.fields.map(input)}
+      {type.fields.filter((f) => savingFieldShown(line, f)).map(input)}
       {result ? (
         <View style={styles.result}>
           <Text style={styles.headline}>{result.headline}</Text>
