@@ -15,7 +15,7 @@ import {
 } from '@audit5s/contracts';
 import { kaizenPlace, missingKaizenFields, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
-import { Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorNotice, Field, Input, Select, Slip, Spinner } from '@/components/ui';
+import { Button, Card, CardHeader, ConfirmDialog, DateInput, EmptyState, ErrorNotice, Field, Input, Select, Slip, Spinner } from '@/components/ui';
 import { api } from '@/lib/api';
 import { KAIZEN_PARAMETER_LABEL, KAIZEN_WASTE_LABEL } from '@/lib/labels';
 import { PhotoPicker, putObject, sha256Hex } from '@/lib/photo';
@@ -44,6 +44,7 @@ const EMPTY: Sheet = {
   teamMembers: null,
   theme: null,
   target: null,
+  targetDate: null,
   problem5w1h: null,
   rootCause4m: null,
   analysis7qc: null,
@@ -75,7 +76,8 @@ const LABEL: Record<TextKey | 'annualSaving' | 'implementationCost', string> = {
   implementedOn: 'Date of implementation',
   teamMembers: 'Team members',
   theme: 'Theme',
-  target: 'Target & target date (optional)',
+  target: 'Target (optional)',
+  targetDate: 'Target date (optional)',
   problem5w1h: 'Problem [5W1H]',
   countermeasure: 'Countermeasure',
   benefits: 'Benefits, results and saving calculation',
@@ -267,8 +269,8 @@ function Form({ initial }: { initial?: KaizenDetail }) {
 
   const text = (key: TextKey) => (
     <Field key={key} label={LABEL[key]} {...(HINT[key] ? { hint: HINT[key] } : {})} {...(errorFor(key) ? { error: errorFor(key)! } : {})}>
-      {key === 'implementedOn' ? (
-        <Input type="date" value={sheet.implementedOn ?? ''} onChange={(event) => set('implementedOn', event.target.value || null)} />
+      {key === 'implementedOn' || key === 'targetDate' ? (
+        <DateInput value={sheet[key] ?? ''} onChange={(event) => set(key, event.target.value || null)} />
       ) : LONG.has(key) ? (
         <textarea className="gb-input" rows={3} maxLength={4000} value={sheet[key] ?? ''} onChange={(event) => set(key, event.target.value || null)} />
       ) : (
@@ -363,9 +365,12 @@ function Form({ initial }: { initial?: KaizenDetail }) {
       <Step n={2} title="Team members" state={stepState(['teamMembers'], missing, sheet)}>
         {text('teamMembers')}
       </Step>
-      <Step n={3} title="Kaizen theme" state={stepState(['theme', 'target'], missing, sheet)}>
+      <Step n={3} title="Kaizen theme" state={stepState(['theme', 'target', 'targetDate'], missing, sheet)}>
         {text('theme')}
-        {text('target')}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="sm:col-span-2">{text('target')}</div>
+          {text('targetDate')}
+        </div>
       </Step>
       <Step n={4} title="Problem" state={stepState(['problem5w1h'], missing, sheet)}>
         {text('problem5w1h')}
@@ -512,7 +517,7 @@ function Form({ initial }: { initial?: KaizenDetail }) {
 const KAIZEN_STEP_ITEMS: { items: (keyof Sheet)[] }[] = [
   { items: ['machine', 'lineArea', 'implementedOn'] },
   { items: ['teamMembers'] },
-  { items: ['theme', 'target'] },
+  { items: ['theme', 'target', 'targetDate'] },
   { items: ['problem5w1h'] },
   { items: ['countermeasure'] },
   { items: ['horizontalDeployment'] },

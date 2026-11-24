@@ -190,6 +190,7 @@ export default function KaizenDetailScreen() {
           {row('implementedOn', sheet.implementedOn ? formatDate(sheet.implementedOn) : null)}
           {row('teamMembers', sheet.teamMembers)}
           {row('target', sheet.target)}
+          {row('targetDate', sheet.targetDate ? formatDate(sheet.targetDate) : null)}
           {row('problem5w1h', sheet.problem5w1h)}
           {row('rootCause4m', sheet.rootCause4m)}
           {row('analysis7qc', sheet.analysis7qc)}

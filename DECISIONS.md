@@ -3212,3 +3212,19 @@ template's existing `is_active` flag and `PATCH /checklist-templates/:id`
   questions at its next sync. An audit started offline and not yet synced cannot be seen by
   this check.
 - **Showing it again** returns it to everyone at their next load or sync. Nothing is deleted (D8).
+
+## R-90 — A Kaizen's target date is picked from a calendar
+
+**Proposed 2026-11-24; awaiting the owner's go before `main`.** The sheet's one free-text box
+"Target & target date" becomes two, both optional: **Target** (text, as before) and **Target
+date**, picked from a calendar on the web and the phone. Every Kaizen date box shows a
+calendar symbol.
+
+- **Its own column.** `kaizen.target_date date` (0069), `targetDate` in the contract
+  (`YYYY-MM-DD`, as `implementedOn`). Additive: the previous release runs unchanged on it.
+- **Old Kaizens keep their text.** A date already typed into `target` stays there; nothing is
+  parsed out of it.
+- **A target date may be in the future**, unlike the day of implementation. It is never
+  required to submit.
+- **Printed and exported.** The sheet prints the target followed by "by <date>"; the
+  register export has a Target date column.

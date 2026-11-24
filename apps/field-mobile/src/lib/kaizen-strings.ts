@@ -24,6 +24,7 @@ export type KaizenTextField =
   | 'teamMembers'
   | 'theme'
   | 'target'
+  | 'targetDate'
   | 'problem5w1h'
   | 'countermeasure'
   | 'benefits'
@@ -132,6 +133,8 @@ export interface KaizenStrings {
   field: Record<KaizenTextField, string>;
   /** Under a box: what to write, in the leader's words. An error replaces it. */
   hint: Partial<Record<KaizenTextField, string>>;
+  /** Under an optional date picked from the calendar: empties it. */
+  clearDate: string;
   beforeHint: string;
   afterHint: string;
   zone: string;
@@ -370,7 +373,8 @@ const EN: KaizenStrings = {
     implementedOn: 'Date of implementation',
     teamMembers: 'Team members',
     theme: 'Theme',
-    target: 'Target & target date (optional)',
+    target: 'Target (optional)',
+    targetDate: 'Target date (optional)',
     problem5w1h: 'Problem [5W1H]',
     countermeasure: 'Countermeasure',
     benefits: 'Benefits, results and saving calculation',
@@ -381,6 +385,7 @@ const EN: KaizenStrings = {
     ideaBy: 'Idea given by',
     implementedBy: 'Implemented by',
   },
+  clearDate: 'Clear date',
   hint: {
     department: 'Choose a Zone, type a department, or both.',
     teamMembers: 'Names, separated by commas',
@@ -638,7 +643,8 @@ const HI: KaizenStrings = {
     implementedOn: 'लागू करने की तारीख',
     teamMembers: 'टीम सदस्य',
     theme: 'विषय',
-    target: 'लक्ष्य और लक्ष्य तारीख (वैकल्पिक)',
+    target: 'लक्ष्य (वैकल्पिक)',
+    targetDate: 'लक्ष्य तारीख (वैकल्पिक)',
     problem5w1h: 'समस्या [5W1H]',
     countermeasure: 'उपाय',
     benefits: 'लाभ, परिणाम और बचत की गणना',
@@ -649,6 +655,7 @@ const HI: KaizenStrings = {
     ideaBy: 'विचार किसका था',
     implementedBy: 'किसने लागू किया',
   },
+  clearDate: 'तारीख हटाएँ',
   hint: {
     department: 'ज़ोन चुनें, विभाग लिखें, या दोनों।',
     teamMembers: 'नाम, अल्पविराम से अलग',
@@ -906,7 +913,8 @@ const MR: KaizenStrings = {
     implementedOn: 'अंमलबजावणीची तारीख',
     teamMembers: 'टीम सदस्य',
     theme: 'विषय',
-    target: 'लक्ष्य आणि लक्ष्य तारीख (ऐच्छिक)',
+    target: 'लक्ष्य (ऐच्छिक)',
+    targetDate: 'लक्ष्य तारीख (ऐच्छिक)',
     problem5w1h: 'समस्या [5W1H]',
     countermeasure: 'उपाय',
     benefits: 'फायदे, परिणाम आणि बचतीची गणना',
@@ -917,6 +925,7 @@ const MR: KaizenStrings = {
     ideaBy: 'कल्पना कोणाची',
     implementedBy: 'अंमलबजावणी कोणी केली',
   },
+  clearDate: 'तारीख काढा',
   hint: {
     department: 'झोन निवडा, विभाग लिहा, किंवा दोन्ही.',
     teamMembers: 'नावे, स्वल्पविरामाने वेगळी',

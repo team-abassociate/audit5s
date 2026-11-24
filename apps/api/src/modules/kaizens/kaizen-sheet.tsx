@@ -144,7 +144,7 @@ function KaizenSheet({ kaizen, photos }: { kaizen: KaizenDetail; photos: KaizenS
         </div>
         <div className="kz-callout green">
           <div className="kz-label">Target &amp; target date</div>
-          <div className="kz-value"><Text value={kaizen.target} /></div>
+          <div className="kz-value"><Text value={targetLine(kaizen)} /></div>
         </div>
       </div>
 
@@ -279,6 +279,12 @@ export function compactRupees(value: number | null): string {
   const abs = Math.abs(value);
   const [unit, size] = abs >= 1e7 ? ['Cr', 1e7] : abs >= 1e5 ? ['L', 1e5] : abs >= 1e3 ? ['K', 1e3] : ['', 1];
   return `${value < 0 ? '-' : ''}₹${Math.round((abs / size) * 10) / 10}${unit}`;
+}
+
+/** The target and the day it is due, on one line: either may be missing (0069). */
+export function targetLine(kaizen: Pick<KaizenDetail, 'target' | 'targetDate'>): string | null {
+  const due = kaizen.targetDate ? `by ${formatDate(kaizen.targetDate)}` : null;
+  return [kaizen.target, due].filter(Boolean).join(' ') || null;
 }
 
 function Text({ value }: { value: string | null }) {

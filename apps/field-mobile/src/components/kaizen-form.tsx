@@ -92,7 +92,7 @@ import {
  */
 
 const TEXT_FIELDS: readonly KaizenTextField[] = [
-  'department', 'machine', 'lineArea', 'implementedOn', 'teamMembers', 'theme', 'target', 'problem5w1h',
+  'department', 'machine', 'lineArea', 'implementedOn', 'teamMembers', 'theme', 'target', 'targetDate', 'problem5w1h',
   'countermeasure', 'benefits', 'annualSaving', 'implementationCost', 'rootCause4m', 'analysis7qc', 'ideaBy', 'implementedBy',
 ];
 const MULTILINE: ReadonlySet<KaizenTextField> = new Set([
@@ -461,7 +461,9 @@ export function KaizenForm({
   function parse(field: KaizenTextField, raw: string): KaizenFields[KaizenTextField] | undefined {
     const value = raw.trim();
     if (value === '') return null;
-    if (field === 'implementedOn') return isoDateSchema.safeParse(value).success ? value : undefined;
+    if (field === 'implementedOn' || field === 'targetDate') {
+      return isoDateSchema.safeParse(value).success ? value : undefined;
+    }
     if (RUPEES.has(field)) {
       const rupees = Number(value.replace(/[₹,\s]/g, ''));
       return Number.isFinite(rupees) && rupees >= 0 ? rupees : undefined;
@@ -600,15 +602,18 @@ export function KaizenForm({
   };
 
   /**
-   * The date from Android's own calendar (#10), never typed: it cannot be in the future or
-   * malformed. Stored as before, `YYYY-MM-DD` in IST. Saved the moment it is set, like a tick.
+   * A date from Android's own calendar (#10), never typed, so it cannot be malformed; the
+   * day of implementation cannot be in the future either, while a target date usually is.
+   * Stored as before, `YYYY-MM-DD` in IST. Saved the moment it is set, like a tick. The
+   * target date is optional, so it can be cleared; the picker itself has no "none".
    */
-  const dateField = () => {
-    const value = texts.implementedOn;
-    const label = t.field.implementedOn;
-    return (
+  const dateField = (field: 'implementedOn' | 'targetDate') => {
+    const value = texts[field];
+    const label = t.field[field];
+    const pick = (
       <Pressable
-        testID="kaizen-implementedOn"
+        key={field}
+        testID={`kaizen-${field}`}
         accessibilityRole="button"
         accessibilityLabel={value ? `${label}: ${formatDate(value)}` : label}
         onPress={() =>
@@ -616,21 +621,37 @@ export function KaizenForm({
             // Noon in IST, so the day it shows is the day stored, whatever the phone's zone.
             value: value ? new Date(`${value}T12:00:00+05:30`) : new Date(),
             mode: 'date',
-            maximumDate: new Date(),
+            ...(field === 'implementedOn' ? { maximumDate: new Date() } : {}),
             onChange: (event, date) => {
               const key = event.type === 'set' && date ? istDateKey(date) : null;
               if (!key) return;
-              setTexts((all) => (all ? { ...all, implementedOn: key } : all));
-              if (key !== (savedRef.current.implementedOn ?? null)) save.mutate({ implementedOn: key });
+              setTexts((all) => (all ? { ...all, [field]: key } : all));
+              if (key !== (savedRef.current[field] ?? null)) save.mutate({ [field]: key } as KaizenFields);
             },
           })
         }
       >
         {/* The text box's own look, so it reads as one more box on the form. */}
         <View pointerEvents="none">
-          <Field label={label} value={value ? formatDate(value) : ''} editable={false} />
+          <Field label={label} value={value ? formatDate(value) : ''} editable={false} trailingIcon="calendar-today" />
         </View>
       </Pressable>
+    );
+    if (field !== 'targetDate' || !value) return pick;
+    return (
+      <View key={field}>
+        {pick}
+        <Button
+          icon="close"
+          title={t.clearDate}
+          variant="secondary"
+          accessibilityLabel={`${t.clearDate}: ${label}`}
+          onPress={() => {
+            setTexts((all) => (all ? { ...all, targetDate: '' } : all));
+            if ((savedRef.current.targetDate ?? null) !== null) save.mutate({ targetDate: null });
+          }}
+        />
+      </View>
     );
   };
 
@@ -716,7 +737,7 @@ export function KaizenForm({
             {textField('department')}
             {textField('machine')}
             {textField('lineArea')}
-            {dateField()}
+            {dateField('implementedOn')}
           </>
         );
       case 'team':
@@ -726,6 +747,7 @@ export function KaizenForm({
           <>
             {textField('theme')}
             {textField('target')}
+            {dateField('targetDate')}
           </>
         );
       case 'problem':

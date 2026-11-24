@@ -13,7 +13,7 @@ import { KAIZEN_STEPS, type KaizenStep } from './kaizen-strings';
 export const STEP_ITEMS: Record<KaizenStep, readonly (keyof KaizenFields | 'zoneOrDepartment' | 'beforePhoto' | 'afterPhoto')[]> = {
   details: ['zoneOrDepartment', 'department', 'machine', 'lineArea', 'implementedOn'],
   team: ['teamMembers'],
-  theme: ['theme', 'target'],
+  theme: ['theme', 'target', 'targetDate'],
   problem: ['problem5w1h'],
   countermeasure: ['countermeasure'],
   before: ['beforePhoto'],

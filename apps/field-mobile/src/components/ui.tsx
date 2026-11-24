@@ -602,6 +602,7 @@ export function Field({
   containerStyle,
   revealable,
   inputRef,
+  trailingIcon,
   ...rest
 }: TextInputProps & {
   /** The text box itself — `useRequiredFields().input(key)` scrolls to it and focuses it. */
@@ -612,6 +613,8 @@ export function Field({
   containerStyle?: StyleProp<ViewStyle>;
   /** A password: typed hidden, with a Show / Hide toggle so the person can check it. */
   revealable?: boolean;
+  /** A symbol at the box's right end saying what kind of box it is — a calendar on a date. */
+  trailingIcon?: IconName;
 }) {
   const styles = useStyles();
   const theme = useTheme();
@@ -625,6 +628,7 @@ export function Field({
         styles.input,
         rest.multiline && styles.inputMultiline,
         revealable && styles.inputRevealable,
+        trailingIcon ? styles.inputWithIcon : null,
         error ? styles.inputError : null,
       ]}
       placeholderTextColor={theme.color.muted}
@@ -656,6 +660,13 @@ export function Field({
             >
               <Text style={styles.revealText}>{revealed ? 'Hide' : 'Show'}</Text>
             </Pressable>
+          </View>
+        ) : trailingIcon ? (
+          <View>
+            {input}
+            <View style={styles.trailingIcon} pointerEvents="none">
+              <Icon name={trailingIcon} color={theme.color.ink2} size={20} />
+            </View>
           </View>
         ) : (
           input
@@ -1584,6 +1595,9 @@ const useStyles = createThemedStyles((theme) => ({
     backgroundColor: theme.color.surface,
   },
   revealPressed: { backgroundColor: theme.color.chip },
+  // Room on the right for `trailingIcon`, which sits over the box's right end.
+  inputWithIcon: { paddingRight: 44 },
+  trailingIcon: { position: 'absolute', top: 0, bottom: 0, right: 12, justifyContent: 'center' },
   revealText: {
     fontFamily: theme.family.semibold,
     fontSize: 13,
