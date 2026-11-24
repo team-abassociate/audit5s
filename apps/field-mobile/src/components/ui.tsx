@@ -1135,7 +1135,12 @@ export function SelectField<T extends string>({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${label}: ${current?.label ?? placeholder}. Tap to change.`}
-        onPress={() => setOpen(true)}
+        onPress={() => {
+          // A text box left focused under the sheet takes the focus back when it closes, and
+          // the form scrolls to it: picking "What did it save?" jumped to Benefits above.
+          Keyboard.dismiss();
+          setOpen(true);
+        }}
         style={[styles.input, styles.select]}
       >
         <View style={styles.selectText}>

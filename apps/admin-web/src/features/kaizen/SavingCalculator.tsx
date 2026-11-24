@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KAIZEN_SAVING_TYPES, type KaizenSavingCalc, type KaizenSavingLine, type KaizenSavingType } from '@audit5s/contracts';
 import {
   SAVING_SECS,
@@ -36,6 +36,17 @@ export function SavingCalculator({
 }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<KaizenSavingLine[]>(() => (initial ? [...initial] : []));
+  const box = useRef<HTMLDivElement>(null);
+  /** A saving was just added from the picker: its first box takes the focus, in place. */
+  const added = useRef(false);
+  useEffect(() => {
+    if (!added.current) return;
+    added.current = false;
+    const editors = box.current?.querySelectorAll<HTMLElement>('[data-saving-line]');
+    editors?.[editors.length - 1]
+      ?.querySelector<HTMLElement>('input, select')
+      ?.focus({ preventScroll: true });
+  }, [lines.length]);
 
   if (!open) {
     return (
@@ -50,7 +61,7 @@ export function SavingCalculator({
     setLines((all) => all.map((line, i) => (i === index ? { ...line, values: { ...line.values, ...values } } : line)));
 
   return (
-    <div className="space-y-4 border border-rule-soft p-4">
+    <div ref={box} className="space-y-4 border border-rule-soft p-4">
       <p className="text-sm text-ink-2">
         Pick what the Kaizen saved and fill in the numbers. The working is kept with the Kaizen, so the reviewer can see it.
       </p>
@@ -68,7 +79,13 @@ export function SavingCalculator({
             value=""
             onChange={(event) => {
               const type = event.target.value as KaizenSavingType;
-              if (type) setLines((all) => [...all, newSavingLine(type)]);
+              if (!type) return;
+              // The new saving goes in above this picker. Left focused, the browser holds the
+              // picker still on screen (scroll anchoring), so the page jumped down past the
+              // boxes just added. Released first, the page stays put and they appear in place.
+              event.currentTarget.blur();
+              added.current = true;
+              setLines((all) => [...all, newSavingLine(type)]);
             }}
           >
             <option value="">Choose…</option>
@@ -182,7 +199,7 @@ function SavingLineEditor({
   };
 
   return (
-    <div className="space-y-3 border border-rule-soft p-3">
+    <div data-saving-line className="space-y-3 border border-rule-soft p-3">
       <p className="font-bold text-ink">{type.title}</p>
       <p className="text-sm text-ink-2">{type.note}</p>
       <div className="grid gap-4 sm:grid-cols-2">{type.fields.map(input)}</div>
