@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { KAIZEN_SAVING_TYPES, type KaizenSavingCalc, type KaizenSavingLine, type KaizenSavingType } from '@audit5s/contracts';
 import {
   SAVING_SECS,
@@ -37,15 +37,27 @@ export function SavingCalculator({
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<KaizenSavingLine[]>(() => (initial ? [...initial] : []));
   const box = useRef<HTMLDivElement>(null);
-  /** A saving was just added from the picker: its first box takes the focus, in place. */
-  const added = useRef(false);
-  useEffect(() => {
-    if (!added.current) return;
-    added.current = false;
+  /**
+   * A saving was just added from the picker: where the page was scrolled to, so it stays
+   * there. The new saving goes in above the picker, and the browser's scroll anchoring
+   * otherwise keeps whatever sits below it still on screen and pushes the page down past
+   * the boxes just added.
+   */
+  const held = useRef<{ scroller: Element; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const hold = held.current;
+    if (!hold) return;
+    held.current = null;
+    const restore = () => {
+      hold.scroller.scrollTop = hold.top;
+    };
+    restore();
     const editors = box.current?.querySelectorAll<HTMLElement>('[data-saving-line]');
     editors?.[editors.length - 1]
       ?.querySelector<HTMLElement>('input, select')
       ?.focus({ preventScroll: true });
+    // Anchoring may adjust again at the next layout: put it back once more before the paint.
+    requestAnimationFrame(restore);
   }, [lines.length]);
 
   if (!open) {
@@ -80,11 +92,10 @@ export function SavingCalculator({
             onChange={(event) => {
               const type = event.target.value as KaizenSavingType;
               if (!type) return;
-              // The new saving goes in above this picker. Left focused, the browser holds the
-              // picker still on screen (scroll anchoring), so the page jumped down past the
-              // boxes just added. Released first, the page stays put and they appear in place.
+              // The new saving goes in above this picker: the page is held where it is (above).
               event.currentTarget.blur();
-              added.current = true;
+              const scroller = scrollerOf(event.currentTarget);
+              held.current = { scroller, top: scroller.scrollTop };
               setLines((all) => [...all, newSavingLine(type)]);
             }}
           >
@@ -131,6 +142,15 @@ export function SavingCalculator({
       </div>
     </div>
   );
+}
+
+/** The nearest box that scrolls `node`: a panel with its own scroll, else the page. */
+function scrollerOf(node: Element): Element {
+  for (let el = node.parentElement; el; el = el.parentElement) {
+    const { overflowY } = getComputedStyle(el);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight) return el;
+  }
+  return document.scrollingElement ?? document.documentElement;
 }
 
 function SavingLineEditor({
