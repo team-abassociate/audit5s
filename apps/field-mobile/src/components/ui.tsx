@@ -1139,6 +1139,10 @@ export function SelectField<T extends string>({
           // A text box left focused under the sheet takes the focus back when it closes, and
           // the form scrolls to it: picking "What did it save?" jumped to Benefits above.
           Keyboard.dismiss();
+          // Web: the sheet hands the focus back to this field when it closes, and the browser
+          // scrolls it into view. "What did it save?" sits below the saving just added, so the
+          // form jumped down to "Add another saving". Let go of it first; the form stays put.
+          (globalThis as { document?: { activeElement?: { blur?(): void } | null } }).document?.activeElement?.blur?.();
           setOpen(true);
         }}
         style={[styles.input, styles.select]}
