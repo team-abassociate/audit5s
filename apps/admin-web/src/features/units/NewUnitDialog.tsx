@@ -189,11 +189,13 @@ function Stepper({
   const stepError = [unitError, zonesValid ? undefined : 'Fix the marked Zones.', undefined, coordinatorError, undefined][step];
 
   // Checklists this Unit is offered (0042): ticked for its industry, or ticked for none.
+  // A hidden department (R-89) is offered to no one.
   const offered = (templates.data?.data ?? []).filter(
     (template) =>
-      !industryId ||
-      template.industries.length === 0 ||
-      template.industries.some((industry) => industry.id === industryId),
+      template.isActive &&
+      (!industryId ||
+        template.industries.length === 0 ||
+        template.industries.some((industry) => industry.id === industryId)),
   );
 
   const placedIds = new Set((placed.data?.data ?? []).map((membership) => membership.userId));

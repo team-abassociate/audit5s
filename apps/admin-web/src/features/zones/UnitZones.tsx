@@ -825,7 +825,8 @@ function firstFreeNumber(taken: Set<string>): number {
  * The checklists a Zone of this Unit may default to (0042): those ticked for the Unit's
  * industry, plus those ticked for none, which are offered everywhere. A Unit with no
  * industry is offered everything. `keepId` stays in the list even when it no longer
- * fits, so editing a Zone never silently drops the choice it already has.
+ * fits, so editing a Zone never silently drops the choice it already has. A hidden
+ * department (R-89) is offered to no one, bar that `keepId`.
  */
 function useOfferedTemplates(
   unitId: string,
@@ -850,9 +851,11 @@ function useOfferedTemplates(
     data: (templates.data?.data ?? []).filter(
       (template) =>
         template.id === keepId ||
-        industryId === null ||
-        template.industries.length === 0 ||
-        template.industries.some((industry) => industry.id === industryId),
+        // A hidden department (R-89) is offered to no one.
+        (template.isActive &&
+          (industryId === null ||
+            template.industries.length === 0 ||
+            template.industries.some((industry) => industry.id === industryId))),
     ),
   };
 }

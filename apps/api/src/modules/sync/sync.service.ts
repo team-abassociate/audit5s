@@ -53,9 +53,17 @@ export class SyncService {
       scopeFor(scope, 'checklist_template:read'),
       { limit: 200, includeArchived: false },
     );
-    const versions = await this.checklists.publishedVersionsWithQuestions(
-      scopeFor(scope, 'checklist_version:read'),
+    // R-89: a hidden department is off every device, a Super Admin's included. Other roles
+    // are never sent one; a Super Admin's list carries it so the Checklists page can show
+    // it again, so it is dropped here, with its versions. Hiding moves the token: the
+    // template leaves the fingerprint below.
+    const hidden = new Set(
+      templatePage.data.filter((template) => !template.isActive).map((template) => template.id),
     );
+    const templates = templatePage.data.filter((template) => !hidden.has(template.id));
+    const versions = (
+      await this.checklists.publishedVersionsWithQuestions(scopeFor(scope, 'checklist_version:read'))
+    ).filter((version) => !hidden.has(version.templateId));
     // Only the actor's **own** open assignments: a Zone Leader reads their Unit's through
     // `/audit-assignments`, but a device's catalogue is the auditor's own task list (§2.3).
     const assignmentRows = await this.assignments.listOpenForAuditor(
@@ -91,7 +99,7 @@ export class SyncService {
       ),
       // The industries ride along (0042): which checklists a Unit is offered is decided on
       // the device, so a re-tag has to move the token even though no version changed.
-      ...templatePage.data.map(
+      ...templates.map(
         (template) =>
           `t:${template.id}:${template.updatedAt}:${template.industries.map((industry) => industry.id).join(',')}`,
       ),
@@ -119,7 +127,7 @@ export class SyncService {
       catalogueVersion,
       units,
       zones,
-      checklistTemplates: templatePage.data,
+      checklistTemplates: templates,
       checklistVersions: versions,
       assignments: assignmentRows.map(toAssignment),
       correctiveActions: actions,

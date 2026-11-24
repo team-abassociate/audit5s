@@ -209,7 +209,9 @@ export function ChecklistEditor({
               >
                 <Select value={fromId} onChange={(event) => setFromId(event.target.value)}>
                   <option value="">A blank checklist</option>
-                  {(templates.data?.data ?? []).map((template) => (
+                  {/* A hidden department (R-89) is not offered to copy. It stays in
+                      `matchFor`, so a draft of the same name still becomes its next version. */}
+                  {(templates.data?.data ?? []).filter((template) => template.isActive).map((template) => (
                     <option key={template.id} value={template.id}>
                       A copy of {template.name}
                       {template.industries.length > 0

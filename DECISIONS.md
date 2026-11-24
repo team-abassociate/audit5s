@@ -3201,7 +3201,10 @@ template's existing `is_active` flag and `PATCH /checklist-templates/:id`
 - **The server hides it.** For anyone but a Super Admin, a hidden department is left out of
   `GET /checklist-templates`, `GET /checklist-templates/:id` (404), `GET /checklist-versions`
   and the sync catalogue, so it is gone from their Checklists page, every checklist picker and
-  their phone. A Super Admin still sees it, marked Hidden, and can pick it.
+  their phone. A Super Admin still sees it on the Checklists page, marked Hidden, to show it
+  again — and nowhere else: it is off a Super Admin's sync catalogue (phone and the portal's
+  audit screens) too, and no portal picker (a new Unit's checklists, a Zone's default, a new
+  checklist's "Start from") offers it. A Zone already defaulting to it keeps that choice.
 - **Audit records keep their questions.** `GET /checklist-versions/:id` still answers someone
   who can see an audit that used that version; nothing else of the department is shown to them.
 - **Not while it is in use.** Hiding is refused (409 `RESOURCE_IN_USE`) while an audit that is
