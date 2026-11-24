@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm'
 import { deviceUsers, devices, refreshTokens, users, type Database, type Transaction } from '@audit5s/db';
 import type { ScopeContext } from '@audit5s/domain';
 import type { ListDevicesQuery } from '@audit5s/contracts';
+import { isRlsViolation } from '../../common/pg-errors';
 import { BaseRepository } from '../../common/repository/base.repository';
 import { ScopeResolverRegistry } from '../../common/auth/resolvers';
 import { DATABASE } from '../../infrastructure/database/database.module';
@@ -61,46 +62,54 @@ export class DevicesRepository extends BaseRepository {
       pushToken: string | null;
     },
   ): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      await setActorContext(tx, scope.actor.userId, scope.actor.role);
-      const written = await tx
-        .insert(devices)
-        .values({
-          id: input.id,
-          userId: scope.actor.userId,
-          platform: input.platform,
-          model: input.model,
-          osVersion: input.osVersion,
-          appVersion: input.appVersion,
-          pushToken: input.pushToken,
-          lastSeenAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: devices.id,
-          set: {
+    try {
+      await this.db.transaction(async (tx) => {
+        await setActorContext(tx, scope.actor.userId, scope.actor.role);
+        const written = await tx
+          .insert(devices)
+          .values({
+            id: input.id,
+            userId: scope.actor.userId,
             platform: input.platform,
             model: input.model,
             osVersion: input.osVersion,
             appVersion: input.appVersion,
-            ...(input.pushToken ? { pushToken: input.pushToken } : {}),
+            pushToken: input.pushToken,
             lastSeenAt: new Date(),
-          },
-          // Only a phone this person is on. The service refuses anybody else before this.
-          where: sql`EXISTS (SELECT 1 FROM device_user
-                             WHERE device_user.device_id = ${devices.id}
-                               AND device_user.user_id = ${scope.actor.userId}::uuid)`,
-        })
-        .returning({ id: devices.id });
-      // Nothing came back: the id is somebody else's phone. Registering is not a way onto
-      // a phone — signing in on it is — so nothing is written and the caller reads 404.
-      if (written.length === 0) return;
-      // A new phone's first person. Nothing is changed for somebody already on the list,
-      // including a revoked place: that is restored by signing in, not by re-registering.
-      await tx
-        .insert(deviceUsers)
-        .values({ deviceId: input.id, userId: scope.actor.userId })
-        .onConflictDoNothing();
-    });
+          })
+          .onConflictDoUpdate({
+            target: devices.id,
+            set: {
+              platform: input.platform,
+              model: input.model,
+              osVersion: input.osVersion,
+              appVersion: input.appVersion,
+              ...(input.pushToken ? { pushToken: input.pushToken } : {}),
+              lastSeenAt: new Date(),
+            },
+            // Only a phone this person is on. The service refuses anybody else before this.
+            where: sql`EXISTS (SELECT 1 FROM device_user
+                               WHERE device_user.device_id = ${devices.id}
+                                 AND device_user.user_id = ${scope.actor.userId}::uuid)`,
+          })
+          .returning({ id: devices.id });
+        // Nothing came back: the id is somebody else's phone. Registering is not a way onto
+        // a phone — signing in on it is — so nothing is written and the caller reads 404.
+        if (written.length === 0) return;
+        // A new phone's first person. Nothing is changed for somebody already on the list,
+        // including a revoked place: that is restored by signing in, not by re-registering.
+        await tx
+          .insert(deviceUsers)
+          .values({ deviceId: input.id, userId: scope.actor.userId })
+          .onConflictDoNothing();
+      });
+    } catch (error) {
+      // Somebody else's phone, since Postgres 18.7: the row already there is checked against
+      // the update policy before the `where` above can skip it, so the refusal comes as an RLS
+      // error instead of no rows. Either way nothing was written, and the caller reads 404.
+      if (isRlsViolation(error)) return;
+      throw error;
+    }
   }
 
 
