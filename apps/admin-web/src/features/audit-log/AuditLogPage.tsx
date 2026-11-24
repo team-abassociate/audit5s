@@ -23,7 +23,7 @@ import {
   EmptyState,
   ErrorNotice,
   Field,
-  Input,
+  DateInput,
   Select,
   Skeleton,
   Table,
@@ -311,10 +311,10 @@ export function AuditLogPage() {
           </Select>
         </Field>
         <Field label="From">
-          <Input type="date" value={search.from ?? ''} max={search.to} onChange={(event) => set({ from: event.target.value || undefined })} />
+          <DateInput value={search.from ?? ''} max={search.to} onChange={(event) => set({ from: event.target.value || undefined })} />
         </Field>
         <Field label="To">
-          <Input type="date" value={search.to ?? ''} min={search.from} onChange={(event) => set({ to: event.target.value || undefined })} />
+          <DateInput value={search.to ?? ''} min={search.from} onChange={(event) => set({ to: event.target.value || undefined })} />
         </Field>
         {entries.data ? (
           <span className="gb-filters-count" aria-live="polite">

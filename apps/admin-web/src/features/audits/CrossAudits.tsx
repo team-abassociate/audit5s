@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CrossAuditor, CrossAuditRound, CrossAuditZoneState, Page, Zone } from '@audit5s/contracts';
 import { formatDate, istDateKey, uuidv7, zoneDisplayLabel } from '@audit5s/domain';
-import { Badge, Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorNotice, Field, Input, Segmented, Select, Table, Td, Th } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, ConfirmDialog, EmptyState, ErrorNotice, Field, DateInput, Segmented, Select, Table, Td, Th } from '@/components/ui';
 import { api } from '@/lib/api';
 
 /**
@@ -136,7 +136,7 @@ export function CallCrossAuditDialog({ unitId, open, onClose }: { unitId: string
       </div>
       <ErrorNotice error={people.error} />
       <Field label="Due by">
-        <Input type="date" value={dueOn} min={today()} onChange={(event) => setDueOn(event.target.value)} />
+        <DateInput value={dueOn} min={today()} onChange={(event) => setDueOn(event.target.value)} />
       </Field>
       <p className="mt-3">
         Each person you chose gets one notification asking them to audit their Zones
@@ -299,7 +299,7 @@ function RoundCard({
           {manage ? (
             <div className="flex flex-wrap items-end gap-3">
               <Field label="Deadline">
-                <Input type="date" value={dueOn} min={today()} onChange={(event) => setDueOn(event.target.value)} />
+                <DateInput value={dueOn} min={today()} onChange={(event) => setDueOn(event.target.value)} />
               </Field>
               <Button variant="secondary" disabled={!dueOn || dueOn === round.dueOn || extend.isPending} onClick={() => extend.mutate()}>
                 {extend.isPending ? 'Saving…' : 'Extend deadline'}

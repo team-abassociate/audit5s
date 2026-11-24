@@ -150,7 +150,7 @@ export default function AssignScreen() {
         >
           {/* The text box's own look, so it reads as one more box on the form. */}
           <View pointerEvents="none">
-            <Field label="Due" value={due ? formatDate(due.toISOString()) : ''} placeholder="No date" editable={false} />
+            <Field label="Due" value={due ? formatDate(due.toISOString()) : ''} placeholder="No date" editable={false} trailingIcon="calendar-today" />
           </View>
         </Pressable>
         {due ? <Button icon="event-busy" title="No due date" variant="secondary" onPress={() => setDue(null)} /> : null}
