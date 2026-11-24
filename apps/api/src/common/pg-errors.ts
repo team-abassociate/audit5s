@@ -8,6 +8,8 @@
  */
 
 export const PG_UNIQUE_VIOLATION = '23505';
+/** Also what a row-level security refusal raises. */
+export const PG_INSUFFICIENT_PRIVILEGE = '42501';
 
 interface PgErrorLike {
   code?: string;
@@ -47,4 +49,9 @@ export function isUniqueViolation(error: unknown, constraint?: string): boolean 
     return false;
   }
   return constraint === undefined || mentionsConstraint(error, constraint);
+}
+
+/** True for a row-level security refusal (or any other "insufficient privilege"). */
+export function isRlsViolation(error: unknown): boolean {
+  return chain(error).some((candidate) => candidate.code === PG_INSUFFICIENT_PRIVILEGE);
 }
