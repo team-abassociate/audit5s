@@ -132,6 +132,19 @@ export class EvidenceService {
     const auditZoneId = await this.resolveZone(scope, request, audit.id);
     const linkedResponse = await this.resolveResponse(scope, request, audit.id);
 
+    // R-91: a summary photo linked to no question is added to the Good or the Nonconformity
+    // slot, and that slot is its classification. Refused here rather than left to 0070's
+    // CHECK, so the device hears a 400 that names the field instead of a failed insert.
+    if (
+      request.kind === 'SUMMARY_PHOTO' &&
+      request.classification !== 'GOOD' &&
+      request.classification !== 'NONCONFORMITY'
+    ) {
+      throw AppError.validation('A summary photo is Good or Nonconformity', [
+        { field: 'classification', message: 'GOOD or NONCONFORMITY for SUMMARY_PHOTO' },
+      ]);
+    }
+
     // Invariant E-1: derived here, never taken from the request. The auditor's choice is
     // consulted for a walk-by photo and for nothing else.
     const classification = classifyEvidence({
@@ -381,8 +394,9 @@ export class EvidenceService {
     const classification = classifyEvidence({
       kind: row.kind,
       scoreAtCapture: linkedResponse?.value ?? null,
-      // The auditor's walk-by choice was recorded at intent; re-derivation preserves it.
-      auditorSelected: row.kind === 'WALK_BY_PHOTO' ? row.classification : null,
+      // The auditor's walk-by or summary-slot choice was recorded at intent; re-derivation
+      // preserves it.
+      auditorSelected: auditorChoosesClassification(row.kind) ? row.classification : null,
     });
 
     // R-2: the enqueue is on the **same transaction** as the commit, so a job cannot
@@ -541,8 +555,13 @@ export class EvidenceService {
       throw AppError.conflict(
         'CONFLICT',
         `A ${row.kind} photo's classification is derived from its response, not chosen ` +
-          '(E-1). Only a walk-by photograph is the auditor’s to judge (§2.7).',
+          '(E-1). Only a walk-by or summary photograph is the auditor’s to judge (§2.7, R-91).',
       );
+    }
+
+    // R-91: a summary photo stays Good or Nonconformity; 0070's CHECK refuses NEUTRAL.
+    if (row.kind === 'SUMMARY_PHOTO' && request.classification === 'NEUTRAL') {
+      throw AppError.conflict('CONFLICT', 'A summary photo is Good or Nonconformity, never Neutral');
     }
 
     const classification = request.classification ?? row.classification;

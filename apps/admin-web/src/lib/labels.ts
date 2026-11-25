@@ -158,6 +158,7 @@ export const EVIDENCE_KIND_LABEL: Record<EvidenceKind, string> = {
   WALK_BY_PHOTO: 'Walk-by photo',
   CORRECTIVE_AFTER: 'After photo',
   AUDITEE_PHOTO: 'Auditee photo',
+  SUMMARY_PHOTO: 'Summary photo',
 };
 
 /**

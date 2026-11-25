@@ -151,6 +151,24 @@ export function ZoneReport({
         </>
       ) : null}
 
+      {/* R-91: a Nonconformity summary photo linked to no question; it raised no action. */}
+      {(zone.summaryNonconformities ?? []).length > 0 ? (
+        <>
+          <h2 className="section-title">Nonconformity summary photo</h2>
+          <div className="good-grid">
+            {zone.summaryNonconformities!.map((photo) => (
+              <div key={photo.evidenceId} className="photo-card">
+                <Photo photo={photo} resolve={resolve} />
+                <div className="photo-caption">
+                  <span className="badge-nc">!</span> {photoCaption(photo)}
+                </div>
+                {photo.remark ? <div className="photo-remark">{photo.remark}</div> : null}
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+
       {/*
         R-38: after the photo evidence, the auditor's overall remark and then their overall
         corrective-action suggestions — what the auditor found that no photograph shows.

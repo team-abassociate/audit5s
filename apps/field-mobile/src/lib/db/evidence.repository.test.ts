@@ -18,6 +18,7 @@ import {
   markEvidenceIntentIssued,
   markEvidenceSynced,
   pendingPhotoCount,
+  pickLocalSummaryPhoto,
   queueEvidenceCommit,
   reclassifyLocalEvidence,
   responseIdFor,
@@ -478,6 +479,73 @@ describe('§5.6 — one flagged photo of each classification per Zone', () => {
       ok: false,
       reason: 'NEUTRAL',
     });
+  });
+
+  it('R-91: a summary photo of its own is classified by its slot, outside the photo cap', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    const own = await captureLocalEvidence(database, {
+      auditId,
+      auditZoneId,
+      kind: 'SUMMARY_PHOTO',
+      classification: 'NONCONFORMITY',
+      ...PHOTO,
+    });
+
+    const [row] = await getLocalEvidence(database, own);
+    expect(row!.classification).toBe('NONCONFORMITY');
+    expect(row!.questionResponseId).toBeNull();
+    const upsert = (await listOutbox(database)).find(
+      (item) => item.entityId === own && item.operation === 'upsert',
+    );
+    expect(JSON.parse(upsert!.payload)).toMatchObject({ kind: 'SUMMARY_PHOTO', classification: 'NONCONFORMITY' });
+  });
+
+  it('R-91: picking a photo replaces the slot, deleting a replaced photo of its own', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    const own = await captureLocalEvidence(database, {
+      auditId,
+      auditZoneId,
+      kind: 'SUMMARY_PHOTO',
+      classification: 'GOOD',
+      ...PHOTO,
+    });
+    const walkBy = await captureLocalEvidence(database, {
+      auditId,
+      auditZoneId,
+      kind: 'WALK_BY_PHOTO',
+      classification: 'GOOD',
+      ...PHOTO,
+      checksumSha256: '9'.repeat(64),
+      localFileUri: 'file:///data/audit5s/photo-9.jpg',
+    });
+    const another = await captureLocalEvidence(database, {
+      auditId,
+      auditZoneId,
+      kind: 'WALK_BY_PHOTO',
+      classification: 'GOOD',
+      ...PHOTO,
+      checksumSha256: '8'.repeat(64),
+      localFileUri: 'file:///data/audit5s/photo-8.jpg',
+    });
+
+    expect(await pickLocalSummaryPhoto(database, own)).toEqual({ ok: true });
+    expect(await pickLocalSummaryPhoto(database, walkBy)).toEqual({ ok: true });
+    // The photo of its own had no purpose but the slot, so it goes.
+    expect((await getLocalEvidence(database, own))[0]!.deletedAt).not.toBeNull();
+
+    expect(await pickLocalSummaryPhoto(database, another)).toEqual({ ok: true });
+    // A question or walk-by photo stays, only unflagged.
+    const [kept] = await getLocalEvidence(database, walkBy);
+    expect(kept!.deletedAt).toBeNull();
+    expect(kept!.isSummaryFlagged).toBe(0);
+    expect((await getLocalEvidence(database, another))[0]!.isSummaryFlagged).toBe(1);
+
+    // The slot is freed before it is taken, so the server never sees two flagged.
+    const patches = (await listOutbox(database)).filter((item) => item.operation === 'patch');
+    const freed = patches.find((item) => item.entityId === walkBy)!;
+    const taken = patches.find((item) => item.entityId === another)!;
+    expect(JSON.parse(freed.payload).isSummaryFlagged).toBe(false);
+    expect(freed.createdAt < taken.createdAt).toBe(true);
   });
 
   it('frees the flag when the flagged photo is deleted', async () => {

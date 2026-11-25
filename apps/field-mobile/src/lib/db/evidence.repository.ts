@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { EvidenceClassification, EvidenceKind, ResponseValue } from '@audit5s/contracts';
-import { classifyEvidence } from '@audit5s/domain';
+import { auditorChoosesClassification, classifyEvidence } from '@audit5s/domain';
 import type { LocalDatabase } from './local-database';
 import {
   audits,
@@ -48,7 +48,7 @@ export interface CaptureEvidenceInput {
   height?: number | null;
   /** The answer as it stands now, for E-1. Null when the question is unanswered. */
   scoreAtCapture?: ResponseValue | null;
-  /** Honoured for `WALK_BY_PHOTO` only (§2.7); ignored on every other kind. */
+  /** Honoured for `WALK_BY_PHOTO` (§2.7) and `SUMMARY_PHOTO` (R-91) only. */
   classification?: EvidenceClassification | null;
   remark?: string | null;
   /** False for a gallery pick (scored and walk-by photos may be one, 2026-10-13). */
@@ -157,7 +157,7 @@ export async function captureLocalEvidence(
       checksumSha256: input.checksumSha256,
       capturedAt: now,
       isLiveCapture: input.isLiveCapture ?? true,
-      ...(input.kind === 'WALK_BY_PHOTO' && input.classification
+      ...(auditorChoosesClassification(input.kind) && input.classification
         ? { classification: input.classification }
         : {}),
       ...(input.remark ? { remark: input.remark } : {}),
@@ -403,6 +403,44 @@ export async function setLocalSummaryFlag(
   await queueEvidencePatch(database, evidenceId, now);
 
   return { ok: true };
+}
+
+/**
+ * R-91: makes this photograph the Zone's summary photo of its classification, replacing the
+ * one that held the slot. A replaced summary photo linked to no question is deleted, since
+ * the slot was its only purpose; any other photo just loses its flag.
+ *
+ * The replaced photo's patch is queued a millisecond earlier, so the server always hears the
+ * slot freed before it is taken and never answers `SUMMARY_FLAG_TAKEN`.
+ */
+export async function pickLocalSummaryPhoto(
+  database: LocalDatabase,
+  evidenceId: string,
+  at: Date = new Date(),
+): Promise<{ ok: true } | { ok: false; reason: 'TAKEN' | 'NEUTRAL' }> {
+  const [row] = await getLocalEvidence(database, evidenceId);
+  if (!row || (row.classification !== 'GOOD' && row.classification !== 'NONCONFORMITY')) {
+    return { ok: false, reason: 'NEUTRAL' };
+  }
+  const freedAt = at.toISOString();
+  const takenAt = new Date(at.getTime() + 1).toISOString();
+  const holders = await database
+    .select({ id: localEvidence.id, kind: localEvidence.kind })
+    .from(localEvidence)
+    .where(
+      and(
+        eq(localEvidence.auditZoneId, row.auditZoneId ?? ''),
+        eq(localEvidence.classification, row.classification),
+        eq(localEvidence.isSummaryFlagged, 1),
+        isNull(localEvidence.deletedAt),
+        ne(localEvidence.id, evidenceId),
+      ),
+    );
+  for (const holder of holders) {
+    if (holder.kind === 'SUMMARY_PHOTO') await deleteLocalEvidence(database, holder.id, freedAt);
+    else await setLocalSummaryFlag(database, holder.id, false, freedAt);
+  }
+  return setLocalSummaryFlag(database, evidenceId, true, takenAt);
 }
 
 /** A photograph's own remark, written in its preview; the reports print it under the photo. */

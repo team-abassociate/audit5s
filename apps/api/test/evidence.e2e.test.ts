@@ -628,6 +628,53 @@ describe('invariant E-1 — classification is derived, never client-asserted', (
     });
     expect((stored.body as Evidence).classification).toBe('NONCONFORMITY');
   });
+
+  it('R-91: keeps a summary photo’s slot as its classification, linked to no question', async () => {
+    const { auditId, auditZoneId } = await runningAudit();
+    const evidenceId = randomUUID();
+
+    await captureEvidence(world, {
+      token: consultantToken,
+      evidenceId,
+      auditId,
+      auditZoneId,
+      kind: 'SUMMARY_PHOTO',
+      classification: 'NONCONFORMITY',
+      deviceId: DEVICE_ID,
+    });
+
+    const stored = (await world.request('GET', `${base}/evidence/${evidenceId}`, { token: consultantToken }))
+      .body as Evidence;
+    expect(stored.classification).toBe('NONCONFORMITY');
+    expect(stored.questionResponseId).toBeNull();
+
+    const flagged = await world.request('PATCH', `${base}/evidence/${evidenceId}`, {
+      token: consultantToken,
+      body: { isSummaryFlagged: true },
+    });
+    expect(flagged.status).toBe(200);
+
+    // Never NEUTRAL: the slot it was added to is what it is.
+    const neutral = await world.request('PATCH', `${base}/evidence/${evidenceId}`, {
+      token: consultantToken,
+      body: { classification: 'NEUTRAL' },
+    });
+    expect(neutral.status).toBe(409);
+  });
+
+  it('R-91: refuses a summary photo with no Good or Nonconformity slot', async () => {
+    const { auditId, auditZoneId } = await runningAudit();
+    await expect(
+      captureEvidence(world, {
+        token: consultantToken,
+        evidenceId: randomUUID(),
+        auditId,
+        auditZoneId,
+        kind: 'SUMMARY_PHOTO',
+        deviceId: DEVICE_ID,
+      }),
+    ).rejects.toThrow(/upload-intent failed/);
+  });
 });
 
 describe('invariant E-2 — a changed answer re-files its photographs', () => {
