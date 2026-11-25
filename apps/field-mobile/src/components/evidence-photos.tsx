@@ -138,7 +138,7 @@ export function SummaryPhotosCard({
         title="Summary photos"
         description={
           onAdd
-            ? 'One Good and one Nonconformity represent this Zone in the reports. Add a photo of its own, or take one from a question.'
+            ? 'One Good and one Nonconformity represent this Zone in the reports. Add an individual photo with a remark, or a photo for a question.'
             : 'Open a photograph to flag one Good and one Nonconformity. They represent this Zone in the unit summary report.'
         }
       />
@@ -172,8 +172,8 @@ export interface SummaryQuestion {
  * R-91: a summary slot's two ways in, from the end of the audit, so the auditor never has to
  * page back through the questions.
  *
- * 1. **A photo of its own**: camera or gallery, linked to no question. The preview opens
- *    after it is taken, for its remark.
+ * 1. **An individual photo**: camera or gallery, linked to no question, with the remark
+ *    typed here first (owner, 2026-11-25).
  * 2. **From a question**: the questions marked to fit the slot. Use one of a question's
  *    photographs, or add one to that question, which then becomes the summary photo.
  *
@@ -196,7 +196,7 @@ export function SummaryPhotoSheet({
   canAddToQuestion: boolean;
   busy: boolean;
   error: string | null;
-  onOwnPhoto: (source: PhotoSource) => void;
+  onOwnPhoto: (source: PhotoSource, remark: string | null) => void;
   onQuestionPhoto: (questionId: string, source: PhotoSource) => void;
   onPick: (evidenceId: string) => void;
   onClose: () => void;
@@ -204,8 +204,13 @@ export function SummaryPhotoSheet({
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const [questionId, setQuestionId] = useState<string | null>(null);
+  const [remark, setRemark] = useState('');
 
-  useEffect(() => setQuestionId(null), [slot]);
+  useEffect(() => {
+    setQuestionId(null);
+    setRemark('');
+  }, [slot]);
+  const ownRemark = remark.trim() || null;
 
   if (!slot) return null;
   const title = slot === 'GOOD' ? 'Good' : 'Nonconformity';
@@ -223,15 +228,23 @@ export function SummaryPhotoSheet({
 
           <Card>
             <CardHeader
-              title="A photo of its own"
-              description="Not linked to any question. Write its remark in the preview that opens after it."
+              title="Individual photo"
+              description="Not linked to any question. Write its remark, then take or choose the photo."
+            />
+            <Field
+              label="Remark"
+              multiline
+              placeholder="What this photograph shows"
+              value={remark}
+              onChangeText={setRemark}
+              maxLength={2000}
             />
             <View style={styles.sourceRow}>
               <View style={styles.sourceButton}>
-                <Button icon="photo-camera" title="Take photo" variant="secondary" disabled={busy} onPress={() => onOwnPhoto('camera')} />
+                <Button icon="photo-camera" title="Take photo" variant="secondary" disabled={busy} onPress={() => onOwnPhoto('camera', ownRemark)} />
               </View>
               <View style={styles.sourceButton}>
-                <Button icon="photo-library" title="From gallery" variant="secondary" disabled={busy} onPress={() => onOwnPhoto('gallery')} />
+                <Button icon="photo-library" title="From gallery" variant="secondary" disabled={busy} onPress={() => onOwnPhoto('gallery', ownRemark)} />
               </View>
             </View>
           </Card>
@@ -289,7 +302,7 @@ export function SummaryPhotoSheet({
                     </View>
                   </View>
                 ) : (
-                  <Muted>This Zone has its 25 question photographs. Add a photo of its own instead.</Muted>
+                  <Muted>This Zone has its 25 question photographs. Add an individual photo instead.</Muted>
                 )}
               </>
             ) : null}
