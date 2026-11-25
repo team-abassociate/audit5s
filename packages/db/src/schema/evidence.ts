@@ -143,5 +143,10 @@ export const evidence = pgTable(
       'evidence_e3_summary_flag',
       sql`NOT is_summary_flagged OR classification IN ('GOOD','NONCONFORMITY')`,
     ),
+    /** R-91 (0070): a summary photo linked to no question is GOOD or NONCONFORMITY. */
+    check(
+      'evidence_summary_photo_judged',
+      sql`kind::text <> 'SUMMARY_PHOTO' OR classification IN ('GOOD','NONCONFORMITY')`,
+    ),
   ],
 );

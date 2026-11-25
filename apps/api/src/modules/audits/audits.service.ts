@@ -826,7 +826,7 @@ export class AuditsService {
       const afterPhotos: Record<string, unknown> = {};
       for (const change of evidenceChanges) {
         const photo = await this.evidence.get(scopeFor(scope, 'evidence:read'), change.evidenceId);
-        if (photo.auditId !== auditId || (photo.kind !== 'QUESTION_EVIDENCE' && photo.kind !== 'WALK_BY_PHOTO')) {
+        if (photo.auditId !== auditId || !['QUESTION_EVIDENCE', 'WALK_BY_PHOTO', 'SUMMARY_PHOTO'].includes(photo.kind)) {
           throw AppError.notFound('No such photo on this audit');
         }
         if (change.isSummaryFlagged === true && !canBeSummaryFlagged(photo.classification)) {

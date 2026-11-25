@@ -87,6 +87,12 @@ export const EVIDENCE_KINDS = [
   'CORRECTIVE_AFTER',
   /** R-72: whoever faced the audit of a Zone, photographed by the auditor. Always NEUTRAL. */
   'AUDITEE_PHOTO',
+  /**
+   * R-91: a Zone's Good or Nonconformity summary photo, added at the end of the audit and
+   * linked to no question. The auditor chooses its classification (GOOD or NONCONFORMITY
+   * only); it raises no corrective action and does not count toward the Zone's photo cap.
+   */
+  'SUMMARY_PHOTO',
 ] as const;
 export const evidenceKindSchema = z.enum(EVIDENCE_KINDS);
 export type EvidenceKind = z.infer<typeof evidenceKindSchema>;

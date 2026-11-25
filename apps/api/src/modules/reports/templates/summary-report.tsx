@@ -265,7 +265,10 @@ function FlaggedPhotos({
     .map((zone) => ({
       zone,
       good: zone.good.find((photo) => photo.isSummaryFlagged) ?? null,
-      nonconformity: zone.nonconformities.find((photo) => photo.isSummaryFlagged) ?? null,
+      nonconformity:
+        zone.nonconformities.find((photo) => photo.isSummaryFlagged) ??
+        zone.summaryNonconformities?.find((photo) => photo.isSummaryFlagged) ??
+        null,
     }))
     .filter((row) => row.good || row.nonconformity);
 

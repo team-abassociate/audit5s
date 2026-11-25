@@ -124,7 +124,8 @@ export const uploadIntentRequestSchema = z.object({
   isLiveCapture: z.boolean(),
   location: locationReadingSchema.optional(),
   /**
-   * Auditor-selected classification, honoured for `WALK_BY_PHOTO` **only** (E-1). On every
+   * Auditor-selected classification, honoured for `WALK_BY_PHOTO` and `SUMMARY_PHOTO` (R-91)
+   * **only** (E-1). A `SUMMARY_PHOTO` must carry GOOD or NONCONFORMITY. On every
    * other kind the server derives it and this is ignored rather than rejected, because a
    * device replaying an old payload should not have its photo refused over a field the
    * server was always going to overwrite.
@@ -184,7 +185,7 @@ export const patchEvidenceRequestSchema = z
      * order the job happens — the upload intent carries a first answer, and this is how a
      * second one reaches the server.
      *
-     * Honoured for `WALK_BY_PHOTO` **only** (E-1). On any other kind it is refused rather
+     * Honoured for `WALK_BY_PHOTO` and `SUMMARY_PHOTO` **only** (E-1). On any other kind it is refused rather
      * than ignored: unlike the field on an upload intent, nothing replays a patch, so a
      * classification sent here is a caller asserting something E-1 reserves to the server,
      * and answering `409` says so instead of accepting a request that changes nothing.

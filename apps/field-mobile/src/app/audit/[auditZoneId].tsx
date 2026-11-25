@@ -40,9 +40,12 @@ import { CameraCapture } from '../../components/camera-capture';
 import {
   PhotoPreview,
   PhotoThumbs,
+  SummaryPhotoSheet,
   SummaryPhotosCard,
   AuditeeCard,
   type LocalPhoto,
+  type PhotoSource,
+  type SummarySlot,
 } from '../../components/evidence-photos';
 import { ResponseChips } from '../../components/response-chips';
 import { useAbortMenu } from '../../components/abort-menu';
@@ -52,6 +55,7 @@ import {
   assertZonePhotoLimitForCompletion,
   captureLocalEvidence,
   listLocalEvidenceForZone,
+  pickLocalSummaryPhoto,
   reclassifyLocalEvidence,
   responseIdFor,
 } from '../../lib/db/evidence.repository';
@@ -111,7 +115,7 @@ export default function QuestionnaireScreen() {
   const router = useRouter();
   const { sync } = useSync();
   const { can } = useSession();
-  const { strings: t } = useLanguage();
+  const { language, strings: t } = useLanguage();
   const list = useRef<FlatList<Row>>(null);
 
   const [page, setPage] = useState(0);
@@ -122,6 +126,9 @@ export default function QuestionnaireScreen() {
   const [suggestionDrafts, setSuggestionDrafts] = useState<string[]>([]);
   const [cameraFor, setCameraFor] = useState<Row | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
+  /** R-91: the summary slot whose sheet is open, and the camera opened from it. */
+  const [summarySlot, setSummarySlot] = useState<SummarySlot | null>(null);
+  const [summaryCamera, setSummaryCamera] = useState<{ slot: SummarySlot; row: Row | null } | null>(null);
   const [showMissing, setShowMissing] = useState(false);
   /** The Q numbers the unanswered-questions stop is naming, or null when it is closed. */
   const [blockedOn, setBlockedOn] = useState<number[] | null>(null);
@@ -342,6 +349,56 @@ export default function QuestionnaireScreen() {
     },
   });
 
+  /**
+   * R-91: a summary photo added from the slot's sheet: one of its own (linked to no
+   * question, classified by the slot), or one for a question marked to fit the slot. Either
+   * becomes the slot's photo, and the preview opens on it for its remark.
+   */
+  const summaryAdd = useMutation({
+    mutationFn: async ({ slot, row, image, live }: { slot: SummarySlot; row: Row | null; image: ProcessedImage; live: boolean }) => {
+      const evidenceId = row
+        ? await capture.mutateAsync({ row, image, live })
+        : await captureLocalEvidence(database, {
+            auditId: zone.data!.auditId,
+            auditZoneId,
+            kind: 'SUMMARY_PHOTO',
+            classification: slot,
+            localFileUri: image.uri,
+            byteSize: image.byteSize,
+            width: image.width,
+            height: image.height,
+            checksumSha256: image.checksumSha256,
+            isLiveCapture: live,
+          });
+      await pickLocalSummaryPhoto(database, evidenceId);
+      return evidenceId;
+    },
+    onSuccess: (evidenceId) => {
+      setSummaryCamera(null);
+      setSummarySlot(null);
+      void queryClient.invalidateQueries({ queryKey: ['local'] });
+      setPreviewId(evidenceId);
+      scheduleSync();
+    },
+  });
+
+  const summaryGallery = useMutation({
+    mutationFn: async ({ slot, row }: { slot: SummarySlot; row: Row | null }) => {
+      if (row) await assertZonePhotoCapacity(database, auditZoneId);
+      const [image] = await pickPhotosFromGallery(1);
+      if (image) await summaryAdd.mutateAsync({ slot, row, image, live: false });
+    },
+  });
+
+  const summaryPick = useMutation({
+    mutationFn: (evidenceId: string) => pickLocalSummaryPhoto(database, evidenceId),
+    onSuccess: () => {
+      setSummarySlot(null);
+      void queryClient.invalidateQueries({ queryKey: ['local'] });
+      scheduleSync();
+    },
+  });
+
   // Before any early return: it is a hook. The labels settle once the Zone has loaded.
   const abortMenu = useAbortMenu({
     auditId: zone.data?.auditId,
@@ -393,6 +450,10 @@ export default function QuestionnaireScreen() {
         setCameraFor(null);
         return true;
       }
+      if (summaryCamera) {
+        setSummaryCamera(null);
+        return true;
+      }
       if (audit.data?.status === 'IN_PROGRESS') {
         abortMenu.pauseAudit();
         return true;
@@ -400,7 +461,7 @@ export default function QuestionnaireScreen() {
       return false;
     });
     return () => subscription.remove();
-  }, [cameraFor, audit.data?.status, abortMenu.pauseAudit]);
+  }, [cameraFor, summaryCamera, audit.data?.status, abortMenu.pauseAudit]);
 
   // The audit joins the wait: until its status is known the screen cannot say whether the
   // answers may be changed, and guessing "yes" for a frame is a tap that queues a write the
@@ -446,6 +507,20 @@ export default function QuestionnaireScreen() {
   const photosFor = (row: Row) =>
     row.responseId ? zonePhotos.filter((photo) => photo.questionResponseId === row.responseId) : [];
   const previewPhoto = previewId ? (zonePhotos.find((photo) => photo.id === previewId) ?? null) : null;
+  // R-91: the questions a summary slot may draw on, by the rule that classifies their photos.
+  const summaryQuestions = summarySlot
+    ? rows
+        .filter((row) => {
+          const value = valueOf(row);
+          return summarySlot === 'GOOD' ? value === 'SCORE_2' : value === 'SCORE_1' || value === 'SCORE_0';
+        })
+        .map((row) => ({
+          questionId: row.questionId,
+          label: `Q${row.globalOrder} · ${questionWording(row, language).text}`,
+          photos: photosFor(row).filter((photo) => photo.classification === summarySlot),
+        }))
+    : [];
+  const rowFor = (questionId: string) => rows.find((row) => row.questionId === questionId) ?? null;
   /**
    * Whether anything on this screen may still be changed.
    *
@@ -694,7 +769,12 @@ export default function QuestionnaireScreen() {
             <View style={styles.footer}>
               <ScoreCard breakdown={score.data} answered={answered} />
               <AuditeeCard auditZoneId={auditZoneId} name={zone.data.auditeeName} title={t.auditee} />
-              <SummaryPhotosCard photos={zonePhotos} onOpen={setPreviewId} />
+              <SummaryPhotosCard
+                photos={zonePhotos}
+                onOpen={setPreviewId}
+                // R-91: while the audit is open. Reviewing a finished one picks from the preview.
+                onAdd={auditOpen && photos.isSuccess ? setSummarySlot : undefined}
+              />
               <Card>
                 <Field
                   label={t.previousNcsQuestion}
@@ -807,6 +887,37 @@ export default function QuestionnaireScreen() {
         onClose={() => setPreviewId(null)}
       />
 
+      <SummaryPhotoSheet
+        slot={summarySlot}
+        questions={summaryQuestions}
+        canAddToQuestion={zonePhotoCount < ZONE_PHOTO_LIMIT}
+        busy={summaryAdd.isPending || summaryGallery.isPending || summaryPick.isPending}
+        error={
+          [summaryAdd.error, summaryGallery.error, summaryPick.error].find((error) => error instanceof Error)?.message ??
+          null
+        }
+        onOwnPhoto={(source: PhotoSource) => {
+          if (!summarySlot) return;
+          if (source === 'gallery') return summaryGallery.mutate({ slot: summarySlot, row: null });
+          setSummaryCamera({ slot: summarySlot, row: null });
+          setSummarySlot(null);
+        }}
+        onQuestionPhoto={(questionId, source) => {
+          const row = rowFor(questionId);
+          if (!summarySlot || !row) return;
+          if (source === 'gallery') return summaryGallery.mutate({ slot: summarySlot, row });
+          setSummaryCamera({ slot: summarySlot, row });
+          setSummarySlot(null);
+        }}
+        onPick={(evidenceId) => summaryPick.mutate(evidenceId)}
+        onClose={() => {
+          summaryAdd.reset();
+          summaryGallery.reset();
+          summaryPick.reset();
+          setSummarySlot(null);
+        }}
+      />
+
       {/* Over the questions, not instead of them. Swapping the list out for the camera
           unmounted it and threw its scroll position away, so coming back from a photograph
           for Q20 landed on Q11, the top of the page. */}
@@ -819,6 +930,23 @@ export default function QuestionnaireScreen() {
               await capture.mutateAsync({ row: cameraFor, image, live: true });
             }}
             onCancel={() => setCameraFor(null)}
+          />
+        </View>
+      ) : null}
+
+      {summaryCamera ? (
+        <View style={styles.cameraLayer}>
+          <CameraCapture
+            beforeCapture={summaryCamera.row ? () => assertZonePhotoCapacity(database, auditZoneId) : undefined}
+            prompt={
+              summaryCamera.row
+                ? t.cameraPrompt(summaryCamera.row.globalOrder)
+                : `${summaryCamera.slot === 'GOOD' ? 'Good' : 'Nonconformity'} summary photo`
+            }
+            onCaptured={async (image) => {
+              await summaryAdd.mutateAsync({ slot: summaryCamera.slot, row: summaryCamera.row, image, live: true });
+            }}
+            onCancel={() => setSummaryCamera(null)}
           />
         </View>
       ) : null}

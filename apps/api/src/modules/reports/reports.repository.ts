@@ -341,6 +341,7 @@ export class ReportsRepository extends BaseRepository {
     return tx
       .select({
         id: evidence.id,
+        kind: evidence.kind,
         auditZoneId: evidence.auditZoneId,
         objectKey: evidence.objectKey,
         redactedAt: evidence.redactedAt,
@@ -360,7 +361,8 @@ export class ReportsRepository extends BaseRepository {
         and(
           inArray(evidence.auditZoneId, [...auditZoneIds]),
           inArray(evidence.classification, ['GOOD', 'NONCONFORMITY']),
-          inArray(evidence.kind, ['QUESTION_EVIDENCE', 'WALK_BY_PHOTO']),
+          // R-91: a summary photo linked to no question prints beside the others.
+          inArray(evidence.kind, ['QUESTION_EVIDENCE', 'WALK_BY_PHOTO', 'SUMMARY_PHOTO']),
           isNull(evidence.deletedAt),
         ),
       )

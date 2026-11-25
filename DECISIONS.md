@@ -59,6 +59,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-83 | A Zone's past audits are compared by the name they were taken under | Settled |
 | R-84 | Kaizen testing has a temporary staging beside production | Settled; temporary |
 | R-85 | Motion in admin-web, for exits and layout only | Settled |
+| R-91 | A Zone's summary photo may be added at the end, linked to no question | Settled |
 
 ---
 
@@ -3109,3 +3110,29 @@ siblings into the gap. Plan: [`plans/006-motion-library.md`](plans/006-motion-li
   drive it (table in the plan). The side panel keeps its CSS exit.
 - **field-mobile keeps Reanimated.** Motion is web only.
 
+## R-91 — A Zone's summary photo may be added at the end, linked to no question
+
+**Ruled 2026-11-25 by the owner.** *"When I click on good summary photo or bad summary photo, I
+should get the option of adding the photo with a remark over there, and this would not be linked
+to any particular questions ... Another option ... a drop down of all those questions which were
+marked as for 2 marks ... make it applicable for the non-confirmatory photos as well."* Widens
+§5.6 and E-1; R-81's review flow is unchanged.
+
+- **Two ways in, from each summary slot** on the phone's last page while the audit is open:
+  **a photo of its own** (camera or gallery; its remark is written in the preview that opens),
+  or **from a question**: a dropdown of the questions marked 2 (Good) or 1 or 0
+  (Nonconformity), the E-1 rule. Use one of that question's photographs, or add one to it.
+  Either replaces the photo in the slot; a replaced photo of its own is deleted. Choosing *Use
+  as the summary photo* in a photo's preview now replaces the slot's photo too, rather than
+  refusing until the other is unflagged.
+- **`SUMMARY_PHOTO`** (contracts, migration 0070) is the photo of its own: a Zone, no question,
+  and the auditor's classification (the slot), GOOD or NONCONFORMITY only, by a CHECK.
+- **It raises no corrective action** (owner, same day): `materialize` and R-62's late raise read
+  question and walk-by photos only. It is not a finding, so the Zone report prints a Nonconformity
+  one under its own heading (*Nonconformity summary photo*, `summaryNonconformities`), not among
+  the nonconformities, and a Good one with the Good evidence, captioned *Summary photo*. The
+  summary report's flagged photographs take it like any other.
+- **It is not one of the Zone's 25 photos.** A slot holds one, so a Zone has at most two.
+- **Reviewing a finished audit** (R-81) still picks from existing photos in the preview; the
+  sheet is not offered there, because a correction can reach the server before the photo it
+  flags. The web panel shows the photo and lets its auditor delete or unpick it (R-81).

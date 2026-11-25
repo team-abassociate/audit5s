@@ -182,11 +182,14 @@ describe('§12.8 — the bytes have to be the image type they claim to be', () =
 });
 
 describe('the auditor-chosen case (§2.7)', () => {
-  it('is the walk-by photograph and nothing else', () => {
+  it('is the walk-by and the summary photograph (R-91) and nothing else', () => {
     // The affordance half of E-1: a caller asks this before it has anything to classify,
     // so `classifyEvidence` cannot answer it.
     expect(auditorChoosesClassification('WALK_BY_PHOTO')).toBe(true);
-    for (const kind of EVIDENCE_KINDS.filter((candidate) => candidate !== 'WALK_BY_PHOTO')) {
+    expect(auditorChoosesClassification('SUMMARY_PHOTO')).toBe(true);
+    for (const kind of EVIDENCE_KINDS.filter(
+      (candidate) => candidate !== 'WALK_BY_PHOTO' && candidate !== 'SUMMARY_PHOTO',
+    )) {
       expect(auditorChoosesClassification(kind)).toBe(false);
     }
   });

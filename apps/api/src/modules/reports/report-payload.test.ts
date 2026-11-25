@@ -98,6 +98,28 @@ function input(): FreezeInput {
 }
 
 describe('freezePayload', () => {
+  it('prints a Nonconformity summary photo of its own apart from the findings (R-91)', () => {
+    const base = input();
+    const own = {
+      ...base.photos[0]!,
+      id: 'summary-1',
+      kind: 'SUMMARY_PHOTO',
+      objectKey: 'evidence/unit-1/audit-1/zone-1/summary.jpg',
+      remark: 'Oil under the press',
+      isSummaryFlagged: true,
+      scoreAtCapture: null,
+      questionGlobalOrder: null,
+      questionText: null,
+      section: null,
+    };
+    const [zone] = freezePayload({ ...base, photos: [...base.photos, own] } as FreezeInput).zones;
+    // It raised no action, so it is not a finding.
+    expect(zone!.nonconformities.map((item) => item.evidenceId)).toEqual(['before-1']);
+    expect(zone!.summaryNonconformities).toMatchObject([
+      { evidenceId: 'summary-1', remark: 'Oil under the press', isSummaryFlagged: true, summaryOnly: true },
+    ]);
+  });
+
   it('carries the auditee and their photo onto the Zone (R-72)', () => {
     const [zone] = freezePayload(input()).zones;
     expect(zone).toMatchObject({ auditeeName: 'S. Patil', auditeePhotoObjectKey: 'auditee-key' });
