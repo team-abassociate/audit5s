@@ -140,7 +140,7 @@ export default function QuestionnaireScreen() {
   const [previewId, setPreviewId] = useState<string | null>(null);
   /** R-91: the summary slot whose sheet is open, and the camera opened from it. */
   const [summarySlot, setSummarySlot] = useState<SummarySlot | null>(null);
-  const [summaryCamera, setSummaryCamera] = useState<{ slot: SummarySlot; row: Row | null } | null>(null);
+  const [summaryCamera, setSummaryCamera] = useState<{ slot: SummarySlot; row: Row | null; remark: string | null } | null>(null);
   const [showMissing, setShowMissing] = useState(false);
   /** The Q numbers the unanswered-questions stop is naming, or null when it is closed. */
   const [blockedOn, setBlockedOn] = useState<number[] | null>(null);
@@ -367,7 +367,19 @@ export default function QuestionnaireScreen() {
    * becomes the slot's photo, and the preview opens on it for its remark.
    */
   const summaryAdd = useMutation({
-    mutationFn: async ({ slot, row, image, live }: { slot: SummarySlot; row: Row | null; image: ProcessedImage; live: boolean }) => {
+    mutationFn: async ({
+      slot,
+      row,
+      remark,
+      image,
+      live,
+    }: {
+      slot: SummarySlot;
+      row: Row | null;
+      remark: string | null;
+      image: ProcessedImage;
+      live: boolean;
+    }) => {
       const evidenceId = row
         ? await capture.mutateAsync({ row, image, live })
         : await captureLocalEvidence(database, {
@@ -375,6 +387,7 @@ export default function QuestionnaireScreen() {
             auditZoneId,
             kind: 'SUMMARY_PHOTO',
             classification: slot,
+            remark,
             localFileUri: image.uri,
             byteSize: image.byteSize,
             width: image.width,
@@ -395,10 +408,10 @@ export default function QuestionnaireScreen() {
   });
 
   const summaryGallery = useMutation({
-    mutationFn: async ({ slot, row }: { slot: SummarySlot; row: Row | null }) => {
+    mutationFn: async ({ slot, row, remark }: { slot: SummarySlot; row: Row | null; remark: string | null }) => {
       if (row) await assertZonePhotoCapacity(database, auditZoneId);
       const [image] = await pickPhotosFromGallery(1);
-      if (image) await summaryAdd.mutateAsync({ slot, row, image, live: false });
+      if (image) await summaryAdd.mutateAsync({ slot, row, remark, image, live: false });
     },
   });
 
@@ -906,17 +919,17 @@ export default function QuestionnaireScreen() {
           [summaryAdd.error, summaryGallery.error, summaryPick.error].find((error) => error instanceof Error)?.message ??
           null
         }
-        onOwnPhoto={(source: PhotoSource) => {
+        onOwnPhoto={(source: PhotoSource, remark) => {
           if (!summarySlot) return;
-          if (source === 'gallery') return summaryGallery.mutate({ slot: summarySlot, row: null });
-          setSummaryCamera({ slot: summarySlot, row: null });
+          if (source === 'gallery') return summaryGallery.mutate({ slot: summarySlot, row: null, remark });
+          setSummaryCamera({ slot: summarySlot, row: null, remark });
           setSummarySlot(null);
         }}
         onQuestionPhoto={(questionId, source) => {
           const row = rowFor(questionId);
           if (!summarySlot || !row) return;
-          if (source === 'gallery') return summaryGallery.mutate({ slot: summarySlot, row });
-          setSummaryCamera({ slot: summarySlot, row });
+          if (source === 'gallery') return summaryGallery.mutate({ slot: summarySlot, row, remark: null });
+          setSummaryCamera({ slot: summarySlot, row, remark: null });
           setSummarySlot(null);
         }}
         onPick={(evidenceId) => summaryPick.mutate(evidenceId)}
@@ -954,7 +967,7 @@ export default function QuestionnaireScreen() {
                 : `${summaryCamera.slot === 'GOOD' ? 'Good' : 'Nonconformity'} summary photo`
             }
             onCaptured={async (image) => {
-              await summaryAdd.mutateAsync({ slot: summaryCamera.slot, row: summaryCamera.row, image, live: true });
+              await summaryAdd.mutateAsync({ ...summaryCamera, image, live: true });
             }}
             onCancel={() => setSummaryCamera(null)}
           />
