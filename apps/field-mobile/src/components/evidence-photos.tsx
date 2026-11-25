@@ -173,7 +173,8 @@ export interface SummaryQuestion {
  * page back through the questions.
  *
  * 1. **An individual photo**: camera or gallery, linked to no question, with the remark
- *    typed here first (owner, 2026-11-25).
+ *    typed here first. The remark is required: the camera and gallery stay shut until there
+ *    is one (owner, 2026-11-25).
  * 2. **From a question**: the questions marked to fit the slot. Use one of a question's
  *    photographs, or add one to that question, which then becomes the summary photo.
  *
@@ -232,19 +233,20 @@ export function SummaryPhotoSheet({
               description="Not linked to any question. Write its remark, then take or choose the photo."
             />
             <Field
-              label="Remark"
+              label="Remark (required)"
               multiline
               placeholder="What this photograph shows"
               value={remark}
               onChangeText={setRemark}
               maxLength={2000}
+              hint={ownRemark ? undefined : 'Write a remark to take or choose the photo.'}
             />
             <View style={styles.sourceRow}>
               <View style={styles.sourceButton}>
-                <Button icon="photo-camera" title="Take photo" variant="secondary" disabled={busy} onPress={() => onOwnPhoto('camera', ownRemark)} />
+                <Button icon="photo-camera" title="Take photo" variant="secondary" disabled={busy || !ownRemark} onPress={() => onOwnPhoto('camera', ownRemark)} />
               </View>
               <View style={styles.sourceButton}>
-                <Button icon="photo-library" title="From gallery" variant="secondary" disabled={busy} onPress={() => onOwnPhoto('gallery', ownRemark)} />
+                <Button icon="photo-library" title="From gallery" variant="secondary" disabled={busy || !ownRemark} onPress={() => onOwnPhoto('gallery', ownRemark)} />
               </View>
             </View>
           </Card>
@@ -423,6 +425,11 @@ export function PhotoPreview({
   const flaggable = photo.classification === 'GOOD' || photo.classification === 'NONCONFORMITY';
   const close = () => {
     const next = remark.trim() || null;
+    // R-91: an individual photo is never without its remark (owner, 2026-11-25).
+    if (editable && !correction && summaryOnly && !next) {
+      setError('An individual photo needs a remark. Write one, or delete the photo.');
+      return;
+    }
     if (editable && !correction && next !== (photo.remark ?? null)) saveRemark.mutate(next);
     setError(null);
     onClose();
@@ -463,7 +470,7 @@ export function PhotoPreview({
 
           {editable && !correction ? (
             <Field
-              label="Remark"
+              label={summaryOnly ? 'Remark (required)' : 'Remark'}
               multiline
               placeholder="What this photograph shows"
               value={remark}

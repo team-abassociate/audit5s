@@ -3119,7 +3119,7 @@ marked as for 2 marks ... make it applicable for the non-confirmatory photos as 
 §5.6 and E-1; R-81's review flow is unchanged.
 
 - **Two ways in, from each summary slot** on the phone's last page while the audit is open:
-  **an individual photo** (camera or gallery, with a remark box in the sheet),
+  **an individual photo** (camera or gallery, with a remark box in the sheet; the remark is required, and the preview will not close on an empty one),
   or **from a question**: a dropdown of the questions marked 2 (Good) or 1 or 0
   (Nonconformity), the E-1 rule. Use one of that question's photographs, or add one to it.
   Either replaces the photo in the slot; a replaced photo of its own is deleted. Choosing *Use
