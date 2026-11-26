@@ -1393,6 +1393,25 @@ describe('finishing a Zone and an audit', () => {
 });
 
 describe('abort and resume (N7, §9.8)', () => {
+  it('pauses even when the resume Zone never reached the server (a Zone lock, 2026-11-26)', async () => {
+    const assignment = await assign(world.actors.CONSULTANT.userId);
+    const zoneId = await createZone('Z-98', 'Paused past a refused zone');
+    const { auditId } = await startAuditWithZone({
+      token: consultantToken,
+      deviceId: CONSULTANT_DEVICE,
+      zoneId,
+      assignmentId: assignment.id,
+    });
+
+    const paused = await world.request('POST', `${base}/audits/${auditId}/pause`, {
+      token: consultantToken,
+      body: { reason: 'Shift ended', resumeAuditZoneId: randomUUID(), resumeQuestionId: questionIds[0] },
+    });
+    expect(paused.status, JSON.stringify(paused.body)).toBe(200);
+    expect((paused.body as Audit).status).toBe('PAUSED');
+    expect((paused.body as Audit).resumeAuditZoneId).toBeNull();
+  });
+
   it('saves the work, keeps the cursors, and resumes at the same question', async () => {
     const assignment = await assign(world.actors.CONSULTANT.userId);
     const zoneId = await createZone('Z-43', 'Aborted zone');

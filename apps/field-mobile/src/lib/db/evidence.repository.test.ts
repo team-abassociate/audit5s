@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { SyncBatchRequest } from '@audit5s/contracts';
+import { runSync } from '../sync/engine';
+import type { SyncTransport } from '../sync/transport';
 import {
   addLocalZone,
   createLocalAudit,
@@ -836,5 +839,61 @@ describe('R-72 — the auditee', () => {
     await editLocalZone(database, { auditZoneId, zoneDescription: 'Press line' });
     const edited = (await listOutbox(database)).find((item) => item.entityType === 'audit_zone');
     expect(JSON.parse(edited!.payload)).toMatchObject({ auditeeName: 'Ravi Kumar' });
+  });
+});
+
+describe('a photo of a Zone the server held (Zone lock, staging 2026-11-26)', () => {
+  it('is held with its Zone, not dead-lettered behind a "check the connection" popup', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    await captureLocalEvidence(database, { auditId, auditZoneId, kind: 'WALK_BY_PHOTO', ...PHOTO });
+
+    const notFound = Object.assign(new Error('No such audit Zone on this audit'), { status: 404 });
+    const transport = {
+      pushBatch: async (request: SyncBatchRequest) => ({
+        batchId: request.batchId,
+        serverTime: new Date().toISOString(),
+        replayed: false,
+        results: request.items.map((item) => ({
+          outboxId: item.outboxId,
+          entityId: item.entityId,
+          status: item.entityType === 'audit_zone' ? ('CONFLICT' as const) : ('ACCEPTED' as const),
+          reason: 'VALIDATION_FAILED',
+        })),
+      }),
+      uploadIntent: async () => {
+        throw notFound;
+      },
+    } as unknown as SyncTransport;
+
+    await runSync(database, transport, { deviceId: 'device' });
+
+    const status = await readSyncStatus(database);
+    expect(status.deadLetteredPhotos).toBe(0);
+    expect(status.deadLettered).toBe(0);
+  });
+
+  it('still dead-letters a 404 for a Zone that was not held', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    await captureLocalEvidence(database, { auditId, auditZoneId, kind: 'WALK_BY_PHOTO', ...PHOTO });
+
+    const transport = {
+      pushBatch: async (request: SyncBatchRequest) => ({
+        batchId: request.batchId,
+        serverTime: new Date().toISOString(),
+        replayed: false,
+        results: request.items.map((item) => ({
+          outboxId: item.outboxId,
+          entityId: item.entityId,
+          status: 'ACCEPTED' as const,
+        })),
+      }),
+      uploadIntent: async () => {
+        throw Object.assign(new Error('No such audit'), { status: 404 });
+      },
+    } as unknown as SyncTransport;
+
+    await runSync(database, transport, { deviceId: 'device' });
+
+    expect((await readSyncStatus(database)).deadLetteredPhotos).toBe(1);
   });
 });

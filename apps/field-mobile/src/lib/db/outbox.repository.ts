@@ -263,6 +263,27 @@ export async function requeueHeldZoneCompletions(database: LocalDatabase): Promi
   return held.length;
 }
 
+/**
+ * Whether the server held this Zone for review rather than creating it (a Zone lock).
+ * Its photos then have nowhere to go: their upload is answered "No such audit Zone".
+ */
+export async function isZoneHeld(database: LocalDatabase, auditZoneId: string): Promise<boolean> {
+  const [row] = await database
+    .select({ id: outbox.id })
+    .from(outbox)
+    .where(
+      and(
+        eq(outbox.entityType, 'audit_zone'),
+        eq(outbox.entityId, auditZoneId),
+        eq(outbox.operation, 'upsert'),
+        eq(outbox.state, 'SYNCED'),
+        sql`${outbox.lastError} LIKE 'Held for review:%'`,
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 export function evidenceById(database: LocalDatabase, evidenceId: string) {
   return database.select().from(localEvidence).where(eq(localEvidence.id, evidenceId)).limit(1);
 }

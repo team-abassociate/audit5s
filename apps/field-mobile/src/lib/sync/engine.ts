@@ -21,6 +21,7 @@ import { setSyncMeta } from '../db/catalogue.repository';
 import {
   evidenceById,
   itemsInState,
+  isZoneHeld,
   markDeadLetter,
   auditsAwaitingPhotos,
   zonesAwaitingPhotos,
@@ -273,6 +274,14 @@ async function drainMediaQueue(
       await removeItem(database, item.id);
       uploaded += 1;
     } catch (error) {
+      // A photo of a Zone the server held for review is held with it, as a CONFLICT is:
+      // retrying cannot succeed, and a dead letter told the auditor to check the connection.
+      const status = (error as { status?: number } | null)?.status;
+      if (status === 404 && row.auditZoneId && (await isZoneHeld(database, row.auditZoneId))) {
+        await markEvidenceSynced(database, row.id);
+        await markSettled(database, item.id, 'Held for review: its Zone was held');
+        continue;
+      }
       await recordFailure(database, item, error, now());
       failed += 1;
     }

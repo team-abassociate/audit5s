@@ -48,7 +48,8 @@ import {
 import { captureLocalEvidence } from '../../../lib/db/evidence.repository';
 import { useLocalDatabase } from '../../../lib/db/provider';
 import type { ProcessedImage } from '../../../lib/capture/media';
-import { api } from '../../../lib/api';
+import { api, ApiError } from '../../../lib/api';
+import { useSync } from '../../../lib/sync/provider';
 import { createThemedStyles, useTheme } from '../../../lib/theme';
 import { leaveScreen } from '../../../lib/leave-screen';
 import { useRequiredFields } from '../../../lib/required-fields';
@@ -156,6 +157,7 @@ export default function AuditZonesScreen() {
   );
 
   const { scope } = useSession();
+  const { sync } = useSync();
   const [zoneCode, setZoneCode] = useState<string | null>(null);
   const [newZone, setNewZone] = useState<NewZone | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ZoneDraft>>({});
@@ -234,7 +236,19 @@ export default function AuditZonesScreen() {
    */
   const zoneLocks = useQuery({
     queryKey: ['audits', auditId, 'zone-locks'],
-    queryFn: () => api.get<ZoneLocksResponse>(`/audits/${auditId}/zone-locks`),
+    queryFn: async () => {
+      const read = () => api.get<ZoneLocksResponse>(`/audits/${auditId}/zone-locks`);
+      try {
+        return await read();
+      } catch (error) {
+        // A 404 is an audit begun on this phone that has not reached the server yet, so the
+        // server cannot say which Zones are held. Every refused Zone on staging (2026-11-26)
+        // was picked in that window. Send the audit, then ask again.
+        if (!(error instanceof ApiError) || error.status !== 404) throw error;
+        await sync();
+        return read();
+      }
+    },
     enabled: audit.data?.status === 'IN_PROGRESS' || audit.data?.status === 'READY',
     retry: false,
     staleTime: 30_000,
