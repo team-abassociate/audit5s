@@ -378,13 +378,20 @@ export class AuditsService {
       throw asAppError(error);
     }
 
+    // Where to resume is a hint, so it must not block the pause. A Zone the server refused
+    // (a Zone lock) never arrived, and naming it failed the whole pause on the foreign key.
+    const resumeZone = request.resumeAuditZoneId
+      ? await this.repository.findZone(scope, request.resumeAuditZoneId)
+      : null;
+    const resumeAuditZoneId = resumeZone?.auditId === auditId ? resumeZone.id : null;
+
     // N7's Super Admin notification rides the same transaction as the pause (R-2), and
     // cannot block it: the enqueue is a row in this database, not a delivery.
     await this.repository.updateAudit(scope, auditId, {
       status: 'PAUSED',
       pausedAt: new Date(),
       pauseReason: request.reason ?? null,
-      ...(request.resumeAuditZoneId ? { resumeAuditZoneId: request.resumeAuditZoneId } : {}),
+      ...(resumeAuditZoneId ? { resumeAuditZoneId } : {}),
       clientUpdatedAt: new Date(),
     }, (tx) =>
       this.events.emit(tx, {
@@ -402,8 +409,8 @@ export class AuditsService {
       }),
     );
 
-    if (request.resumeAuditZoneId && request.resumeQuestionId) {
-      await this.repository.updateZone(scope, request.resumeAuditZoneId, {
+    if (resumeAuditZoneId && request.resumeQuestionId) {
+      await this.repository.updateZone(scope, resumeAuditZoneId, {
         resumeQuestionId: request.resumeQuestionId,
         clientUpdatedAt: new Date(),
       });

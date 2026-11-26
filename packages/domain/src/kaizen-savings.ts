@@ -60,6 +60,8 @@ export type SavingOption = readonly [value: string, label: string];
 export interface SavingUnitPicker { key: string; opts: readonly SavingOption[]; time?: boolean }
 const U_TIME: SavingUnitPicker = { key: 'tUnit', opts: [['hr', 'hours'], ['min', 'minutes']], time: true };
 const U_JOB: SavingUnitPicker = { key: 'jUnit', opts: [['sec', 'sec'], ['min', 'min'], ['hr', 'hr']], time: true };
+const U_JOB_AFTER: SavingUnitPicker = { ...U_JOB, key: 'jaUnit' };
+const U_RATE: SavingUnitPicker = { key: 'rUnit', opts: [['hr', 'per hour'], ['min', 'per minute']] };
 const U_CYC: SavingUnitPicker = { key: 'cUnit', opts: [['min', 'min'], ['sec', 'sec'], ['hr', 'hr']], time: true };
 const U_QTY: SavingUnitPicker = { key: 'qtyUnit', opts: ['kg', 'litre', 'metre', 'nos', 'sheet', 'set'].map((u) => [u, u] as const) };
 const U_AREA: SavingUnitPicker = { key: 'areaUnit', opts: [['sqft', 'sq ft'], ['sqm', 'sq m']] };
@@ -79,6 +81,8 @@ export interface SavingField {
   chips?: readonly number[];
   chipSuffix?: string;
   optional?: boolean;
+  /** Shown (and required) only while the choice `key` holds one of these values. */
+  when?: readonly [key: string, ...values: string[]];
 }
 
 // ---------- shared fields ----------
@@ -87,6 +91,7 @@ const DAYS: SavingField = { id: 'days', label: 'Working days per month', unit: '
 const SHIFT: SavingField = { id: 'shift', label: 'Shift hours', unit: 'hr', def: 8, chips: [8, 9, 12], chipSuffix: '-hr' };
 const OPS: SavingField = { id: 'ops', label: 'Number of operators', unit: 'operators', def: 1 };
 const WAGE = (def: number): SavingField => ({ id: 'wage', label: 'Per-day wage', sub: 'per operator', unit: 'Rs/day', def });
+const U_WAGE: SavingUnitPicker = { key: 'wUnit', opts: [['day', 'Rs per day'], ['hr', 'Rs per hour']] };
 const KIND = (def: 'hard' | 'soft'): SavingField => ({ id: 'kind', label: 'Type of saving', opts: [['hard', 'Hard saving'], ['soft', 'Soft saving']], def });
 const LRATE: SavingField = { id: 'lrate', label: 'Labour cost per hour', sub: 'all operators on the job: per-day wage ÷ shift hours (Rs 800 ÷ 8 = Rs 100)', unit: 'Rs/hr', def: 100 };
 const MRATE: SavingField = { id: 'mrate', label: 'Machine hour rate', sub: 'power + tooling + maintenance + depreciation per running hour; 0 if no machine', unit: 'Rs/hr', def: 300 };
@@ -129,39 +134,82 @@ export const SAVING_TYPES: Record<KaizenSavingType, SavingType> = {
   manpower: {
     label: 'Manpower', title: 'Manpower / labour time saved', cls: 'soft',
     pqcdsm: ['Productivity', 'Cost'],
-    note: 'Time saved per operator per day. Soft saving unless overtime is cut. If a whole person is freed, use Manpower released; if time is saved per piece or setup, use Time per job.',
-    fields: [{ id: 't', label: 'Time saved per operator per day', unit: 'time', units: U_TIME, def: 1 }, OPS, WAGE(800), SHIFT, DAYS, INV],
+    note: 'Time saved per operator each time the work is done, × times per shift × shifts per day. For a whole day\'s saving, enter it with 1 time and 1 shift. Soft saving unless overtime is cut. If a whole person is freed, use Manpower released; if time is saved per piece or setup, use Time per job.',
+    fields: [
+      { id: 't', label: 'Time saved per operator, each time', sub: 'per changeover, loading, check…', unit: 'time', units: U_TIME, def: 1 },
+      { id: 'times', label: 'Times per shift', unit: 'times', def: 1 },
+      { id: 'shifts', label: 'Shifts per day', unit: 'shifts', def: 1, chips: [1, 2, 3], chipSuffix: '' },
+      { ...OPS, label: 'Operators', sub: 'per shift' },
+      { ...WAGE(800), label: 'Wage', unit: 'Rs', units: U_WAGE },
+      { ...SHIFT, when: ['wUnit', 'day'] }, DAYS, INV,
+    ],
     calc: (g, s) => {
-      const unitMin = s.tUnit === 'min', hrs = unitMin ? g('t') / 60 : g('t'), rate = g('wage') / g('shift'), day = hrs * g('ops') * rate, month = day * g('days');
+      const unitMin = s.tUnit === 'min', each = unitMin ? g('t') / 60 : g('t'), hrs = each * g('times') * g('shifts');
+      const perHr = s.wUnit === 'hr', rate = perHr ? g('wage') : g('wage') / g('shift'), day = hrs * g('ops') * rate, month = day * g('days');
+      const w = perHr ? [] : ['Hourly rate = ' + rs(g('wage')) + ' ÷ ' + plain(g('shift')) + ' hr = ' + rs(rate, 2) + '/hr'];
+      if (g('times') !== 1 || g('shifts') !== 1) {
+        w.push('Time saved per operator per day = ' + plain(g('t')) + ' ' + (unitMin ? 'min' : 'hr') + ' × ' + plain(g('times')) + ' times × ' + plain(g('shifts')) + ' shifts = ' + plain(hrs, 3) + ' hr');
+      }
+      w.push('Per day = ' + (unitMin && hrs === each ? plain(g('t')) + ' min (' + plain(hrs, 3) + ' hr)' : plain(hrs, 3) + ' hr') + ' × ' + persons(g('ops'), 'operator') + ' × ' + rs(rate, 2) + '/hr = ' + rs(day, 2),
+        'Per month = ' + rs(day, 2) + ' × ' + plain(g('days')) + ' days = ' + rs(month, 2));
       return {
-        day, month,
-        working: ['Hourly rate = ' + rs(g('wage')) + ' ÷ ' + plain(g('shift')) + ' hr = ' + rs(rate, 2) + '/hr',
-          'Per day = ' + (unitMin ? plain(g('t')) + ' min (' + plain(hrs, 3) + ' hr)' : plain(hrs) + ' hr') + ' × ' + persons(g('ops'), 'operator') + ' × ' + rs(rate, 2) + ' = ' + rs(day, 2),
-          'Per month = ' + rs(day, 2) + ' × ' + plain(g('days')) + ' days = ' + rs(month, 2)],
-        warn: g('shift') > 0 && hrs > g('shift') ? 'Time saved per operator is more than the shift length.' : '',
+        day, month, working: w,
+        warn: !perHr && g('shift') > 0 && each * g('times') > g('shift') ? 'Time saved per operator in a shift is more than the shift length.' : '',
       };
     },
   },
   jobtime: {
     label: 'Time per job', title: 'Time saved per job / setup / check', cls: 'soft',
     pqcdsm: ['Productivity', 'Cost'],
-    note: 'For cycle time, setup, loading/unloading, checking or search time cut on each job (fixtures, dies, poka-yoke, one-setup machining). Soft saving: the time is freed, not paid out.',
+    note: 'For cycle time, setup, loading/unloading, checking or search time cut on each job (fixtures, dies, poka-yoke, one-setup machining). If you know the output instead (45 → 60 sheets a cycle, 3 → 4 cycles a day, 75 → 90 metres an hour), choose Output: the hours freed are the extra output ÷ the old rate. Soft saving: the time is freed, not paid out.',
     fields: [
-      { id: 'tb', label: 'Time per job, before', unit: 'time', units: U_JOB, def: 30 },
-      { id: 'ta', label: 'Time per job, after', unit: 'time', units: U_JOB, def: 15 },
-      { id: 'qty', label: 'Jobs per month', sub: 'pieces, setups, checks or searches', unit: 'per month', def: 1000 },
-      { id: 'rate', label: 'Cost per hour', sub: 'per-day wage ÷ shift hours (Rs 800 ÷ 8 = Rs 100); add the machine hour rate if the machine is freed too', unit: 'Rs/hr', def: 100 },
+      { id: 'mode', label: 'Enter as', opts: [['job', 'Time per job'], ['output', 'Output, before → after'], ['hours', 'Hours saved per month']], def: 'job' },
+      { id: 'tb', label: 'Time per job, before', unit: 'time', units: U_JOB, def: 30, when: ['mode', 'job'] },
+      { id: 'ta', label: 'Time per job, after', sub: 'can be in a different unit: 2 min before, 40 sec after', unit: 'time', units: U_JOB_AFTER, def: 15, when: ['mode', 'job'] },
+      { id: 'qty', label: 'Jobs per month', sub: 'pieces, setups, checks or searches', unit: 'per month', def: 1000, when: ['mode', 'job'] },
+      { ...SHIFT, sub: 'optional: shows how many jobs fit in a shift, before and after', optional: true, when: ['mode', 'job'] },
+      { id: 'ob', label: 'Output before', sub: 'pieces, metres or cycles in a fixed time: a cycle, an hour, a day', unit: 'per period', def: 45, when: ['mode', 'output'] },
+      { id: 'oa', label: 'Output after', sub: 'in the same time', unit: 'per period', def: 60, when: ['mode', 'output'] },
+      { id: 'runh', label: 'Running hours per day', sub: 'hours the machine or line runs: 7 one-hour cycles = 7', unit: 'hr/day', def: 8, when: ['mode', 'output'] },
+      { ...DAYS, when: ['mode', 'output'] },
+      { id: 'hrs', label: 'Hours saved per month', sub: 'machine or labour hours recovered', unit: 'hr/month', def: 8, when: ['mode', 'hours'] },
+      { id: 'rate', label: 'Machine running cost', sub: 'what it costs to run the machine (power, tooling, maintenance, depreciation), per hour or per minute; add the operator\'s wage if their time is freed too', unit: 'Rs', units: U_RATE, def: 100 },
       INV,
     ],
     calc: (g, s) => {
-      const u = s.jUnit || 'sec', saved = g('tb') - g('ta'), hrs = (saved * g('qty') * (SAVING_SECS[u] ?? 1)) / 3600, month = hrs * g('rate');
-      return {
-        month,
-        working: ['Time saved per job = ' + plain(g('tb')) + ' − ' + plain(g('ta')) + ' = ' + plain(saved) + ' ' + u,
-          'Time saved per month = ' + plain(saved) + ' ' + u + ' × ' + plain(g('qty'), 0) + ' jobs = ' + plain(hrs, 2) + ' hr',
-          'Per month = ' + plain(hrs, 2) + ' hr × ' + rs(g('rate'), 2) + '/hr = ' + rs(month, 2)],
-        warn: saved < 0 ? 'The time after is more than before, so this shows a loss.' : '',
-      };
+      const perMin = s.rUnit === 'min', rateHr = perMin ? g('rate') * 60 : g('rate'), rw = rs(g('rate'), 2) + (perMin ? '/min' : '/hr');
+      const toHr = perMin ? ['Machine cost per hour = ' + rw + ' × 60 = ' + rs(rateHr, 2) + '/hr'] : [];
+      if (s.mode === 'hours') {
+        const month = g('hrs') * rateHr;
+        return { month, working: [...toHr, 'Per month = ' + plain(g('hrs'), 2) + ' hr × ' + rs(rateHr, 2) + '/hr = ' + rs(month, 2)], warn: g('hrs') < 0 ? 'Negative hours show a loss.' : '' };
+      }
+      if (s.mode === 'output') {
+        const up = (g('oa') - g('ob')) / g('ob'), day = g('runh') * up, hrs = day * g('days'), month = hrs * rateHr;
+        return {
+          month,
+          working: [...toHr, 'Output up = (' + plain(g('oa')) + ' − ' + plain(g('ob')) + ') ÷ ' + plain(g('ob')) + ' = ' + plain(up * 100, 1) + '%',
+            'Hours freed per day = ' + plain(g('runh')) + ' hr × ' + plain(up * 100, 1) + '% = ' + plain(day, 2) + ' hr (the extra output would have taken this long at the old rate)',
+            'Hours freed per month = ' + plain(day, 2) + ' hr × ' + plain(g('days')) + ' days = ' + plain(hrs, 2) + ' hr',
+            'Per month = ' + plain(hrs, 2) + ' hr × ' + rs(rateHr, 2) + '/hr = ' + rs(month, 2)],
+          warn: !(g('ob') > 0) ? 'Output before must be more than 0.' : up < 0 ? 'Output went down, so this shows a loss.' : '',
+        };
+      }
+      // each time in its own unit; costs per job use the rate as the operator gave it (30 sec × Rs 100/min = Rs 50)
+      const ub = s.jUnit || 'sec', ua = s.jaUnit || ub, sb = g('tb') * (SAVING_SECS[ub] ?? 1), sa = g('ta') * (SAVING_SECS[ua] ?? 1);
+      const cb = (sb / 3600) * rateHr, ca = (sa / 3600) * rateHr, per = cb - ca, month = per * g('qty');
+      const show = (sec: number) => (sec % 3600 === 0 && sec >= 3600 ? plain(sec / 3600) + ' hr' : sec >= 60 && sec % 60 === 0 ? plain(sec / 60) + ' min' : plain(sec, 2) + ' sec');
+      const ru = perMin ? 'min' : 'hr';
+      const cost = (t: number, u: string, c: number) =>
+        (u === ru ? plain(t) + ' ' + u : plain(t) + ' ' + u + ' (' + plain((t * (SAVING_SECS[u] ?? 1)) / (SAVING_SECS[ru] ?? 1), 4) + ' ' + ru + ')') + ' × ' + rw + ' = ' + rs(c, 2);
+      const w = ['Time saved per job = ' + plain(g('tb')) + ' ' + ub + ' − ' + plain(g('ta')) + ' ' + ua + ' = ' + show(sb - sa),
+        ...toHr,
+        'Machine cost per job, before = ' + cost(g('tb'), ub, cb),
+        'Machine cost per job, after = ' + cost(g('ta'), ua, ca),
+        'Saved per job = ' + rs(cb, 2) + ' − ' + rs(ca, 2) + ' = ' + rs(per, 2)];
+      const sh = g('shift');
+      if (sh > 0 && sb > 0 && sa > 0) w.push('Jobs in one ' + plain(sh) + '-hr shift = ' + plain((sh * 3600) / sb, 1) + ' before, ' + plain((sh * 3600) / sa, 1) + ' after');
+      w.push('Per month = ' + rs(per, 2) + ' × ' + plain(g('qty'), 0) + ' jobs = ' + rs(month, 2) + ' (' + plain(((sb - sa) * g('qty')) / 3600, 2) + ' machine hours freed)');
+      return { month, working: w, warn: sb < sa ? 'The time after is more than before, so this shows a loss.' : '' };
     },
   },
   headcount: {
@@ -359,24 +407,36 @@ export const SAVING_TYPES: Record<KaizenSavingType, SavingType> = {
     pqcdsm: ['Cost'],
     note: 'Less material used for each piece. Saving = (consumption per piece before − after) × pieces × effective rate. 500 g = 0.5 kg. If the material saved would have become scrap: add the disposal charge when you pay to get rid of the scrap, or take off the scrap value when you sell it. Choose One time only for a single lot.',
     fields: [
-      { id: 'mb', label: 'Consumption per piece, before', unit: 'qty', units: U_QTY, def: 1 },
-      { id: 'ma', label: 'Consumption per piece, after', unit: 'qty', units: U_QTY, def: 0.5 },
-      { id: 'pcs', label: 'Pieces', sub: 'per month, or in the lot if one time', unit: 'pcs', def: 100 },
+      { id: 'basis', label: 'Enter as', opts: [['piece', 'Per piece'], ['total', 'Total saved']], def: 'piece' },
+      { id: 'mb', label: 'Consumption per piece, before', unit: 'qty', units: U_QTY, def: 1, when: ['basis', 'piece'] },
+      { id: 'ma', label: 'Consumption per piece, after', unit: 'qty', units: U_QTY, def: 0.5, when: ['basis', 'piece'] },
+      { id: 'pcs', label: 'Pieces', sub: 'pieces, batches or changeovers: per month, or in the lot if one time', unit: 'pcs', def: 100, when: ['basis', 'piece'] },
+      { id: 'qs', label: 'Quantity saved', sub: 'per month, or in the lot if one time', unit: 'qty', units: U_QTY, def: 50, when: ['basis', 'total'] },
       { id: 'price', label: 'Rate per unit', sub: 'Rs per kg, litre, metre…', unit: 'Rs', def: 100 },
+      { id: 'oth', label: 'Other consumables saved, in Rs', sub: 'optional: paper, tape, packing… per piece, or in total', unit: 'Rs', def: 0, optional: true },
       { id: 'scrap', label: 'Scrap', opts: [['none', 'No scrap'], ['pay', 'We pay to dispose of it'], ['sell', 'We sell it']], def: 'none' },
       { id: 'srate', label: 'Scrap rate per unit', sub: 'disposal charge or scrap selling price, Rs per kg, litre…', unit: 'Rs', def: 0, optional: true },
       { id: 'freq', label: 'Saving is', opts: [['month', 'Recurring, every month'], ['once', 'One time only']], def: 'month' },
       INV,
     ],
     calc: (g, s) => {
-      const u = s.qtyUnit || 'kg', per = g('mb') - g('ma'), qty = per * g('pcs'), once = s.freq === 'once';
-      const sr = or0(g('srate')), scrap = s.scrap === 'pay' ? sr : s.scrap === 'sell' ? -sr : 0, rate = g('price') + scrap, total = qty * rate;
-      const w = ['Saved per piece = ' + plain(g('mb'), 4) + ' − ' + plain(g('ma'), 4) + ' = ' + plain(per, 4) + ' ' + u,
-        'Saved ' + (once ? 'in this lot' : 'per month') + ' = ' + plain(per, 4) + ' ' + u + ' × ' + plain(g('pcs'), 0) + ' pcs = ' + plain(qty, 2) + ' ' + u];
+      const u = s.qtyUnit || 'kg', once = s.freq === 'once', byTotal = s.basis === 'total', per = g('mb') - g('ma');
+      const qty = byTotal ? g('qs') : per * g('pcs'), oth = or0(g('oth')), othSum = byTotal ? oth : oth * g('pcs');
+      const sr = or0(g('srate')), scrap = s.scrap === 'pay' ? sr : s.scrap === 'sell' ? -sr : 0, rate = g('price') + scrap, mat = qty * rate, total = mat + othSum;
+      const where = once ? 'in this lot' : 'per month';
+      const w = byTotal ? ['Saved ' + where + ' = ' + plain(qty, 2) + ' ' + u + ' (entered)'] : ['Saved per piece = ' + plain(g('mb'), 4) + ' − ' + plain(g('ma'), 4) + ' = ' + plain(per, 4) + ' ' + u,
+        'Saved ' + where + ' = ' + plain(per, 4) + ' ' + u + ' × ' + plain(g('pcs'), 0) + ' pcs = ' + plain(qty, 2) + ' ' + u];
       if (scrap > 0) w.push('Effective rate = ' + rs(g('price'), 2) + ' material + ' + rs(sr, 2) + ' scrap disposal saved = ' + rs(rate, 2) + ' per ' + u);
       if (scrap < 0) w.push('Effective rate = ' + rs(g('price'), 2) + ' material − ' + rs(sr, 2) + ' scrap sale lost = ' + rs(rate, 2) + ' per ' + u);
-      w.push((once ? 'This lot' : 'Per month') + ' = ' + plain(qty, 2) + ' ' + u + ' × ' + rs(rate, 2) + ' = ' + rs(total, 2) + (once ? ' (not repeated, not multiplied by 12)' : ''));
-      const warn = per < 0 ? 'Consumption after is more than before, so this shows a loss.' : '';
+      const head = once ? 'This lot' : 'Per month';
+      if (oth) {
+        w.push('Material ' + where + ' = ' + plain(qty, 2) + ' ' + u + ' × ' + rs(rate, 2) + ' = ' + rs(mat, 2),
+          'Other consumables ' + where + ' = ' + (byTotal ? rs(oth, 2) + ' (entered)' : rs(oth, 2) + ' × ' + plain(g('pcs'), 0) + ' pcs = ' + rs(othSum, 2)),
+          head + ' = ' + rs(mat, 2) + ' + ' + rs(othSum, 2) + ' = ' + rs(total, 2) + (once ? ' (not repeated, not multiplied by 12)' : ''));
+      } else {
+        w.push(head + ' = ' + plain(qty, 2) + ' ' + u + ' × ' + rs(rate, 2) + ' = ' + rs(total, 2) + (once ? ' (not repeated, not multiplied by 12)' : ''));
+      }
+      const warn = !byTotal && per < 0 ? 'Consumption after is more than before, so this shows a loss.' : '';
       return once ? { once: total, working: w, warn } : { month: total, working: w, warn };
     },
   },
@@ -516,7 +576,19 @@ function upgrade(line: KaizenSavingLine): KaizenSavingLine {
   if (line.type === 'electricity' && v.lb === undefined && v.kw !== undefined) Object.assign(v, { lb: v.kw, la: 0, hb: v.hrs, ha: v.hrs, loadUnit: 'kW' });
   if (line.type === 'material' && v.mb === undefined && v.qty !== undefined) Object.assign(v, { mb: v.qty, ma: 0, pcs: v.days, freq: 'month' }); // old: quantity saved per day × days
   if (line.type === 'safety' && v.nb === undefined && v.lb !== undefined) Object.assign(v, { nb: OLD_PER_YEAR[Math.round(num(v.lb))] ?? 0, na: OLD_PER_YEAR[Math.round(num(v.la))] ?? 0 }); // old 1–5 likelihood
+  if (line.type === 'manpower' && v.times === undefined) Object.assign(v, { times: 1, shifts: 1 }); // old: time saved per operator per day
+  if (line.type === 'jobtime' && v.jaUnit === undefined) v.jaUnit = v.jUnit ?? 'sec'; // old: one unit for both times
   return { type: line.type, values: v };
+}
+/** A saved line with older inputs brought up to the current fields, for showing on screen. */
+export const upgradeSavingLine = upgrade;
+
+/** Whether a field is shown for the line's current choices (a missing choice reads as its default). */
+export function savingFieldShown(line: KaizenSavingLine, f: SavingField): boolean {
+  if (!f.when) return true;
+  const [key, ...vals] = f.when, T = SAVING_TYPES[line.type];
+  const own = T.fields.find((x) => x.id === key)?.def ?? T.fields.find((x) => x.units?.key === key)?.units?.opts[0]?.[0];
+  return vals.includes(String(line.values[key] ?? own));
 }
 function isText(T: SavingType, k: string): boolean {
   if (/Unit$/.test(k) || k === 'res') return true;
@@ -536,8 +608,8 @@ export function newSavingLine(type: KaizenSavingType): KaizenSavingLine {
 
 /** Labels of the required inputs that are missing or not a number. */
 export function missingSavingInputs(line: KaizenSavingLine): string[] {
-  const T = SAVING_TYPES[line.type], v = upgrade(line).values;
-  const out = T.fields.filter((f) => !f.optional && !f.opts && f.unit !== 'text' && !Number.isFinite(num(v[f.id]))).map((f) => f.label);
+  const T = SAVING_TYPES[line.type], up = upgrade(line), v = up.values;
+  const out = T.fields.filter((f) => !f.optional && !f.opts && f.unit !== 'text' && savingFieldShown(up, f) && !Number.isFinite(num(v[f.id]))).map((f) => f.label);
   for (const [a, b, label] of T.oneOf ?? []) if (!Number.isFinite(num(v[a])) && !Number.isFinite(num(v[b]))) out.push(label);
   return out;
 }

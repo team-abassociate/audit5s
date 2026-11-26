@@ -384,6 +384,38 @@ describe('the author’s moves', () => {
     expect((await create(world.actors.ZONE_LEADER, { id: kaizen.id, machine: 'Other' })).status).toBe(409);
   });
 
+  it('moves at once never answer 500: submit vs edit, a retried submit, submit vs discard, two photos for one box', async () => {
+    const leader = world.actors.ZONE_LEADER;
+    const token = as(leader);
+    for (let i = 0; i < 3; i++) {
+      // An edit that empties a required field, racing the submit: one of them goes first.
+      const a = await draft(leader);
+      const [s, p] = await Promise.all([
+        submit(leader, a.id),
+        world.request('PATCH', `${base}/${a.id}`, { token, body: { theme: null } }),
+      ]);
+      expect([s.status, p.status].every((x) => [200, 409, 422].includes(x)), JSON.stringify([s.body, p.body])).toBe(true);
+
+      // The same submission twice at once is a replay, never "is DRAFT".
+      const b = await draft(leader);
+      const sid = randomUUID();
+      const same = await Promise.all([submit(leader, b.id, sid), submit(leader, b.id, sid)]);
+      expect(same.map((r) => r.status)).toEqual([200, 200]);
+
+      const c = await draft(leader);
+      const [s2, d] = await Promise.all([
+        submit(leader, c.id),
+        world.request('POST', `${base}/${c.id}/discard`, { token, headers: { 'idempotency-key': randomUUID() } }),
+      ]);
+      // Whichever lands first wins; the other is told why.
+      expect([[200, 409], [409, 204]]).toContainEqual([s2.status, d.status]);
+
+      const e = await draft(leader);
+      const photos = await Promise.all([1, 2, 3].map(() => photoIntent(leader, e.id, randomUUID())));
+      expect(photos.map((r) => r.status)).toEqual([201, 201, 201]);
+    }
+  });
+
   it('keeps the savings calculator’s lines and working as sent, and a late copy of them is a replay (0068)', async () => {
     const savingCalc = {
       lines: [{ type: 'manpower', values: { t: '2', tUnit: 'hr', ops: 2, wage: 800, shift: 12, days: 26, inv: 0 } }],

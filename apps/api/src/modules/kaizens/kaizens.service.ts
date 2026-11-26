@@ -43,6 +43,7 @@ import { isUniqueViolation } from '../../common/pg-errors';
 import { scopeFor } from '../../common/auth/scope-for';
 import { auditLogRow } from '../../common/audit-log/audit-log.service';
 import { insertAuditLog } from '../../common/audit-log/audit-log.repository';
+import type { Transaction } from '@audit5s/db';
 import { CONFIG, type AppConfig } from '../../config/env';
 import { DomainEvents } from '../../infrastructure/queue/domain-events';
 import { QUEUES, QueueService } from '../../infrastructure/queue/queue.service';
@@ -246,15 +247,20 @@ export class KaizensService {
         if (!refiled && sameSheet(existing, fields)) return this.get(scope, id);
         throw this.notEditable(existing);
       }
-      await this.repository.inTransaction(write, async (tx) => {
+      const moved = await this.repository.inTransaction(write, async (tx) => {
+        await this.repository.lock(tx, id);
+        const fresh = await this.repository.findById(write, id, tx);
+        // Submitted, discarded or refiled while this copy waited: answer as for that state.
+        if (!fresh || !editable(fresh) || fresh.zoneId !== existing.zoneId) return true;
         if (refiled && zoneId) {
           // Its Unit is fixed; another Unit's Zone reads as absent (AZ-3).
           const zone = await this.repository.zoneForCreate(write, zoneId, tx);
           if (zone?.unitId !== existing.unitId) throw AppError.notFound('No such Zone');
         }
         await this.repository.update(tx, id, { ...kaizenColumnsOf(fields), ...(refiled ? { zoneId } : {}) });
+        return false;
       });
-      return this.get(scope, id);
+      return moved ? this.create(scope, request) : this.get(scope, id);
     }
 
     try {
@@ -302,11 +308,12 @@ export class KaizensService {
   /** `PATCH /kaizens/{id}`: the author, while DRAFT or SENT_BACK. */
   async patch(scope: ScopeContext, kaizenId: string, request: PatchKaizenRequest): Promise<KaizenDetail> {
     const write = scopeFor(scope, 'kaizen:create');
-    const existing = await this.mustFindOwn(write, scope, kaizenId);
-    if (!editable(existing)) throw this.notEditable(existing);
-    await this.repository.inTransaction(write, (tx) =>
-      this.repository.update(tx, kaizenId, kaizenColumnsOf(request)),
-    );
+    await this.repository.inTransaction(write, async (tx) => {
+      await this.repository.lock(tx, kaizenId);
+      const existing = await this.mustFindOwn(write, scope, kaizenId, tx);
+      if (!editable(existing)) throw this.notEditable(existing);
+      await this.repository.update(tx, kaizenId, kaizenColumnsOf(request));
+    });
     return this.get(scope, kaizenId);
   }
 
@@ -318,6 +325,7 @@ export class KaizensService {
   async submit(scope: ScopeContext, kaizenId: string, request: SubmitKaizenRequest): Promise<KaizenDetail> {
     const write = scopeFor(scope, 'kaizen:create');
     await this.repository.inTransaction(write, async (tx) => {
+      await this.repository.lock(tx, kaizenId);
       const current = await this.repository.findById(write, kaizenId, tx);
       if (!current || current.authorUserId !== scope.actor.userId) {
         throw AppError.notFound('No such Kaizen');
@@ -389,6 +397,7 @@ export class KaizensService {
   async discard(scope: ScopeContext, kaizenId: string): Promise<void> {
     const write = scopeFor(scope, 'kaizen:create');
     await this.repository.inTransaction(write, async (tx) => {
+      await this.repository.lock(tx, kaizenId);
       const current = await this.repository.findById(write, kaizenId, tx);
       if (!current || current.authorUserId !== scope.actor.userId) {
         throw AppError.notFound('No such Kaizen');
@@ -466,9 +475,11 @@ export class KaizensService {
   ): Promise<KaizenDetail> {
     const review = scopeFor(scope, 'kaizen:review');
     await this.repository.inTransaction(review, async (tx) => {
+      // Two copies of one check at once: the second waits here and finds it recorded.
+      await this.repository.lock(tx, kaizenId);
       const current = await this.repository.findById(review, kaizenId, tx);
       if (!current) throw AppError.notFound('No such Kaizen');
-      const reviews = await this.repository.reviewsFor(review, [kaizenId], tx);
+      const reviews =await this.repository.reviewsFor(review, [kaizenId], tx);
       const checks = await this.repository.sustainChecksFor(review, [kaizenId], tx);
       const next = nextSustainCheck(
         approvedAtOf(reviews),
@@ -529,9 +540,11 @@ export class KaizensService {
     request: KaizenPhotoUploadIntentRequest,
   ): Promise<KaizenPhotoUploadIntentResponse> {
     const write = scopeFor(scope, 'kaizen:create');
-    const kaizen = await this.mustFindOwn(write, scope, request.kaizenId);
 
     return this.repository.inTransaction(write, async (tx) => {
+      // Two photos for one box at once: the second waits, then replaces the first.
+      await this.repository.lock(tx, request.kaizenId);
+      const kaizen = await this.mustFindOwn(write, scope, request.kaizenId, tx);
       const existing = await this.repository.findPhotoById(tx, request.id);
       if (existing) {
         if (existing.kaizenId !== kaizen.id || existing.createdByUserId !== scope.actor.userId) {
@@ -619,12 +632,15 @@ export class KaizensService {
   /** Removes a photo from an editable Kaizen (soft delete). Removing one already gone is a no-op. */
   async removePhoto(scope: ScopeContext, kaizenId: string, photoId: string): Promise<void> {
     const write = scopeFor(scope, 'kaizen:create');
-    const kaizen = await this.mustFindOwn(write, scope, kaizenId);
-    const photo = await this.repository.findPhoto(write, photoId);
-    if (!photo || photo.kaizenId !== kaizen.id) throw AppError.notFound('No such photo');
-    if (photo.deletedAt) return;
-    if (!editable(kaizen)) throw this.notEditable(kaizen);
-    await this.repository.inTransaction(write, (tx) => this.repository.removePhoto(tx, write, photoId));
+    await this.repository.inTransaction(write, async (tx) => {
+      await this.repository.lock(tx, kaizenId);
+      const kaizen = await this.mustFindOwn(write, scope, kaizenId, tx);
+      const photo = await this.repository.findPhoto(write, photoId, tx);
+      if (!photo || photo.kaizenId !== kaizen.id) throw AppError.notFound('No such photo');
+      if (photo.deletedAt) return;
+      if (!editable(kaizen)) throw this.notEditable(kaizen);
+      await this.repository.removePhoto(tx, write, photoId);
+    });
   }
 
   // ------------------------------------------------------- the export (§4.6)
@@ -753,8 +769,13 @@ export class KaizensService {
   }
 
   /** The author's own Kaizen under `kaizen:create`. Anyone else's reads as absent (AZ-3). */
-  private async mustFindOwn(write: ScopeContext, scope: ScopeContext, kaizenId: string): Promise<KaizenRow> {
-    const row = await this.repository.findById(write, kaizenId);
+  private async mustFindOwn(
+    write: ScopeContext,
+    scope: ScopeContext,
+    kaizenId: string,
+    tx?: Transaction,
+  ): Promise<KaizenRow> {
+    const row = await this.repository.findById(write, kaizenId, tx);
     if (!row || row.authorUserId !== scope.actor.userId) throw AppError.notFound('No such Kaizen');
     return row;
   }

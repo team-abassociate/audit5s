@@ -15,7 +15,6 @@ import {
   Button,
   Card,
   CardHeader,
-  ConfirmDialog,
   ErrorNotice,
   Field,
   Input,
@@ -229,19 +228,17 @@ export function ChecklistsPage() {
 }
 
 /**
- * Show or hide a department (R-89). The server enforces it: a hidden department is on no
- * one's phone or sync catalogue, and only a Super Admin's Checklists page lists it, so it
- * can be shown again; the portal's pickers skip it. Nothing is deleted, and the
+ * Show or hide a department (R-89). The server enforces it: a hidden department is never
+ * sent to anyone but a Super Admin, so it leaves every other person's Checklists page,
+ * checklist pickers and phone at their next load or sync. Nothing is deleted, and the
  * server refuses to hide one an unfinished audit is still using.
  */
 function DepartmentVisibility({ template }: { template: ChecklistTemplate }) {
   const queryClient = useQueryClient();
-  const [confirmHide, setConfirmHide] = useState(false);
   const change = useMutation({
     mutationFn: (isActive: boolean) =>
       api.patch<ChecklistTemplate>(`/checklist-templates/${template.id}`, { isActive }),
     onSuccess: async () => {
-      setConfirmHide(false);
       await queryClient.invalidateQueries({ queryKey: ['checklist-templates'] });
       await queryClient.invalidateQueries({ queryKey: ['sync-catalogue'] });
     },
@@ -258,29 +255,10 @@ function DepartmentVisibility({ template }: { template: ChecklistTemplate }) {
         ]}
         onChange={(value) => {
           if (change.isPending || (value === 'shown') === template.isActive) return;
-          if (value === 'shown') change.mutate(true);
-          else setConfirmHide(true);
+          change.mutate(value === 'shown');
         }}
       />
-      {change.error && !confirmHide ? <ErrorNotice error={change.error} /> : null}
-      <ConfirmDialog
-        open={confirmHide}
-        title={`Hide ${template.name}?`}
-        confirmLabel="Hide"
-        pendingLabel="Hiding…"
-        pending={change.isPending}
-        error={change.error}
-        onConfirm={() => change.mutate(false)}
-        onCancel={() => {
-          setConfirmHide(false);
-          change.reset();
-        }}
-      >
-        {template.name} stays on this page for Super Admins, so it can be shown again. It goes
-        from every checklist choice and from every phone at its next sync, and everyone else
-        loses it from Checklists too. Finished audits keep their questions, and nothing is
-        deleted: show it again at any time.
-      </ConfirmDialog>
+      {change.error ? <ErrorNotice error={change.error} /> : null}
     </>
   );
 }

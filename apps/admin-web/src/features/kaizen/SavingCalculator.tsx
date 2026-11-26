@@ -6,6 +6,8 @@ import {
   calcSavingLine,
   formatRupees,
   missingSavingInputs,
+  savingFieldShown,
+  upgradeSavingLine,
   newSavingLine,
   savingSummary,
   type SavingField,
@@ -165,7 +167,8 @@ function SavingLineEditor({
   const type = SAVING_TYPES[line.type];
   const result = calcSavingLine(line);
   const missing = result ? [] : missingSavingInputs(line);
-  const value = (key: string, def: string | number = '') => String(line.values[key] ?? def);
+  const shown = upgradeSavingLine(line).values; // older saved lines read with today's fields
+  const value = (key: string, def: string | number = '') => String(shown[key] ?? def);
   const pickers = new Set<string>();
 
   /** A time unit converts the number already typed (30 sec → 0.5 min), as the source does. */
@@ -222,7 +225,7 @@ function SavingLineEditor({
     <div data-saving-line className="space-y-3 border border-rule-soft p-3">
       <p className="font-bold text-ink">{type.title}</p>
       <p className="text-sm text-ink-2">{type.note}</p>
-      <div className="grid gap-4 sm:grid-cols-2">{type.fields.map(input)}</div>
+      <div className="grid gap-4 sm:grid-cols-2">{type.fields.filter((f) => savingFieldShown(line, f)).map(input)}</div>
       {result ? (
         <div className="space-y-1 border-t border-rule-soft pt-2 text-sm">
           <p className="gb-data font-semibold text-ink">{result.headline}</p>
