@@ -93,6 +93,15 @@ export class KaizensRepository extends BaseRepository {
     return tx ? run(tx) : this.inTransaction(scope, run);
   }
 
+  /**
+   * Takes the Kaizen's row lock for the rest of `tx`, so a check read after it still holds
+   * when the write lands. Without it, two moves at once (submit and an edit, two photos for
+   * one box) both passed their checks and the loser hit a database guard as a 500.
+   */
+  async lock(tx: Transaction, kaizenId: string): Promise<void> {
+    await tx.select({ id: kaizens.id }).from(kaizens).where(eq(kaizens.id, kaizenId)).for('update');
+  }
+
   async list(scope: ScopeContext, query: ListKaizensQuery): Promise<KaizenRow[]> {
     return this.inTransaction(scope, async (tx) => {
       const bySaving = query.sort === 'saving';
@@ -208,16 +217,17 @@ export class KaizensRepository extends BaseRepository {
     return tx ? run(tx) : this.inTransaction(scope, run);
   }
 
-  async findPhoto(scope: ScopeContext, photoId: string): Promise<KaizenPhotoRow | null> {
-    return this.inTransaction(scope, async (tx) => {
-      const [row] = await tx
+  async findPhoto(scope: ScopeContext, photoId: string, tx?: Transaction): Promise<KaizenPhotoRow | null> {
+    const run = async (t: Transaction) => {
+      const [row] = await t
         .select()
         .from(kaizenPhotos)
         .innerJoin(kaizens, eq(kaizens.id, kaizenPhotos.kaizenId))
         .where(this.scoped(scope, scopeColumns, eq(kaizenPhotos.id, photoId)))
         .limit(1);
       return row?.kaizen_photo ?? null;
-    });
+    };
+    return tx ? run(tx) : this.inTransaction(scope, run);
   }
 
   /**
