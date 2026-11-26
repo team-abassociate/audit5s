@@ -21,8 +21,12 @@ if (Platform.OS === 'web') {
       actions[0]?.onPress?.();
       return;
     }
+    // The dialog's buttons are the browser's OK and Cancel, so OK is told what it does, or
+    // "tap Retry upload" names a button the auditor never sees (staging, 2026-11-26).
     const chosen = actions.find((button) =>
-      browser.confirm(actions.length === 1 ? text : `${text}\n\nOK: ${button.text ?? 'OK'}`),
+      browser.confirm(
+        actions.length === 1 && (button.text ?? 'OK') === 'OK' ? text : `${text}\n\nOK: ${button.text ?? 'OK'}`,
+      ),
     );
     (chosen ?? cancel)?.onPress?.();
   };
