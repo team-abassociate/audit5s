@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { outbox } from './schema';
 import type { SyncBatchRequest } from '@audit5s/contracts';
 import { runSync } from '../sync/engine';
 import type { SyncTransport } from '../sync/transport';
@@ -894,6 +896,54 @@ describe('a photo of a Zone the server held (Zone lock, staging 2026-11-26)', ()
 
     await runSync(database, transport, { deviceId: 'device' });
 
+    expect((await readSyncStatus(database)).deadLetteredPhotos).toBe(1);
+  });
+});
+
+describe('a photo of a held Zone that dead-lettered before 0c7f996 (staging 2026-11-26)', () => {
+  it('is settled with its Zone on the next sync, so the popup stops coming back at sign-in', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    await captureLocalEvidence(database, { auditId, auditZoneId, kind: 'WALK_BY_PHOTO', ...PHOTO });
+
+    const transport = {
+      pushBatch: async (request: SyncBatchRequest) => ({
+        batchId: request.batchId,
+        serverTime: new Date().toISOString(),
+        replayed: false,
+        results: request.items.map((item) => ({
+          outboxId: item.outboxId,
+          entityId: item.entityId,
+          status: item.entityType === 'audit_zone' ? ('CONFLICT' as const) : ('ACCEPTED' as const),
+          reason: 'VALIDATION_FAILED',
+        })),
+      }),
+      // The old bundle: the upload never ran, the photo was already dead.
+      uploadIntent: async () => {
+        throw new Error('not reached');
+      },
+    } as unknown as SyncTransport;
+
+    // The Zone is held; the photo is dead-lettered as the old bundle left it.
+    const media = await database.select().from(outbox).where(eq(outbox.entityType, 'evidence'));
+    for (const row of media) await markDeadLetter(database, row.id, { attempts: 1, lastError: 'No such audit Zone on this audit' });
+    await runSync(database, transport, { deviceId: 'device' });
+    expect((await readSyncStatus(database)).deadLetteredPhotos).toBe(0);
+  });
+
+  it('leaves a dead photo of a Zone that was not held for the auditor to see', async () => {
+    const { auditId, auditZoneId } = await auditWithZone();
+    await captureLocalEvidence(database, { auditId, auditZoneId, kind: 'WALK_BY_PHOTO', ...PHOTO });
+    const media = await database.select().from(outbox).where(eq(outbox.entityType, 'evidence'));
+    for (const row of media) await markDeadLetter(database, row.id, { attempts: 1, lastError: 'boom' });
+    const transport = {
+      pushBatch: async (request: SyncBatchRequest) => ({
+        batchId: request.batchId,
+        serverTime: new Date().toISOString(),
+        replayed: false,
+        results: request.items.map((item) => ({ outboxId: item.outboxId, entityId: item.entityId, status: 'ACCEPTED' as const })),
+      }),
+    } as unknown as SyncTransport;
+    await runSync(database, transport, { deviceId: 'device' });
     expect((await readSyncStatus(database)).deadLetteredPhotos).toBe(1);
   });
 });

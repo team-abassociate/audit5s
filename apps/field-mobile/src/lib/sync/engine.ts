@@ -138,6 +138,7 @@ export async function runSync(
   // rolled back to before Kaizen refuses the whole batch) must not take the other's with it.
   const structure = await drainDataQueue(database, transport, options, now, 'five-s', STRUCTURE_OPERATIONS);
   const kaizenStructure = await drainDataQueue(database, transport, options, now, 'kaizen', STRUCTURE_OPERATIONS);
+  await settleHeldZonePhotos(database);
   const media = await drainMediaQueue(database, transport, now);
   const rest = await drainDataQueue(database, transport, options, now, 'five-s');
   const kaizenRest = await drainDataQueue(database, transport, options, now, 'kaizen');
@@ -218,6 +219,22 @@ export async function recoverStaleWork(
 
   void transport;
   return reset;
+}
+
+/**
+ * A photo of a held Zone that dead-lettered before the media pass learned to hold it
+ * (0c7f996) stayed dead, and its "could not be uploaded" popup came back at every sign-in
+ * (staging, 2026-11-26). It can never go: it is held with its Zone, as a new one now is.
+ * Run after the structure pass, so a Zone held in this same sync counts.
+ */
+async function settleHeldZonePhotos(database: LocalDatabase): Promise<void> {
+  for (const row of await itemsInState(database, 'DEAD_LETTER')) {
+    if (row.entityType !== 'evidence') continue;
+    const [photo] = await evidenceById(database, row.entityId);
+    if (!photo?.auditZoneId || !(await isZoneHeld(database, photo.auditZoneId))) continue;
+    await markEvidenceSynced(database, photo.id);
+    await markSettled(database, row.id, 'Held for review: its Zone was held');
+  }
 }
 
 // ----------------------------------------------------------------------- media queue
