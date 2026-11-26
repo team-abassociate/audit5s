@@ -370,6 +370,8 @@ export class AuditsService {
       return toAudit(audit);
     }
 
+    this.assertCallerHoldsLock(scope, audit);
+
     try {
       assertTransition('audit', audit.status, 'PAUSED', { role: scope.actor.role });
     } catch (error) {
@@ -467,6 +469,8 @@ export class AuditsService {
     if (isAuditCompleted(audit.status)) {
       return toAudit(audit);
     }
+
+    this.assertCallerHoldsLock(scope, audit);
 
     const zones = await this.repository.zoneCompletionState(scope, auditId);
     const allZonesCompleted = zones.total > 0 && zones.completed === zones.total;
@@ -1116,6 +1120,24 @@ export class AuditsService {
       throw AppError.forbidden('DEVICE_NOT_OWNER', 'This session is bound to another device');
     }
     return deviceId;
+  }
+
+  /**
+   * D7 for the auditor's own pause and completion, now that an open audit can move (R-92).
+   *
+   * A device the audit has been taken away from still holds its old copy, and its outbox may
+   * still carry a pause or a completion. Applied, either would act on the audit the new device
+   * is running. Refused here as `DEVICE_NOT_OWNER`, the sync path quarantines it (§9.5) for
+   * review instead. A Super Admin pausing somebody else's audit is not the auditor and is not
+   * held to a device; a free lock, or a call naming no device, is left as it was.
+   */
+  private assertCallerHoldsLock(scope: ScopeContext, audit: { auditorUserId: string; owningDeviceId: string | null }): void {
+    if (audit.auditorUserId !== scope.actor.userId) return;
+    const callerDevice = scope.actor.deviceId;
+    if (!callerDevice || audit.owningDeviceId === null) return;
+    if (audit.owningDeviceId !== callerDevice) {
+      throw this.notOwner();
+    }
   }
 
   private notOwner(): AppError {
