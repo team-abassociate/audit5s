@@ -354,6 +354,14 @@ export class SyncBatchService {
       `rejected ${item.entityType} ${item.entityId} from device ${deviceId} as conflict ${conflictId}: ${raw}`,
     );
 
+    // A Zone another open audit holds (R-29) is never created by sending it again, so it is
+    // held, not refused: the phone settles the Zone and its photos with it. REJECTED left
+    // them dead-lettered, and "Retry upload" refused them the same way for ever ("4 photos
+    // could not be uploaded", staging 2026-11-26).
+    if (code === 'ZONE_LOCKED_BY_ANOTHER_AUDIT') {
+      return { ...base, status: 'CONFLICT', reason: 'VALIDATION_FAILED', conflictId, resolution: 'QUARANTINED' };
+    }
+
     return {
       ...base,
       status: 'REJECTED',
