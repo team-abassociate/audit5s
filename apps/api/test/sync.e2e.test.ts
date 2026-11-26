@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   API_BASE_PATH,
   type Audit,
+  type AuditDetail,
   type AuditScoreSummary,
   type Device,
   type Page,
@@ -187,36 +188,40 @@ function auditBatch(input: {
 }
 
 /** An audit created and started through the ordinary endpoints, selfie and all. */
-async function startedAudit() {
+async function startedAudit(
+  as: { token: string; deviceId: string } = { token: consultantToken, deviceId: DEVICE_ID },
+) {
   await assign();
   const zoneId = await makeZone();
   const auditId = randomUUID();
+  const { token, deviceId } = as;
 
   await world.request('POST', `${base}/audits`, {
-    token: consultantToken,
+    token,
     body: {
       id: auditId,
       auditType: 'EXTERNAL_5S',
       unitId: world.unitA,
       checklistVersionId: versionId,
-      deviceId: DEVICE_ID,
+      deviceId,
     },
   });
   await captureEvidence(world, {
-    token: consultantToken,
+    token,
     evidenceId: randomUUID(),
     auditId,
     kind: 'AUDITOR_SELFIE',
-    deviceId: DEVICE_ID,
+    deviceId,
   });
-  await world.request('POST', `${base}/audits/${auditId}/start`, {
-    token: consultantToken,
-    body: { deviceId: DEVICE_ID },
+  const started = await world.request('POST', `${base}/audits/${auditId}/start`, {
+    token,
+    body: { deviceId },
   });
+  expect(started.status, JSON.stringify(started.body)).toBe(200);
 
   const auditZoneId = randomUUID();
   await world.request('PUT', `${base}/audits/${auditId}/zones/${auditZoneId}`, {
-    token: consultantToken,
+    token,
     body: { zoneId, sequenceNo: 1, checklistVersionId: versionId },
   });
 
@@ -613,6 +618,112 @@ describe('§9.5 Layer 1 — one device owns an audit', () => {
     });
     expect(claimed.status, JSON.stringify(claimed.body)).toBe(200);
     expect((claimed.body as Audit).owningDeviceId).toBe(SECOND_DEVICE);
+  });
+
+  describe('R-92 — an open audit follows its auditor to another device', () => {
+    const COORD_PHONE_A = '01930000-0000-7000-8000-00000000bc11';
+    const COORD_PHONE_B = '01930000-0000-7000-8000-00000000bc12';
+    const OLD_PHONE = '01930000-0000-7000-8000-00000000bc13';
+
+    it('lets a Coordinator continue a paused audit on another phone, straight across', async () => {
+      const onA = await loginFromDevice(world, world.actors.COORDINATOR, COORD_PHONE_A);
+      const onB = await loginFromDevice(world, world.actors.COORDINATOR, COORD_PHONE_B);
+      const { auditId } = await startedAudit({ token: onA, deviceId: COORD_PHONE_A });
+      await world.request('POST', `${base}/audits/${auditId}/pause`, {
+        token: onA,
+        body: { reason: 'Called away' },
+      });
+
+      // Before R-92 this was the dead end: phone B could not resume it.
+      const refused = await world.request('POST', `${base}/audits/${auditId}/resume`, {
+        token: onB,
+        body: { deviceId: COORD_PHONE_B },
+      });
+      expect((refused.body as { code: string }).code).toBe('DEVICE_NOT_OWNER');
+
+      const moved = await world.request('POST', `${base}/audits/${auditId}/take-over`, {
+        token: onB,
+        body: { deviceId: COORD_PHONE_B },
+      });
+      expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+      expect((moved.body as AuditDetail).owningDeviceId).toBe(COORD_PHONE_B);
+      expect((moved.body as AuditDetail).status).toBe('PAUSED');
+      expect((moved.body as AuditDetail).zones).toHaveLength(1);
+
+      const resumed = await world.request('POST', `${base}/audits/${auditId}/resume`, {
+        token: onB,
+        body: { deviceId: COORD_PHONE_B },
+      });
+      expect(resumed.status, JSON.stringify(resumed.body)).toBe(200);
+
+      // Still one writer: phone A has lost it.
+      const stale = await world.request('POST', `${base}/audits/${auditId}/pause`, {
+        token: onA,
+        body: { reason: 'Back again' },
+      });
+      expect((stale.body as { code: string }).code).toBe('DEVICE_NOT_OWNER');
+
+      const { rows } = await world.owner.query(
+        `SELECT before, after FROM audit_log WHERE resource_id = $1 AND action = 'audit.device_taken_over'`,
+        [auditId],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].before).toMatchObject({ owningDeviceId: COORD_PHONE_A });
+      expect(rows[0].after).toMatchObject({ owningDeviceId: COORD_PHONE_B });
+    });
+
+    it('makes a Consultant sign out of the old phone first, then moves the audit', async () => {
+      const onOld = await loginFromDevice(world, world.actors.CONSULTANT, OLD_PHONE);
+      const { auditId } = await startedAudit({ token: onOld, deviceId: OLD_PHONE });
+
+      const refused = await world.request('POST', `${base}/audits/${auditId}/take-over`, {
+        token: secondDeviceToken,
+        headers: { 'x-device-id': SECOND_DEVICE },
+        body: { deviceId: SECOND_DEVICE },
+      });
+      expect(refused.status).toBe(409);
+      expect((refused.body as { code: string }).code).toBe('DEVICE_STILL_SIGNED_IN');
+
+      // The pop-up's button: sign the old phone out, from the new one.
+      const signedOut = await world.request('POST', `${base}/devices/${OLD_PHONE}/revoke`, {
+        token: secondDeviceToken,
+        headers: { 'x-device-id': SECOND_DEVICE },
+      });
+      expect(signedOut.status, JSON.stringify(signedOut.body)).toBe(200);
+
+      const moved = await world.request('POST', `${base}/audits/${auditId}/take-over`, {
+        token: secondDeviceToken,
+        headers: { 'x-device-id': SECOND_DEVICE },
+        body: { deviceId: SECOND_DEVICE },
+      });
+      expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+      expect((moved.body as AuditDetail).owningDeviceId).toBe(SECOND_DEVICE);
+      expect((moved.body as AuditDetail).status).toBe('IN_PROGRESS');
+
+      // Idempotent: asking again from the device that holds it changes nothing.
+      const again = await world.request('POST', `${base}/audits/${auditId}/take-over`, {
+        token: secondDeviceToken,
+        headers: { 'x-device-id': SECOND_DEVICE },
+        body: { deviceId: SECOND_DEVICE },
+      });
+      expect(again.status).toBe(200);
+      const { rows } = await world.owner.query(
+        `SELECT 1 FROM audit_log WHERE resource_id = $1 AND action = 'audit.device_taken_over'`,
+        [auditId],
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it('moves only the auditor’s own audit', async () => {
+      const { auditId } = await startedAudit();
+      const notTheirs = await world.request('POST', `${base}/audits/${auditId}/take-over`, {
+        token: world.actors.SUPER_ADMIN.accessToken,
+        body: { deviceId: SECOND_DEVICE },
+      });
+      expect(notTheirs.status).not.toBe(200);
+      const after = await world.request('GET', `${base}/audits/${auditId}`, { token: consultantToken });
+      expect((after.body as Audit).owningDeviceId).toBe(DEVICE_ID);
+    });
   });
 
   it('releases a PAUSED audit’s lock after the grace period, and not before', async () => {

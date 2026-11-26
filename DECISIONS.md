@@ -3256,3 +3256,33 @@ marked as for 2 marks ... make it applicable for the non-confirmatory photos as 
 - **Reviewing a finished audit** (R-81) still picks from existing photos in the preview; the
   sheet is not offered there, because a correction can reach the server before the photo it
   flags. The web panel shows the photo and lets its auditor delete or unpick it (R-81).
+
+## R-92 — An open audit follows its auditor's account to another device
+
+**Settled 2026-11-26 by the product owner. Refines D7, R-18(c) and R-51.** An audit left open on
+one device (a phone or a browser) could not be continued on another, for every role. The owner:
+"the audit should be linked to the account and not to the device". D7 still holds: one device
+writes to an open audit at a time. What changes is that the auditor can move it. This is a
+hand-over, not concurrent editing (STACK.md §8), so the outbox design is unchanged.
+
+- **`POST /audits/{id}/take-over`** moves the lock to the calling device and changes nothing
+  else. It needs `audit:resume`, works only for the auditor's own IN_PROGRESS or PAUSED audit,
+  is idempotent, and writes `audit.device_taken_over` with the old and new device. It returns
+  the `AuditDetail`.
+- **Super Admin and Coordinator** move their audit straight across.
+- **Consultant and Zone Leader** must first sign out of the device holding it
+  (`POST /devices/{id}/revoke`, which for them signs only themselves off that device). Until
+  then the move is refused `409 DEVICE_STILL_SIGNED_IN`. The roles are
+  `TAKE_OVER_WITHOUT_SIGN_OUT_ROLES` in `packages/contracts`.
+- **The field app** asks the server for the auditor's open audits held elsewhere and shows them
+  on the Overview. A Consultant or Zone Leader still signed in on that device gets a pop-up after
+  sign-in: "Sign out and continue here". The audit, its answers and its photos are then written
+  into SQLite as `SYNCED` and it resumes at its cursor. A local copy of an audit that has moved
+  away is no longer offered for Resume.
+- **The admin web** offers the same on `/conduct`: "Continue here", or "Sign out of that device
+  and continue here".
+- **What does not come across** is whatever the old device never uploaded. If it pushes later,
+  the server quarantines it as `DEVICE_NOT_OWNER` (§9.5), so it is held for review rather than
+  applied or lost. Both dialogs say so.
+- **Unchanged:** a Super Admin's `release-device` for someone else's audit, the paused-lock
+  grace sweep, and revoking a device leaving its audits' locks alone.

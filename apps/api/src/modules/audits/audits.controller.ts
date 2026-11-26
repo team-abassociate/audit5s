@@ -21,6 +21,7 @@ import {
   restartAuditRequestSchema,
   resumeAuditRequestSchema,
   startAuditRequestSchema,
+  takeOverAuditRequestSchema,
   type Audit,
   type AuditDetail,
   type AuditScoreSummary,
@@ -34,6 +35,7 @@ import {
   type RestartAuditRequest,
   type ResumeAuditRequest,
   type StartAuditRequest,
+  type TakeOverAuditRequest,
   type ZoneLocksResponse,
 } from '@audit5s/contracts';
 import type { ScopeContext } from '@audit5s/domain';
@@ -252,6 +254,25 @@ export class AuditsController {
     @Body(new ZodValidationPipe(releaseDeviceRequestSchema)) body: ReleaseDeviceRequest,
   ): Promise<Audit> {
     return this.audits.releaseDevice(scope, auditId, body);
+  }
+
+  /**
+   * R-92: the auditor continues their own open audit on another device.
+   *
+   * `audit:resume`, because that is what it is: the same auditor picking the same audit back
+   * up, from a different device. A Super Admin or Coordinator moves it straight across; a
+   * Consultant or Zone Leader signs out of the old device first (`DEVICE_STILL_SIGNED_IN`).
+   */
+  @RequirePermission('audit', 'resume')
+  @Scope({ param: 'auditId', intent: 'write' })
+  @Post(':auditId/take-over')
+  @HttpCode(HttpStatus.OK)
+  takeOver(
+    @CurrentScope() scope: ScopeContext,
+    @Param('auditId', ParseUUIDPipe) auditId: string,
+    @Body(new ZodValidationPipe(takeOverAuditRequestSchema)) body: TakeOverAuditRequest,
+  ): Promise<AuditDetail> {
+    return this.audits.takeOver(scope, auditId, body);
   }
 
   /**

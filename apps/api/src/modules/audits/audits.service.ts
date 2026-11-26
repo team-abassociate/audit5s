@@ -18,8 +18,10 @@ import type {
   ResumeAuditRequest,
   RestartAuditRequest,
   StartAuditRequest,
+  TakeOverAuditRequest,
   ZoneLocksResponse,
 } from '@audit5s/contracts';
+import { TAKE_OVER_WITHOUT_SIGN_OUT_ROLES } from '@audit5s/contracts';
 import {
   assertTransition,
   auditTypeRequiresZonePhoto,
@@ -610,6 +612,78 @@ export class AuditsService {
     );
 
     return this.get(scope, auditId);
+  }
+
+  /**
+   * `POST /audits/{id}/take-over` — R-92: an open audit belongs to its auditor's account,
+   * not to the device it was started on.
+   *
+   * The lock (D7) moves to the calling device and nothing else changes: status, answers and
+   * cursors stay as the server has them. It is still one writer at a time. The device that
+   * held the audit loses it, and whatever it pushes afterwards is quarantined as
+   * `DEVICE_NOT_OWNER` (§9.5), held for review rather than dropped.
+   *
+   * - Only the auditor's own audit, and only while it is IN_PROGRESS or PAUSED.
+   * - A Super Admin or Coordinator takes it straight across (owner, 2026-11-26).
+   * - A Consultant or Zone Leader must first sign out of the device that holds it, which is
+   *   `POST /devices/{id}/revoke` from the new device. Until then the move is refused with
+   *   `DEVICE_STILL_SIGNED_IN`, so their audit is never on two signed-in devices at once.
+   *
+   * Returns the detail, because the caller is about to rebuild the audit locally and needs
+   * its Zones and answers anyway.
+   */
+  async takeOver(
+    scope: ScopeContext,
+    auditId: string,
+    request: TakeOverAuditRequest,
+  ): Promise<AuditDetail> {
+    const audit = await this.mustFind(scope, auditId);
+    const deviceId = this.requireDevice(scope, request.deviceId);
+    await this.requireOwnDevice(scope, deviceId);
+
+    if (audit.auditorUserId !== scope.actor.userId) {
+      throw AppError.forbidden('FORBIDDEN', 'Only the auditor can continue this audit on another device');
+    }
+    if (audit.status !== 'IN_PROGRESS' && audit.status !== 'PAUSED') {
+      throw AppError.conflict(
+        'INVALID_STATE_TRANSITION',
+        `An audit that is ${audit.status} cannot move to another device`,
+      );
+    }
+
+    // Idempotent: already here.
+    if (audit.owningDeviceId === deviceId) {
+      return this.detail(scope, auditId);
+    }
+
+    const from = audit.owningDeviceId;
+    if (
+      from !== null &&
+      !TAKE_OVER_WITHOUT_SIGN_OUT_ROLES.includes(scope.actor.role) &&
+      (await this.repository.isOwnDevice(scope, from))
+    ) {
+      throw AppError.conflict(
+        'DEVICE_STILL_SIGNED_IN',
+        'This audit is open on another device you are still signed in on. Sign out of that device first.',
+      );
+    }
+
+    const moved = await this.repository.transferOwnership(scope, auditId, from, deviceId);
+    if (!moved) {
+      // The lock moved again, or the audit finished, between the read and the write.
+      throw this.notOwner();
+    }
+
+    await this.auditLog.record({
+      action: 'audit.device_taken_over',
+      resourceType: 'audit',
+      resourceId: auditId,
+      unitId: audit.unitId,
+      before: { owningDeviceId: from },
+      after: { owningDeviceId: deviceId },
+    });
+
+    return this.detail(scope, auditId);
   }
 
   /** Administrative voiding. Every row is retained — that is the whole of A-1. */

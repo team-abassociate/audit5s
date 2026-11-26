@@ -16,6 +16,7 @@ import {
   responseValueSchema,
   sSectionSchema,
   syncStateSchema,
+  type Role,
 } from './enums';
 import { overallActionSuggestionsSchema } from './corrective-action';
 import { ZONE_NUMBER_MAX, ZONE_NUMBER_MIN, zoneCodeSchema, zoneNameSchema } from './zone';
@@ -409,6 +410,27 @@ export const releaseDeviceRequestSchema = z.object({
   reason: z.string().trim().min(1).max(1000),
 });
 export type ReleaseDeviceRequest = z.infer<typeof releaseDeviceRequestSchema>;
+
+/**
+ * `POST /audits/{id}/take-over` — R-92: an open audit follows its auditor's account to
+ * another device.
+ *
+ * The lock (D7) moves to the calling device; nothing else does. It is still one device at a
+ * time, so the device that held it can no longer write to the audit, and anything it pushes
+ * later is quarantined as `DEVICE_NOT_OWNER` rather than lost.
+ *
+ * Only the auditor's own IN_PROGRESS or PAUSED audit moves. A Super Admin or Coordinator
+ * takes it straight across. A Consultant or Zone Leader must first sign out of the device
+ * that holds it (`POST /devices/{id}/revoke`), or the move is refused with
+ * `409 DEVICE_STILL_SIGNED_IN`.
+ */
+export const takeOverAuditRequestSchema = z.object({
+  deviceId: uuidSchema.optional(),
+});
+export type TakeOverAuditRequest = z.infer<typeof takeOverAuditRequestSchema>;
+
+/** R-92: the roles whose open audits move to a new device without signing out the old one. */
+export const TAKE_OVER_WITHOUT_SIGN_OUT_ROLES: readonly Role[] = ['SUPER_ADMIN', 'COORDINATOR'];
 
 /**
  * `PATCH /audits/{id}/post-completion` — the **only** way a completed audit changes (A-2).

@@ -1327,6 +1327,59 @@ export function NoticeDialog({
 }
 
 /**
+ * `NoticeDialog` with a choice: a question that must be answered before going on, such as
+ * R-92's "sign out of the other phone?". The way out is always there and changes nothing.
+ */
+export function ChoiceDialog({
+  visible,
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  busy,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  busy?: boolean;
+  error?: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const styles = useStyles();
+  const cancel = busy ? () => undefined : onCancel;
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={cancel} statusBarTranslucent>
+      <Pressable style={styles.scrim} onPress={cancel} accessibilityRole="button" accessibilityLabel={cancelLabel} />
+      <View style={styles.dialogShell} pointerEvents="box-none">
+        <Magnet>
+          <View style={styles.dialog} accessibilityRole="alert" accessibilityLiveRegion="assertive">
+            <Text style={styles.h2} accessibilityRole="header">
+              {title}
+            </Text>
+            <Text style={styles.noticeText}>{message}</Text>
+            <ErrorBanner message={error ?? null} />
+            <View style={styles.confirmRow}>
+              <View style={styles.confirmItem}>
+                <Button title={cancelLabel} variant="secondary" disabled={busy} onPress={onCancel} />
+              </View>
+              <View style={styles.confirmItem}>
+                <Button title={confirmLabel} busy={busy} onPress={onConfirm} />
+              </View>
+            </View>
+          </View>
+        </Magnet>
+      </View>
+    </Modal>
+  );
+}
+
+/**
  * A destructive action that asks first, in place — never `Alert`/`confirm()`. The question says what will and will not happen.
  */
 export function ConfirmAction({

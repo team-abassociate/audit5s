@@ -47,6 +47,8 @@ export const AUDIT_LOG_ACTIONS = [
   'audit.cancelled',
   /** §9.5 Layer 1's force-release: a Super Admin breaks a device's single-writer lock. */
   'audit.device_released',
+  /** R-92: the auditor moved their own open audit to another device. */
+  'audit.device_taken_over',
   /** R-33: the auditor restarted their own finished audit. Written since R-33; listed 2026-10-05. */
   'audit.restarted',
   'report.generated',

@@ -22,6 +22,7 @@ import { isOverdue } from '../lib/cross-audit-call';
 import { syncCatalogue } from '../lib/catalogue';
 import { listLocalAudits, pendingOutboxCount } from '../lib/db/audit.repository';
 import { useResumableAudits, useResumeAudit } from '../lib/resume-audit';
+import { AuditsElsewhere } from './audits-elsewhere';
 import { listLocalCorrectiveActions } from '../lib/db/corrective-action.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import { formatDateTime } from '../lib/format';
@@ -120,6 +121,9 @@ export function FieldOverview() {
               : `${open.length} audit${open.length === 1 ? '' : 's'} open on this device.`
           }
         />
+
+        {/* R-92: their own audit left open on another device. */}
+        <AuditsElsewhere />
 
         {/* The one slip: findings to answer, and a cross audit called at their Unit. */}
         <SlipStack

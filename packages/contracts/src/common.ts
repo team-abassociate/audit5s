@@ -140,6 +140,8 @@ export const ERROR_CODES = [
   'ZONE_LEADER_NOT_IN_UNIT',
   // Audits and scoring
   'DEVICE_NOT_OWNER',
+  /** R-92: a Consultant or Zone Leader must sign out of the device holding the audit first. */
+  'DEVICE_STILL_SIGNED_IN',
   'AUDIT_ALREADY_COMPLETED',
   'CHECKLIST_VERSION_MISMATCH',
   'ZONE_HAS_IN_PROGRESS_AUDIT',

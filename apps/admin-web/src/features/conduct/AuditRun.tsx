@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import type { AuditDetail, ZoneLocksResponse } from '@audit5s/contracts';
+import { TAKE_OVER_WITHOUT_SIGN_OUT_ROLES, type AuditDetail, type ZoneLocksResponse } from '@audit5s/contracts';
 import { MAX_AUDIT_RESTARTS, isAuditCompleted, mayAddZoneWhileAuditing, restartsRemaining, uuidv7, zoneCodeForLabel, zoneDisplayLabel } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
 import {
@@ -20,7 +20,7 @@ import {
   Spinner,
   StatusChip,
 } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { useWebDevice } from '@/lib/device';
 import { LiveCapture } from '@/lib/photo';
@@ -41,7 +41,9 @@ type AuditZone = AuditDetail['zones'][number];
  * refused before forty minutes of questions, not after (R-29).
  *
  * The browser must own the audit to write to it (D7). A paused audit is resumed here, which
- * claims it for this browser; one still open on a phone says so and offers nothing.
+ * claims it for this browser. One open on another device can be brought here by its own
+ * auditor (R-92): a Super Admin or Coordinator directly, a Consultant or Zone Leader by
+ * signing that device out first.
  */
 export function AuditRunPage({ auditId }: { auditId: string }) {
   const navigate = useNavigate();
@@ -52,7 +54,7 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const audit = detail.data;
   useDocumentTitle(audit ? `${AUDIT_TYPE_LABEL[audit.auditType]} · ${audit.unitName}` : 'Audit');
 
-  const { scope } = useSession();
+  const { scope, user } = useSession();
   const mayAddZone = mayAddZoneWhileAuditing(
     scope?.role,
     Boolean(catalogue.data?.units.find((unit) => unit.id === audit?.unitId)?.zoneListImportedAt),
@@ -73,6 +75,7 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const [aborting, setAborting] = useState<AuditZone | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  const [movingHere, setMovingHere] = useState(false);
   const [restartReason, setRestartReason] = useState<string | null>(null);
 
   const locks = useQuery({
@@ -88,6 +91,25 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const resume = useMutation({
     mutationFn: () => client!.post(`/audits/${auditId}/resume`, { deviceId: device.deviceId }, uuidv7()),
     onSuccess: refresh,
+  });
+  // R-92: bring the auditor's own audit here from the device holding it. A Consultant or Zone
+  // Leader still signed in there is signed out of it first, which the server insists on.
+  const continueHere = useMutation({
+    mutationFn: async () => {
+      const takeOver = () => client!.post(`/audits/${auditId}/take-over`, { deviceId: device.deviceId }, uuidv7());
+      try {
+        await takeOver();
+      } catch (error) {
+        const holder = audit?.owningDeviceId;
+        if (!(error instanceof ApiError && error.code === 'DEVICE_STILL_SIGNED_IN') || !holder) throw error;
+        await api.post(`/devices/${holder}/revoke`);
+        await takeOver();
+      }
+    },
+    onSuccess: () => {
+      setMovingHere(false);
+      return refresh();
+    },
   });
   // An audit left at ASSIGNED: the selfie never reached the server, so it is taken here.
   const selfie = useMutation({
@@ -192,6 +214,9 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
   const allComplete = live.length > 0 && live.every((zone) => zone.status === 'COMPLETED');
   const running = audit.status === 'IN_PROGRESS' && mine;
   const elsewhere = (audit.status === 'IN_PROGRESS' || audit.status === 'PAUSED') && !mine;
+  // R-92: the auditor's own open audit follows them; anybody else's stays where it is.
+  const mayContinueHere = elsewhere && audit.auditorUserId === user?.id && Boolean(client);
+  const signsOutFirst = !(scope?.role && TAKE_OVER_WITHOUT_SIGN_OUT_ROLES.includes(scope.role));
   const canAddZone = running && (live.length === 0 || allComplete);
   const canFinish = running && allComplete;
   // Anything not yet finished, the selfie still to take included, as on the phone — and
@@ -257,11 +282,24 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
           </span>
         </Slip>
       ) : elsewhere ? (
-        // D7: an audit belongs to the device that ran it until it is finished. Nothing here
-        // moves it; a Super Admin's "release device" is the one way, and it is logged.
+        // D7: one device holds an open audit at a time. R-92: its own auditor may bring it here;
+        // for anyone else a Super Admin's "release device" stays the way, and both are logged.
         <Slip title={audit.status === 'PAUSED' ? 'Paused on another device' : 'Open on another device'}>
-          This audit is held by the phone or browser it was started on. Carry it on there. If that device is lost, a Super Admin can
-          release it from the audit's page.
+          {mayContinueHere ? (
+            <>
+              This audit is held by the phone or browser it was started on. You can carry it on here instead.
+              <span className="mt-2 block">
+                <Button disabled={continueHere.isPending} onClick={() => setMovingHere(true)}>
+                  {signsOutFirst ? 'Sign out of that device and continue here' : 'Continue here'}
+                </Button>
+              </span>
+            </>
+          ) : (
+            <>
+              This audit is held by the phone or browser it was started on. Carry it on there. If that device is lost, a Super Admin
+              can release it from the audit's page.
+            </>
+          )}
         </Slip>
       ) : audit.status === 'ASSIGNED' ? (
         <Slip title="Take your selfie to begin">A live photograph from this computer's camera starts the audit.</Slip>
@@ -483,6 +521,22 @@ export function AuditRunPage({ auditId }: { auditId: string }) {
           </ul>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={movingHere}
+        title={signsOutFirst ? 'Sign out of the other device?' : 'Continue this audit here?'}
+        tone="primary"
+        confirmLabel={signsOutFirst ? 'Sign out and continue here' : 'Continue here'}
+        pending={continueHere.isPending}
+        error={continueHere.error}
+        onConfirm={() => continueHere.mutate()}
+        onCancel={() => setMovingHere(false)}
+      >
+        {signsOutFirst
+          ? 'You will be signed out on the device holding this audit, and the audit moves here with every answer and photo it uploaded. '
+          : 'The audit moves here with every answer and photo uploaded so far, and the other device can no longer change it. '}
+        Anything that device has not uploaded yet stays behind, held for review.
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={finishing}

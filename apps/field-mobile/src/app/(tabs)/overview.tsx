@@ -34,6 +34,7 @@ import { api } from '../../lib/api';
 import { formatDate, formatPct } from '../../lib/format';
 import { isRunning } from '../../lib/labels';
 import { AuditCard, ResumeSlip } from '../../components/audit-card';
+import { AuditsElsewhere } from '../../components/audits-elsewhere';
 import { CallCrossAuditSheet } from '../../components/cross-audit-round';
 import { FieldOverview } from '../../components/field-overview';
 import { managesOnPhone, useSession } from '../../lib/session';
@@ -184,6 +185,7 @@ function ManagementOverview() {
           }
         />
 
+        <AuditsElsewhere />
         <ResumeSlip />
 
         {/* The one slip: only when a human must act. */}

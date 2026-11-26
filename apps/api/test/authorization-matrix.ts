@@ -812,6 +812,19 @@ export const ENDPOINT_MATRIX: EndpointExpectation[] = [
   },
   {
     method: 'POST',
+    path: '/api/v1/audits/:auditId/take-over',
+    description:
+      'audit:resume — R-92: the auditor moves their own open audit to the device they are on. ' +
+      'A Consultant or Zone Leader signs out of the old device first',
+    expected: {
+      SUPER_ADMIN: { inScope: OK, outOfScope: OK },
+      CONSULTANT: { inScope: OK, outOfScope: NOT_FOUND },
+      ZONE_LEADER: { inScope: OK, outOfScope: NOT_FOUND },
+    },
+    coveredBy: 'sync.e2e.test.ts',
+  },
+  {
+    method: 'POST',
     path: '/api/v1/audits/:auditId/complete',
     description: 'audit:complete — the server recomputes every score on this edge (D5)',
     expected: {

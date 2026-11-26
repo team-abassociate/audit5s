@@ -1,12 +1,26 @@
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { useAuditsElsewhere } from './audits-elsewhere';
 import { listResumableAudits, resumeCursor, resumeLocalAudit, type ResumableAudit } from './db/audit.repository';
 import { useLocalDatabase } from './db/provider';
 
-/** The audits open on this device — the ones Resume can take the auditor back into. */
+/**
+ * The audits open on this device — the ones Resume can take the auditor back into.
+ *
+ * R-92: less any the server says another device now holds. This phone's copy of one of those
+ * is stale, and resuming it would only be refused; it is offered instead as an audit open on
+ * another device, which brings the current copy here.
+ */
 export function useResumableAudits() {
   const database = useLocalDatabase();
-  return useQuery({ queryKey: ['local', 'resumable-audits'], queryFn: () => listResumableAudits(database) });
+  const elsewhere = useAuditsElsewhere();
+  const held = (elsewhere.data ?? []).map((item) => item.audit.id).join(',');
+  const select = useCallback(
+    (rows: ResumableAudit[]) => (held ? rows.filter((row) => !held.split(',').includes(row.id)) : rows),
+    [held],
+  );
+  return useQuery({ queryKey: ['local', 'resumable-audits'], queryFn: () => listResumableAudits(database), select });
 }
 
 /**

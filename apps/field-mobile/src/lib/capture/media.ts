@@ -104,6 +104,21 @@ export async function discardProcessedPhoto(uri: string): Promise<void> {
 }
 
 /**
+ * R-92: a copy of a photograph that was taken on another device, for an audit continued here.
+ *
+ * Saved beside this phone's own captures, under the evidence id, so it outlives the cache.
+ * On the web it becomes a `data:` URL, for the same reason `keepDurably` makes one.
+ */
+export async function downloadPhoto(url: string, evidenceId: string): Promise<string> {
+  if (Platform.OS === 'web') return blobToDataUrl(await (await fetch(url)).blob());
+  const directory = `${FileSystem.documentDirectory}evidence/`;
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+  const result = await FileSystem.downloadAsync(url, `${directory}${evidenceId}.jpg`);
+  if (result.status !== 200) throw new Error(`Photo download failed (${result.status})`);
+  return result.uri;
+}
+
+/**
  * SHA-256 of a file. `expo-crypto` hashes buffers rather than streams, so the file is read
  * whole; at a few hundred kilobytes that is affordable, and it is why the downscale is first.
  */

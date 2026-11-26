@@ -308,6 +308,39 @@ export class AuditsRepository extends BaseRepository {
     });
   }
 
+  /**
+   * R-92: moves the D7 lock from `fromDeviceId` (null for a free lock) to `toDeviceId`.
+   *
+   * Compare-and-set on the device that held it, so two new devices racing for one audit
+   * cannot both win, and a lock that moved again in between is not taken from its new
+   * holder. Open audits only: a finished audit has no lock to move.
+   */
+  async transferOwnership(
+    scope: ScopeContext,
+    auditId: string,
+    fromDeviceId: string | null,
+    toDeviceId: string,
+  ): Promise<string | null> {
+    return this.db.transaction(async (tx) => {
+      await setActorContext(tx, scope.actor.userId, scope.actor.role);
+      const [row] = await tx
+        .update(audits)
+        .set({ owningDeviceId: toDeviceId, version: sql`${audits.version} + 1` })
+        .where(
+          and(
+            eq(audits.id, auditId),
+            inArray(audits.status, ['IN_PROGRESS', 'PAUSED']),
+            fromDeviceId === null
+              ? isNull(audits.owningDeviceId)
+              : eq(audits.owningDeviceId, fromDeviceId),
+            this.scoped(scope, auditScopeColumns),
+          ),
+        )
+        .returning({ id: audits.id });
+      return row?.id ?? null;
+    });
+  }
+
   async updateAudit(
     scope: ScopeContext,
     auditId: string,
