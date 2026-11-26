@@ -33,6 +33,7 @@ import { AuditeeCard } from '../../components/evidence-photos';
 import { ZONE_PHOTO_LIMIT, ZONE_PHOTO_LIMIT_MESSAGE, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { pickPhotosFromGallery } from '../../lib/capture/gallery';
+import { editPhoto } from '../../components/kaizen-photo-editor';
 import {
   completeLocalZone,
   getLocalAuditZone,
@@ -118,7 +119,10 @@ export default function WalkByScreen() {
       await assertZonePhotoCapacity(database, auditZoneId);
       const taken = (await listLocalEvidenceForZone(database, auditZoneId)).filter((photo) => isZoneAuditPhoto(photo.kind));
       const images = await pickPhotosFromGallery(ZONE_PHOTO_LIMIT - taken.length);
-      for (const image of images) await capture.mutateAsync({ image, live: false });
+      for (const chosen of images) {
+        const image = await editPhoto(chosen);
+        if (image) await capture.mutateAsync({ image, live: false });
+      }
     },
   });
 
@@ -172,6 +176,7 @@ export default function WalkByScreen() {
         />
         <CameraCapture
           beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
+editable
           prompt={`Capture a ${classificationLabel(classification).toLowerCase()} observation`}
           onCaptured={(image) => capture.mutateAsync({ image, live: true })}
           onCancel={() => setCameraOpen(false)}

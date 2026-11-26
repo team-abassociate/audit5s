@@ -22,6 +22,7 @@ import { SessionProvider, useSession } from '../lib/session';
 import { SyncProvider, useSync } from '../lib/sync/provider';
 import { StuckPhotosPrompt, SyncStatusBar } from '../components/sync-status-bar';
 import { PhotoBackupPrompt } from '../components/photo-backup-prompt';
+import { PhotoEditHost } from '../components/kaizen-photo-editor';
 import { HeaderTitle } from '../components/ui';
 import { ThemedStatusBar, ThemeProvider } from '../lib/theme-provider';
 import { useTheme } from '../lib/theme';
@@ -223,6 +224,7 @@ function AuthGate() {
       {showBar && <SyncStatusBar />}
       {signedIn && !cameraOpen && <StuckPhotosPrompt />}
       {signedIn && !cameraOpen && <PhotoBackupPrompt />}
+      <PhotoEditHost />
       {/* The sync bar already pads for the status bar; headers below it must not pad again. */}
       <SafeAreaInsetsContext.Provider value={showBar ? { ...insets, top: 0 } : insets}>
         <Stack

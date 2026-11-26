@@ -360,6 +360,20 @@ describe('§9.3 — per-item results', () => {
     expect(rows[0].n).toBe(0);
   });
 
+  it('holds a Zone another open audit has taken, so the phone settles its photos (staging 2026-11-26)', async () => {
+    const { zoneId } = await startedAudit();
+    await assign();
+    const auditZoneId = randomUUID();
+    const [auditItem, zoneItem] = auditBatch({ auditId: randomUUID(), auditZoneId, zoneId, answers: 0 });
+
+    const response = await push([auditItem!, zoneItem!]);
+
+    const zone = response.results.find((result) => result.entityId === auditZoneId);
+    expect(zone, JSON.stringify(response.results)).toMatchObject({ status: 'CONFLICT', resolution: 'QUARANTINED' });
+    const { rows } = await world.owner.query(`SELECT count(*)::int AS n FROM sync_conflict WHERE entity_id = $1`, [auditZoneId]);
+    expect(rows[0].n).toBe(1);
+  });
+
   it('answers RETRY_AFTER_PARENT for a child whose parent is not there yet', async () => {
     const orphanZoneId = randomUUID();
 

@@ -23,6 +23,7 @@ import { syncCatalogue } from '../../lib/catalogue';
 import { useRequiredFields } from '../../lib/required-fields';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { pickFromGallery } from '../../lib/capture/gallery';
+import { editPhoto } from '../../components/kaizen-photo-editor';
 import { uuidv7 } from '../../lib/db/audit.repository';
 import {
   captureAfterPhoto,
@@ -120,7 +121,8 @@ export default function CorrectiveActionScreen() {
   // Any after-photo may come from the gallery (R-38; the owner, 2026-10-13).
   const gallery = useMutation({
     mutationFn: async () => {
-      const image = await pickFromGallery();
+      const chosen = await pickFromGallery();
+      const image = chosen ? await editPhoto(chosen) : null;
       if (image) await capture.mutateAsync({ image, live: false });
     },
   });
@@ -172,6 +174,7 @@ export default function CorrectiveActionScreen() {
           }}
         />
         <CameraCapture
+editable
           prompt="Photograph the corrected condition"
           onCaptured={(image) => capture.mutateAsync({ image, live: true })}
           onCancel={() => setCameraOpen(false)}
