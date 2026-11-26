@@ -1,7 +1,8 @@
 import { writeFileSync } from 'node:fs';
 import type { KaizenDetail } from '@audit5s/contracts';
+import { formatDate } from '@audit5s/domain';
 import { describe, expect, it } from 'vitest';
-import { compactRupees, costNote, numberedLines, renderKaizenSheetHtml } from './kaizen-sheet';
+import { compactRupees, costNote, numberedLines, renderKaizenSheetHtml, targetLine } from './kaizen-sheet';
 
 const id = '00000000-0000-4000-8000-000000000001';
 const kaizen: KaizenDetail = {
@@ -9,7 +10,7 @@ const kaizen: KaizenDetail = {
   zoneName: 'Press Shop', department: null, departmentLabel: null, authorUserId: id, authorName: 'Ravi Patil',
   machine: 'Press P-12', lineArea: 'Line 3', implementedOn: '2026-10-05',
   teamMembers: 'Ravi Patil (lead) · Asha K · Imran S', theme: 'Cut die changeover time on press P-12',
-  target: '≤ 20 min by 30-11-2026', problem5w1h: 'What: changeover takes 48 min\nWhere: press P-12',
+  target: '≤ 20 min', targetDate: '2026-11-30', problem5w1h: 'What: changeover takes 48 min\nWhere: press P-12',
   rootCause4m: 'Method: no standard sequence\nMaterial: dies stored far away', analysis7qc: 'Pareto: tool search 40%',
   countermeasure: '1. Shadow board at the press\n2. Quick-release clamps\n- SOP card', wastes: ['WAITING_TIME', 'MOTION'],
   parameters: ['PRODUCTIVITY', 'COST'], horizontalDeployment: true, benefits: 'Changeover 48 → 18 min.',
@@ -23,6 +24,14 @@ const kaizen: KaizenDetail = {
 } as KaizenDetail;
 
 describe('Kaizen sheet', () => {
+  it('prints the target with its date, either alone, or nothing', () => {
+    const due = formatDate('2026-11-30');
+    expect(targetLine({ target: '≤ 20 min', targetDate: '2026-11-30' })).toBe(`≤ 20 min by ${due}`);
+    expect(targetLine({ target: '≤ 20 min', targetDate: null })).toBe('≤ 20 min');
+    expect(targetLine({ target: null, targetDate: '2026-11-30' })).toBe(`by ${due}`);
+    expect(targetLine({ target: null, targetDate: null })).toBeNull();
+  });
+
   it('numbers countermeasures, dropping typed numbering', () => {
     expect(numberedLines('1. a\n\n2) b\n- c')).toEqual(['a', 'b', 'c']);
     expect(numberedLines(null)).toEqual([]);

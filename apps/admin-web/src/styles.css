@@ -1548,6 +1548,44 @@ a.gb-who:hover b {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
+/* DateInput: the calendar button at the box's right end, like the password toggle. The
+   browser's own indicator is hidden so there is one calendar, the same in every browser. */
+.gb-date {
+  position: relative;
+  display: block;
+}
+.gb-date .gb-input {
+  padding-right: 42px;
+}
+.gb-date .gb-input::-webkit-calendar-picker-indicator {
+  display: none;
+}
+.gb-date-button {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.gb-date-button:hover {
+  color: var(--ink);
+}
+.gb-date-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.gb-date-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
 .gb-combobox {
   position: relative;
   width: 100%;

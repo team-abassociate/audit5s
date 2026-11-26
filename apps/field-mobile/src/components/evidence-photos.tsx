@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteLocalEvidence,
   getLocalAuditeePhoto,
+  pickLocalSummaryPhoto,
   setLocalEvidenceRemark,
   setLocalSummaryFlag,
   type listLocalEvidenceForZone,
@@ -13,7 +14,7 @@ import { applyLocalPhotoOverride } from '../lib/db/audit.repository';
 import { useLocalDatabase } from '../lib/db/provider';
 import { createThemedStyles, type Tone } from '../lib/theme';
 import { PhotoZoomViewer } from './kaizen-photo-viewer';
-import { Button, Card, CardHeader, Chip, ConfirmAction, ErrorBanner, Field, Label, Muted } from './ui';
+import { Button, Card, CardHeader, Chip, ConfirmAction, ErrorBanner, Field, Label, Muted, SelectField } from './ui';
 
 /**
  * The photographs of a scored Zone: thumbnails, a full-size preview, delete (E-4) and the
@@ -84,9 +85,12 @@ export function PhotoThumbs({
 export function SummaryPhotosCard({
   photos,
   onOpen,
+  onAdd,
 }: {
   photos: readonly LocalPhoto[];
   onOpen: (evidenceId: string) => void;
+  /** R-91: opens a slot's sheet. Absent when the audit is not open, so nothing is offered. */
+  onAdd?: (slot: SummarySlot) => void;
 }) {
   const styles = useStyles();
   const good = photos.find((photo) => photo.isSummaryFlagged === 1 && photo.classification === 'GOOD');
@@ -94,16 +98,37 @@ export function SummaryPhotosCard({
     (photo) => photo.isSummaryFlagged === 1 && photo.classification === 'NONCONFORMITY',
   );
 
-  const slot = (title: string, photo: LocalPhoto | undefined) => (
+  const slot = (title: string, kind: SummarySlot, photo: LocalPhoto | undefined) => (
     <View style={styles.slot}>
       <Label>{title}</Label>
       {photo ? (
         <PhotoThumbs photos={[photo]} onOpen={onOpen} />
+      ) : onAdd ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Add the ${title} summary photo`}
+          onPress={() => onAdd(kind)}
+          style={({ pressed }) => [styles.slotEmpty, pressed && styles.pressed]}
+        >
+          <Text style={styles.thumbMissingText}>Not chosen{'\n'}Tap to add</Text>
+        </Pressable>
       ) : (
         <View style={styles.slotEmpty}>
           <Text style={styles.thumbMissingText}>Not chosen</Text>
         </View>
       )}
+      {onAdd ? (
+        <View style={styles.slotAction}>
+          <Button
+            compact
+            icon={photo ? 'swap-horiz' : 'add-a-photo'}
+            title={photo ? 'Change' : 'Add'}
+            variant="secondary"
+            accessibilityLabel={`${photo ? 'Change' : 'Add'} the ${title} summary photo`}
+            onPress={() => onAdd(kind)}
+          />
+        </View>
+      ) : null}
     </View>
   );
 
@@ -111,11 +136,15 @@ export function SummaryPhotosCard({
     <Card>
       <CardHeader
         title="Summary photos"
-        description="Open a photograph to flag one Good and one Nonconformity. They represent this Zone in the unit summary report."
+        description={
+          onAdd
+            ? 'One Good and one Nonconformity represent this Zone in the reports. Add an individual photo with a remark, or a photo for a question.'
+            : 'Open a photograph to flag one Good and one Nonconformity. They represent this Zone in the unit summary report.'
+        }
       />
       <View style={styles.slots}>
-        {slot('Good', good)}
-        {slot('Nonconformity', bad)}
+        {slot('Good', 'GOOD', good)}
+        {slot('Nonconformity', 'NONCONFORMITY', bad)}
       </View>
       {photos.length > 0 ? (
         <>
@@ -126,6 +155,166 @@ export function SummaryPhotosCard({
         <Muted>No photographs yet. Take one from any question.</Muted>
       )}
     </Card>
+  );
+}
+
+export type SummarySlot = 'GOOD' | 'NONCONFORMITY';
+export type PhotoSource = 'camera' | 'gallery';
+
+/** A question the slot may draw on: marked 2 for Good, 1 or 0 for Nonconformity (E-1). */
+export interface SummaryQuestion {
+  questionId: string;
+  label: string;
+  photos: readonly LocalPhoto[];
+}
+
+/**
+ * R-91: a summary slot's two ways in, from the end of the audit, so the auditor never has to
+ * page back through the questions.
+ *
+ * 1. **An individual photo**: camera or gallery, linked to no question, with the remark
+ *    typed here first. The remark is required: the camera and gallery stay shut until there
+ *    is one (owner, 2026-11-25).
+ * 2. **From a question**: the questions marked to fit the slot. Use one of a question's
+ *    photographs, or add one to that question, which then becomes the summary photo.
+ *
+ * Either replaces the photo now in the slot.
+ */
+export function SummaryPhotoSheet({
+  slot,
+  questions,
+  canAddToQuestion,
+  busy,
+  error,
+  onOwnPhoto,
+  onQuestionPhoto,
+  onPick,
+  onClose,
+}: {
+  slot: SummarySlot | null;
+  questions: readonly SummaryQuestion[];
+  /** False once the Zone holds 25 question photographs; a photo of its own is not counted. */
+  canAddToQuestion: boolean;
+  busy: boolean;
+  error: string | null;
+  onOwnPhoto: (source: PhotoSource, remark: string | null) => void;
+  onQuestionPhoto: (questionId: string, source: PhotoSource) => void;
+  onPick: (evidenceId: string) => void;
+  onClose: () => void;
+}) {
+  const styles = useStyles();
+  const insets = useSafeAreaInsets();
+  const [questionId, setQuestionId] = useState<string | null>(null);
+  const [remark, setRemark] = useState('');
+
+  useEffect(() => {
+    setQuestionId(null);
+    setRemark('');
+  }, [slot]);
+  const ownRemark = remark.trim() || null;
+
+  if (!slot) return null;
+  const title = slot === 'GOOD' ? 'Good' : 'Nonconformity';
+  const marks = slot === 'GOOD' ? 'marked 2' : 'marked 1 or 0';
+  const chosen = questions.find((question) => question.questionId === questionId) ?? null;
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <View style={[styles.preview, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
+        <ScrollView contentContainerStyle={styles.previewContent} keyboardShouldPersistTaps="handled">
+          <Text style={styles.previewTitle} accessibilityRole="header">
+            {title} summary photo
+          </Text>
+          <Muted>It represents this Zone in the Zone report and the summary report, and replaces the one there now.</Muted>
+
+          <Card>
+            <CardHeader
+              title="Individual photo"
+              description="Not linked to any question. Write its remark, then take or choose the photo."
+            />
+            <Field
+              label="Remark (required)"
+              multiline
+              placeholder="What this photograph shows"
+              value={remark}
+              onChangeText={setRemark}
+              maxLength={2000}
+              hint={ownRemark ? undefined : 'Write a remark to take or choose the photo.'}
+            />
+            <View style={styles.sourceRow}>
+              <View style={styles.sourceButton}>
+                <Button icon="photo-camera" title="Take photo" variant="secondary" disabled={busy || !ownRemark} onPress={() => onOwnPhoto('camera', ownRemark)} />
+              </View>
+              <View style={styles.sourceButton}>
+                <Button icon="photo-library" title="From gallery" variant="secondary" disabled={busy || !ownRemark} onPress={() => onOwnPhoto('gallery', ownRemark)} />
+              </View>
+            </View>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="From a question"
+              description={`Questions ${marks}. Use one of its photographs, or add one to it.`}
+            />
+            {questions.length === 0 ? (
+              <Muted>No question is {marks} yet.</Muted>
+            ) : (
+              <SelectField
+                label={`Question ${marks}`}
+                placeholder="Choose a question…"
+                searchable={questions.length > 8}
+                options={questions.map((question) => ({
+                  value: question.questionId,
+                  label: question.label,
+                  detail: question.photos.length === 1 ? '1 photograph' : `${question.photos.length} photographs`,
+                }))}
+                value={questionId}
+                onChange={setQuestionId}
+              />
+            )}
+            {chosen ? (
+              <>
+                {chosen.photos.length > 0 ? (
+                  <>
+                    <Label>Tap a photograph to use it</Label>
+                    <PhotoThumbs photos={chosen.photos} onOpen={onPick} />
+                  </>
+                ) : (
+                  <Muted>No photographs on this question yet.</Muted>
+                )}
+                {canAddToQuestion ? (
+                  <View style={styles.sourceRow}>
+                    <View style={styles.sourceButton}>
+                      <Button
+                        icon="photo-camera"
+                        title="Take photo"
+                        variant="secondary"
+                        disabled={busy}
+                        onPress={() => onQuestionPhoto(chosen.questionId, 'camera')}
+                      />
+                    </View>
+                    <View style={styles.sourceButton}>
+                      <Button
+                        icon="photo-library"
+                        title="From gallery"
+                        variant="secondary"
+                        disabled={busy}
+                        onPress={() => onQuestionPhoto(chosen.questionId, 'gallery')}
+                      />
+                    </View>
+                  </View>
+                ) : (
+                  <Muted>This Zone has its 25 question photographs. Add an individual photo instead.</Muted>
+                )}
+              </>
+            ) : null}
+          </Card>
+
+          <ErrorBanner message={error} />
+        </ScrollView>
+        <Button icon="close" title="Cancel" variant="secondary" onPress={onClose} />
+      </View>
+    </Modal>
   );
 }
 
@@ -185,7 +374,12 @@ export function PhotoPreview({
 
   const flag = useMutation({
     mutationFn: async (flagged: boolean) => {
-      if (!correction) return setLocalSummaryFlag(database, photo!.id, flagged);
+      // R-91: picking replaces the slot's photo rather than refusing while it is taken.
+      if (!correction) {
+        return flagged
+          ? pickLocalSummaryPhoto(database, photo!.id)
+          : setLocalSummaryFlag(database, photo!.id, false);
+      }
       if (flagged && photo!.classification !== 'GOOD' && photo!.classification !== 'NONCONFORMITY') {
         return { ok: false as const, reason: 'NEUTRAL' as const };
       }
@@ -226,9 +420,16 @@ export function PhotoPreview({
   if (!photo) return null;
 
   const flagged = photo.isSummaryFlagged === 1;
+  /** R-91: added for the summary and linked to no question; deleting it is how it goes. */
+  const summaryOnly = photo.kind === 'SUMMARY_PHOTO';
   const flaggable = photo.classification === 'GOOD' || photo.classification === 'NONCONFORMITY';
   const close = () => {
     const next = remark.trim() || null;
+    // R-91: an individual photo is never without its remark (owner, 2026-11-25).
+    if (editable && !correction && summaryOnly && !next) {
+      setError('An individual photo needs a remark. Write one, or delete the photo.');
+      return;
+    }
     if (editable && !correction && next !== (photo.remark ?? null)) saveRemark.mutate(next);
     setError(null);
     onClose();
@@ -264,11 +465,12 @@ export function PhotoPreview({
           <View style={styles.tags}>
             <Chip tone={classificationTone(photo.classification)}>{label}</Chip>
             {flagged ? <Chip>Summary photo</Chip> : null}
+            {summaryOnly ? <Chip>No question</Chip> : null}
           </View>
 
           {editable && !correction ? (
             <Field
-              label="Remark"
+              label={summaryOnly ? 'Remark (required)' : 'Remark'}
               multiline
               placeholder="What this photograph shows"
               value={remark}
@@ -281,7 +483,9 @@ export function PhotoPreview({
 
           {editable ? (
             <View style={styles.actions}>
-              {flaggable ? (
+              {summaryOnly ? (
+                <Muted>Added for the summary and linked to no question. Delete it to take it out.</Muted>
+              ) : flaggable ? (
                 <Button icon={flagged ? 'outlined-flag' : 'flag'}
                   title={flagged ? 'Remove summary flag' : `Use as the ${label} summary photo`}
                   variant="secondary"
@@ -346,6 +550,9 @@ const useStyles = createThemedStyles((theme) => ({
   pressed: { transform: [{ scale: 0.97 }], opacity: 0.88 },
   slots: { flexDirection: 'row', gap: theme.space.md, marginBottom: theme.space.md },
   slot: { flex: 1 },
+  slotAction: { marginTop: theme.space.sm, alignItems: 'flex-start' },
+  sourceRow: { flexDirection: 'row', gap: theme.space.sm },
+  sourceButton: { flex: 1 },
   slotEmpty: {
     borderRadius: theme.radius.control,
     width: 88,

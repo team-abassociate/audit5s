@@ -59,6 +59,8 @@ export const reportPhotoSchema = z.object({
   questionText: z.string().nullable(),
   section: sSectionSchema.nullable(),
   scoreAtCapture: responseValueSchema.nullable(),
+  /** R-91: a summary photo linked to no question. Absent on older payloads and elsewhere. */
+  summaryOnly: z.boolean().optional(),
 });
 export type ReportPhoto = z.infer<typeof reportPhotoSchema>;
 
@@ -214,6 +216,11 @@ export const reportZoneSchema = z.object({
   questions: z.array(reportQuestionSchema),
   good: z.array(reportPhotoSchema),
   nonconformities: z.array(reportNonconformitySchema),
+  /**
+   * R-91: a Nonconformity summary photo linked to no question. It raised no corrective
+   * action, so it is not a finding and is not in `nonconformities`. Absent on older payloads.
+   */
+  summaryNonconformities: z.array(reportPhotoSchema).optional(),
   /**
    * R-38. Defaulted rather than required so a payload frozen before this field existed
    * still parses and renders exactly as it was issued (§10.5).

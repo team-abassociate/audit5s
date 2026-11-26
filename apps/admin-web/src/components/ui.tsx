@@ -17,6 +17,7 @@ import type {
   RefObject,
   SelectHTMLAttributes,
 } from 'react';
+import { CalendarDays } from 'lucide-react';
 import { LayoutGroup } from 'motion/react';
 import * as m from 'motion/react-m';
 import { cn } from '@/lib/cn';
@@ -58,6 +59,40 @@ export function Button({
 
 export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input className={cn('gb-input', className)} {...props} />;
+}
+
+/**
+ * A date box with a calendar button at its right end that opens the browser's date picker.
+ * The browser's own indicator is hidden (styles.css), so there is one calendar, the same in
+ * every browser; typing the date still works.
+ */
+export function DateInput({ className, ...props }: Omit<ComponentProps<'input'>, 'type'>) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <span className="gb-date">
+      <input {...props} ref={input} type="date" className={cn('gb-input', className)} />
+      <button
+        type="button"
+        className="gb-date-button"
+        aria-label="Choose a date"
+        title="Choose a date"
+        disabled={props.disabled}
+        onClick={() => {
+          const field = input.current;
+          if (!field) return;
+          field.focus();
+          // Chrome, Edge, Firefox and Safari 16+; an older browser keeps the focused box.
+          try {
+            field.showPicker?.();
+          } catch {
+            // showPicker refuses outside a user gesture or on a read-only box: nothing to do.
+          }
+        }}
+      >
+        <CalendarDays size={18} aria-hidden="true" focusable="false" />
+      </button>
+    </span>
+  );
 }
 
 /**

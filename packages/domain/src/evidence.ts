@@ -36,6 +36,11 @@ export function classifyEvidence(input: ClassifyEvidenceInput): EvidenceClassifi
       // guessing either way would put it in a report section it does not belong to.
       return input.auditorSelected ?? 'NEUTRAL';
 
+    case 'SUMMARY_PHOTO':
+      // R-91: a summary photo linked to no question. The auditor added it to the Good or the
+      // Nonconformity slot, and that slot is its classification; there is no score to read.
+      return input.auditorSelected ?? 'NEUTRAL';
+
     case 'AUDITOR_SELFIE':
     case 'CORRECTIVE_AFTER':
     case 'AUDITEE_PHOTO':
@@ -171,11 +176,11 @@ export function sniffImageType(header: Uint8Array): AllowedImageType | null {
  * show three chips, `PATCH /evidence/{id}` deciding whether a classification in the body is
  * a change or a lie — needs to ask the question before it has an answer to classify.
  *
- * There is exactly one such kind, and §2.7 says why: a walk-by has no questionnaire, so
- * there is no score to derive anything from.
+ * There are two such kinds, and for the same reason — no score to derive anything from: a
+ * walk-by has no questionnaire (§2.7), and a summary photo is linked to no question (R-91).
  */
 export function auditorChoosesClassification(kind: EvidenceKind): boolean {
-  return kind === 'WALK_BY_PHOTO';
+  return kind === 'WALK_BY_PHOTO' || kind === 'SUMMARY_PHOTO';
 }
 
 /**

@@ -235,8 +235,12 @@ function buildZone(zone: FreezeInput['zones'][number], input: FreezeInput): Repo
     questions,
     good: photos.filter((photo) => photo.classification === 'GOOD').map(toPhoto),
     nonconformities: photos
-      .filter((photo) => photo.classification === 'NONCONFORMITY')
+      .filter((photo) => photo.classification === 'NONCONFORMITY' && photo.kind !== 'SUMMARY_PHOTO')
       .map((photo) => toNonconformity(photo, actionByEvidence.get(photo.id), input.actionUrls)),
+    // R-91: raised no action, so it prints as a photograph and not as a finding.
+    summaryNonconformities: photos
+      .filter((photo) => photo.classification === 'NONCONFORMITY' && photo.kind === 'SUMMARY_PHOTO')
+      .map(toPhoto),
     overallActions: input.actions
       .filter(
         (action) =>
@@ -441,6 +445,7 @@ function toPhoto(photo: FreezeInput['photos'][number]): ReportPhoto {
     questionText: photo.questionText,
     section: photo.section,
     scoreAtCapture: photo.scoreAtCapture,
+    ...(photo.kind === 'SUMMARY_PHOTO' ? { summaryOnly: true } : {}),
   };
 }
 

@@ -415,6 +415,7 @@ function server(
     teamMembers: null,
     theme: 'From the server',
     target: null,
+    targetDate: null,
     problem5w1h: null,
     rootCause4m: null,
     analysis7qc: null,

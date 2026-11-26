@@ -31,6 +31,7 @@ import {
   ErrorNotice,
   Field,
   Input,
+  DateInput,
   Select,
   SidePanel,
   Skeleton,
@@ -917,7 +918,7 @@ function NewAuditDialog({ open, onClose }: { open: boolean; onClose: () => void 
           </div>
 
           <Field label="Due" hint="Optional">
-            <Input type="date" value={draft.dueAt} onChange={(event) => set({ dueAt: event.target.value })} />
+            <DateInput value={draft.dueAt} onChange={(event) => set({ dueAt: event.target.value })} />
           </Field>
 
           <div className="sm:col-span-2">

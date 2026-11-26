@@ -518,6 +518,25 @@ describe('a hidden department (R-89)', () => {
     expect(seen.map((t) => [t.id, t.isActive])).toEqual([[template.id, false]]);
   });
 
+  it('is off a Super Admin’s catalogue too, and back once shown', async () => {
+    const before = (await world.request('GET', `${base}/sync/catalogue`, { token: token() }))
+      .body as SyncCatalogue;
+    expect(before.checklistTemplates.map((t) => t.id)).toContain(template.id);
+
+    await hide(false);
+    const hidden = (await world.request('GET', `${base}/sync/catalogue`, { token: token() }))
+      .body as SyncCatalogue;
+    expect(hidden.catalogueVersion).not.toBe(before.catalogueVersion);
+    expect(hidden.checklistTemplates.map((t) => t.id)).not.toContain(template.id);
+    expect(hidden.checklistVersions.map((v) => v.id)).not.toContain(version.id);
+
+    await hide(true);
+    const shown = (await world.request('GET', `${base}/sync/catalogue`, { token: token() }))
+      .body as SyncCatalogue;
+    expect(shown.checklistTemplates.map((t) => t.id)).toContain(template.id);
+    expect(shown.checklistVersions.map((v) => v.id)).toContain(version.id);
+  });
+
   it('comes back for everyone when shown again', async () => {
     await hide(false);
     expect((await hide(true)).status).toBe(200);

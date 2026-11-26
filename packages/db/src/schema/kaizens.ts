@@ -67,6 +67,8 @@ export const kaizens = pgTable(
     teamMembers: text('team_members'),
     theme: text('theme'),
     target: text('target'),
+    /** Owner, 2026-11-24 (0069). The day the target is to be met; NULL is "not stated". */
+    targetDate: date('target_date', { mode: 'string' }),
     problem5w1h: text('problem_5w1h'),
     rootCause4m: text('root_cause_4m'),
     analysis7qc: text('analysis_7qc'),

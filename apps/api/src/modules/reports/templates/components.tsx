@@ -597,6 +597,7 @@ export function ScoreCards({
 
 /** The caption §4.1 asks for: `Q{n} · {S label} · Score {n}`. */
 export function photoCaption(photo: ReportPhoto): string {
+  if (photo.summaryOnly) return 'Summary photo';
   const parts: string[] = [];
   if (photo.questionGlobalOrder !== null) parts.push(`Q${photo.questionGlobalOrder}`);
   if (photo.section) parts.push(S_SECTION_SHORT_LABELS[photo.section]);

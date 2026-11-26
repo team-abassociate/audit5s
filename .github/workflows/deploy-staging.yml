@@ -32,6 +32,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/team-abassociate/audit5s-api:staging-${{ github.sha }}
+          # Layers kept between runs: only what changed is rebuilt.
+          cache-from: type=gha,scope=staging-api
+          cache-to: type=gha,scope=staging-api,mode=max
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -39,6 +42,9 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/team-abassociate/audit5s-web:staging-${{ github.sha }}
+          # Layers kept between runs: only what changed is rebuilt.
+          cache-from: type=gha,scope=staging-web
+          cache-to: type=gha,scope=staging-web,mode=max
       - name: Deploy to staging
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}

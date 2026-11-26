@@ -218,6 +218,8 @@ export const kaizenSchema = z.object({
   teamMembers: z.string().nullable(),
   theme: z.string().nullable(),
   target: z.string().nullable(),
+  /** `YYYY-MM-DD`: the day the target is to be met. Optional, as the target is (0069). */
+  targetDate: isoDateSchema.nullable(),
   problem5w1h: z.string().nullable(),
   rootCause4m: z.string().nullable(),
   analysis7qc: z.string().nullable(),
@@ -269,6 +271,7 @@ export const kaizenFieldsSchema = z.object({
   teamMembers: clearable(longText),
   theme: clearable(z.string().trim().max(300)),
   target: clearable(z.string().trim().max(300)),
+  targetDate: clearable(isoDateSchema),
   problem5w1h: clearable(longText),
   rootCause4m: clearable(longText),
   analysis7qc: clearable(longText),

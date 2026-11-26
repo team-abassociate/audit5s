@@ -430,7 +430,7 @@ function EvidenceGallery({
           caption={evidenceCaption(selected, zones, questions)}
           onClose={() => setSelected(null)}
         >
-          {correctable && (selected.kind === 'QUESTION_EVIDENCE' || selected.kind === 'WALK_BY_PHOTO') ? (
+          {correctable && (selected.kind === 'QUESTION_EVIDENCE' || selected.kind === 'WALK_BY_PHOTO' || selected.kind === 'SUMMARY_PHOTO') ? (
             <PhotoCorrection auditId={auditId} evidence={selected} onDone={() => setSelected(null)} />
           ) : null}
         </EvidenceViewer>
@@ -491,6 +491,8 @@ function evidenceCaption(evidence: Evidence, zones: AuditDetail['zones'], questi
   const zone = zones.find((candidate) => candidate.id === evidence.auditZoneId);
   if (!zone) return undefined;
   const parts = [zoneDisplayLabel(zone.zoneCodeSnapshot, zone.zoneNameSnapshot)];
+  // R-91: added for the Zone's summary, linked to no question.
+  if (evidence.kind === 'SUMMARY_PHOTO') parts.push('Summary photo, no question');
   const response = zone.responses.find((candidate) => candidate.id === evidence.questionResponseId);
   if (response) {
     parts.push(`Sr. ${response.globalOrder}`, SECTION_LABEL[response.section]);

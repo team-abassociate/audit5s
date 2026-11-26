@@ -63,6 +63,7 @@ Where a resolution changes something in `ARCHITECTURE.md`, the affected section 
 | R-88 | A Kaizen has a Zone, a department or both; a Coordinator may record one; photos can be edited | Settled |
 
 | R-85 | Motion in admin-web, for exits and layout only | Settled |
+| R-91 | A Zone's summary photo may be added at the end, linked to no question | Settled |
 
 ---
 
@@ -3201,7 +3202,10 @@ template's existing `is_active` flag and `PATCH /checklist-templates/:id`
 - **The server hides it.** For anyone but a Super Admin, a hidden department is left out of
   `GET /checklist-templates`, `GET /checklist-templates/:id` (404), `GET /checklist-versions`
   and the sync catalogue, so it is gone from their Checklists page, every checklist picker and
-  their phone. A Super Admin still sees it, marked Hidden, and can pick it.
+  their phone. A Super Admin still sees it on the Checklists page, marked Hidden, to show it
+  again — and nowhere else: it is off a Super Admin's sync catalogue (phone and the portal's
+  audit screens) too, and no portal picker (a new Unit's checklists, a Zone's default, a new
+  checklist's "Start from") offers it. A Zone already defaulting to it keeps that choice.
 - **Audit records keep their questions.** `GET /checklist-versions/:id` still answers someone
   who can see an audit that used that version; nothing else of the department is shown to them.
 - **Not while it is in use.** Hiding is refused (409 `RESOURCE_IN_USE`) while an audit that is
@@ -3209,3 +3213,46 @@ template's existing `is_active` flag and `PATCH /checklist-templates/:id`
   questions at its next sync. An audit started offline and not yet synced cannot be seen by
   this check.
 - **Showing it again** returns it to everyone at their next load or sync. Nothing is deleted (D8).
+
+## R-90 — A Kaizen's target date is picked from a calendar
+
+**Proposed 2026-11-24; awaiting the owner's go before `main`.** The sheet's one free-text box
+"Target & target date" becomes two, both optional: **Target** (text, as before) and **Target
+date**, picked from a calendar on the web and the phone. Every Kaizen date box shows a
+calendar symbol.
+
+- **Its own column.** `kaizen.target_date date` (0069), `targetDate` in the contract
+  (`YYYY-MM-DD`, as `implementedOn`). Additive: the previous release runs unchanged on it.
+- **Old Kaizens keep their text.** A date already typed into `target` stays there; nothing is
+  parsed out of it.
+- **A target date may be in the future**, unlike the day of implementation. It is never
+  required to submit.
+- **Printed and exported.** The sheet prints the target followed by "by <date>"; the
+  register export has a Target date column.
+
+## R-91 — A Zone's summary photo may be added at the end, linked to no question
+
+**Ruled 2026-11-25 by the owner.** *"When I click on good summary photo or bad summary photo, I
+should get the option of adding the photo with a remark over there, and this would not be linked
+to any particular questions ... Another option ... a drop down of all those questions which were
+marked as for 2 marks ... make it applicable for the non-confirmatory photos as well."* Widens
+§5.6 and E-1; R-81's review flow is unchanged.
+
+- **Two ways in, from each summary slot** on the phone's last page while the audit is open:
+  **an individual photo** (camera or gallery, with a remark box in the sheet; the remark is required, and the preview will not close on an empty one),
+  or **from a question**: a dropdown of the questions marked 2 (Good) or 1 or 0
+  (Nonconformity), the E-1 rule. Use one of that question's photographs, or add one to it.
+  Either replaces the photo in the slot; a replaced photo of its own is deleted. Choosing *Use
+  as the summary photo* in a photo's preview now replaces the slot's photo too, rather than
+  refusing until the other is unflagged.
+- **`SUMMARY_PHOTO`** (contracts, migration 0070) is the photo of its own: a Zone, no question,
+  and the auditor's classification (the slot), GOOD or NONCONFORMITY only, by a CHECK.
+- **It raises no corrective action** (owner, same day): `materialize` and R-62's late raise read
+  question and walk-by photos only. It is not a finding, so the Zone report prints a Nonconformity
+  one under its own heading (*Nonconformity summary photo*, `summaryNonconformities`), not among
+  the nonconformities, and a Good one with the Good evidence, captioned *Summary photo*. The
+  summary report's flagged photographs take it like any other.
+- **It is not one of the Zone's 25 photos.** A slot holds one, so a Zone has at most two.
+- **Reviewing a finished audit** (R-81) still picks from existing photos in the preview; the
+  sheet is not offered there, because a correction can reach the server before the photo it
+  flags. The web panel shows the photo and lets its auditor delete or unpick it (R-81).
