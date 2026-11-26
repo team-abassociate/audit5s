@@ -7,6 +7,7 @@ import { MAX_LONG_EDGE_PX, processCapturedPhoto, type ProcessedImage } from '../
 import { ZONE_PHOTO_LIMIT_MESSAGE } from '../lib/db/photo-limit';
 import { ledger, ledgerFonts, ledgerRadius } from '../lib/ledger';
 import { whilePrompting } from '../lib/permission-prompt';
+import { editPhoto } from './kaizen-photo-editor';
 
 /**
  * Every permission the app uses, asked once when it opens — today that is the camera alone.
@@ -59,11 +60,13 @@ export interface CameraCaptureProps {
   /** Shown above the shutter — "Take your selfie", "Photograph the nonconformity". */
   prompt: string;
   beforeCapture?: () => Promise<void>;
+  /** Opens the photo editor before `onCaptured`; cancelling it saves nothing. Never for a selfie. */
+  editable?: boolean;
   onCaptured: (image: ProcessedImage) => void | Promise<void>;
   onCancel: () => void;
 }
 
-export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, beforeCapture }: CameraCaptureProps) {
+export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, beforeCapture, editable = false }: CameraCaptureProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,9 +137,9 @@ export function CameraCapture({ facing = 'back', prompt, onCaptured, onCancel, b
       const photo = await camera.current?.takePictureAsync({ quality: 0.9, skipProcessing: false });
       if (!photo?.uri) return;
       // Downscaled, EXIF-stripped and hashed before anything else sees it (§9.4).
-      await onCaptured(
-        await processCapturedPhoto(photo.uri, { width: photo.width, height: photo.height }),
-      );
+      const processed = await processCapturedPhoto(photo.uri, { width: photo.width, height: photo.height });
+      const kept = editable ? await editPhoto(processed) : processed;
+      if (kept) await onCaptured(kept);
     } catch (cause) {
       // Said on the screen the auditor is looking at, never an unhandled rejection: nothing
       // was saved, so the honest words are "try again".

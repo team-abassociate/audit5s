@@ -13,7 +13,8 @@ import {
   type PhotoEditStep,
 } from '../lib/capture/photo-edit';
 import { strokeAt, type MarkupColour, type Stroke } from '../lib/capture/photo-markup';
-import type { ProcessedImage } from '../lib/capture/media';
+import { create } from 'zustand';
+import { discardProcessedPhoto, type ProcessedImage } from '../lib/capture/media';
 import { KAIZEN_STRINGS } from '../lib/kaizen-strings';
 import { useLanguage } from '../lib/language-provider';
 import { ledgerMarkup } from '../lib/ledger';
@@ -44,6 +45,41 @@ const ERASE_REACH_DP = 16;
  *
  * `onDone(null)` means nothing was changed: the caller keeps the photo it already has.
  */
+/** The 5S photo waiting in the editor, and who is waiting for it. One at a time. */
+const usePhotoEdit = create<{ image: ProcessedImage; settle: (kept: ProcessedImage | null) => void } | null>(() => null);
+
+/**
+ * The same editor for a 5S photo (user, 2026-11-26): opens on `image` and resolves with the
+ * photo to keep — edited, or `image` as it was — or null when the person cancels, which
+ * discards it. No edit history is kept, so a kept 5S photo is not re-edited later.
+ * Needs `<PhotoEditHost />` mounted (the root layout).
+ */
+export function editPhoto(image: ProcessedImage): Promise<ProcessedImage | null> {
+  return new Promise((resolve) => {
+    usePhotoEdit.setState({
+      image,
+      settle: (kept) => {
+        usePhotoEdit.setState(null, true);
+        if (kept !== image) void discardProcessedPhoto(image.uri);
+        resolve(kept);
+      },
+    });
+  });
+}
+
+export function PhotoEditHost() {
+  const pending = usePhotoEdit();
+  if (!pending) return null;
+  return (
+    <KaizenPhotoEditor
+      key={pending.image.uri}
+      source={pending.image}
+      onCancel={() => pending.settle(null)}
+      onDone={(edited) => pending.settle(edited?.image ?? pending.image)}
+    />
+  );
+}
+
 export function KaizenPhotoEditor({
   source,
   steps = [],

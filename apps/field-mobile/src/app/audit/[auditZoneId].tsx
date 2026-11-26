@@ -61,6 +61,7 @@ import {
 import { ZONE_PHOTO_LIMIT, isZoneAuditPhoto } from '../../lib/db/photo-limit';
 import type { ProcessedImage } from '../../lib/capture/media';
 import { pickPhotosFromGallery } from '../../lib/capture/gallery';
+import { editPhoto } from '../../components/kaizen-photo-editor';
 import {
   applyLocalOverride,
   completeLocalZone,
@@ -357,7 +358,10 @@ export default function QuestionnaireScreen() {
       // Several at once, up to the Zone's room left (the owner, 2026-11-03).
       const taken = (await listLocalEvidenceForZone(database, auditZoneId)).filter((photo) => isZoneAuditPhoto(photo.kind));
       const images = await pickPhotosFromGallery(ZONE_PHOTO_LIMIT - taken.length);
-      for (const image of images) await capture.mutateAsync({ row, image, live: false });
+      for (const chosen of images) {
+        const image = await editPhoto(chosen);
+        if (image) await capture.mutateAsync({ row, image, live: false });
+      }
     },
   });
 
@@ -410,7 +414,8 @@ export default function QuestionnaireScreen() {
   const summaryGallery = useMutation({
     mutationFn: async ({ slot, row, remark }: { slot: SummarySlot; row: Row | null; remark: string | null }) => {
       if (row) await assertZonePhotoCapacity(database, auditZoneId);
-      const [image] = await pickPhotosFromGallery(1);
+      const [chosen] = await pickPhotosFromGallery(1);
+      const image = chosen ? await editPhoto(chosen) : null;
       if (image) await summaryAdd.mutateAsync({ slot, row, remark, image, live: false });
     },
   });
@@ -948,6 +953,7 @@ export default function QuestionnaireScreen() {
         <View style={styles.cameraLayer}>
           <CameraCapture
             beforeCapture={() => assertZonePhotoCapacity(database, auditZoneId)}
+editable
             prompt={t.cameraPrompt(cameraFor.globalOrder)}
             onCaptured={async (image) => {
               await capture.mutateAsync({ row: cameraFor, image, live: true });
@@ -960,6 +966,7 @@ export default function QuestionnaireScreen() {
       {summaryCamera ? (
         <View style={styles.cameraLayer}>
           <CameraCapture
+editable
             beforeCapture={summaryCamera.row ? () => assertZonePhotoCapacity(database, auditZoneId) : undefined}
             prompt={
               summaryCamera.row
