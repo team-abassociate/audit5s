@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { HeaderBackButton } from 'expo-router/react-navigation';
@@ -175,8 +175,10 @@ export function KaizenForm({
   const scroller = useRef<ScrollView | null>(null);
   // Each step's box, to measure where it sits in the form.
   const stepRefs = useRef<(View | null)[]>([]);
-  // A step opened by its header, waiting to be put at the top once it has opened.
-  const pinned = useRef<number | null>(null);
+  // A step just opened, waiting to slide to the top: where its header was on screen when chosen.
+  const pinned = useRef<{ index: number; onScreen: number | null } | null>(null);
+  // How far the form is scrolled, as last reported.
+  const scrollY = useRef(0);
   const reduced = useReducedMotion();
 
   const kaizen = useQuery({
@@ -428,53 +430,49 @@ export function KaizenForm({
     },
   });
 
-  /** Next: once the next step has opened and laid out, its header slides to the top. */
-  function openNext(index: number) {
-    afterOpen.current = {
-      index,
-      run: (y) => scroller.current?.scrollTo({ y: Math.max(0, y - theme.space.sm), animated: true }),
-    };
-    setOpen(index);
+  /** The scroll content's node, to measure a step against whatever the scroll position. */
+  function contentNode(): View | null {
+    return (scroller.current as unknown as { getInnerViewRef?: () => View | null } | null)?.getInnerViewRef?.() ?? null;
   }
 
   /**
-   * A step opened by its own header, in any order: its header is put at the top of the screen
-   * at once, with no scroll to watch. Where it lands is measured live against the scroll
-   * content once the screen has settled, not taken from a layout event: a step above closing
-   * moves this one without one on the web, and an old place sent the form to the bottom.
+   * Opens a step, by Next or by its own header in any order, and slides its header to the top
+   * of the screen from where it is now. The step closing above it would otherwise pull the form
+   * up under the worker, so the scroll would start somewhere further down: the chosen step is
+   * first held where the worker saw it, then scrolled. Its place is measured live, not taken
+   * from a layout event, which the web does not send when a step only moves.
    */
-  function openPicked(index: number) {
+  function openStep(index: number) {
     afterOpen.current = null;
-    pinned.current = index;
-    setOpen(index);
+    const step = stepRefs.current[index];
+    const content = contentNode();
+    const go = (onScreen: number | null) => {
+      pinned.current = { index, onScreen };
+      setOpen(index);
+    };
+    if (!step || !content) return go(null);
+    step.measureLayout(content, (_x, y) => go(y - scrollY.current), () => go(null));
   }
 
-  useEffect(() => {
-    const index = pinned.current;
-    if (index === null || index !== open) return;
+  // Before the screen paints the step just opened: hold it in place, then slide it to the top.
+  useLayoutEffect(() => {
+    const waiting = pinned.current;
+    if (!waiting || waiting.index !== open) return;
     pinned.current = null;
+    const step = stepRefs.current[waiting.index];
+    const content = contentNode();
+    const view = scroller.current;
+    if (!step || !content || !view) return;
     let frame = 0;
-    const place = () => {
-      const view = scroller.current;
-      const step = stepRefs.current[index];
-      const content = (view as unknown as { getInnerViewRef?: () => View | null } | null)?.getInnerViewRef?.();
-      if (!view || !step || !content) return;
-      step.measureLayout(
-        content,
-        (_x, y) => view.scrollTo({ y: Math.max(0, y - theme.space.sm), animated: false }),
-        () => undefined,
-      );
-    };
-    // Two frames: the step that closed and the one that opened have both laid out.
-    frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(place);
-    });
-    // Once more after the step's fade-in, in case anything still moved it.
-    const again = setTimeout(place, 250);
-    return () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(again);
-    };
+    step.measureLayout(
+      content,
+      (_x, y) => {
+        if (waiting.onScreen !== null) view.scrollTo({ y: Math.max(0, y - waiting.onScreen), animated: false });
+        frame = requestAnimationFrame(() => view.scrollTo({ y: Math.max(0, y - theme.space.sm), animated: true }));
+      },
+      () => undefined,
+    );
+    return () => cancelAnimationFrame(frame);
   }, [open]);
 
   /** A refused Submit: open the first step with a gap, then show and focus its first box. */
@@ -908,6 +906,10 @@ export function KaizenForm({
         }}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        onScroll={(event) => {
+          scrollY.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         {/* The one slip: the Coordinator's reason. A refused Submit is a banner (S3). */}
         {resubmitting && current?.reviewComment ? (
@@ -946,7 +948,7 @@ export function KaizenForm({
                       pinned.current = null;
                       setOpen(-1);
                     } else {
-                      openPicked(index);
+                      openStep(index);
                     }
                   }}
                   style={({ pressed }) => [styles.stepHead, pressed && styles.stepHeadPressed]}
@@ -973,7 +975,7 @@ export function KaizenForm({
                         title={t.next}
                         icon="arrow-downward"
                         variant="secondary"
-                        onPress={() => openNext(index + 1)}
+                        onPress={() => openStep(index + 1)}
                       />
                     ) : null}
                   </Animated.View>
