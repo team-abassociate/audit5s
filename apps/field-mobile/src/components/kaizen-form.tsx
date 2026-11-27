@@ -173,8 +173,10 @@ export function KaizenForm({
   // What waits for a step to lay out after it opens: Next's scroll, or a refused Submit's reveal.
   const afterOpen = useRef<{ index: number; run: (y: number) => void } | null>(null);
   const scroller = useRef<ScrollView | null>(null);
-  // Where each step sits in the form, as last laid out.
-  const stepY = useRef<number[]>([]);
+  // Each step's box, to measure where it sits in the form.
+  const stepRefs = useRef<(View | null)[]>([]);
+  // A step opened by its header, waiting to be put at the top once it has opened.
+  const pinned = useRef<number | null>(null);
   const reduced = useReducedMotion();
 
   const kaizen = useQuery({
@@ -426,27 +428,54 @@ export function KaizenForm({
     },
   });
 
-  /**
-   * Opens a step and, once it has laid out, scrolls to it wherever the screen was before. By
-   * Next, its header goes to the top. By its own header, the step above stays in view over it
-   * (the first step: the top of the form), so the worker keeps their place.
-   */
-  function openStep(index: number, by: 'next' | 'header') {
-    const to = (y: number) => scroller.current?.scrollTo({ y: Math.max(0, y - theme.space.sm), animated: true });
+  /** Next: once the next step has opened and laid out, its header slides to the top. */
+  function openNext(index: number) {
     afterOpen.current = {
       index,
-      run:
-        by === 'next'
-          ? to
-          : // The step above may be closing in the same render: read its place once every step has laid out.
-            () =>
-              requestAnimationFrame(() => {
-                if (index === 0) scroller.current?.scrollTo({ y: 0, animated: true });
-                else to(stepY.current[index - 1] ?? 0);
-              }),
+      run: (y) => scroller.current?.scrollTo({ y: Math.max(0, y - theme.space.sm), animated: true }),
     };
     setOpen(index);
   }
+
+  /**
+   * A step opened by its own header, in any order: its header is put at the top of the screen
+   * at once, with no scroll to watch. Where it lands is measured live against the scroll
+   * content once the screen has settled, not taken from a layout event: a step above closing
+   * moves this one without one on the web, and an old place sent the form to the bottom.
+   */
+  function openPicked(index: number) {
+    afterOpen.current = null;
+    pinned.current = index;
+    setOpen(index);
+  }
+
+  useEffect(() => {
+    const index = pinned.current;
+    if (index === null || index !== open) return;
+    pinned.current = null;
+    let frame = 0;
+    const place = () => {
+      const view = scroller.current;
+      const step = stepRefs.current[index];
+      const content = (view as unknown as { getInnerViewRef?: () => View | null } | null)?.getInnerViewRef?.();
+      if (!view || !step || !content) return;
+      step.measureLayout(
+        content,
+        (_x, y) => view.scrollTo({ y: Math.max(0, y - theme.space.sm), animated: false }),
+        () => undefined,
+      );
+    };
+    // Two frames: the step that closed and the one that opened have both laid out.
+    frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(place);
+    });
+    // Once more after the step's fade-in, in case anything still moved it.
+    const again = setTimeout(place, 250);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(again);
+    };
+  }, [open]);
 
   /** A refused Submit: open the first step with a gap, then show and focus its first box. */
   function refuse(missing: KaizenRequiredField[]) {
@@ -896,8 +925,11 @@ export function KaizenForm({
           return (
             <View
               key={step}
+              ref={(node) => {
+                stepRefs.current[index] = node;
+              }}
+              collapsable={false}
               onLayout={(event) => {
-                stepY.current[index] = event.nativeEvent.layout.y;
                 const waiting = afterOpen.current;
                 if (!waiting || waiting.index !== index || !isOpen) return;
                 afterOpen.current = null;
@@ -911,9 +943,10 @@ export function KaizenForm({
                   onPress={() => {
                     if (isOpen) {
                       afterOpen.current = null;
+                      pinned.current = null;
                       setOpen(-1);
                     } else {
-                      openStep(index, 'header');
+                      openPicked(index);
                     }
                   }}
                   style={({ pressed }) => [styles.stepHead, pressed && styles.stepHeadPressed]}
@@ -940,7 +973,7 @@ export function KaizenForm({
                         title={t.next}
                         icon="arrow-downward"
                         variant="secondary"
-                        onPress={() => openStep(index + 1, 'next')}
+                        onPress={() => openNext(index + 1)}
                       />
                     ) : null}
                   </Animated.View>
