@@ -1338,6 +1338,8 @@ export function ChoiceDialog({
   cancelLabel,
   busy,
   error,
+  confirmDisabled,
+  children,
   onConfirm,
   onCancel,
 }: {
@@ -1348,6 +1350,10 @@ export function ChoiceDialog({
   cancelLabel: string;
   busy?: boolean;
   error?: string | null;
+  /** The confirm button waits on a choice made in `children`. */
+  confirmDisabled?: boolean;
+  /** A choice to make before confirming, e.g. a list of `CheckRow`s, shown under the message. */
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -1363,13 +1369,14 @@ export function ChoiceDialog({
               {title}
             </Text>
             <Text style={styles.noticeText}>{message}</Text>
+            {children}
             <ErrorBanner message={error ?? null} />
             <View style={styles.confirmRow}>
               <View style={styles.confirmItem}>
                 <Button title={cancelLabel} variant="secondary" disabled={busy} onPress={onCancel} />
               </View>
               <View style={styles.confirmItem}>
-                <Button title={confirmLabel} busy={busy} onPress={onConfirm} />
+                <Button title={confirmLabel} busy={busy} disabled={confirmDisabled} onPress={onConfirm} />
               </View>
             </View>
           </View>

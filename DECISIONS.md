@@ -3276,7 +3276,11 @@ hand-over, not concurrent editing (STACK.md §8), so the outbox design is unchan
   `TAKE_OVER_WITHOUT_SIGN_OUT_ROLES` in `packages/contracts`.
 - **The field app** asks the server for the auditor's open audits held elsewhere and shows them
   on the Overview. A Consultant or Zone Leader still signed in on that device gets a pop-up after
-  sign-in: "Sign out and continue here". The audit, its answers and its photos are then written
+  sign-in: "Sign out and continue here". With more than one audit held elsewhere, the auditor
+  ticks which ones come here (none is ticked to begin with) and the rest stay on their device;
+  only devices holding a ticked audit are signed out (owner, 2026-11-27). Signing out leaves
+  that device's other audits locked to it, and its unsynced work is never wiped (§9.7), so they
+  carry on there after signing back in. The audit, its answers and its photos are then written
   into SQLite as `SYNCED` and it resumes at its cursor. A local copy of an audit that has moved
   away is no longer offered for Resume.
 - **The admin web** offers the same on `/conduct`: "Continue here", or "Sign out of that device
