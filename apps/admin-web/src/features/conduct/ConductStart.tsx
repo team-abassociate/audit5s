@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import type { Audit, AuditType, Page } from '@audit5s/contracts';
-import { formatDateTime, uuidv7 } from '@audit5s/domain';
+import { auditZoneTags, formatDateTime, uuidv7 } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
 import { Button, Card, CardHeader, EmptyState, Combobox, ErrorNotice, Field, StatusChip, Table, Td, Th } from '@/components/ui';
-import { AuditGroupRows } from '@/components/AuditGroupRows';
+import { AuditGroupRows, ZoneTags } from '@/components/AuditGroupRows';
 import { api } from '@/lib/api';
 import { useWebDevice } from '@/lib/device';
 import { uploadEvidence } from '@/lib/evidence';
@@ -82,13 +82,16 @@ export function ConductStartPage() {
               </tr>
             </thead>
             <tbody>
-              {/* Nested like every audit list (owner, 2026-11-27): Unit, then Zone. */}
+              {/* Grouped by Unit like every audit list (owner, 2026-11-27), Zones as tags. */}
               <AuditGroupRows
                 audits={openAudits}
                 columns={4}
-                renderRow={(audit, key) => (
-                  <tr key={key} className="gb-row--nested">
-                    <Td>{AUDIT_TYPE_LABEL[audit.auditType]}</Td>
+                renderRow={(audit) => (
+                  <tr key={audit.id} className="gb-row--nested">
+                    <Td>
+                      <ZoneTags tags={auditZoneTags(audit)} />
+                      {AUDIT_TYPE_LABEL[audit.auditType]}
+                    </Td>
                     <Td>
                       <StatusChip kind="audit" status={audit.status} />
                     </Td>

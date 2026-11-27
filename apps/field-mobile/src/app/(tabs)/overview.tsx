@@ -11,7 +11,7 @@ import type {
   UnitOverview,
   User,
 } from '@audit5s/contracts';
-import { auditGroupZones, bandFor, groupAuditsByUnitAndZone, zoneDisplayLabel } from '@audit5s/domain';
+import { bandFor, groupAuditsByUnit, zoneDisplayLabel } from '@audit5s/domain';
 import {
   ActionSheet,
   Card,
@@ -268,15 +268,11 @@ function ManagementOverview() {
             description={active.data && running.length === 0 ? 'Nobody is auditing right now.' : null}
           />
           <AuditGroupList
-            groups={groupAuditsByUnitAndZone(running.slice(0, 5), (audit) => ({
-              unitId: audit.unitId,
-              unitName: audit.unitName,
-              zones: auditGroupZones(audit),
-            }))}
+            groups={groupAuditsByUnit(running.slice(0, 5), (audit) => audit)}
             showUnit={!oneUnit}
             noun={['audit', 'audits']}
             keyOf={(audit) => audit.id}
-            renderItem={(audit) => <AuditCard audit={audit} oneUnit={oneUnit} />}
+            renderItem={(audit) => <AuditCard audit={audit} />}
           />
           {running.length > 5 ? (
             <Card accessibilityRole="button" onPress={() => router.push('/audits')}>

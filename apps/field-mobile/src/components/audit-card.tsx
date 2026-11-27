@@ -1,7 +1,8 @@
 import { Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { Audit, AuditStatus, AuditType } from '@audit5s/contracts';
-import { zonesLine } from '@audit5s/domain';
+import { auditZoneTags } from '@audit5s/domain';
+import { ZoneTags } from './audit-groups';
 import { formatDate, formatPct } from '../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, isFinished } from '../lib/labels';
 import { useResumableAudits, useResumeAudit } from '../lib/resume-audit';
@@ -12,14 +13,15 @@ import { Card, Chip, Data, Figure, Muted, Slip, SlipText } from './ui';
  * One audit on a management board — the Audits tab's card, and Overview's "Auditing now".
  *
  * One component so the two cannot drift: the owner asked for Overview to read exactly as
- * Audits does. With one Unit in view (a Coordinator, R-42) the card leads with the auditor,
- * because the Unit's name is the same on every row; across Units it leads with the Unit.
+ * Audits does. Both lists are grouped under a Unit heading (owner, 2026-11-27), so the card
+ * leads with its Zone tags and the auditor: its Unit is the heading above it. `zoneNames`
+ * (Zone id → name) names the tags where the screen has the Unit's Zones.
  * A finished, scored audit wears its band as the rail and its score as the figure.
  *
  * An audit this phone is running (a Coordinator's or Super Admin's own) opens back into the
  * questionnaire, not the read-only page that says it is running on their phone.
  */
-export function AuditCard({ audit, oneUnit }: { audit: Audit; oneUnit: boolean }) {
+export function AuditCard({ audit, zoneNames }: { audit: Audit; zoneNames?: ReadonlyMap<string, string> }) {
   const styles = useStyles();
   const router = useRouter();
   const finished = isFinished(audit.status);
@@ -36,13 +38,11 @@ export function AuditCard({ audit, oneUnit }: { audit: Audit; oneUnit: boolean }
           : router.push({ pathname: '/manage/audit/[auditId]', params: { auditId: audit.id } })
       }
     >
+      <ZoneTags tags={auditZoneTags(audit, zoneNames)} />
       <View style={styles.row}>
         <View style={styles.text}>
-          <Text style={styles.title}>{oneUnit ? audit.auditorName : audit.unitName}</Text>
-          {audit.zoneCodes?.length ? <Text style={styles.zones}>{zonesLine(audit.zoneCodes)}</Text> : null}
-          <Muted>
-            {oneUnit ? AUDIT_TYPE_LABELS[audit.auditType] : `${AUDIT_TYPE_LABELS[audit.auditType]} by ${audit.auditorName}`}
-          </Muted>
+          <Text style={styles.title}>{audit.auditorName}</Text>
+          <Muted>{AUDIT_TYPE_LABELS[audit.auditType]}</Muted>
           <Data>
             {finished && audit.completedAt
               ? `Completed ${formatDate(audit.completedAt)}`

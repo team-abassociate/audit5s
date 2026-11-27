@@ -2493,22 +2493,26 @@ li:has(> .gb-menu-item--danger) {
   font-size: 12.5px;
   color: var(--ink-2);
 }
-/* A nested list of audits (owner, 2026-11-27): the Unit is a .gb-group row, each of its Zones
-   a lighter row a step in, and the audits under it a further step in. */
-.gb-tablewrap tr.gb-group.gb-group--zone td,
-.gb-tablewrap tbody tr.gb-group.gb-group--zone:hover td {
-  background: var(--surface);
-  border-top: 1px solid var(--rule-soft);
-  padding-top: 7px;
-  padding-bottom: 7px;
+/* Audits grouped by Unit (owner, 2026-11-27): the Unit is a .gb-group row, its audits a step
+   in beneath it, each wearing its Zones as tags. A tag is a neutral chip with a rule edge: a
+   Zone is a place, never a score (LEDGER.md rule 4). */
+.gb-tablewrap tr.gb-row--nested td:first-child {
   padding-left: 28px;
 }
-.gb-group--zone .gb-group-title {
-  font-weight: 700;
-  font-size: 13px;
+.gb-zone-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
 }
-.gb-tablewrap tr.gb-row--nested td:first-child {
-  padding-left: 44px;
+.gb-zone-tag {
+  background: var(--chip);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-chip);
+  padding: 2px 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
 }
 .gb-doc-title {
   font-weight: 600;

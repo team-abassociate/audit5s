@@ -5,68 +5,72 @@ import { createThemedStyles } from '../lib/theme';
 import { SectionHead } from './ui';
 
 /**
- * A list of audits drawn as a nested list (owner, 2026-11-27): the Unit as a heading, each of
- * its Zones as a smaller heading under it, and the audits under their Zone, all on one rule
- * down the left so a Zone's audits read as belonging to it. The grouping itself is
- * `groupAuditsByUnitAndZone` in `packages/domain`, shared with the web.
+ * A list of audits grouped by Unit (owner, 2026-11-27): the Unit as a heading, each of its
+ * audits once beneath it on one rule down the left, and every audit wearing its Zones as tags
+ * (`ZoneTags`). The grouping itself is `groupAuditsByUnit` in `packages/domain`, shared with
+ * the web; the tags are `zoneTags` / `auditZoneTags`.
  *
- * `showUnit` is false where every row is the same Unit (a Coordinator, a Unit's own page):
- * the Unit is said once elsewhere, and only the Zones are headings.
+ * `showUnit` is false where every row is the same Unit (a Coordinator): the Unit is said once
+ * elsewhere, and the rows stand without a heading.
  *
- * Two ways to draw it: `AuditGroupList` inside a ScrollView or a card, and `GroupHeads` +
- * `InZone` for a `SectionList` fed by `flattenAuditGroups`.
+ * Two ways to draw it: `AuditGroupList` inside a ScrollView or a card, and `unitSections` +
+ * `UnitSectionHead` + `InUnit` for a `SectionList`.
  */
 
 export type Noun = readonly [one: string, many: string];
 
 const counted = (count: number, [one, many]: Noun) => `${count} ${count === 1 ? one : many}`;
 
-/** The Unit's heading: its name, and how many items are under it, each counted once. */
-export function UnitGroupHead({ name, total, noun }: { name: string; total: number; noun: Noun }) {
+/** The Unit's heading: its name, and how many items are under it. */
+export function UnitGroupHead({ name, count, noun }: { name: string; count: number; noun: Noun }) {
   const styles = useStyles();
   return (
     <View style={styles.unitHead}>
-      <SectionHead title={name} description={counted(total, noun)} />
+      <SectionHead title={name} description={counted(count, noun)} />
     </View>
   );
 }
 
-/** The Zone's heading, a step in from its Unit, on the rule its audits hang from. */
-export function ZoneGroupLabel({ label, count, noun }: { label: string; count: number; noun: Noun }) {
+/** One row under its Unit's heading, a step in, on the rule down the left. */
+export function InUnit({ children, nested = true }: { children: ReactNode; nested?: boolean }) {
   const styles = useStyles();
+  return nested ? <View style={styles.rule}>{children}</View> : <>{children}</>;
+}
+
+/** An audit's Zones, one tag each, in ascending order. Nothing when it has none yet. */
+export function ZoneTags({ tags }: { tags: readonly string[] }) {
+  const styles = useStyles();
+  if (tags.length === 0) return null;
   return (
-    <View style={[styles.rule, styles.zoneHead]} accessibilityRole="header">
-      <Text style={styles.zoneTitle}>{label}</Text>
-      <Text style={styles.zoneCount}>{counted(count, noun)}</Text>
+    <View style={styles.tags} accessibilityLabel={tags.join(', ')}>
+      {tags.map((tag) => (
+        <Text key={tag} style={styles.tag}>
+          {tag}
+        </Text>
+      ))}
     </View>
   );
 }
 
-/** One row under a Zone heading, on the same rule. */
-export function InZone({ children }: { children: ReactNode }) {
-  const styles = useStyles();
-  return <View style={styles.rule}>{children}</View>;
+/** The groups as `SectionList` sections, one per Unit. */
+export function unitSections<T>(groups: readonly AuditUnitGroup<T>[]) {
+  return groups.map((unit) => ({ key: unit.unitId, unitName: unit.unitName, data: unit.items }));
 }
 
-/** A `SectionList` section head for `flattenAuditGroups`: the Unit above its first Zone. */
-export function GroupHeads({
+/** A `SectionList` section head for `unitSections`. */
+export function UnitSectionHead({
   section,
   showUnit,
   noun,
 }: {
-  section: { unit: { unitName: string; total: number } | null; zone: { label: string }; data: readonly unknown[] };
+  section: { unitName: string; data: readonly unknown[] };
   showUnit: boolean;
   noun: Noun;
 }) {
-  return (
-    <>
-      {showUnit && section.unit ? <UnitGroupHead name={section.unit.unitName} total={section.unit.total} noun={noun} /> : null}
-      <ZoneGroupLabel label={section.zone.label} count={section.data.length} noun={noun} />
-    </>
-  );
+  return showUnit ? <UnitGroupHead name={section.unitName} count={section.data.length} noun={noun} /> : null;
 }
 
-/** The whole nested list, for a screen that is a ScrollView rather than a SectionList. */
+/** The whole grouped list, for a screen that is a ScrollView rather than a SectionList. */
 export function AuditGroupList<T>({
   groups,
   showUnit,
@@ -84,14 +88,11 @@ export function AuditGroupList<T>({
     <>
       {groups.map((unit) => (
         <View key={unit.unitId}>
-          {showUnit ? <UnitGroupHead name={unit.unitName} total={unit.total} noun={noun} /> : null}
-          {unit.zones.map((zone) => (
-            <View key={zone.key}>
-              <ZoneGroupLabel label={zone.label} count={zone.items.length} noun={noun} />
-              {zone.items.map((item) => (
-                <InZone key={keyOf(item)}>{renderItem(item)}</InZone>
-              ))}
-            </View>
+          {showUnit ? <UnitGroupHead name={unit.unitName} count={unit.items.length} noun={noun} /> : null}
+          {unit.items.map((item) => (
+            <InUnit key={keyOf(item)} nested={showUnit}>
+              {renderItem(item)}
+            </InUnit>
           ))}
         </View>
       ))}
@@ -101,31 +102,25 @@ export function AuditGroupList<T>({
 
 const useStyles = createThemedStyles((theme) => ({
   unitHead: { marginTop: theme.space.md },
-  // The nesting: a step in, and a rule down the left from the Zone's heading to its last row.
+  // The grouping: a step in, and a rule down the left from the Unit's heading to its last row.
   rule: {
     marginLeft: theme.space.xs,
     paddingLeft: theme.space.md,
     borderLeftWidth: 2,
     borderLeftColor: theme.color.rule,
   },
-  zoneHead: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: theme.space.sm,
-    paddingTop: theme.space.xs,
-    paddingBottom: theme.space.sm,
-  },
-  zoneTitle: {
-    flexShrink: 1,
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: theme.space.xs },
+  // A neutral chip with a rule edge: a Zone is a place, never a score (LEDGER.md rule 4).
+  tag: {
+    overflow: 'hidden',
+    backgroundColor: theme.color.chip,
+    borderWidth: 1,
+    borderColor: theme.color.rule,
+    borderRadius: theme.radius.chip,
+    paddingHorizontal: theme.space.sm,
+    paddingVertical: 3,
     fontFamily: theme.family.bold,
-    fontSize: theme.font.base,
+    fontSize: 12.5,
     color: theme.color.ink,
-  },
-  zoneCount: {
-    fontFamily: theme.family.regular,
-    fontSize: theme.font.sm,
-    color: theme.color.ink2,
-    fontVariant: ['tabular-nums'],
   },
 }));

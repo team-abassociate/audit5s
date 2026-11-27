@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { auditGroupZones, groupAuditsByUnitAndZone, zoneLabelFromCode } from '@audit5s/domain';
+import { groupAuditsByUnit, zoneLabelFromCode, zonesLine } from '@audit5s/domain';
 import { problemMessage } from '../lib/api';
 import {
   deviceLabel,
@@ -111,14 +111,9 @@ export function AuditsElsewhere() {
         onCancel={() => setOpen(false)}
       >
         {several ? (
-          // Nested like every audit list (owner, 2026-11-27). An audit of two Zones is under
-          // both, and ticking either ticks it.
+          // Grouped by Unit like every audit list (owner, 2026-11-27).
           <AuditGroupList
-            groups={groupAuditsByUnitAndZone(items, ({ audit }) => ({
-              unitId: audit.unitId,
-              unitName: audit.unitName,
-              zones: auditGroupZones(audit),
-            }))}
+            groups={groupAuditsByUnit(items, ({ audit }) => audit)}
             showUnit
             noun={['audit', 'audits']}
             keyOf={(item) => item.audit.id}
@@ -184,13 +179,14 @@ function describe({ audit }: AuditElsewhere): string {
   return `${audit.unitName}${zones.length ? `, ${zones.join(', ')}` : ''} (${state})`;
 }
 
-/** A tickable audit under its Unit and Zone headings: "Walk-by, paused". */
+/** A tickable audit under its Unit's heading: "Walk-by, paused". */
 function rowLabel({ audit }: AuditElsewhere): string {
   return `${AUDIT_TYPE_LABELS[audit.auditType]}, ${audit.status === 'PAUSED' ? 'paused' : 'in progress'}`;
 }
 
 /** The line under a tickable audit: where it is, and whether that device gets signed out. */
-function detail({ device, stillSignedIn }: AuditElsewhere, signsOut: boolean): string {
-  const on = `On ${deviceLabel(device)}`;
+function detail({ audit, device, stillSignedIn }: AuditElsewhere, signsOut: boolean): string {
+  const zones = zonesLine(audit.zoneCodes ?? []);
+  const on = `${zones ? `${zones}, on` : 'On'} ${deviceLabel(device)}`;
   return signsOut && stillSignedIn ? `${on}, still signed in: ticking it signs you out there` : on;
 }

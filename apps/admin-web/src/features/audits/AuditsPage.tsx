@@ -15,8 +15,8 @@ import type {
   User,
   Zone,
 } from '@audit5s/contracts';
-import { formatDate, formatDateTime, zoneDisplayLabel, zonesLine, formatScore } from '@audit5s/domain';
-import { AuditGroupRows } from '@/components/AuditGroupRows';
+import { auditZoneTags, formatDate, formatDateTime, zoneDisplayLabel, zonesLine, formatScore } from '@audit5s/domain';
+import { AuditGroupRows, ZoneTags } from '@/components/AuditGroupRows';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { ledgerMotion } from '@/lib/motion';
@@ -346,21 +346,23 @@ export function AuditsPage() {
                 </tr>
               </thead>
               <tbody>
-                {/* Nested (owner, 2026-11-27): Unit, then Zone, then its audits, newest first. */}
+                {/* Grouped by Unit (owner, 2026-11-27), newest first, Zones as tags. */}
                 <AuditGroupRows
                   audits={shown}
                   columns={5}
-                  renderRow={(audit, key) => {
+                  renderRow={(audit) => {
                     const selected = panel.id === audit.id;
                     const size = teamSize(audit.assignmentGroupId);
                     return (
                       <tr
-                        key={key}
+                        key={audit.id}
                         ref={selected ? scrollIntoViewOnce : undefined}
                         onClick={rowToggleProps(() => panel.open(audit.id)).onClick}
                         className={cn('gb-row--nested cursor-pointer', selected && 'gb-row--open')}
                       >
                         <Td>
+                          {/* Its Unit is the heading above; its Zones are these tags. */}
+                          <ZoneTags tags={auditZoneTags(audit)} />
                           <button
                             type="button"
                             className="gb-rowtoggle"
@@ -369,11 +371,6 @@ export function AuditsPage() {
                           >
                             {AUDIT_TYPE_LABEL[audit.auditType]}
                           </button>
-                          {/* Its Unit and Zone are the headings above; all its Zones are said here,
-                              since an audit of two Zones sits under both. */}
-                          {audit.zoneCodes?.length ? (
-                            <span className="block text-sm font-medium">{zonesLine(audit.zoneCodes)}</span>
-                          ) : null}
                           <span className={cn('block text-xs text-muted', SHOW_AUDITOR)}>{audit.auditorName}</span>
                         </Td>
                         <Td className={HIDE_AUDITOR}>

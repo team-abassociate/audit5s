@@ -2,8 +2,8 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import type { AuditStatus, AuditType } from '@audit5s/contracts';
-import { awaitsResponse, groupAuditsByUnitAndZone } from '@audit5s/domain';
-import { AuditGroupList } from './audit-groups';
+import { awaitsResponse, groupAuditsByUnit, zoneTags } from '@audit5s/domain';
+import { AuditGroupList, ZoneTags } from './audit-groups';
 import {
   Button,
   Card,
@@ -180,21 +180,17 @@ export function FieldOverview() {
             />
           </Card>
         ) : (
-          // Nested like every audit list (owner, 2026-11-27): Unit, then Zone, then the audit.
+          // Grouped by Unit like every audit list (owner, 2026-11-27), Zones as tags.
           <AuditGroupList
-            groups={groupAuditsByUnitAndZone(open, (audit) => ({
-              unitId: audit.unitId,
-              unitName: audit.unitName ?? 'Unit',
-              zones: audit.zones.map((zone) => ({ key: zone.zoneId, code: zone.code, name: zone.name })),
-            }))}
+            groups={groupAuditsByUnit(open, (audit) => ({ unitId: audit.unitId, unitName: audit.unitName ?? 'Unit' }))}
             showUnit
             noun={['open audit', 'open audits']}
             keyOf={(audit) => audit.id}
             renderItem={(audit) => (
                 <Card key={audit.id} rail={audit.status === 'PAUSED' ? 'warn' : 'none'}>
+                  <ZoneTags tags={zoneTags(audit.zones)} />
                   <CardHeader
-                    title={audit.unitName ?? 'Unit'}
-                    description={AUDIT_TYPE_LABELS[audit.auditType as AuditType] ?? audit.auditType}
+                    title={AUDIT_TYPE_LABELS[audit.auditType as AuditType] ?? audit.auditType}
                     action={
                       <Chip tone={AUDIT_STATUS_TONE[audit.status as AuditStatus] ?? 'muted'}>
                         {AUDIT_STATUS_LABELS[audit.status as AuditStatus] ?? audit.status}

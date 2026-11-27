@@ -37,6 +37,7 @@ import {
   Th,
   type RowAction,
 } from '@/components/ui';
+import { ZoneTags } from '@/components/AuditGroupRows';
 import { useSession } from '@/lib/session';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
@@ -44,11 +45,11 @@ import { Link, useRouterState, useSearch } from '@tanstack/react-router';
 import { RowToggle, rowToggleProps } from '@/features/audits/AuditsPage';
 import { AUDIT_STATUS_LABEL, AUDIT_TYPE_LABEL, ROLE_LABEL, roleLabel } from '@/lib/labels';
 import {
-  auditGroupZones,
+  auditZoneTags,
   formatDate,
   formatDateTime,
   formatScore,
-  groupAuditsByUnitAndZone,
+  groupAuditsByUnit,
   mayGrantKaizen,
   zoneDisplayLabel,
 } from '@audit5s/domain';
@@ -527,43 +528,32 @@ function AssignmentList({ assignments }: { assignments: AuditAssignment[] }) {
 }
 
 /**
- * A person's audits, nested like every audit list (owner, 2026-11-27): the Unit, its Zones
- * under it, and the audits under their Zone. The twelve most recent; the rest are counted.
+ * A person's audits, grouped by Unit like every audit list (owner, 2026-11-27), each wearing
+ * its Zones as tags. The twelve most recent; the rest are counted.
  */
 function AuditList({ audits, empty }: { audits: Audit[]; empty: string }) {
   if (audits.length === 0) return <p className="text-muted">{empty}</p>;
-  const groups = groupAuditsByUnitAndZone(audits.slice(0, 12), (audit) => ({
-    unitId: audit.unitId,
-    unitName: audit.unitName,
-    zones: auditGroupZones(audit),
-  }));
   return (
     <ul>
-      {groups.map((unit) => (
+      {groupAuditsByUnit(audits.slice(0, 12), (audit) => audit).map((unit) => (
         <li key={unit.unitId}>
           <span className="font-bold">{unit.unitName}</span>
           <ul className="ml-1 border-l border-rule pl-3">
-            {unit.zones.map((zone) => (
-              <li key={zone.key}>
-                <span className="font-semibold">{zone.label}</span>
-                <ul className="ml-1 border-l border-rule-soft pl-3">
-                  {zone.items.map((audit) => (
-                    <li key={audit.id}>
-                      <Link to="/audits" search={{ audit: audit.id }}>
-                        {AUDIT_TYPE_LABEL[audit.auditType]}
-                      </Link>
-                      <span className="text-muted">
-                        {' '}· {AUDIT_STATUS_LABEL[audit.status]} ·{' '}
-                        {formatDate(audit.completedAt ?? audit.startedAt ?? audit.createdAt)}
-                      </span>
-                      {audit.scored && audit.totals.scorePercentage !== null && audit.completedAt ? (
-                        <span className={cn('gb-data ml-2', bandTextClass(audit.totals.scorePercentage))}>
-                          {formatScore(audit.totals.scorePercentage)}%
-                        </span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+            {unit.items.map((audit) => (
+              <li key={audit.id} className="py-1">
+                <ZoneTags tags={auditZoneTags(audit)} />
+                <Link to="/audits" search={{ audit: audit.id }}>
+                  {AUDIT_TYPE_LABEL[audit.auditType]}
+                </Link>
+                <span className="text-muted">
+                  {' '}· {AUDIT_STATUS_LABEL[audit.status]} ·{' '}
+                  {formatDate(audit.completedAt ?? audit.startedAt ?? audit.createdAt)}
+                </span>
+                {audit.scored && audit.totals.scorePercentage !== null && audit.completedAt ? (
+                  <span className={cn('gb-data ml-2', bandTextClass(audit.totals.scorePercentage))}>
+                    {formatScore(audit.totals.scorePercentage)}%
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>

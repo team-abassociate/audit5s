@@ -9,21 +9,17 @@ import { formatDateTime } from '../../lib/format';
 import { AUDIT_STATUS_LABELS, AUDIT_STATUS_TONE, AUDIT_TYPE_LABELS, isFinished } from '../../lib/labels';
 import { createThemedStyles } from '../../lib/theme';
 import type { AuditStatus, AuditType } from '@audit5s/contracts';
-import { flattenAuditGroups, groupAuditsByUnitAndZone, zoneDisplayLabel } from '@audit5s/domain';
-import { GroupHeads, InZone } from '../../components/audit-groups';
+import { groupAuditsByUnit, zoneTags } from '@audit5s/domain';
+import { InUnit, UnitSectionHead, ZoneTags, unitSections } from '../../components/audit-groups';
 import { SelfieChip, useSelfieStatuses } from '../../components/selfie-check';
 import { ScorecardButton } from '../../components/scorecard-button';
 
 type LocalAudit = Awaited<ReturnType<typeof listLocalAudits>>[number];
 
-/** The card's title: what was audited, not the Unit every card on the phone shares. */
-function zonesTitle(audit: LocalAudit): string {
-  const zones = zonesOf(audit);
-  return zones.length === 0 ? 'No Zone yet' : zones.map(([code, name]) => zoneDisplayLabel(code, name)).join(', ');
-}
-
-function zonesOf(audit: LocalAudit): [string, string][] {
-  return JSON.parse(audit.zoneSnapshots || '[]') as [string, string][];
+/** The card's Zone tags: what was audited, by the names it was audited under. */
+function tagsOf(audit: LocalAudit): string[] {
+  const zones = JSON.parse(audit.zoneSnapshots || '[]') as [string, string][];
+  return zoneTags(zones.map(([code, name]) => ({ code, name })));
 }
 
 /**
@@ -36,7 +32,7 @@ function zonesOf(audit: LocalAudit): [string, string][] {
  * §9.9 requires the UI never to say "saved" when it means "queued". The header says both,
  * separately.
  *
- * Nested like every audit list (owner, 2026-11-27): Unit, then Zone, newest first within each.
+ * Grouped by Unit like every audit list (owner, 2026-11-27), newest first, Zones as tags.
  */
 export default function HistoryScreen() {
   const styles = useStyles();
@@ -56,11 +52,12 @@ export default function HistoryScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: LocalAudit }) => (
-      <InZone>
+      <InUnit>
         <Card>
+          <ZoneTags tags={tagsOf(item)} />
           <CardHeader
-            title={zonesTitle(item)}
-            description={`${AUDIT_TYPE_LABELS[item.auditType as AuditType] ?? item.auditType} · ${item.unitName ?? 'Unit'}`}
+            title={AUDIT_TYPE_LABELS[item.auditType as AuditType] ?? item.auditType}
+            description={tagsOf(item).length === 0 ? 'No Zone yet' : null}
             action={
               <Chip tone={AUDIT_STATUS_TONE[item.status as AuditStatus] ?? 'muted'}>
                 {AUDIT_STATUS_LABELS[item.status as AuditStatus] ?? item.status}
@@ -101,7 +98,7 @@ export default function HistoryScreen() {
             </View>
           </View>
         </Card>
-      </InZone>
+      </InUnit>
     ),
     [styles, router, selfies.data],
   );
@@ -109,17 +106,12 @@ export default function HistoryScreen() {
   return (
     <Screen>
       <SectionList
-        sections={flattenAuditGroups(
-          groupAuditsByUnitAndZone(audits.data ?? [], (audit) => ({
-            unitId: audit.unitId,
-            unitName: audit.unitName ?? 'Unit',
-            zones: zonesOf(audit).map(([code, name]) => ({ key: code, code, name })),
-          })),
+        sections={unitSections(
+          groupAuditsByUnit(audits.data ?? [], (audit) => ({ unitId: audit.unitId, unitName: audit.unitName ?? 'Unit' })),
         )}
-        // An audit of two Zones is drawn under both, so its key carries its place.
-        keyExtractor={(audit, index) => `${audit.id}:${index}`}
+        keyExtractor={(audit) => audit.id}
         renderItem={renderItem}
-        renderSectionHeader={({ section }) => <GroupHeads section={section} showUnit noun={['audit', 'audits']} />}
+        renderSectionHeader={({ section }) => <UnitSectionHead section={section} showUnit noun={['audit', 'audits']} />}
         stickySectionHeadersEnabled={false}
         ListHeaderComponent={
           <SectionHead

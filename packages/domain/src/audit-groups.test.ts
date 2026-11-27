@@ -1,111 +1,59 @@
 import { describe, expect, it } from 'vitest';
-import {
-  NO_ZONE_KEY,
-  NO_ZONE_LABEL,
-  auditGroupZones,
-  flattenAuditGroups,
-  groupAuditsByUnitAndZone,
-  groupZoneLabel,
-} from './audit-groups';
+import { auditZoneTags, groupAuditsByUnit, zoneTagLabel, zoneTags } from './audit-groups';
 
 interface Row {
   id: string;
   unitId: string;
   unitName: string;
-  zoneIds?: string[];
-  zoneCodes?: string[];
 }
 
-const row = (id: string, unit: 'p2' | 'p5', zones: Array<[string, string]> = []): Row => ({
-  id,
-  unitId: unit,
-  unitName: unit === 'p2' ? 'Plant 2' : 'Plant 5',
-  zoneIds: zones.map(([zoneId]) => zoneId),
-  zoneCodes: zones.map(([, code]) => code),
-});
+const row = (id: string, unit: 'p2' | 'p5'): Row => ({ id, unitId: unit, unitName: unit === 'p2' ? 'Plant 2' : 'Plant 5' });
 
-const describeRow = (item: Row) => ({ unitId: item.unitId, unitName: item.unitName, zones: auditGroupZones(item) });
-const ids = (items: Row[]) => items.map((item) => item.id);
-
-describe('groupAuditsByUnitAndZone', () => {
-  it('keeps the list order for Units and audits, and puts Zones in ascending order', () => {
-    const groups = groupAuditsByUnitAndZone(
-      [
-        row('a', 'p5', [['z7', 'Z-07']]),
-        row('b', 'p2', [['z10', 'Z-10']]),
-        row('c', 'p5', [['z1a', 'Z-1A']]),
-        row('d', 'p5', [['z7', 'Z-07']]),
-        row('e', 'p2', [['zb', 'BOILER']]),
-        row('f', 'p2', [['z2', 'Z-02']]),
-      ],
-      describeRow,
-    );
-    expect(groups.map((unit) => unit.unitName)).toEqual(['Plant 5', 'Plant 2']);
-    expect(groups[0]!.zones.map((zone) => zone.label)).toEqual(['Zone 1A', 'Zone 7']);
-    expect(ids(groups[0]!.zones[1]!.items)).toEqual(['a', 'd']);
-    expect(groups[1]!.zones.map((zone) => zone.label)).toEqual(['Zone 2', 'Zone 10', 'BOILER']);
-  });
-
-  it('lists an audit of several Zones under each, and counts it once', () => {
-    const [unit] = groupAuditsByUnitAndZone(
-      [
-        row('a', 'p2', [
-          ['z4', 'Z-04'],
-          ['z1', 'Z-01'],
-        ]),
-        row('b', 'p2', [['z4', 'Z-04']]),
-      ],
-      describeRow,
-    );
-    expect(unit!.total).toBe(2);
-    expect(unit!.zones.map((zone) => [zone.label, ids(zone.items)])).toEqual([
-      ['Zone 1', ['a']],
-      ['Zone 4', ['a', 'b']],
+describe('groupAuditsByUnit', () => {
+  it('keeps the list order for Units and for audits within each', () => {
+    const groups = groupAuditsByUnit([row('a', 'p5'), row('b', 'p2'), row('c', 'p5'), row('d', 'p2')], (item) => item);
+    expect(groups.map((unit) => [unit.unitName, unit.items.map((item) => item.id)])).toEqual([
+      ['Plant 5', ['a', 'c']],
+      ['Plant 2', ['b', 'd']],
     ]);
   });
 
-  it('puts audits with no Zone last, under their own heading', () => {
-    const [unit] = groupAuditsByUnitAndZone([row('a', 'p2'), row('b', 'p2', [['z3', 'Z-03']])], describeRow);
-    expect(unit!.zones.map((zone) => [zone.key, zone.label])).toEqual([
-      ['z3', 'Zone 3'],
-      [NO_ZONE_KEY, NO_ZONE_LABEL],
-    ]);
-  });
-
-  it('names a Zone when the screen knows its name', () => {
-    const names = new Map([['z3', 'Press shop']]);
-    const [unit] = groupAuditsByUnitAndZone([row('a', 'p2', [['z3', 'Z-03']])], (item) => ({
-      ...describeRow(item),
-      zones: auditGroupZones(item, names),
-    }));
-    expect(unit!.zones[0]!.label).toBe('Zone 3 — Press shop');
+  it('lists each audit once', () => {
+    const [unit] = groupAuditsByUnit([row('a', 'p2')], (item) => item);
+    expect(unit!.items).toHaveLength(1);
   });
 
   it('returns nothing for an empty list', () => {
-    expect(groupAuditsByUnitAndZone([], describeRow)).toEqual([]);
+    expect(groupAuditsByUnit([], (item: Row) => item)).toEqual([]);
   });
 });
 
-describe('flattenAuditGroups', () => {
-  it('gives each Zone a section and the Unit to its first Zone only', () => {
-    const sections = flattenAuditGroups(
-      groupAuditsByUnitAndZone(
-        [row('a', 'p2', [['z1', 'Z-01']]), row('b', 'p2', [['z2', 'Z-02']]), row('c', 'p5', [['z1', 'Z-01']])],
-        describeRow,
-      ),
-    );
-    expect(sections.map((section) => [section.key, section.unit?.unitName ?? null, section.zone.label])).toEqual([
-      ['p2:z1', 'Plant 2', 'Zone 1'],
-      ['p2:z2', null, 'Zone 2'],
-      ['p5:z1', 'Plant 5', 'Zone 1'],
+describe('zoneTags', () => {
+  it('sorts the tags ascending, codes a Unit chose last, each Zone once', () => {
+    expect(zoneTags([{ code: 'Z-10' }, { code: 'BOILER' }, { code: 'Z-1A' }, { code: 'Z-02' }, { code: 'Z-02' }])).toEqual([
+      'Zone 1A',
+      'Zone 2',
+      'Zone 10',
+      'BOILER',
     ]);
   });
+
+  it('names a Zone when its name is known', () => {
+    expect(zoneTags([{ code: 'Z-07' }, { code: 'Z-07', name: 'Press' }])).toEqual(['Zone 7 — Press']);
+  });
+
+  it('reads an audit from GET /audits, with names where the screen has them', () => {
+    const audit = { zoneIds: ['z4', 'z1'], zoneCodes: ['Z-04', 'Z-01'] };
+    expect(auditZoneTags(audit)).toEqual(['Zone 1', 'Zone 4']);
+    expect(auditZoneTags(audit, new Map([['z1', 'Press shop']]))).toEqual(['Zone 1 — Press shop', 'Zone 4']);
+    expect(auditZoneTags({})).toEqual([]);
+  });
 });
 
-describe('groupZoneLabel', () => {
+describe('zoneTagLabel', () => {
   it('writes the Zone as everywhere else', () => {
-    expect(groupZoneLabel({ code: 'Z-07' })).toBe('Zone 7');
-    expect(groupZoneLabel({ code: 'Z-07', name: 'Press' })).toBe('Zone 7 — Press');
-    expect(groupZoneLabel({ code: 'BOILER' })).toBe('BOILER');
+    expect(zoneTagLabel({ code: 'Z-07' })).toBe('Zone 7');
+    expect(zoneTagLabel({ code: 'Z-07', name: 'Zone 7' })).toBe('Zone 7');
+    expect(zoneTagLabel({ code: 'BOILER' })).toBe('BOILER');
   });
 });

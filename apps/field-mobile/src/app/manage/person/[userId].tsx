@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { Audit, MembershipDetail, Page, ResetUserPasswordResponse, Unit, User, Zone } from '@audit5s/contracts';
-import { auditGroupZones, groupAuditsByUnitAndZone, mayGrantKaizen, zoneDisplayLabel } from '@audit5s/domain';
+import { auditZoneTags, groupAuditsByUnit, mayGrantKaizen, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Avatar,
   Button,
@@ -24,7 +24,7 @@ import {
   Slip,
   SlipText,
 } from '../../../components/ui';
-import { AuditGroupList } from '../../../components/audit-groups';
+import { AuditGroupList, ZoneTags } from '../../../components/audit-groups';
 import { api, problemMessage } from '../../../lib/api';
 import { formatDate, formatDateTime } from '../../../lib/format';
 import {
@@ -316,13 +316,9 @@ export default function PersonScreen() {
               title="Audits"
               description={audits.data.data.length === 0 ? 'No audits yet.' : `${audits.data.data.length} most recent`}
             />
-            {/* Nested like every audit list (owner, 2026-11-27): Unit, then Zone, newest first. */}
+            {/* Grouped by Unit like every audit list (owner, 2026-11-27), Zones as tags. */}
             <AuditGroupList
-              groups={groupAuditsByUnitAndZone(audits.data.data, (audit) => ({
-                unitId: audit.unitId,
-                unitName: audit.unitName,
-                zones: auditGroupZones(audit),
-              }))}
+              groups={groupAuditsByUnit(audits.data.data, (audit) => audit)}
               showUnit
               noun={['audit', 'audits']}
               keyOf={(audit) => audit.id}
@@ -333,6 +329,7 @@ export default function PersonScreen() {
                   onPress={() => router.push({ pathname: '/manage/audit/[auditId]', params: { auditId: audit.id } })}
                   style={({ pressed }) => [styles.item, pressed && styles.pressed]}
                 >
+                  <ZoneTags tags={auditZoneTags(audit)} />
                   <View style={styles.auditHead}>
                     <Text style={styles.itemTitle}>{AUDIT_TYPE_LABELS[audit.auditType]}</Text>
                     <Chip tone={AUDIT_STATUS_TONE[audit.status]}>{AUDIT_STATUS_LABELS[audit.status]}</Chip>

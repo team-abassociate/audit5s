@@ -1,7 +1,7 @@
 import { SectionList } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { flattenAuditGroups, groupAuditsByUnitAndZone } from '@audit5s/domain';
-import { GroupHeads, InZone } from '../components/audit-groups';
+import { groupAuditsByUnit } from '@audit5s/domain';
+import { InUnit, UnitSectionHead, ZoneTags, unitSections } from '../components/audit-groups';
 import { Card, CardHeader, Chip, Data, EmptyState, Screen } from '../components/ui';
 import {
   crossAuditAssignee,
@@ -18,7 +18,7 @@ import { useSession } from '../lib/session';
  * due first. One card per call; tapping one starts its audit — the selfie, then that Zone. Past
  * its date a call stays, marked overdue, until someone audits the Zone.
  *
- * Nested like every audit list (owner, 2026-11-27): Unit, then Zone, oldest due first within.
+ * Grouped by Unit like every audit list (owner, 2026-11-27), oldest due first, the Zone as a tag.
  */
 export default function CrossAuditsScreen() {
   const router = useRouter();
@@ -28,15 +28,9 @@ export default function CrossAuditsScreen() {
     <Screen>
       <Stack.Screen options={{ title: 'Cross audits called' }} />
       <SectionList
-        sections={flattenAuditGroups(
-          groupAuditsByUnitAndZone(calls, (call) => ({
-            unitId: call.unitId,
-            unitName: call.unitName,
-            zones: [{ key: call.zoneId, code: call.zoneCode, name: call.zoneName }],
-          })),
-        )}
+        sections={unitSections(groupAuditsByUnit(calls, (call) => call))}
         keyExtractor={(call) => call.id}
-        renderSectionHeader={({ section }) => <GroupHeads section={section} showUnit noun={['call', 'calls']} />}
+        renderSectionHeader={({ section }) => <UnitSectionHead section={section} showUnit noun={['call', 'calls']} />}
         stickySectionHeadersEnabled={false}
         refreshing={standing.isFetching}
         onRefresh={() => void standing.refetch()}
@@ -46,21 +40,22 @@ export default function CrossAuditsScreen() {
           const due = crossAuditDue(item);
           const assignee = crossAuditAssignee(item, user?.id);
           return (
-            <InZone>
+            <InUnit>
               <Card
                 rail={late ? 'late' : 'none'}
                 onPress={() => router.push(crossAuditStart(item))}
                 accessibilityRole="button"
                 accessibilityLabel={`Cross audit of ${zone} at ${item.unitName}, called by ${item.calledBy}. ${due}. Starts the audit.`}
               >
+                <ZoneTags tags={[zone]} />
                 <CardHeader
-                  title={zone}
-                  description={[item.unitName, `called by ${item.calledBy}`, assignee].filter(Boolean).join(' · ')}
+                  title="Cross audit"
+                  description={[`Called by ${item.calledBy}`, assignee].filter(Boolean).join(' · ')}
                   action={late ? <Chip tone="late">Past due</Chip> : undefined}
                 />
                 <Data>{due}</Data>
               </Card>
-            </InZone>
+            </InUnit>
           );
         }}
         ListEmptyComponent={
