@@ -11,7 +11,7 @@ import type {
   UnitOverview,
   User,
 } from '@audit5s/contracts';
-import { bandFor, zoneDisplayLabel } from '@audit5s/domain';
+import { auditGroupZones, bandFor, groupAuditsByUnitAndZone, zoneDisplayLabel } from '@audit5s/domain';
 import {
   ActionSheet,
   Card,
@@ -34,6 +34,7 @@ import { api } from '../../lib/api';
 import { formatDate, formatPct } from '../../lib/format';
 import { isRunning } from '../../lib/labels';
 import { AuditCard, ResumeSlip } from '../../components/audit-card';
+import { AuditGroupList } from '../../components/audit-groups';
 import { AuditsElsewhere } from '../../components/audits-elsewhere';
 import { CallCrossAuditSheet } from '../../components/cross-audit-round';
 import { FieldOverview } from '../../components/field-overview';
@@ -266,9 +267,17 @@ function ManagementOverview() {
             title={oneUnit && ownUnitName ? `Auditing now · ${ownUnitName}` : 'Auditing now'}
             description={active.data && running.length === 0 ? 'Nobody is auditing right now.' : null}
           />
-          {running.slice(0, 5).map((audit) => (
-            <AuditCard key={audit.id} audit={audit} oneUnit={oneUnit} />
-          ))}
+          <AuditGroupList
+            groups={groupAuditsByUnitAndZone(running.slice(0, 5), (audit) => ({
+              unitId: audit.unitId,
+              unitName: audit.unitName,
+              zones: auditGroupZones(audit),
+            }))}
+            showUnit={!oneUnit}
+            noun={['audit', 'audits']}
+            keyOf={(audit) => audit.id}
+            renderItem={(audit) => <AuditCard audit={audit} oneUnit={oneUnit} />}
+          />
           {running.length > 5 ? (
             <Card accessibilityRole="button" onPress={() => router.push('/audits')}>
               <Data>{`${running.length - 5} more on the Audits tab ›`}</Data>

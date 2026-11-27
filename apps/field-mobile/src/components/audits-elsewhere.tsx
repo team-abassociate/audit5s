@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
-import { zoneLabelFromCode } from '@audit5s/domain';
+import { auditGroupZones, groupAuditsByUnitAndZone, zoneLabelFromCode } from '@audit5s/domain';
 import { problemMessage } from '../lib/api';
 import {
   deviceLabel,
@@ -10,8 +9,10 @@ import {
   type AuditElsewhere,
 } from '../lib/audits-elsewhere';
 import { formatDateTime } from '../lib/format';
+import { AUDIT_TYPE_LABELS } from '../lib/labels';
 import { useResumeAudit } from '../lib/resume-audit';
 import { useSession } from '../lib/session';
+import { AuditGroupList } from './audit-groups';
 import { CheckRow, ChoiceDialog, SlipStack } from './ui';
 
 /** The pop-up opens by itself once per launch; after "Not now" the slip stays to tap. */
@@ -110,17 +111,26 @@ export function AuditsElsewhere() {
         onCancel={() => setOpen(false)}
       >
         {several ? (
-          <View>
-            {items.map((item) => (
+          // Nested like every audit list (owner, 2026-11-27). An audit of two Zones is under
+          // both, and ticking either ticks it.
+          <AuditGroupList
+            groups={groupAuditsByUnitAndZone(items, ({ audit }) => ({
+              unitId: audit.unitId,
+              unitName: audit.unitName,
+              zones: auditGroupZones(audit),
+            }))}
+            showUnit
+            noun={['audit', 'audits']}
+            keyOf={(item) => item.audit.id}
+            renderItem={(item) => (
               <CheckRow
-                key={item.audit.id}
-                label={describe(item)}
+                label={rowLabel(item)}
                 detail={detail(item, signsOut)}
                 checked={picked.includes(item.audit.id)}
                 onChange={(on) => toggle(item.audit.id, on)}
               />
-            ))}
-          </View>
+            )}
+          />
         ) : null}
       </ChoiceDialog>
     </>
@@ -172,6 +182,11 @@ function describe({ audit }: AuditElsewhere): string {
   });
   const state = audit.status === 'PAUSED' ? 'paused' : 'in progress';
   return `${audit.unitName}${zones.length ? `, ${zones.join(', ')}` : ''} (${state})`;
+}
+
+/** A tickable audit under its Unit and Zone headings: "Walk-by, paused". */
+function rowLabel({ audit }: AuditElsewhere): string {
+  return `${AUDIT_TYPE_LABELS[audit.auditType]}, ${audit.status === 'PAUSED' ? 'paused' : 'in progress'}`;
 }
 
 /** The line under a tickable audit: where it is, and whether that device gets signed out. */

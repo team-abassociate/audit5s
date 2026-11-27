@@ -16,6 +16,7 @@ import type {
   Zone,
 } from '@audit5s/contracts';
 import { formatDate, formatDateTime, zoneDisplayLabel, zonesLine, formatScore } from '@audit5s/domain';
+import { AuditGroupRows } from '@/components/AuditGroupRows';
 import { bandTextClass } from '@/lib/bands';
 import { cn } from '@/lib/cn';
 import { ledgerMotion } from '@/lib/motion';
@@ -333,7 +334,7 @@ export function AuditsPage() {
             <Table variant="register" label="Audits">
               <thead>
                 <tr>
-                  <Th width="30%">Unit</Th>
+                  <Th width="30%">Audit</Th>
                   <Th width="20%" className={HIDE_AUDITOR}>
                     Auditor
                   </Th>
@@ -345,51 +346,55 @@ export function AuditsPage() {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((audit) => {
-                  const selected = panel.id === audit.id;
-                  const size = teamSize(audit.assignmentGroupId);
-                  return (
-                    <tr
-                      key={audit.id}
-                      ref={selected ? scrollIntoViewOnce : undefined}
-                      onClick={rowToggleProps(() => panel.open(audit.id)).onClick}
-                      className={cn('cursor-pointer', selected && 'gb-row--open')}
-                    >
-                      <Td>
-                        <button
-                          type="button"
-                          className="gb-rowtoggle"
-                          aria-current={selected ? 'true' : undefined}
-                          onClick={() => panel.open(audit.id)}
-                        >
-                          {audit.unitName}
-                        </button>
-                        {audit.zoneCodes?.length ? (
-                          <span className="block text-sm font-medium">{zonesLine(audit.zoneCodes)}</span>
-                        ) : null}
-                        <span className="block text-xs text-muted">
-                          {AUDIT_TYPE_LABEL[audit.auditType]}
-                          <span className={SHOW_AUDITOR}> · {audit.auditorName}</span>
-                        </span>
-                      </Td>
-                      <Td className={HIDE_AUDITOR}>
-                        {audit.auditorName}
-                        {size > 1 && <span className="block text-xs text-muted">team of {size}</span>}
-                      </Td>
-                      <Td>
-                        <StatusChip kind="audit" status={audit.status} />
-                      </Td>
-                      <Td>
-                        <ScoreCell audit={audit} />
-                      </Td>
-                      {/* The mono face on a span, not the cell: a `td.gb-data` never wraps, and a
-                          narrow column must break the date at its spaces, never truncate it. */}
-                      <Td className={cn('text-ink-2', HIDE_UPDATED)}>
-                        <span className="gb-data">{formatDateTime(audit.updatedAt)}</span>
-                      </Td>
-                    </tr>
-                  );
-                })}
+                {/* Nested (owner, 2026-11-27): Unit, then Zone, then its audits, newest first. */}
+                <AuditGroupRows
+                  audits={shown}
+                  columns={5}
+                  renderRow={(audit, key) => {
+                    const selected = panel.id === audit.id;
+                    const size = teamSize(audit.assignmentGroupId);
+                    return (
+                      <tr
+                        key={key}
+                        ref={selected ? scrollIntoViewOnce : undefined}
+                        onClick={rowToggleProps(() => panel.open(audit.id)).onClick}
+                        className={cn('gb-row--nested cursor-pointer', selected && 'gb-row--open')}
+                      >
+                        <Td>
+                          <button
+                            type="button"
+                            className="gb-rowtoggle"
+                            aria-current={selected ? 'true' : undefined}
+                            onClick={() => panel.open(audit.id)}
+                          >
+                            {AUDIT_TYPE_LABEL[audit.auditType]}
+                          </button>
+                          {/* Its Unit and Zone are the headings above; all its Zones are said here,
+                              since an audit of two Zones sits under both. */}
+                          {audit.zoneCodes?.length ? (
+                            <span className="block text-sm font-medium">{zonesLine(audit.zoneCodes)}</span>
+                          ) : null}
+                          <span className={cn('block text-xs text-muted', SHOW_AUDITOR)}>{audit.auditorName}</span>
+                        </Td>
+                        <Td className={HIDE_AUDITOR}>
+                          {audit.auditorName}
+                          {size > 1 && <span className="block text-xs text-muted">team of {size}</span>}
+                        </Td>
+                        <Td>
+                          <StatusChip kind="audit" status={audit.status} />
+                        </Td>
+                        <Td>
+                          <ScoreCell audit={audit} />
+                        </Td>
+                        {/* The mono face on a span, not the cell: a `td.gb-data` never wraps, and a
+                            narrow column must break the date at its spaces, never truncate it. */}
+                        <Td className={cn('text-ink-2', HIDE_UPDATED)}>
+                          <span className="gb-data">{formatDateTime(audit.updatedAt)}</span>
+                        </Td>
+                      </tr>
+                    );
+                  }}
+                />
               </tbody>
             </Table>
           )}

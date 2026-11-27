@@ -5,6 +5,7 @@ import type { Audit, AuditType, Page } from '@audit5s/contracts';
 import { formatDateTime, uuidv7 } from '@audit5s/domain';
 import { useDocumentTitle } from '@/components/AppShell';
 import { Button, Card, CardHeader, EmptyState, Combobox, ErrorNotice, Field, StatusChip, Table, Td, Th } from '@/components/ui';
+import { AuditGroupRows } from '@/components/AuditGroupRows';
 import { api } from '@/lib/api';
 import { useWebDevice } from '@/lib/device';
 import { uploadEvidence } from '@/lib/evidence';
@@ -74,29 +75,32 @@ export function ConductStartPage() {
           <Table>
             <thead>
               <tr>
-                <Th>Unit</Th>
-                <Th>Type</Th>
+                <Th>Audit</Th>
                 <Th>Status</Th>
                 <Th>Started</Th>
                 <Th />
               </tr>
             </thead>
             <tbody>
-              {openAudits.map((audit) => (
-                <tr key={audit.id}>
-                  <Td>{audit.unitName}</Td>
-                  <Td>{AUDIT_TYPE_LABEL[audit.auditType]}</Td>
-                  <Td>
-                    <StatusChip kind="audit" status={audit.status} />
-                  </Td>
-                  <Td className="gb-data">{audit.startedAt ? formatDateTime(audit.startedAt) : '—'}</Td>
-                  <Td className="text-right">
-                    <Button variant="secondary" onClick={() => toAudit(audit.id)}>
-                      {audit.status === 'PAUSED' ? 'Resume' : 'Continue'}
-                    </Button>
-                  </Td>
-                </tr>
-              ))}
+              {/* Nested like every audit list (owner, 2026-11-27): Unit, then Zone. */}
+              <AuditGroupRows
+                audits={openAudits}
+                columns={4}
+                renderRow={(audit, key) => (
+                  <tr key={key} className="gb-row--nested">
+                    <Td>{AUDIT_TYPE_LABEL[audit.auditType]}</Td>
+                    <Td>
+                      <StatusChip kind="audit" status={audit.status} />
+                    </Td>
+                    <Td className="gb-data">{audit.startedAt ? formatDateTime(audit.startedAt) : '—'}</Td>
+                    <Td className="text-right">
+                      <Button variant="secondary" onClick={() => toAudit(audit.id)}>
+                        {audit.status === 'PAUSED' ? 'Resume' : 'Continue'}
+                      </Button>
+                    </Td>
+                  </tr>
+                )}
+              />
             </tbody>
           </Table>
         </Card>

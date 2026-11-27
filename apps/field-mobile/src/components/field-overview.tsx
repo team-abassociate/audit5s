@@ -2,7 +2,8 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import type { AuditStatus, AuditType } from '@audit5s/contracts';
-import { awaitsResponse } from '@audit5s/domain';
+import { awaitsResponse, groupAuditsByUnitAndZone } from '@audit5s/domain';
+import { AuditGroupList } from './audit-groups';
 import {
   Button,
   Card,
@@ -179,49 +180,60 @@ export function FieldOverview() {
             />
           </Card>
         ) : (
-          open.map((audit) => (
-            <Card key={audit.id} rail={audit.status === 'PAUSED' ? 'warn' : 'none'}>
-              <CardHeader
-                title={audit.unitName ?? 'Unit'}
-                description={AUDIT_TYPE_LABELS[audit.auditType as AuditType] ?? audit.auditType}
-                action={
-                  <Chip tone={AUDIT_STATUS_TONE[audit.status as AuditStatus] ?? 'muted'}>
-                    {AUDIT_STATUS_LABELS[audit.status as AuditStatus] ?? audit.status}
-                  </Chip>
-                }
-              />
-              <Data>
-                {audit.zonesTotal === 0
-                  ? 'No Zone started yet'
-                  : `${audit.zonesFinished} of ${audit.zonesTotal} Zone${audit.zonesTotal === 1 ? '' : 's'} finished`}
-              </Data>
-              <Data>Last worked on {formatDateTime(audit.clientUpdatedAt)}</Data>
-              <SelfieChip status={selfies.data?.get(audit.id)} />
-              {/* N7: the reason an abort recorded, read back to the person who wrote it. */}
-              {audit.pauseReason ? <Muted>{audit.pauseReason}</Muted> : null}
-              <View style={styles.actions}>
-                <View style={styles.action}>
-                  <Button icon="play-arrow"
-                    title={audit.status === 'PAUSED' ? 'Resume' : 'Continue'}
-                    busy={resume.isPending && resume.variables?.id === audit.id}
-                    onPress={() => resume.mutate(audit)}
-                  />
-                </View>
-                <View style={styles.action}>
-                  <Button icon="grid-view"
-                    title="Zones"
-                    variant="secondary"
-                    onPress={() =>
-                      router.push({
-                        pathname: '/audit/zones/[auditId]',
-                        params: { auditId: audit.id },
-                      })
+          // Nested like every audit list (owner, 2026-11-27): Unit, then Zone, then the audit.
+          <AuditGroupList
+            groups={groupAuditsByUnitAndZone(open, (audit) => ({
+              unitId: audit.unitId,
+              unitName: audit.unitName ?? 'Unit',
+              zones: audit.zones.map((zone) => ({ key: zone.zoneId, code: zone.code, name: zone.name })),
+            }))}
+            showUnit
+            noun={['open audit', 'open audits']}
+            keyOf={(audit) => audit.id}
+            renderItem={(audit) => (
+                <Card key={audit.id} rail={audit.status === 'PAUSED' ? 'warn' : 'none'}>
+                  <CardHeader
+                    title={audit.unitName ?? 'Unit'}
+                    description={AUDIT_TYPE_LABELS[audit.auditType as AuditType] ?? audit.auditType}
+                    action={
+                      <Chip tone={AUDIT_STATUS_TONE[audit.status as AuditStatus] ?? 'muted'}>
+                        {AUDIT_STATUS_LABELS[audit.status as AuditStatus] ?? audit.status}
+                      </Chip>
                     }
                   />
-                </View>
-              </View>
-            </Card>
-          ))
+                  <Data>
+                    {audit.zonesTotal === 0
+                      ? 'No Zone started yet'
+                      : `${audit.zonesFinished} of ${audit.zonesTotal} Zone${audit.zonesTotal === 1 ? '' : 's'} finished`}
+                  </Data>
+                  <Data>Last worked on {formatDateTime(audit.clientUpdatedAt)}</Data>
+                  <SelfieChip status={selfies.data?.get(audit.id)} />
+                  {/* N7: the reason an abort recorded, read back to the person who wrote it. */}
+                  {audit.pauseReason ? <Muted>{audit.pauseReason}</Muted> : null}
+                  <View style={styles.actions}>
+                    <View style={styles.action}>
+                      <Button icon="play-arrow"
+                        title={audit.status === 'PAUSED' ? 'Resume' : 'Continue'}
+                        busy={resume.isPending && resume.variables?.id === audit.id}
+                        onPress={() => resume.mutate(audit)}
+                      />
+                    </View>
+                    <View style={styles.action}>
+                      <Button icon="grid-view"
+                        title="Zones"
+                        variant="secondary"
+                        onPress={() =>
+                          router.push({
+                            pathname: '/audit/zones/[auditId]',
+                            params: { auditId: audit.id },
+                          })
+                        }
+                      />
+                    </View>
+                  </View>
+                </Card>
+            )}
+          />
         )}
 
         <View style={styles.section}>

@@ -3,7 +3,9 @@ import { ActivityIndicator, RefreshControl, SectionList, Text, View } from 'reac
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, useRouter } from 'expo-router';
 import type { Audit, AuditAssignment, Page, Unit } from '@audit5s/contracts';
+import { auditGroupZones, flattenAuditGroups, groupAuditsByUnitAndZone, type GroupZone } from '@audit5s/domain';
 import { AuditCard, ResumeSlip } from '../../components/audit-card';
+import { GroupHeads, InZone } from '../../components/audit-groups';
 import { CallCrossAuditSheet, CrossAuditRoundCard, roundsOnBoard, useCrossAuditRounds } from '../../components/cross-audit-round';
 import {
   ActionSheet,
@@ -22,12 +24,9 @@ import {
   ZoneFilterButton,
   ZoneFilterChips,
   ZoneFilterSheet,
-  ZoneGroupHead,
   countByZone,
-  groupByZone,
   useUnitZones,
   useZoneFilter,
-  type ZoneOption,
 } from '../../components/zone-filter';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
@@ -61,21 +60,20 @@ const HEAD: Record<Board, { title: (n: number) => string; description: string; e
   },
 };
 
-/** The latest thing that happened to an audit — the order inside a Zone's group. */
-function auditTime(audit: Audit): number {
-  return Date.parse(audit.completedAt ?? audit.startedAt ?? audit.createdAt);
-}
-
 /**
  * Every audit in reach — the organization's for a Super Admin, the own Unit's for a Coordinator
  * (R-24): what is running, what is finished (with its reports and the correction path), and
  * what is assigned but not started. An audit this phone is running itself sits on top as the
  * one slip.
  *
+ * Every board is a nested list (owner, 2026-11-27): a heading per Unit, a heading per Zone
+ * under it, and the audits under their Zone. An audit covering two Zones is under both; an
+ * assignment is placed by the Zones it suggests, or under "No Zone yet". A Coordinator holds
+ * one Unit, so their boards have only the Zone headings. See `audit-groups.tsx`.
+ *
  * A Coordinator may filter every board by Zone (R-43), exactly as on Actions: the header's
- * Zone button, a chip per chosen Zone, and the boards grouped under each, newest first. An
- * audit covering two chosen Zones is under both; an assignment is placed by the Zones it
- * suggests. See `zone-filter.tsx`.
+ * Zone button and a chip per chosen Zone. Only the chosen Zones' groups are shown. See
+ * `zone-filter.tsx`.
  */
 export default function AuditsScreen() {
   const styles = useStyles();
@@ -160,43 +158,63 @@ export default function AuditsScreen() {
   const count = board === 'ASSIGNED' ? shownWaiting.length : shownAudits.length;
   const zoneCounts = board === 'ASSIGNED' ? countByZone(waiting, assignmentZones) : countByZone(audits, auditZones);
 
-  // Grouped by Zone while filtered; one headless section otherwise. An empty section still
-  // counts as content and would hide the empty state, so none is passed.
-  const auditSections: Array<{ zone: ZoneOption | null; data: Audit[] }> = zoneFilter.active
-    ? groupByZone(shownAudits, zones, zoneFilter.selected, auditZones, auditTime)
-    : shownAudits.length > 0
-      ? [{ zone: null, data: shownAudits }]
-      : [];
-  const assignmentSections: Array<{ zone: ZoneOption | null; data: AuditAssignment[] }> = zoneFilter.active
-    ? groupByZone(shownWaiting, zones, zoneFilter.selected, assignmentZones, (assignment) => Date.parse(assignment.createdAt))
-    : shownWaiting.length > 0
-      ? [{ zone: null, data: shownWaiting }]
-      : [];
-  const sectionHead = ({ section }: { section: { zone: ZoneOption | null; data: readonly unknown[] } }) =>
-    section.zone ? <ZoneGroupHead zone={section.zone} count={section.data.length} noun={['audit', 'audits']} /> : null;
+  // Nested: Unit, then Zone, then the board's own order. While filtered, an audit is placed
+  // only under the Zones that were chosen, not under every Zone it covers.
+  const zoneNames = new Map(zones.map((zone) => [zone.id, zone.name]));
+  const zoneCodes = new Map(zones.map((zone) => [zone.id, zone.code]));
+  const chosen = (list: GroupZone[]) =>
+    zoneFilter.active ? list.filter((zone) => zoneFilter.selected.includes(zone.key)) : list;
+  const auditSections = flattenAuditGroups(
+    groupAuditsByUnitAndZone(shownAudits, (audit) => ({
+      unitId: audit.unitId,
+      unitName: audit.unitName,
+      zones: chosen(auditGroupZones(audit, zoneNames)),
+    })),
+  );
+  // An assignment names its suggested Zones by id; only the Coordinator's own Unit's are known
+  // here, so elsewhere it sits under "No Zone yet" until the audit starts.
+  const assignmentSections = flattenAuditGroups(
+    groupAuditsByUnitAndZone(shownWaiting, (assignment) => ({
+      unitId: assignment.unitId,
+      unitName: assignment.unitName,
+      zones: chosen(
+        assignment.suggestedZoneIds.flatMap((id) => {
+          const code = zoneCodes.get(id);
+          return code ? [{ key: id, code, name: zoneNames.get(id) ?? null }] : [];
+        }),
+      ),
+    })),
+  );
+  const noun = board === 'ASSIGNED' ? (['assignment', 'assignments'] as const) : (['audit', 'audits'] as const);
 
   const renderAudit = useCallback(
-    ({ item }: { item: Audit }) => <AuditCard audit={item} oneUnit={oneUnit} />,
+    ({ item }: { item: Audit }) => (
+      <InZone>
+        <AuditCard audit={item} oneUnit={oneUnit} />
+      </InZone>
+    ),
     [oneUnit],
   );
 
   const renderAssignment = useCallback(
     ({ item }: { item: AuditAssignment }) => (
-      <Card>
-        <View style={styles.row}>
-          <View style={styles.text}>
-            <Text style={styles.title}>{oneUnit ? item.auditorName : item.unitName}</Text>
-            <Muted>
-              {oneUnit ? AUDIT_TYPE_LABELS[item.auditType] : `${AUDIT_TYPE_LABELS[item.auditType]} for ${item.auditorName}`}
-            </Muted>
-            <Data>{item.dueAt ? `Due ${formatDate(item.dueAt)}` : 'No due date'}</Data>
+      <InZone>
+        <Card>
+          <View style={styles.row}>
+            <View style={styles.text}>
+              <Text style={styles.title}>{oneUnit ? item.auditorName : item.unitName}</Text>
+              <Muted>
+                {oneUnit ? AUDIT_TYPE_LABELS[item.auditType] : `${AUDIT_TYPE_LABELS[item.auditType]} for ${item.auditorName}`}
+              </Muted>
+              <Data>{item.dueAt ? `Due ${formatDate(item.dueAt)}` : 'No due date'}</Data>
+            </View>
+            <View style={styles.side}>
+              <Chip>{humanize(item.status)}</Chip>
+            </View>
           </View>
-          <View style={styles.side}>
-            <Chip>{humanize(item.status)}</Chip>
-          </View>
-        </View>
-        {item.instructions ? <Muted>{item.instructions}</Muted> : null}
-      </Card>
+          {item.instructions ? <Muted>{item.instructions}</Muted> : null}
+        </Card>
+      </InZone>
     ),
     [styles, oneUnit],
   );
@@ -219,7 +237,7 @@ export default function AuditsScreen() {
             // R-39: a Coordinator opens a finished audit for its scores; reports are not theirs.
             (board === 'DONE' && !can('report', 'read_snapshot')
               ? 'Open one for its scores and findings.'
-              : HEAD[board].description) + (zoneFilter.active ? ' Grouped by zone, newest first.' : '')
+              : HEAD[board].description) + (oneUnit ? ' Grouped by zone.' : ' Grouped by unit, then zone.')
           }
         />
       ) : null}
@@ -261,13 +279,14 @@ export default function AuditsScreen() {
       />
       {/* One list for every board, not one per board: a remount would rebuild the header and
           the board switch's pill could not glide (plans/007). */}
-      <SectionList<Audit | AuditAssignment, { zone: ZoneOption | null }>
+      <SectionList<Audit | AuditAssignment, (typeof auditSections)[number] | (typeof assignmentSections)[number]>
         sections={board === 'ASSIGNED' ? assignmentSections : auditSections}
-        keyExtractor={(row) => row.id}
+        // An audit of two Zones is drawn twice, so its key carries its place.
+        keyExtractor={(row, index) => `${row.id}:${index}`}
         renderItem={({ item }) =>
           board === 'ASSIGNED' ? renderAssignment({ item: item as AuditAssignment }) : renderAudit({ item: item as Audit })
         }
-        renderSectionHeader={sectionHead}
+        renderSectionHeader={({ section }) => <GroupHeads section={section} showUnit={!oneUnit} noun={noun} />}
         stickySectionHeadersEnabled={false}
         ListHeaderComponent={header}
         ListEmptyComponent={empty}

@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { Audit, MembershipDetail, Page, ResetUserPasswordResponse, Unit, User, Zone } from '@audit5s/contracts';
-import { mayGrantKaizen, zoneDisplayLabel } from '@audit5s/domain';
+import { auditGroupZones, groupAuditsByUnitAndZone, mayGrantKaizen, zoneDisplayLabel } from '@audit5s/domain';
 import {
   Avatar,
   Button,
@@ -24,6 +24,7 @@ import {
   Slip,
   SlipText,
 } from '../../../components/ui';
+import { AuditGroupList } from '../../../components/audit-groups';
 import { api, problemMessage } from '../../../lib/api';
 import { formatDate, formatDateTime } from '../../../lib/format';
 import {
@@ -315,22 +316,31 @@ export default function PersonScreen() {
               title="Audits"
               description={audits.data.data.length === 0 ? 'No audits yet.' : `${audits.data.data.length} most recent`}
             />
-            {audits.data.data.map((audit) => (
-              <Pressable
-                key={audit.id}
-                accessibilityRole="button"
-                onPress={() => router.push({ pathname: '/manage/audit/[auditId]', params: { auditId: audit.id } })}
-                style={({ pressed }) => [styles.item, pressed && styles.pressed]}
-              >
-                <View style={styles.auditHead}>
-                  <Text style={styles.itemTitle}>{audit.unitName}</Text>
-                  <Chip tone={AUDIT_STATUS_TONE[audit.status]}>{AUDIT_STATUS_LABELS[audit.status]}</Chip>
-                </View>
-                <Data>
-                  {AUDIT_TYPE_LABELS[audit.auditType]}, {formatDate(audit.completedAt ?? audit.startedAt ?? audit.createdAt)}
-                </Data>
-              </Pressable>
-            ))}
+            {/* Nested like every audit list (owner, 2026-11-27): Unit, then Zone, newest first. */}
+            <AuditGroupList
+              groups={groupAuditsByUnitAndZone(audits.data.data, (audit) => ({
+                unitId: audit.unitId,
+                unitName: audit.unitName,
+                zones: auditGroupZones(audit),
+              }))}
+              showUnit
+              noun={['audit', 'audits']}
+              keyOf={(audit) => audit.id}
+              renderItem={(audit) => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${AUDIT_TYPE_LABELS[audit.auditType]} at ${audit.unitName}`}
+                  onPress={() => router.push({ pathname: '/manage/audit/[auditId]', params: { auditId: audit.id } })}
+                  style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+                >
+                  <View style={styles.auditHead}>
+                    <Text style={styles.itemTitle}>{AUDIT_TYPE_LABELS[audit.auditType]}</Text>
+                    <Chip tone={AUDIT_STATUS_TONE[audit.status]}>{AUDIT_STATUS_LABELS[audit.status]}</Chip>
+                  </View>
+                  <Data>{formatDate(audit.completedAt ?? audit.startedAt ?? audit.createdAt)}</Data>
+                </Pressable>
+              )}
+            />
           </Card>
         ) : null}
 

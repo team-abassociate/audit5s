@@ -942,6 +942,8 @@ export interface ResumableAudit {
   resumeAuditZoneId: string | null;
   zonesTotal: number;
   zonesFinished: number;
+  /** Its Zones as audited, in audit order, withdrawn ones left out: for the nested list. */
+  zones: Array<{ zoneId: string; code: string; name: string }>;
 }
 
 /**
@@ -966,14 +968,21 @@ export async function listResumableAudits(database: LocalDatabase): Promise<Resu
   if (rows.length === 0) return [];
 
   const zoneRows = await database
-    .select({ auditId: localAuditZones.auditId, status: localAuditZones.status })
+    .select({
+      auditId: localAuditZones.auditId,
+      status: localAuditZones.status,
+      zoneId: localAuditZones.zoneId,
+      code: localAuditZones.zoneCodeSnapshot,
+      name: localAuditZones.zoneNameSnapshot,
+    })
     .from(localAuditZones)
     .where(
       inArray(
         localAuditZones.auditId,
         rows.map((row) => row.id),
       ),
-    );
+    )
+    .orderBy(localAuditZones.sequenceNo);
 
   return rows.map((row) => {
     const mine = zoneRows.filter((zone) => zone.auditId === row.id && zone.status !== 'WITHDRAWN');
@@ -990,6 +999,7 @@ export async function listResumableAudits(database: LocalDatabase): Promise<Resu
       resumeAuditZoneId: row.resumeAuditZoneId,
       zonesTotal: mine.length,
       zonesFinished: mine.filter((zone) => zone.status === 'COMPLETED').length,
+      zones: mine.map(({ zoneId, code, name }) => ({ zoneId, code, name })),
     };
   });
 }
