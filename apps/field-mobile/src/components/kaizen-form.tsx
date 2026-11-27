@@ -424,6 +424,19 @@ export function KaizenForm({
     },
   });
 
+  /**
+   * Opens a step and, once it has laid out, scrolls its header to the top of the screen, so
+   * the step chosen is what the worker sees, whether by its header or by Next, wherever the
+   * screen was before.
+   */
+  function openStep(index: number) {
+    afterOpen.current = {
+      index,
+      run: (y) => scroller.current?.scrollTo({ y: Math.max(0, y - theme.space.sm), animated: !reduced }),
+    };
+    setOpen(index);
+  }
+
   /** A refused Submit: open the first step with a gap, then show and focus its first box. */
   function refuse(missing: KaizenRequiredField[]) {
     haptic.refused();
@@ -883,7 +896,14 @@ export function KaizenForm({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ expanded: isOpen }}
-                  onPress={() => setOpen(isOpen ? -1 : index)}
+                  onPress={() => {
+                    if (isOpen) {
+                      afterOpen.current = null;
+                      setOpen(-1);
+                    } else {
+                      openStep(index);
+                    }
+                  }}
                   style={({ pressed }) => [styles.stepHead, pressed && styles.stepHeadPressed]}
                 >
                   <Text style={styles.stepNo}>{String(index + 1).padStart(2, '0')}</Text>
@@ -908,14 +928,7 @@ export function KaizenForm({
                         title={t.next}
                         icon="arrow-downward"
                         variant="secondary"
-                        onPress={() => {
-                          // Scroll once the next step has opened and laid out: its header to the top.
-                          afterOpen.current = {
-                            index: index + 1,
-                            run: (y) => scroller.current?.scrollTo({ y: Math.max(0, y - theme.space.sm), animated: true }),
-                          };
-                          setOpen(index + 1);
-                        }}
+                        onPress={() => openStep(index + 1)}
                       />
                     ) : null}
                   </Animated.View>
